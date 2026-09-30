@@ -1,0 +1,38 @@
+name: Bug report
+description: Something in the framework does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report. English or Portuguese are both fine.
+  - type: input
+    id: version
+    attributes:
+      label: Mad Framework version
+      description: The content of the VERSION file in vendor/madbuilder/framework (or vendor/mad/framework in older apps).
+      placeholder: "5.107.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: PHP, Laravel and database
+      placeholder: "PHP 8.4.12, Laravel 13.15, PostgreSQL 16"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, what you saw instead, and the error message if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest Blade and PHP that show the problem.
+      render: blade
+    validations:
+      required: true

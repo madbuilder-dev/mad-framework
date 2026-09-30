@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Install and lint (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, intl, pdo, pdo_sqlite, zip, gd, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Resolve and install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Lint PHP
+        run: find src bootstrap config -name '*.php' -print0 | xargs -0 -n 50 -P 4 php -l > /dev/null
+
+      - name: Load the autoloader and read the version
+        run: php -r 'require "vendor/autoload.php"; echo "Mad Framework ", Mad\Support\MadFramework::version(), PHP_EOL;'

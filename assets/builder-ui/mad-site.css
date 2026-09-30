@@ -1,0 +1,485 @@
+/* ==========================================================================
+   mad-site.css — o visual do SITE PÚBLICO do produto.
+
+   É a folha inteira do site: não depende de mad-ui.css, Bootstrap ou Tailwind.
+   Tipografia do sistema (nenhuma fonte baixada), layout em grade simples e
+   contraste conferido nos dois sentidos.
+
+   Marca: `--site-brand` e `--site-brand-fg` são injetadas pelo layout a partir
+   do tema do projeto. Todo o resto deriva daqui.
+
+   Voz (STYLE-GUIDE §Voz): sem roxo, sem gradiente em texto, sem brilho/glow,
+   sem malha de pontos, sem animação de entrada. Monoespaçada só em código.
+   Seção não é cartão: o que separa blocos é espaço e fundo, não borda.
+   ========================================================================== */
+
+:root {
+  --site-brand: #1E55E8;
+  --site-brand-fg: #ffffff;
+
+  --site-bg: #ffffff;
+  --site-bg-tint: #f6f8fb;
+  --site-fg: #101828;
+  --site-fg-muted: #475467;
+  --site-fg-dim: #667085;
+  --site-border: #e4e7ec;
+  --site-border-strong: #d0d5dd;
+
+  --site-radius: 10px;
+  --site-radius-sm: 6px;
+
+  --site-max: 1120px;
+  --site-gap: 24px;
+  --site-section-y: 72px;
+
+  --site-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --site-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body.site {
+  margin: 0;
+  background: var(--site-bg);
+  color: var(--site-fg);
+  font-family: var(--site-font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.site img { max-width: 100%; height: auto; display: block; }
+
+body.site h1, body.site h2, body.site h3, body.site h4 {
+  margin: 0 0 12px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--site-fg);
+}
+
+body.site h1 { font-size: 44px; }
+body.site h2 { font-size: 30px; }
+body.site h3 { font-size: 20px; }
+body.site p  { margin: 0 0 16px; color: var(--site-fg-muted); }
+
+body.site a { color: var(--site-brand); text-decoration: none; }
+body.site a:hover { text-decoration: underline; }
+
+body.site code, body.site pre { font-family: var(--site-font-mono); font-size: 0.92em; }
+
+body.site :focus-visible {
+  outline: 2px solid var(--site-brand);
+  outline-offset: 2px;
+  border-radius: var(--site-radius-sm);
+}
+
+/* ── Estrutura ───────────────────────────────────────────────────────────── */
+
+.site-container {
+  width: 100%;
+  max-width: var(--site-max);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.site-section { padding: var(--site-section-y) 0; }
+.site-section--tint { background: var(--site-bg-tint); }
+.site-section > .site-container > h2 { margin-bottom: 8px; }
+.site-section__lead { max-width: 62ch; color: var(--site-fg-muted); margin-bottom: 36px; }
+
+.site-grid-2, .site-grid-3, .site-grid-4 { display: grid; gap: var(--site-gap); }
+.site-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.site-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.site-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* ── Botões ──────────────────────────────────────────────────────────────── */
+
+/* Todo botão do site é um `<a>` — e `body.site a` acima já pinta link de azul
+   e sublinha no hover. O navegador não escolhe a última regra: escolhe a mais
+   ESPECÍFICA. `.site-btn--primary` sozinho perde para `body.site a`, e o botão
+   principal saía com letra azul sobre fundo azul (ilegível). Por isso as
+   regras de botão nascem com o mesmo `body.site` na frente — travado em
+   SiteCssContractTest. */
+body.site .site-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid var(--site-border-strong);
+  border-radius: var(--site-radius-sm);
+  background: var(--site-bg);
+  color: var(--site-fg);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+body.site .site-btn:hover { text-decoration: none; background: var(--site-bg-tint); }
+
+body.site .site-btn--primary {
+  background: var(--site-brand);
+  border-color: var(--site-brand);
+  color: var(--site-brand-fg);
+}
+body.site .site-btn--primary:hover { background: var(--site-brand); color: var(--site-brand-fg); filter: brightness(.93); }
+
+body.site .site-btn--ghost { background: transparent; border-color: transparent; color: var(--site-brand); }
+body.site .site-btn--ghost:hover { background: var(--site-bg-tint); color: var(--site-brand); }
+
+body.site .site-btn[disabled],
+body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+
+/* ── Navegação ───────────────────────────────────────────────────────────── */
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+  border-bottom: 1px solid var(--site-border);
+  background: var(--site-bg);
+}
+/* `<mad-site-nav>` põe marca, botão e links num `.site-container` (alinhado
+   com o resto da página) — é ELE a linha. Sem isto o container, filho único
+   do header, empilhava a marca numa linha e os links na de baixo. */
+.site-nav > .site-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+}
+
+.site-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 680;
+  font-size: 17px;
+  color: var(--site-fg);
+}
+.site-nav__brand img { max-height: 30px; width: auto; }
+.site-nav__brand:hover { text-decoration: none; }
+
+.site-nav__links { display: flex; align-items: center; gap: 22px; }
+.site-nav__links a { color: var(--site-fg-muted); font-weight: 550; }
+.site-nav__links a:hover { color: var(--site-fg); text-decoration: none; }
+
+.site-nav__toggle {
+  display: none;
+  padding: 8px 10px;
+  border: 1px solid var(--site-border-strong);
+  border-radius: var(--site-radius-sm);
+  background: var(--site-bg);
+  color: var(--site-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ── Topo (hero) ─────────────────────────────────────────────────────────── */
+
+.site-hero { padding: 84px 0 68px; }
+.site-hero > .site-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: center;
+}
+.site-hero--plain > .site-container { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
+
+.site-hero__eyebrow {
+  display: inline-block;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--site-brand);
+}
+.site-hero__title { font-size: 48px; margin-bottom: 16px; }
+.site-hero__subtitle { font-size: 18px; max-width: 56ch; color: var(--site-fg-muted); }
+.site-hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.site-hero__media img { border-radius: var(--site-radius); border: 1px solid var(--site-border); }
+
+/* ── Recursos ────────────────────────────────────────────────────────────── */
+
+.site-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+.site-feature h3 { font-size: 18px; margin-bottom: 6px; }
+.site-feature p { margin: 0; }
+.site-feature__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 14px;
+  border-radius: var(--site-radius-sm);
+  background: var(--site-bg-tint);
+  color: var(--site-brand);
+}
+.site-feature__icon svg { width: 20px; height: 20px; }
+
+/* ── Planos ──────────────────────────────────────────────────────────────── */
+
+.site-pricing { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); align-items: stretch; }
+
+.site-pricing__toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 36px;
+  padding: 4px;
+  border: 1px solid var(--site-border);
+  border-radius: 999px;
+  background: var(--site-bg-tint);
+}
+.site-pricing__toggle button {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--site-fg-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.site-pricing__toggle button[aria-pressed="true"] { background: var(--site-bg); color: var(--site-fg); }
+
+.site-plan {
+  display: flex;
+  flex-direction: column;
+  padding: 28px 24px;
+  border: 1px solid var(--site-border);
+  border-radius: var(--site-radius);
+  background: var(--site-bg);
+}
+.site-plan h3 { font-size: 18px; }
+.site-plan--featured { border-color: var(--site-brand); border-width: 2px; }
+.site-plan__price { margin: 14px 0 4px; font-size: 34px; font-weight: 680; letter-spacing: -0.02em; }
+.site-plan__price small { font-size: 15px; font-weight: 500; color: var(--site-fg-dim); }
+.site-plan__list { list-style: none; margin: 20px 0 24px; padding: 0; display: grid; gap: 9px; }
+/* O marcador é o ✓ em SVG que o componente inclui em cada item — nada de
+   ::before aqui (um quadrado desenhado pelo CSS duplicava o marcador). */
+.site-plan__list li { display: flex; align-items: flex-start; gap: 8px; color: var(--site-fg-muted); }
+.site-plan__list li > svg { flex: 0 0 auto; margin-top: .2em; color: var(--site-brand); }
+.site-plan .site-btn { margin-top: auto; width: 100%; }
+
+/* ── Depoimentos e logotipos ─────────────────────────────────────────────── */
+
+.site-testimonials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); }
+.site-testimonial {
+  padding: 24px;
+  border: 1px solid var(--site-border);
+  border-radius: var(--site-radius);
+  background: var(--site-bg);
+}
+.site-testimonial p { color: var(--site-fg); }
+.site-testimonial footer { display: flex; align-items: center; gap: 10px; color: var(--site-fg-dim); font-size: 14px; }
+.site-testimonial img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+
+.site-logos { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 36px; }
+.site-logo-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px dashed var(--site-border-strong);
+  border-radius: var(--site-radius-sm);
+  color: var(--site-fg-dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Perguntas frequentes ────────────────────────────────────────────────── */
+
+.site-faq { max-width: 780px; }
+.site-faq__item { border-bottom: 1px solid var(--site-border); }
+.site-faq__item summary {
+  padding: 18px 0;
+  font-weight: 620;
+  cursor: pointer;
+  list-style: none;
+}
+.site-faq__item summary::-webkit-details-marker { display: none; }
+.site-faq__item summary::after { content: "+"; float: right; color: var(--site-fg-dim); font-weight: 500; }
+.site-faq__item[open] summary::after { content: "\2212"; }
+.site-faq__item > div { padding: 0 0 18px; color: var(--site-fg-muted); max-width: 66ch; }
+
+/* ── Chamada final ───────────────────────────────────────────────────────── */
+
+.site-cta { text-align: center; }
+.site-cta h2 { margin-bottom: 10px; }
+.site-cta p { max-width: 56ch; margin-left: auto; margin-right: auto; }
+.site-cta .site-hero__actions { justify-content: center; }
+
+/* ── Formulários ─────────────────────────────────────────────────────────── */
+
+.site-form { max-width: 560px; display: grid; gap: 18px; }
+.site-form__field { display: grid; gap: 6px; }
+.site-form__field label { font-size: 14px; font-weight: 600; color: var(--site-fg); }
+.site-form__field input,
+.site-form__field select,
+.site-form__field textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--site-border-strong);
+  border-radius: var(--site-radius-sm);
+  background: var(--site-bg);
+  color: var(--site-fg);
+  font: inherit;
+}
+.site-form__field textarea { min-height: 130px; resize: vertical; }
+.site-form__field input:focus,
+.site-form__field select:focus,
+.site-form__field textarea:focus { border-color: var(--site-brand); outline: none; box-shadow: 0 0 0 3px rgba(30, 85, 232, .15); }
+.site-form__field--check { grid-template-columns: auto 1fr; align-items: start; gap: 10px; }
+.site-form__field--check input { width: auto; }
+/* Checkbox/rádio dentro de um campo (o aceite dos termos do cadastro): a regra
+   acima é de CAIXA DE TEXTO — com ela o checkbox virava uma barra da largura
+   do formulário. Aqui ele volta a ser uma caixinha ao lado do texto. */
+.site-form__field input[type="checkbox"],
+.site-form__field input[type="radio"] {
+  flex: 0 0 auto;
+  width: auto;
+  margin: .2em 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  accent-color: var(--site-brand);
+}
+.site-form__field input[type="checkbox"]:focus,
+.site-form__field input[type="radio"]:focus { box-shadow: none; }
+.site-form__field label:has(> input[type="checkbox"]),
+.site-form__field label:has(> input[type="radio"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.site-form__error { color: #b42318; font-size: 14px; }
+.site-form__field input[aria-invalid="true"],
+.site-form__field textarea[aria-invalid="true"] { border-color: #b42318; }
+
+.site-form__success {
+  padding: 14px 16px;
+  border: 1px solid #aee0c4;
+  border-left-width: 4px;
+  border-radius: var(--site-radius-sm);
+  background: #f2fbf6;
+  color: #05603a;
+}
+
+/* ── Rodapé ──────────────────────────────────────────────────────────────── */
+
+.site-footer { padding: 56px 0 32px; border-top: 1px solid var(--site-border); background: var(--site-bg-tint); }
+.site-footer__cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--site-gap); }
+.site-footer__cols h4 { margin-bottom: 10px; font-size: 14px; letter-spacing: .02em; }
+.site-footer__cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.site-footer__cols a { color: var(--site-fg-muted); }
+.site-footer__legal {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--site-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--site-fg-dim);
+  font-size: 14px;
+}
+
+/* ── Texto corrido (Sobre, Termos, Privacidade, post) ────────────────────── */
+
+.site-prose { max-width: 72ch; }
+.site-prose h2 { margin-top: 36px; font-size: 24px; }
+.site-prose h3 { margin-top: 28px; }
+.site-prose ul, .site-prose ol { color: var(--site-fg-muted); padding-left: 22px; }
+.site-prose li { margin-bottom: 6px; }
+.site-prose blockquote {
+  margin: 24px 0;
+  padding: 4px 0 4px 18px;
+  border-left: 3px solid var(--site-border-strong);
+  color: var(--site-fg-muted);
+}
+.site-prose img { border-radius: var(--site-radius); margin: 24px 0; }
+.site-prose table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+.site-prose th, .site-prose td { padding: 10px 12px; border-bottom: 1px solid var(--site-border); text-align: left; }
+
+/* ── Blog ────────────────────────────────────────────────────────────────── */
+
+.site-blog-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--site-gap); }
+.site-blog-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--site-border);
+  border-radius: var(--site-radius);
+  background: var(--site-bg);
+}
+.site-blog-card img { aspect-ratio: 16 / 9; object-fit: cover; width: 100%; }
+.site-blog-card > div { padding: 20px; display: flex; flex-direction: column; flex: 1; }
+.site-blog-card h3 { font-size: 18px; }
+.site-blog-card h3 a { color: var(--site-fg); }
+.site-blog-card p { flex: 1; font-size: 15px; }
+
+.site-blog-post { max-width: 72ch; }
+.site-blog-post__meta { margin-bottom: 24px; color: var(--site-fg-dim); font-size: 14px; }
+.site-blog-post > img { border-radius: var(--site-radius); margin-bottom: 28px; }
+
+/* ── Telas estreitas ─────────────────────────────────────────────────────── */
+
+@media (max-width: 980px) {
+  .site-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-features, .site-pricing, .site-testimonials, .site-blog-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-footer__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-hero > .site-container { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+}
+
+@media (max-width: 768px) {
+  :root { --site-section-y: 48px; }
+
+  body.site h1 { font-size: 32px; }
+  body.site h2 { font-size: 24px; }
+
+  .site-hero { padding: 48px 0 40px; }
+  .site-hero__title { font-size: 34px; }
+  .site-hero__subtitle { font-size: 17px; }
+  .site-hero__actions .site-btn { flex: 1 1 100%; }
+
+  .site-grid-2, .site-grid-3, .site-grid-4,
+  .site-features, .site-pricing, .site-testimonials,
+  .site-blog-list, .site-footer__cols { grid-template-columns: minmax(0, 1fr); }
+
+  .site-nav { flex-wrap: wrap; position: relative; }
+  .site-nav > .site-container { flex-wrap: wrap; }
+  .site-nav__toggle { display: inline-flex; }
+  .site-nav__links {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-bottom: 12px;
+  }
+  .site-nav__links[data-open="true"] { display: flex; }
+  .site-nav__links a { padding: 12px 2px; border-top: 1px solid var(--site-border); }
+  .site-nav__links .site-btn { margin-top: 12px; }
+
+  .site-footer__legal { flex-direction: column; align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.site * { transition-duration: .01ms !important; }
+}

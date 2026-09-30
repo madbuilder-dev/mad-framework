@@ -1,0 +1,282 @@
+/**
+ * MadReconcile — estilos da conciliação two-panel (<mad-reconcile>).
+ * Cores só via tokens --mad-* (dark mode automático).
+ */
+
+.mad-reconcile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────── */
+
+.mad-rc-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mad-rc-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mad-rc-toolbar-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--mad-text-muted, #71717a);
+}
+
+.mad-rc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 6px;
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    cursor: pointer;
+    transition: background .12s ease;
+}
+
+.mad-rc-btn:hover:not(:disabled) {
+    background: var(--mad-bg-muted, #f4f4f5);
+}
+
+.mad-rc-btn:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+.mad-rc-btn i,
+.mad-rc-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mad-rc-btn--primary {
+    background: var(--mad-primary, #2563eb);
+    border-color: var(--mad-primary, #2563eb);
+    color: var(--mad-primary-fg, #fff);
+}
+
+.mad-rc-btn--primary:hover:not(:disabled) {
+    background: var(--mad-primary-hover, #1d4ed8);
+}
+
+.mad-rc-btn--sm {
+    padding: 3px 8px;
+    font-size: 12px;
+}
+
+.mad-rc-btn--ghost {
+    border-color: transparent;
+    background: transparent;
+}
+
+.mad-rc-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    font-size: 11px;
+    border-radius: 999px;
+    background: var(--mad-bg-muted, #f4f4f5);
+    color: var(--mad-text-muted, #71717a);
+}
+
+.mad-rc-ok  { color: var(--mad-success, #16a34a); }
+.mad-rc-bad { color: var(--mad-danger, #dc2626); }
+
+/* ── Painéis ──────────────────────────────────────────────────────────── */
+
+.mad-rc-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .mad-rc-panels {
+        grid-template-columns: 1fr;
+    }
+}
+
+.mad-rc-panel {
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 8px;
+    background: var(--mad-bg, #fff);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mad-rc-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--mad-border, #e4e4e7);
+    background: var(--mad-bg-subtle, #fafafa);
+    border-radius: 8px 8px 0 0;
+    font-size: 13px;
+}
+
+.mad-rc-filter {
+    margin-left: auto;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 6px;
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    font-size: 12px;
+    padding: 4px 8px;
+    width: 140px;
+}
+
+.mad-rc-panel-body {
+    overflow: auto;
+    max-height: 45vh;
+}
+
+.mad-rc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.mad-rc-row {
+    cursor: pointer;
+    border-bottom: 1px solid var(--mad-border, #ececef);
+    transition: background .1s ease;
+}
+
+.mad-rc-row:hover {
+    background: var(--mad-bg-muted, #f4f4f5);
+}
+
+.mad-rc-row--selected {
+    background: var(--mad-primary-subtle, #dbeafe);
+    box-shadow: inset 2px 0 0 var(--mad-primary, #2563eb);
+}
+
+.mad-rc-row td {
+    padding: 7px 10px;
+    vertical-align: middle;
+}
+
+.mad-rc-cell-date {
+    white-space: nowrap;
+    color: var(--mad-text-muted, #71717a);
+    width: 90px;
+}
+
+.mad-rc-cell-doc {
+    white-space: nowrap;
+    color: var(--mad-text-muted, #71717a);
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    width: 110px;
+}
+
+.mad-rc-cell-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0;
+    width: 100%;
+}
+
+.mad-rc-cell-amount {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    width: 110px;
+}
+
+.mad-rc-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--mad-text-muted, #71717a);
+    font-size: 12.5px;
+}
+
+/* ── Grupos (sugestões + conciliados) ─────────────────────────────────── */
+
+.mad-rc-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mad-rc-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mad-text-muted, #71717a);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.mad-rc-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 8px;
+    background: var(--mad-bg, #fff);
+    font-size: 13px;
+}
+
+.mad-rc-group--confirmed {
+    opacity: .8;
+}
+
+.mad-rc-score {
+    display: inline-flex;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 999px;
+    background: var(--mad-primary-subtle, #dbeafe);
+    color: var(--mad-primary, #2563eb);
+}
+
+.mad-rc-group-sums {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.mad-rc-group-sums i,
+.mad-rc-group-sums svg {
+    width: 13px;
+    height: 13px;
+    color: var(--mad-text-muted, #71717a);
+}
+
+.mad-rc-group-detail {
+    color: var(--mad-text-muted, #71717a);
+    font-size: 12px;
+}
+
+.mad-rc-group-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 6px;
+}
+
+.mad-rc-section--muted .mad-rc-group {
+    background: var(--mad-bg-subtle, #fafafa);
+}

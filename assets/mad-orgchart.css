@@ -1,0 +1,351 @@
+/**
+ * MadOrgChart — estilos da hierarquia visual (<mad-org-chart>).
+ *
+ * Árvore top-down clássica em ul/li: conectores desenhados com ::before/
+ * ::after (borda), zero SVG/JS de layout. Cores só via tokens --mad-*.
+ */
+
+.mad-orgchart {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────── */
+
+.mad-oc-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mad-oc-toolbar-left,
+.mad-oc-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mad-oc-search {
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 6px;
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    font-size: 13px;
+    padding: 6px 10px;
+    width: 220px;
+}
+
+.mad-oc-search-hits {
+    font-size: 12px;
+    color: var(--mad-text-muted, #71717a);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mad-oc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    line-height: 1;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 6px;
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    cursor: pointer;
+}
+
+.mad-oc-btn:hover {
+    background: var(--mad-bg-muted, #f4f4f5);
+}
+
+.mad-oc-btn--sm {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.mad-oc-zoom {
+    font-size: 12px;
+    color: var(--mad-text-muted, #71717a);
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.mad-oc-truncated {
+    font-size: 12px;
+    color: var(--mad-warning, #d97706);
+    padding: 4px 0;
+}
+
+/* ── Viewport / canvas (pan + zoom) ───────────────────────────────────── */
+
+.mad-oc-viewport {
+    overflow: hidden;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 8px;
+    background:
+        radial-gradient(circle, var(--mad-border, #e4e4e7) 1px, transparent 1px) 0 0 / 24px 24px,
+        var(--mad-bg-subtle, #fafafa);
+    min-height: 420px;
+    max-height: 70vh;
+    cursor: grab;
+    user-select: none;
+    position: relative;
+}
+
+.mad-oc-viewport:active {
+    cursor: grabbing;
+}
+
+.mad-oc-canvas {
+    transform-origin: 0 0;
+    width: max-content;
+    padding: 32px;
+    will-change: transform;
+}
+
+/* ── Árvore (conectores: cotovelos arredondados, CSS clássico de org chart)
+   Geometria: perna do PAI = padding-top do UL (::before central);
+   perna+trilho de CADA FILHO = padding-top do LI, desenhados como duas
+   metades (::before esquerda com border-top; ::after direita com
+   border-top + border-left = a descida no centro). Primeiro/último filho
+   viram cotovelos com border-radius; filho único liga reto no pai.
+   Bordas (não background) = sem gaps de subpixel entre segmentos. ── */
+
+.mad-oc-tree {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    list-style: none;
+    margin: 0;
+    padding: 18px 0 0;   /* zona da perna do pai */
+    position: relative;
+}
+
+.mad-oc-tree--root {
+    padding-top: 0;
+}
+
+/* perna descendo do card pai até o trilho dos filhos */
+.mad-oc-tree:not(.mad-oc-tree--root)::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(50% - 0.75px);
+    width: 1.5px;
+    height: 18px;
+    background: var(--mad-oc-line, var(--mad-border-strong, #d4d4d8));
+}
+
+.mad-oc-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    padding: 18px 12px 0;   /* zona do trilho + descida deste filho */
+}
+
+.mad-oc-tree--root > .mad-oc-node {
+    padding-top: 0;
+}
+
+/* metade ESQUERDA do trilho */
+.mad-oc-node::before,
+.mad-oc-node::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 50%;
+    width: 50%;
+    height: 18px;
+    border-top: 1.5px solid var(--mad-oc-line, var(--mad-border-strong, #d4d4d8));
+}
+
+/* metade DIREITA do trilho + descida central até o card */
+.mad-oc-node::after {
+    right: auto;
+    left: 50%;
+    border-left: 1.5px solid var(--mad-oc-line, var(--mad-border-strong, #d4d4d8));
+}
+
+.mad-oc-tree--root > .mad-oc-node::before,
+.mad-oc-tree--root > .mad-oc-node::after {
+    display: none;
+}
+
+/* primeiro filho: sem trilho à esquerda; cotovelo arredondado na descida */
+.mad-oc-node:first-child::before {
+    border-top: 0;
+}
+
+.mad-oc-node:first-child::after {
+    border-radius: 10px 0 0 0;
+}
+
+/* último filho: descida vem do ::before (border-right + cotovelo) */
+.mad-oc-node:last-child::after {
+    border: 0 none;
+}
+
+.mad-oc-node:last-child::before {
+    border-right: 1.5px solid var(--mad-oc-line, var(--mad-border-strong, #d4d4d8));
+    border-radius: 0 10px 0 0;
+}
+
+/* filho único: sem trilho/cotovelo — a perna do pai liga reto no card */
+.mad-oc-node:only-child {
+    padding-top: 0;
+}
+
+.mad-oc-node:only-child::before,
+.mad-oc-node:only-child::after {
+    display: none;
+}
+
+/* collapse esconde a subárvore */
+.mad-oc-node--collapsed > .mad-oc-tree {
+    display: none;
+}
+
+.mad-oc-node--collapsed > .mad-oc-card .mad-oc-toggle {
+    opacity: 1;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────── */
+
+.mad-oc-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    min-width: 170px;
+    max-width: 240px;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 10px;
+    background: var(--mad-bg, #fff);
+    box-shadow: var(--mad-shadow-sm, 0 1px 2px rgba(15, 23, 42, .06));
+    cursor: pointer;
+    position: relative;
+    transition: box-shadow .12s ease, border-color .12s ease;
+}
+
+.mad-oc-card:hover {
+    box-shadow: var(--mad-shadow-md, 0 4px 12px rgba(15, 23, 42, .1));
+    border-color: var(--mad-border-strong, #d4d4d8);
+}
+
+.mad-oc-card--dragging {
+    opacity: .45;
+}
+
+.mad-oc-card--drop {
+    border-color: var(--mad-primary, #2563eb);
+    box-shadow: 0 0 0 2px var(--mad-primary-subtle, #dbeafe);
+}
+
+.mad-oc-card--hit {
+    border-color: var(--mad-warning, #d97706);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--mad-warning, #d97706) 30%, transparent);
+}
+
+.mad-oc-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--mad-primary-subtle, #dbeafe);
+    color: var(--mad-primary, #2563eb);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.mad-oc-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.mad-oc-card-body {
+    min-width: 0;
+    flex: 1;
+}
+
+.mad-oc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mad-text, #18181b);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mad-oc-subtitle {
+    font-size: 11.5px;
+    color: var(--mad-text-muted, #71717a);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mad-oc-metric {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--mad-bg-muted, #f4f4f5);
+    color: var(--mad-text-muted, #71717a);
+    flex-shrink: 0;
+}
+
+/* ── Toggle (expand/collapse/lazy) ────────────────────────────────────── */
+
+.mad-oc-toggle {
+    position: absolute;
+    bottom: -11px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text-muted, #71717a);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.mad-oc-toggle:hover {
+    border-color: var(--mad-primary, #2563eb);
+    color: var(--mad-primary, #2563eb);
+}
+
+.mad-oc-toggle--loading {
+    pointer-events: none;
+    opacity: .6;
+}
+
+.mad-oc-toggle--loading .mad-oc-toggle-count {
+    animation: mad-oc-pulse 1s infinite;
+}
+
+@keyframes mad-oc-pulse {
+    50% { opacity: .3; }
+}

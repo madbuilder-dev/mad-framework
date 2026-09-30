@@ -1,0 +1,109 @@
+{
+    "name": "madbuilder/framework",
+    "description": "Mad Framework: the open-source Laravel runtime behind MadBuilder apps. Server-driven <mad-*> Blade components, reactive UI without a build step, IAM, i18n, PDF, MCP server and AI copilot.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "framework",
+        "low-code",
+        "blade",
+        "components",
+        "admin",
+        "erp",
+        "crud",
+        "dashboard",
+        "reactive",
+        "alpinejs",
+        "mcp",
+        "ai",
+        "madbuilder"
+    ],
+    "homepage": "https://madbuilder.dev",
+    "authors": [
+        {
+            "name": "Matheus Agnes Dias",
+            "homepage": "https://madbuilder.dev",
+            "role": "Creator"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/madbuilder-dev/mad-framework/issues",
+        "source": "https://github.com/madbuilder-dev/mad-framework",
+        "docs": "https://app.madbuilder.dev/help/docs.html",
+        "forum": "https://manager.madbuilder.dev/ajuda/forum",
+        "security": "https://github.com/madbuilder-dev/mad-framework/security/policy"
+    },
+    "require": {
+        "php": "^8.4",
+        "laravel/framework": "^13.0",
+        "laravel/ai": "^0.8.1",
+        "laravel/mcp": "^0.8",
+        "laravel/serializable-closure": "^1.3|^2.0",
+        "bacon/bacon-qr-code": "^3.0",
+        "dompdf/dompdf": "^3.1",
+        "league/commonmark": "^2.8",
+        "openspout/openspout": "^5.3",
+        "picqer/php-barcode-generator": "^3.2"
+    },
+    "replace": {
+        "mad/framework": "self.version"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mad\\Component\\": "src/mad/component/",
+            "Mad\\Core\\": "src/mad/core/",
+            "Mad\\Form\\": "src/mad/form/",
+            "Mad\\Http\\": "src/mad/http/",
+            "Mad\\I18n\\": "src/mad/i18n/",
+            "Mad\\Install\\": "src/mad/install/",
+            "Mad\\Log\\": "src/mad/log/",
+            "Mad\\Registry\\": "src/mad/registry/",
+            "Mad\\Routing\\": "src/mad/routing/",
+            "Mad\\Security\\": "src/mad/security/",
+            "Mad\\Ui\\": "src/mad/ui/",
+            "Mad\\Util\\": "src/mad/util/",
+            "Mad\\View\\": "src/mad/view/",
+            "Mad\\Web\\": "src/mad/Web/",
+            "Mad\\Grid\\": "src/mad/grid/",
+            "Mad\\Database\\": "src/mad/database/",
+            "Mad\\Rest\\": "src/mad/rest/",
+            "Mad\\Service\\": "src/mad/service/",
+            "Mad\\Filters\\": "src/mad/filters/",
+            "Mad\\Seek\\": "src/mad/seek/",
+            "Mad\\Site\\": "src/mad/site/",
+            "Mad\\": "src/mad/",
+            "Mad\\Chart\\": "src/mad/chart/",
+            "Mad\\Calendar\\": "src/mad/calendar/",
+            "Mad\\Dashboard\\": "src/mad/Dashboard/",
+            "Mad\\Mcp\\": "src/mad/mcp/",
+            "Mad\\Ai\\": "src/mad/ai/",
+            "Mad\\Usage\\": "src/mad/usage/",
+            "Mad\\Console\\": "src/mad/console/",
+            "Mad\\Sheet\\": "src/mad/sheet/",
+            "Mad\\Reconcile\\": "src/mad/reconcile/",
+            "Mad\\OrgChart\\": "src/mad/orgchart/",
+            "Mad\\Pdv\\": "src/mad/pdv/"
+        },
+        "files": [
+            "bootstrap/compat.php",
+            "src/mad/i18n/helpers.php",
+            "src/mad/http/helpers.php",
+            "src/mad/trace/MadTrace.php",
+            "src/mad/Web/helpers.php"
+        ]
+    },
+    "suggest": {
+        "league/flysystem-aws-s3-v3": "Needed when MAD_UPLOAD_DISK points to an s3 disk (^3.0).",
+        "yajra/laravel-oci8": "Oracle database support.",
+        "harrygulliford/laravel-firebird": "Firebird database support."
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Mad\\MadServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable"
+}

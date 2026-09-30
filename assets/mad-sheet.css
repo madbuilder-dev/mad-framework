@@ -1,0 +1,309 @@
+/**
+ * MadSheet — estilos da planilha de lançamento em lote (<mad-sheet>).
+ *
+ * Altura de linha FIXA (37px) — o virtual scroll do mad-sheet.js depende
+ * dela (SHEET_ROW_H). Mudou aqui, muda lá.
+ *
+ * Cores só via tokens --mad-* (dark mode automático).
+ */
+
+.mad-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────── */
+
+.mad-sheet-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mad-sheet-toolbar-left,
+.mad-sheet-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mad-sheet-toolbar-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--mad-text-muted, #71717a);
+}
+
+.mad-sheet-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 6px;
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    cursor: pointer;
+    transition: background .12s ease;
+}
+
+.mad-sheet-btn:hover:not(:disabled) {
+    background: var(--mad-bg-muted, #f4f4f5);
+}
+
+.mad-sheet-btn:disabled {
+    opacity: .5;
+    cursor: default;
+}
+
+.mad-sheet-btn i,
+.mad-sheet-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mad-sheet-btn--primary {
+    background: var(--mad-primary, #2563eb);
+    border-color: var(--mad-primary, #2563eb);
+    color: var(--mad-primary-fg, #fff);
+}
+
+.mad-sheet-btn--primary:hover:not(:disabled) {
+    background: var(--mad-primary-hover, #1d4ed8);
+}
+
+.mad-sheet-errors-badge {
+    color: var(--mad-danger, #dc2626);
+    font-weight: 600;
+}
+
+/* ── Grade ────────────────────────────────────────────────────────────── */
+
+.mad-sheet-scroll {
+    overflow: auto;
+    max-height: 60vh;
+    border: 1px solid var(--mad-border, #e4e4e7);
+    border-radius: 8px;
+    background: var(--mad-bg, #fff);
+}
+
+.mad-sheet-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    font-size: 13px;
+}
+
+.mad-sheet-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--mad-bg-subtle, #fafafa);
+    color: var(--mad-text-muted, #71717a);
+    font-weight: 600;
+    font-size: 12px;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--mad-border, #e4e4e7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mad-sheet-req {
+    color: var(--mad-danger, #dc2626);
+    margin-left: 2px;
+}
+
+.mad-sheet-col-rownum {
+    width: 56px;
+}
+
+.mad-sheet-rownum {
+    color: var(--mad-text-muted, #71717a);
+    font-size: 11px;
+    text-align: right;
+    padding: 0 8px;
+    white-space: nowrap;
+    background: var(--mad-bg-subtle, #fafafa);
+    border-bottom: 1px solid var(--mad-border, #ececef);
+    user-select: none;
+}
+
+.mad-sheet-row-clear {
+    border: 0;
+    background: transparent;
+    color: var(--mad-text-muted, #71717a);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 2px;
+    line-height: 1;
+}
+
+.mad-sheet-row-clear:hover {
+    color: var(--mad-danger, #dc2626);
+}
+
+.mad-sheet-cell {
+    height: 37px; /* SHEET_ROW_H */
+    padding: 0;
+    border-bottom: 1px solid var(--mad-border, #ececef);
+    border-right: 1px solid var(--mad-border, #ececef);
+}
+
+.mad-sheet-cell--readonly {
+    background: var(--mad-bg-subtle, #fafafa);
+}
+
+.mad-sheet-cell--error {
+    background: color-mix(in srgb, var(--mad-danger, #dc2626) 10%, transparent);
+    box-shadow: inset 0 0 0 1px var(--mad-danger, #dc2626);
+}
+
+.mad-sheet-input {
+    width: 100%;
+    height: 36px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--mad-text, #18181b);
+    font-size: 13px;
+    padding: 0 10px;
+    box-sizing: border-box;
+}
+
+.mad-sheet-input:focus {
+    box-shadow: inset 0 0 0 2px var(--mad-primary, #2563eb);
+    border-radius: 2px;
+    position: relative;
+    z-index: 1;
+}
+
+.mad-sheet-cell--num .mad-sheet-input {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Wrapper das células com cell-component (madMoneyCell/madNumericCell) */
+.mad-sheet-cellwrap {
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+}
+
+/* Célula de data (madDatePicker + popup do framework) */
+.mad-sheet-datewrap {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+}
+
+.mad-sheet-datewrap .mad-sheet-input {
+    padding-right: 26px;
+}
+
+.mad-sheet-date-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: var(--mad-text-muted, #71717a);
+    cursor: pointer;
+    padding: 4px;
+    line-height: 0;
+    border-radius: 4px;
+}
+
+.mad-sheet-date-btn:hover:not(:disabled) {
+    color: var(--mad-primary, #2563eb);
+    background: var(--mad-bg-muted, #f4f4f5);
+}
+
+.mad-sheet-date-btn:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
+/* Popup do calendário (classe global .mad-drp-popup, mad-ui.css): o JS
+   (madSheet.positionDatePopup) reposiciona como FIXED ao abrir — escapa o
+   overflow:auto do .mad-sheet-scroll e flipa pra cima quando não cabe.
+   Sem regra de posição aqui: inline style do JS é a autoridade. */
+
+select.mad-sheet-input {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+
+/* Combo enhançado (MAD Select do dbcombo) dentro da célula: control
+   borderless preenchendo a célula — o look de "campo de form" fica pro
+   form; aqui é spreadsheet. Dropdown teleporta pro body (sem clipping). */
+.mad-sheet-cell .mad-sel {
+    height: 100%;
+}
+
+.mad-sheet-cell .mad-sel-control {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    min-height: 36px;
+    height: 36px;
+    padding: 0 26px 0 10px;
+    box-shadow: none;
+    font-size: 13px;
+}
+
+.mad-sheet-cell .mad-sel-control:focus-within {
+    box-shadow: inset 0 0 0 2px var(--mad-primary, #2563eb);
+    border-radius: 2px;
+}
+
+.mad-sheet-cell .mad-sel-caret {
+    right: 8px;
+}
+
+.mad-sheet-table tfoot td {
+    position: sticky;
+    bottom: 0;
+    background: var(--mad-bg-subtle, #fafafa);
+    border-top: 1px solid var(--mad-border, #e4e4e7);
+    font-weight: 600;
+    padding: 8px 10px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.mad-sheet-spacer td {
+    border: 0 !important;
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────────── */
+
+[data-theme="dark"] .mad-sheet-scroll,
+.dark .mad-sheet-scroll {
+    background: var(--mad-bg, #18181b);
+}
+
+/* Affix prefix/suffix nas células money (col.prefix / col.suffix) */
+.mad-sheet-cell-affix {
+    align-self: center;
+    padding: 0 0 0 8px;
+    font-size: 12px;
+    color: var(--mad-text-muted, #71717a);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.mad-sheet-cell-affix + .mad-sheet-input {
+    padding-left: 4px;
+}

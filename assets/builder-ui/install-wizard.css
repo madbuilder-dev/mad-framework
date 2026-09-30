@@ -1,0 +1,272 @@
+/* ── MadBuilder · Instalação do sistema ─────────────────────────── */
+:root{
+  --accent:#1E55E8; --accent-strong:#1A47C7; --accent-soft:#EEF1FE;
+  --accent-2:#3FB8E8; --accent-soft2:#E7F4FB;
+  --warm:#F26B1F; --warm-strong:#C95416; --warm-soft:#FCEEE3;
+  --navy:#0E1B3D;
+  --ink:#1E2438; --ink-2:#333d57; --ink-3:#5b6478; --ink-4:#8a93a6;
+  --paper:#ffffff; --paper-2:#f5f7fb; --paper-3:#eef1f6;
+  --line:#e8ebf1; --line-2:#dce0ea;
+  --ok:#1f9d57; --ok-soft:#e8f6ee; --ok-line:#bce6cd;
+  --warn:#b9820a; --warn-soft:#fdf6e3; --warn-line:#f0e2b2;
+  --err:#d22d2d; --err-soft:#fdeceb;
+  --r-sm:8px; --r:11px; --r-lg:16px; --r-xl:22px;
+  --shadow-sm:0 1px 2px rgba(14,27,61,.06);
+  --shadow:0 10px 30px rgba(14,27,61,.07);
+  --shadow-lg:0 28px 60px rgba(14,27,61,.13);
+  --font-sans:'Manrope',system-ui,-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+.mad-install *{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%}
+body.mad-install-body{
+  font-family:var(--font-sans);
+  background:
+    radial-gradient(900px 480px at 50% -160px, var(--accent-soft) 0%, transparent 70%),
+    var(--paper-2);
+  color:var(--ink); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.mad-install{font-family:var(--font-sans);color:var(--ink);font-size:14px;line-height:1.45}
+.mad-install .mono{font-family:var(--font-mono)}
+.mad-install button,.mad-install input,.mad-install select,.mad-install textarea{font-family:inherit;font-size:inherit;color:inherit}
+.mad-install button{cursor:pointer;border:none;background:none}
+.mad-install ::selection{background:var(--accent-soft);color:var(--accent-strong)}
+.mad-install .scroll::-webkit-scrollbar{width:9px;height:9px}
+.mad-install .scroll::-webkit-scrollbar-thumb{background:#cfd5e0;border-radius:8px}
+.mad-install .scroll::-webkit-scrollbar-thumb:hover{background:#b9c0cd}
+
+/* top progress bar */
+.topbar{position:fixed;top:0;left:0;right:0;height:3px;z-index:50;
+  background:linear-gradient(90deg,var(--accent) 0%,var(--accent-2) 60%,var(--warm) 100%);
+  background-size:200% 100%;animation:slide 4.5s linear infinite}
+@keyframes slide{to{background-position:-200% 0}}
+
+/* page layout */
+.mad-install .page{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:46px 24px 64px}
+.mad-install .wrap{width:100%;max-width:1080px}
+
+/* header */
+.mad-install .hd{text-align:center;margin-bottom:30px}
+.mad-install .brand-mark{display:inline-flex;align-items:center;gap:10px;margin-bottom:14px}
+.mad-install .brand-glyph{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent) 0%,var(--navy) 100%);
+  color:#fff;font-family:var(--font-mono);font-weight:800;font-size:16px;
+  box-shadow:0 4px 12px rgba(30,85,232,.35)}
+.mad-install .brand-name{font-weight:800;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.mad-install .brand-logo{height:42px;width:auto;display:block}
+.mad-install .h1{font-size:34px;font-weight:800;letter-spacing:-.03em;margin:0;
+  color:var(--navy);
+  background:linear-gradient(180deg,#1d2c63,#2a3c84);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.mad-install .sub{margin:7px 0 0;color:var(--ink-4);font-size:15px;font-weight:500}
+
+/* stepper */
+.mad-install .stepper{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;
+  position:relative;margin:26px 0 4px;max-width:760px;margin-left:auto;margin-right:auto}
+.mad-install .stepper .track{position:absolute;top:11px;left:16.66%;right:16.66%;height:2px;background:var(--line-2);border-radius:2px}
+.mad-install .stepper .track-fill{position:absolute;top:11px;left:16.66%;height:2px;background:var(--accent);border-radius:2px;
+  transition:width .45s cubic-bezier(.22,1,.36,1)}
+.mad-install .stp{display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;z-index:2}
+.mad-install .stp .dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  background:var(--paper);border:2px solid var(--line-2);color:var(--ink-4);
+  transition:.3s;font-size:0}
+.mad-install .stp.active .dot{background:var(--accent);border-color:var(--accent);color:#fff;
+  box-shadow:0 0 0 5px var(--accent-soft)}
+.mad-install .stp.done .dot{background:var(--accent);border-color:var(--accent);color:#fff}
+.mad-install .stp .stp-lbl{font-size:14.5px;font-weight:700;color:var(--ink-4);transition:.3s;letter-spacing:-.01em}
+.mad-install .stp.active .stp-lbl,.mad-install .stp.done .stp-lbl{color:var(--ink)}
+
+/* card */
+.mad-install .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-xl);
+  box-shadow:var(--shadow);margin-top:24px;overflow:hidden}
+.mad-install .card-body{padding:34px 40px 8px}
+.mad-install .card-foot{display:flex;align-items:center;justify-content:flex-end;gap:12px;
+  padding:20px 40px 28px;border-top:1px solid var(--line);margin-top:26px;background:var(--paper)}
+.mad-install .foot-spacer{flex:1}
+
+/* section header */
+.mad-install .sec{display:flex;align-items:flex-start;gap:14px;padding-bottom:18px;margin-bottom:8px;
+  border-bottom:1px solid var(--line)}
+.mad-install .sec-ico{flex:none;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);border:1px solid #e0e7fd}
+.mad-install .sec-ico.warm{background:var(--warm-soft);color:var(--warm-strong);border-color:#f6ddc9}
+.mad-install .sec-ico.plain{background:var(--paper-3);color:var(--ink-2);border-color:var(--line)}
+.mad-install .sec-tt{font-size:17px;font-weight:800;letter-spacing:-.02em;margin:1px 0 2px}
+.mad-install .sec-ds{font-size:13.5px;color:var(--ink-4);font-weight:500}
+
+/* forms */
+.mad-install .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px}
+.mad-install .span2{grid-column:1 / -1}
+.mad-install .field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.mad-install .lbl{font-size:13px;font-weight:700;color:var(--ink-2);letter-spacing:-.01em}
+.mad-install .req{color:var(--err);margin-left:3px}
+.mad-install .hint{font-size:12px;color:var(--ink-4);font-weight:500}
+.mad-install .input,.mad-install .select,.mad-install .textarea{
+  width:100%;background:var(--paper);border:1.5px solid var(--line-2);border-radius:var(--r);
+  padding:11px 13px;font-size:14px;color:var(--ink);transition:border-color .15s,box-shadow .15s;
+  font-weight:500}
+.mad-install .input::placeholder,.mad-install .textarea::placeholder{color:var(--ink-4);font-weight:500}
+.mad-install .input:focus,.mad-install .select:focus,.mad-install .textarea:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 4px var(--accent-soft)}
+.mad-install .input.mono,.mad-install .textarea.mono{font-family:var(--font-mono);font-size:13px}
+.mad-install .input.err,.mad-install .select.err{border-color:var(--err);box-shadow:0 0 0 4px var(--err-soft)}
+.mad-install .textarea{resize:vertical;min-height:60px}
+.mad-install .errmsg{font-size:12px;color:var(--err);font-weight:600;display:flex;align-items:center;gap:5px}
+
+/* select wrapper */
+.mad-install .selwrap{position:relative}
+.mad-install .selwrap .chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  pointer-events:none;color:var(--ink-4)}
+.mad-install .select{appearance:none;-webkit-appearance:none;padding-right:38px;cursor:pointer}
+
+/* affix (input + button) */
+.mad-install .affix{display:flex;align-items:stretch}
+.mad-install .affix .input{border-top-right-radius:0;border-bottom-right-radius:0;border-right:none}
+.mad-install .affix .affix-btn{flex:none;width:46px;border:1.5px solid var(--line-2);
+  border-top-right-radius:var(--r);border-bottom-right-radius:var(--r);
+  background:var(--paper-3);color:var(--ink-3);display:grid;place-items:center;transition:.15s}
+.mad-install .affix .affix-btn:hover{background:var(--paper-2);color:var(--ink)}
+.mad-install .affix:focus-within .input{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);z-index:1}
+
+/* switch row */
+.mad-install .switchrow{display:flex;align-items:center;gap:16px;justify-content:space-between;
+  border:1.5px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;background:var(--paper-2)}
+.mad-install .switchrow .sw-tt{font-size:14px;font-weight:700;color:var(--ink)}
+.mad-install .switchrow .sw-ds{font-size:13px;color:var(--ink-4);font-weight:500;margin-top:2px}
+.mad-install .switch{flex:none;width:46px;height:26px;border-radius:999px;background:var(--line-2);
+  position:relative;transition:.22s;border:1px solid var(--line-2)}
+.mad-install .switch.on{background:var(--accent);border-color:var(--accent)}
+.mad-install .switch .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.22s}
+.mad-install .switch.on .knob{transform:translateX(20px)}
+
+/* divider with label */
+.mad-install .block-divider{display:flex;align-items:center;gap:14px;margin:26px 0 20px}
+
+/* buttons */
+.mad-install .btn{display:inline-flex;align-items:center;gap:9px;border-radius:var(--r);font-weight:700;
+  font-size:14px;padding:11px 20px;transition:.15s;letter-spacing:-.01em;white-space:nowrap;
+  border:1.5px solid transparent;text-decoration:none}
+.mad-install .btn:active{transform:translateY(1px)}
+.mad-install .btn .ic{margin-top:0}
+.mad-install .btn-primary{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(30,85,232,.28)}
+.mad-install .btn-primary:hover{background:var(--accent-strong);box-shadow:0 8px 20px rgba(30,85,232,.34)}
+.mad-install .btn-warm{background:var(--warm);color:#fff;box-shadow:0 6px 16px rgba(242,107,31,.3)}
+.mad-install .btn-warm:hover{background:var(--warm-strong)}
+.mad-install .btn-secondary{background:var(--paper);color:var(--ink);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.mad-install .btn-secondary:hover{background:var(--paper-2);border-color:#cdd3df}
+.mad-install .btn-ghost{background:transparent;color:var(--ink-3)}
+.mad-install .btn-ghost:hover{color:var(--ink);background:var(--paper-3)}
+.mad-install .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.mad-install .btn.loading{pointer-events:none}
+
+/* ── Requisitos (step 1) ── */
+.mad-install .req-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 56px;margin-top:22px}
+.mad-install .req-cap{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-4);margin:14px 0 4px}
+.mad-install .req-cap:first-child{margin-top:0}
+.mad-install .req-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 0;border-bottom:1px solid var(--line)}
+.mad-install .req-row .rr-name{font-family:var(--font-mono);font-size:13.5px;color:var(--ink-2);font-weight:500}
+.mad-install .req-row .rr-name.label{font-family:var(--font-sans);font-weight:600;font-size:14px}
+.mad-install .req-note{font-size:12.5px;color:var(--err);font-weight:500;margin:-4px 0 4px;
+  display:flex;gap:6px;align-items:flex-start;line-height:1.4}
+.mad-install .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase;padding:3px 11px;border-radius:999px;border:1.5px solid}
+.mad-install .pill-ok{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-line)}
+.mad-install .pill-na{width:26px;height:26px;padding:0;border-radius:50%;justify-content:center;
+  color:var(--accent);background:var(--accent-soft);border-color:#d4ddfb}
+.mad-install .tag-txt{font-size:12.5px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
+
+/* callout */
+.mad-install .callout{display:flex;gap:14px;border-radius:var(--r-lg);padding:18px 20px;margin-top:26px;
+  border:1.5px solid var(--warn-line);background:var(--warn-soft)}
+.mad-install .callout.ok{border-color:var(--ok-line);background:var(--ok-soft)}
+.mad-install .callout .co-ic{flex:none;color:var(--warn);margin-top:1px}
+.mad-install .callout.ok .co-ic{color:var(--ok)}
+.mad-install .callout .co-tt{font-weight:800;font-size:14.5px;color:var(--ink);margin-bottom:5px}
+.mad-install .callout .co-ds{font-size:13.5px;color:var(--ink-3);font-weight:500}
+.mad-install .callout ul{margin:10px 0 0;padding-left:20px}
+.mad-install .callout li{font-size:13.5px;color:var(--ink-3);margin:5px 0;font-weight:500}
+.mad-install .callout li b{color:var(--ink)}
+
+/* ── tabs (advanced dbs) ── */
+.mad-install .tabs{display:flex;gap:4px;background:var(--paper-3);border-radius:var(--r);padding:4px;margin:22px 0 20px;width:fit-content}
+.mad-install .tab{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;color:var(--ink-3);transition:.15s}
+.mad-install .tab.active{background:var(--paper);color:var(--accent);box-shadow:var(--shadow-sm)}
+.mad-install .tab:hover:not(.active){color:var(--ink)}
+
+/* test result toast */
+.mad-install .testres{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;
+  padding:10px 14px;border-radius:var(--r);border:1.5px solid;margin-right:auto;animation:fade-up .3s ease both}
+.mad-install .testres.ok{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-line)}
+.mad-install .testres.err{color:var(--err);background:var(--err-soft);border-color:#f2c7c5}
+.mad-install .testres .spin{color:var(--accent)}
+.mad-install .testres.run{color:var(--accent);background:var(--accent-soft);border-color:#d4ddfb}
+
+/* ── Instalar (step 3) ── */
+.mad-install .subnote{font-size:13px;color:var(--ink-4);font-weight:500}
+.mad-install .summary{border:1.5px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--paper-2);margin-top:6px}
+.mad-install .sum-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:12px 18px;border-bottom:1px solid var(--line)}
+.mad-install .sum-row:last-child{border-bottom:none}
+.mad-install .sum-k{font-size:13px;font-weight:600;color:var(--ink-3)}
+.mad-install .sum-v{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--ink);text-align:right}
+.mad-install .sum-grp-tt{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-4);padding:13px 18px 4px;background:var(--paper-3)}
+
+/* progress / log */
+.mad-install .installwrap{padding:8px 0 18px}
+.mad-install .prog-head{text-align:center;margin-bottom:26px}
+.mad-install .prog-spin{width:54px;height:54px;margin:0 auto 16px;color:var(--accent)}
+.mad-install .prog-tt{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--navy)}
+.mad-install .prog-ds{font-size:14px;color:var(--ink-4);font-weight:500;margin-top:4px}
+.mad-install .pbar{height:8px;border-radius:999px;background:var(--paper-3);overflow:hidden;margin:0 auto 24px;max-width:560px;border:1px solid var(--line)}
+.mad-install .pbar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .4s ease}
+.mad-install .log{max-width:620px;margin:0 auto;border:1.5px solid var(--line);border-radius:var(--r-lg);
+  background:var(--navy);overflow:hidden}
+.mad-install .log-row{display:flex;align-items:center;gap:11px;padding:10px 18px;font-family:var(--font-mono);
+  font-size:13px;border-bottom:1px solid rgba(255,255,255,.06);animation:fade-up .3s ease both}
+.mad-install .log-row:last-child{border-bottom:none}
+.mad-install .log-row .lr-ic{flex:none;display:grid;place-items:center;width:18px;height:18px}
+.mad-install .log-row .lr-txt{color:#c8d2ea;flex:1;font-weight:500}
+.mad-install .log-row.done .lr-txt{color:#e6ecf8}
+.mad-install .log-row .lr-ok{color:#56d98a}
+.mad-install .log-row .lr-run{color:var(--accent-2)}
+.mad-install .log-row .lr-wait{color:#4a5a82}
+
+/* success */
+.mad-install .success{text-align:center;padding:18px 0 26px;animation:fade-up .45s ease both}
+.mad-install .suc-badge{width:84px;height:84px;border-radius:50%;margin:0 auto 22px;display:grid;place-items:center;
+  background:var(--ok-soft);color:var(--ok);border:2px solid var(--ok-line);
+  animation:pop .5s cubic-bezier(.22,1.4,.4,1) both}
+.mad-install .suc-tt{font-size:28px;font-weight:800;letter-spacing:-.03em;color:var(--navy)}
+.mad-install .suc-ds{font-size:15px;color:var(--ink-4);font-weight:500;margin:8px auto 0;max-width:440px}
+.mad-install .suc-card{max-width:480px;margin:26px auto 0;border:1.5px solid var(--line);border-radius:var(--r-lg);
+  background:var(--paper-2);padding:18px 20px;text-align:left}
+.mad-install .suc-actions{display:flex;gap:12px;justify-content:center;margin-top:26px;flex-wrap:wrap}
+.mad-install .warn-strip{display:flex;gap:11px;align-items:flex-start;max-width:480px;margin:18px auto 0;
+  font-size:13px;color:var(--warn);font-weight:600;background:var(--warn-soft);
+  border:1.5px solid var(--warn-line);border-radius:var(--r);padding:12px 15px;text-align:left}
+
+/* token gate */
+.mad-install .gate{max-width:440px;margin:8vh auto 0}
+
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mad-install .spin-anim{animation:spin 1s linear infinite}
+.mad-install .step-anim{animation:fade-up .35s ease both}
+
+/* installing overlay (mad:loading) */
+.mad-install .installing-overlay{display:none}
+.mad-install .installing-overlay.mad-loading-on{display:block}
+
+@media (max-width:860px){
+  .mad-install .grid2,.mad-install .req-cols{grid-template-columns:1fr}
+  .mad-install .req-cols{gap:6px 0}
+  .mad-install .card-body{padding:26px 22px 6px}
+  .mad-install .card-foot{padding:18px 22px 24px}
+  .mad-install .h1{font-size:27px}
+}

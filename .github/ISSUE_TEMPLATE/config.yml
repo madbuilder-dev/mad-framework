@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions about MadBuilder
+    url: https://manager.madbuilder.dev/ajuda/forum
+    about: How to build something, account, plans and hosting questions are answered in the MadBuilder forum.
+  - name: Component documentation
+    url: https://app.madbuilder.dev/help/docs.html
+    about: Tags, props and recipes for every <mad-*> component.
+  - name: Report a security vulnerability
+    url: https://github.com/madbuilder-dev/mad-framework/security/advisories/new
+    about: Please report security problems privately, never in a public issue.

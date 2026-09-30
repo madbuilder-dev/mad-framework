@@ -1,0 +1,974 @@
+/* ══════════════════════════════════════════════════════════════════════
+   MadGantt v2 — visual rewrite (OKLCH tokens, SVG-first chart).
+   Prefix: mad-gantt-
+   Inspired by the Chronos planner mockup. Dark mode is inherited from
+   <html data-theme="dark">.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Design tokens (scoped to .mad-gantt to avoid bleeding) ───────── */
+.mad-gantt {
+    /* surfaces */
+    --mg-surface:      #ffffff;
+    --mg-surface-2:    oklch(0.97  0.004 250);
+    --mg-surface-3:    oklch(0.94  0.005 250);
+    --mg-border:       oklch(0.90  0.006 250);
+    --mg-border-2:     oklch(0.85  0.008 250);
+    --mg-border-3:     oklch(0.78  0.010 250);
+    /* text */
+    --mg-text:         oklch(0.18  0.01  250);
+    --mg-text-2:       oklch(0.36  0.01  250);
+    --mg-text-3:       oklch(0.52  0.01  250);
+    --mg-text-4:       oklch(0.68  0.01  250);
+    /* accents */
+    --mg-accent:       oklch(0.50  0.20  264);
+    --mg-accent-fg:    #ffffff;
+    --mg-accent-soft:  oklch(0.94  0.05  264);
+    --mg-critical:     oklch(0.55  0.22  25);
+    --mg-critical-soft:oklch(0.95  0.05  25);
+    /* chart adornments */
+    --mg-weekend:      oklch(0.94  0.005 250 / 0.5);
+    --mg-today:        oklch(0.55  0.22  25);
+    --mg-grid-soft:    oklch(0.92  0.005 250);
+    --mg-grid-strong:  oklch(0.82  0.008 250);
+    --mg-row-hover:    oklch(0.96  0.008 250);
+    /* elevation */
+    --mg-shadow-sm:    0 1px 2px rgba(15, 23, 42, 0.04);
+    --mg-shadow-md:    0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --mg-shadow-lg:    0 20px 48px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+    /* sizes */
+    --mg-header-h:     56px;
+    --mg-topbar-h:     46px;
+    --mg-footer-h:     90px;
+
+    color: var(--mg-text);
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--mg-shadow-sm);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    min-height: 480px;
+    /* Defer height to the page so the gantt grows with content */
+}
+
+:root[data-theme="dark"] .mad-gantt,
+.mad-gantt[data-theme="dark"],
+.theme-dark .mad-gantt,
+html.dark .mad-gantt {
+    --mg-surface:      oklch(0.20  0.012 255);
+    --mg-surface-2:    oklch(0.23  0.014 255);
+    --mg-surface-3:    oklch(0.27  0.016 255);
+    --mg-border:       oklch(0.28  0.014 255);
+    --mg-border-2:     oklch(0.34  0.018 255);
+    --mg-border-3:     oklch(0.42  0.022 255);
+    --mg-text:         oklch(0.96  0.01  255);
+    --mg-text-2:       oklch(0.80  0.012 255);
+    --mg-text-3:       oklch(0.64  0.014 255);
+    --mg-text-4:       oklch(0.50  0.014 255);
+    --mg-accent:       oklch(0.72  0.18  264);
+    --mg-accent-fg:    oklch(0.16  0.02  264);
+    --mg-accent-soft:  oklch(0.30  0.10  264);
+    --mg-critical:     oklch(0.72  0.22  25);
+    --mg-critical-soft:oklch(0.30  0.10  25);
+    --mg-weekend:      oklch(0.18  0.012 255 / 0.6);
+    --mg-today:        oklch(0.72  0.22  25);
+    --mg-grid-soft:    oklch(0.25  0.012 255);
+    --mg-grid-strong:  oklch(0.34  0.016 255);
+    --mg-row-hover:    oklch(0.24  0.014 255);
+    --mg-shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.4);
+    --mg-shadow-md:    0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --mg-shadow-lg:    0 20px 48px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mad-gantt *, .mad-gantt *::before, .mad-gantt *::after { box-sizing: border-box; }
+
+.mad-gantt .mono {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ── TOPBAR ────────────────────────────────────────────────────────── */
+.mad-gantt-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 16px;
+    background: var(--mg-surface);
+    border-bottom: 1px solid var(--mg-border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: var(--mg-topbar-h);
+}
+
+.mad-gantt-title-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mad-gantt-project-title {
+    font-size: 17px; font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+    color: var(--mg-text);
+}
+.mad-gantt-project-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.mad-gantt-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 22px; padding: 0 8px;
+    border-radius: 4px;
+    background: var(--mg-surface-2);
+    border: 1px solid var(--mg-border);
+    font-size: 11px;
+}
+.mad-gantt-chip .chip-key {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mg-text-4);
+}
+.mad-gantt-chip .chip-val { color: var(--mg-text); font-weight: 500; }
+
+.mad-gantt-topbar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.mad-gantt-search {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 8px 0 10px;
+    background: var(--mg-surface-2);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 6px;
+    width: 280px; min-width: 200px;
+    transition: border-color 120ms, background 120ms;
+}
+.mad-gantt-search:focus-within {
+    border-color: var(--mg-accent);
+    background: var(--mg-surface);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--mg-accent) 18%, transparent);
+}
+.mad-gantt-search-ico { color: var(--mg-text-4); font-size: 13px; }
+.mad-gantt-search input {
+    flex: 1; border: 0; background: transparent;
+    font: inherit; font-size: 12px;
+    color: var(--mg-text); outline: none;
+}
+.mad-gantt-search input::placeholder { color: var(--mg-text-4); }
+.mad-gantt-search kbd {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9.5px;
+    padding: 2px 5px;
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 3px;
+    color: var(--mg-text-3);
+    box-shadow: 0 1px 0 var(--mg-border);
+}
+
+/* Buttons */
+.mad-gantt-btn {
+    appearance: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 12px;
+    border-radius: 6px;
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border-2);
+    color: var(--mg-text-2);
+    font: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background 120ms, border-color 120ms, color 120ms;
+}
+.mad-gantt-btn:hover { background: var(--mg-surface-2); color: var(--mg-text); border-color: var(--mg-border-3); }
+.mad-gantt-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mad-gantt-btn.is-active {
+    background: var(--mg-accent-soft);
+    border-color: var(--mg-accent);
+    color: var(--mg-accent);
+}
+.mad-gantt-btn.is-critical-active {
+    background: var(--mg-critical-soft);
+    border-color: var(--mg-critical);
+    color: var(--mg-critical);
+}
+.mad-gantt-btn svg { width: 14px; height: 14px; }
+.mad-gantt-btn-count {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    padding: 1px 5px;
+    background: var(--mg-surface-2);
+    border-radius: 3px;
+    color: var(--mg-text-3);
+}
+
+/* Segmented control (zoom switch) */
+.mad-gantt-seg {
+    display: inline-flex;
+    background: var(--mg-surface-2);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 6px;
+    padding: 2px;
+    height: 30px;
+}
+.mad-gantt-seg-btn {
+    appearance: none; border: 0; background: transparent;
+    font: inherit; font-size: 11.5px; font-weight: 500;
+    color: var(--mg-text-3);
+    padding: 0 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+}
+.mad-gantt-seg-btn:hover { color: var(--mg-text); }
+.mad-gantt-seg-btn.is-active {
+    background: var(--mg-surface);
+    color: var(--mg-text);
+    box-shadow: var(--mg-shadow-sm);
+}
+
+/* Dropdown */
+.mad-gantt-dropdown { position: relative; display: inline-flex; }
+.mad-gantt-dropdown-menu {
+    position: absolute; top: calc(100% + 6px); right: 0;
+    z-index: 51;
+    min-width: 200px;
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 8px;
+    box-shadow: var(--mg-shadow-lg);
+    padding: 6px;
+    font-size: 12px;
+}
+.mad-gantt-dropdown-menu button {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 6px 8px;
+    border: 0; background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--mg-text);
+    font: inherit; font-size: 12px;
+    text-align: left;
+}
+.mad-gantt-dropdown-menu button:hover { background: var(--mg-surface-2); }
+
+/* Phase filter dropdown */
+.mad-gantt-phase-menu { min-width: 240px; padding: 4px; }
+.mad-gantt-phase-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--mg-text);
+}
+.mad-gantt-phase-item:hover { background: var(--mg-surface-2); }
+/* Checkbox custom completo — o reset global do tema faz appearance:none
+   nos inputs, então o nativo virava um quadrado branco sem estado visível
+   (accent-color não sobrevive ao reset). */
+.mad-gantt-phase-item input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 15px; height: 15px;
+    margin: 0;
+    /* o tema aplica padding: var(--field-padding) em TODO input — sem
+       zerar, o box de 15px estoura pra 33px e vira pílula */
+    padding: 0;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    border: 1.5px solid var(--mg-border-3);
+    border-radius: 4px;
+    background: var(--mg-surface);
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: background 120ms, border-color 120ms;
+}
+/* mata a bolinha/quadrado do ::before do tema — o check é o ::after */
+.mad-gantt-phase-item input[type="checkbox"]::before {
+    content: none;
+    display: none;
+}
+.mad-gantt-phase-item input[type="checkbox"]:hover { border-color: var(--mg-accent); }
+.mad-gantt-phase-item input[type="checkbox"]:checked {
+    background: var(--mg-accent);
+    border-color: var(--mg-accent);
+}
+.mad-gantt-phase-item input[type="checkbox"]:checked::after {
+    content: "";
+    width: 9px; height: 9px;
+    background: var(--mg-accent-fg);
+    clip-path: polygon(14% 44%, 0 62%, 42% 100%, 100% 18%, 84% 4%, 40% 68%);
+}
+.mad-gantt-phase-item-dot {
+    width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0;
+}
+.mad-gantt-phase-item-name { flex: 1; }
+.mad-gantt-phase-item-code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    color: var(--mg-text-4);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.mad-gantt-phase-menu-foot {
+    display: flex; gap: 4px;
+    margin-top: 4px; padding-top: 4px;
+    border-top: 1px solid var(--mg-border);
+}
+.mad-gantt-phase-menu-foot button {
+    flex: 1;
+    appearance: none;
+    border: 0; background: transparent;
+    font: inherit; font-size: 11px;
+    color: var(--mg-text-3);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.mad-gantt-phase-menu-foot button:hover {
+    background: var(--mg-surface-2);
+    color: var(--mg-text);
+}
+
+/* ── HEADER ROW (tasklist head + sticky timeline) ─────────────────── */
+.mad-gantt-top-row {
+    display: flex;
+    border-bottom: 1px solid var(--mg-border-2);
+    background: var(--mg-surface-2);
+    flex-shrink: 0;
+    height: var(--mg-header-h);
+}
+.mad-gantt-tasklist-head {
+    flex-shrink: 0;
+    display: flex;
+    border-right: 1px solid var(--mg-border-2);
+    background: var(--mg-surface-2);
+}
+
+.mad-gantt-header-scroll { flex: 1; overflow: hidden; }
+
+.mad-gantt-header { position: relative; height: var(--mg-header-h); }
+.mad-gantt-header-major {
+    position: relative; height: 22px;
+    border-bottom: 1px solid var(--mg-border);
+}
+.mad-gantt-header-major-cell {
+    position: absolute; top: 0; height: 22px;
+    display: flex; align-items: center;
+    padding: 0 8px; gap: 6px;
+    border-right: 1px solid var(--mg-border);
+    overflow: hidden;
+}
+.mad-gantt-header-month {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--mg-text-2);
+}
+.mad-gantt-header-year {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    color: var(--mg-text-4);
+}
+.mad-gantt-header-minor { position: relative; height: 34px; }
+.mad-gantt-header-minor-cell {
+    position: absolute; top: 0; height: 34px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 2px 0; gap: 1px;
+    border-right: 1px solid var(--mg-grid-soft);
+    overflow: hidden;
+}
+.mad-gantt-header-minor-cell.is-weekend { background: var(--mg-weekend); }
+.mad-gantt-header-minor-cell.is-today {
+    background: color-mix(in oklch, var(--mg-today) 10%, transparent);
+    border-right-color: var(--mg-today);
+    border-left: 1px solid var(--mg-today);
+}
+.mad-gantt-header-minor-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px; font-weight: 600;
+    color: var(--mg-text);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+.mad-gantt-header-minor-cell.is-today .mad-gantt-header-minor-label { color: var(--mg-today); }
+.mad-gantt-header-minor-cell.is-midnight .mad-gantt-header-minor-label {
+    color: var(--mg-accent);
+    font-weight: 700;
+}
+.mad-gantt-header-minor-cell.is-midnight {
+    border-left: 1px solid var(--mg-grid-strong);
+}
+.mad-gantt-header-minor-sub {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mg-text-4);
+}
+
+/* ── BODY (tasklist + chart svg) ──────────────────────────────────── */
+.mad-gantt-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+}
+.mad-gantt-tasklist {
+    flex-shrink: 0;
+    border-right: 1px solid var(--mg-border-2);
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    background: var(--mg-surface);
+}
+.mad-gantt-tasklist::-webkit-scrollbar { display: none; }
+
+.mad-gantt-phase-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    background: var(--mg-surface-2);
+    border-bottom: 1px solid var(--mg-border);
+    cursor: pointer; user-select: none;
+}
+.mad-gantt-phase-row:hover { background: var(--mg-surface-3); }
+.mad-gantt-phase-caret {
+    font-size: 10px;
+    color: var(--mg-text-4);
+    width: 10px;
+    text-align: center;
+    font-family: "JetBrains Mono", monospace;
+}
+.mad-gantt-phase-dot { width: 8px; height: 8px; border-radius: 2px; }
+.mad-gantt-phase-name {
+    flex: 1;
+    font-weight: 600; font-size: 12px;
+    color: var(--mg-text);
+    letter-spacing: -0.005em;
+}
+.mad-gantt-phase-code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.mad-gantt-phase-count {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--mg-text-4);
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border);
+    padding: 0 5px;
+    border-radius: 3px;
+    min-width: 22px;
+    text-align: center;
+}
+
+.mad-gantt-task-row {
+    display: flex; align-items: center;
+    border-bottom: 1px solid var(--mg-grid-soft);
+    cursor: default; position: relative;
+    transition: background 100ms, opacity 200ms;
+}
+.mad-gantt-task-row:hover { background: var(--mg-row-hover); }
+.mad-gantt-task-row.is-critical::before {
+    content: ""; position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--mg-critical);
+}
+.mad-gantt-task-row.is-dimmed { opacity: 0.35; }
+.mad-gantt-task-row.is-summary { font-weight: 600; }
+
+.mad-gantt-task-caret {
+    width: 12px;
+    color: var(--mg-text-4);
+    font-size: 10px;
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    text-align: center;
+}
+.mad-gantt-task-caret--leaf { cursor: default; visibility: hidden; }
+
+.mad-gantt-task-milestone-ico {
+    color: oklch(0.62 0.16 155);
+    font-size: 10px;
+    margin-right: -2px;
+}
+
+.mad-gantt-task-name {
+    flex: 1;
+    font-size: 12.5px;
+    color: var(--mg-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: -0.005em;
+}
+.mad-gantt-task-avatars { display: flex; align-items: center; }
+
+/* ── Sidebar column-driven (<mad-gantt-column>) ───────────────────────
+   Header e linhas iteram as colunas declaradas; cada celula tem largura
+   fixa. Zera padding/gap da row (cada celula cuida do proprio espaco) e
+   fixa a altura do head na altura do header do chart pra alinhar. */
+.mad-gantt-tasklist-head {
+    height: var(--mg-header-h);
+    padding: 0;
+    flex-direction: row;
+    align-items: center;
+}
+.mad-gantt-tl-head-row { display: flex; align-items: center; width: 100%; height: 100%; }
+.mad-gantt-th-cell {
+    box-sizing: border-box;
+    padding: 0 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mg-text-4);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+.mad-gantt-task-row { padding: 0; gap: 0; }
+.mad-gantt-tl-cell {
+    box-sizing: border-box;
+    padding: 0 8px;
+    font-size: 12px;
+    color: var(--mg-text-3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 0;
+    display: flex; align-items: center;
+}
+.mad-gantt-tl-cell.mad-gantt-tl-tree { gap: 4px; padding-left: 10px; }
+.mad-gantt-th-cell.is-tree { padding-left: 10px; }
+.mad-gantt-tl-cell.mad-gantt-tl-tree .mad-gantt-task-name { flex: 1; }
+.mad-gantt-tl-avatars { justify-content: flex-end; }
+.mad-gantt-avatar {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8px; font-weight: 600;
+    color: white;
+    border: 1.5px solid var(--mg-surface);
+    margin-left: -6px;
+    letter-spacing: -0.02em;
+}
+.mad-gantt-avatar:first-child { margin-left: 0; }
+.mad-gantt-avatar-more {
+    background: var(--mg-surface-3) !important;
+    color: var(--mg-text-2) !important;
+    font-size: 8.5px;
+}
+
+/* ── CHART SVG ────────────────────────────────────────────────────── */
+.mad-gantt-chart-scroll {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: var(--mg-border-3) transparent;
+    background: var(--mg-surface);
+}
+.mad-gantt-chart-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.mad-gantt-chart-scroll::-webkit-scrollbar-thumb {
+    background: var(--mg-border-3);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+.mad-gantt-chart-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.mad-gantt-chart-svg { display: block; user-select: none; }
+.mad-gantt-chart-svg.is-dragging { cursor: grabbing; }
+
+.mad-gantt-chart-svg .mad-gantt-holiday { fill: color-mix(in oklch, var(--mg-critical) 7%, transparent); }
+.mad-gantt-weekend { fill: var(--mg-weekend); }
+.mad-gantt-chart-svg .mad-gantt-grid-line { stroke: var(--mg-grid-soft); }
+.mad-gantt-chart-svg .mad-gantt-grid-line--strong { stroke: var(--mg-grid-strong); }
+.mad-gantt-chart-svg .mad-gantt-row-divider { stroke: var(--mg-grid-soft); stroke-width: 1; }
+
+.mad-gantt-chart-svg .mad-gantt-today-line {
+    stroke: var(--mg-today);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+}
+.mad-gantt-chart-svg .mad-gantt-today-dot {
+    fill: var(--mg-today);
+    stroke: var(--mg-surface);
+    stroke-width: 2;
+}
+
+/* Bars */
+.mad-gantt-bar-group { transition: opacity 200ms; }
+.mad-gantt-bar-group.is-dimmed { opacity: 0.2; }
+.mad-gantt-bar-track { fill-opacity: 0.65; }
+.mad-gantt-bar-fill {
+    cursor: grab;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+    transition: filter 150ms;
+}
+.mad-gantt-bar-fill:active { cursor: grabbing; }
+.mad-gantt-bar-group:hover .mad-gantt-bar-fill {
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+}
+.mad-gantt-bar-handle { fill: transparent; cursor: ew-resize; }
+.mad-gantt-bar-group:hover .mad-gantt-bar-handle { fill: rgba(0,0,0,0.06); }
+.mad-gantt-bar-label {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11.5px; font-weight: 500;
+    letter-spacing: -0.005em;
+}
+.mad-gantt-bar-pct {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 600;
+    opacity: 0.9;
+}
+.mad-gantt-bar-crit-stroke {
+    stroke: var(--mg-critical);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 4px color-mix(in oklch, var(--mg-critical) 40%, transparent));
+}
+
+/* Connection anchors (bolinhas de dependencia) */
+.mad-gantt-bar-anchor {
+    fill: var(--mg-surface);
+    stroke: var(--mg-accent);
+    stroke-width: 2;
+    cursor: crosshair;
+    opacity: 0;
+    transition: opacity 120ms, transform 120ms;
+    transform-box: fill-box;
+    transform-origin: center;
+    pointer-events: all;
+}
+.mad-gantt-bar-group:hover .mad-gantt-bar-anchor { opacity: 1; }
+.mad-gantt-bar-anchor:hover {
+    fill: var(--mg-accent);
+    transform: scale(1.35);
+}
+/* Durante o link-drag, todas as barras viram alvo destacado */
+.mad-gantt-chart-svg.mg-linking .mad-gantt-bar-fill { cursor: crosshair; }
+.mad-gantt-chart-svg.mg-linking .mad-gantt-bar-group:hover .mad-gantt-bar-fill {
+    filter: drop-shadow(0 0 0 2px var(--mg-accent)) drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+}
+
+/* Summary bars */
+.mad-gantt-summary-body { fill-opacity: 0.85; }
+.mad-gantt-summary-cap { opacity: 0.85; }
+
+/* Milestones */
+.mad-gantt-milestone { transition: opacity 200ms; }
+.mad-gantt-milestone.is-dimmed { opacity: 0.2; }
+.mad-gantt-milestone-halo {
+    stroke: var(--mg-critical);
+    stroke-width: 1.25;
+    opacity: 0.85;
+    filter: drop-shadow(0 0 4px color-mix(in oklch, var(--mg-critical) 40%, transparent));
+}
+
+/* Dependency arrows */
+.mad-gantt-arrow path {
+    stroke: var(--mg-text-4);
+    fill: none;
+    stroke-width: 1.25;
+    opacity: 0.5;
+    transition: opacity 200ms, stroke 200ms;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.mad-gantt-arrow.is-critical path {
+    stroke: var(--mg-critical);
+    opacity: 0.9;
+    stroke-width: 1.5;
+}
+.mad-gantt-arrow.is-dimmed { opacity: 0.12; }
+.mad-gantt-arrow-ghost {
+    stroke: var(--mg-accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    fill: none;
+    opacity: 0.7;
+}
+
+/* Baselines */
+.mad-gantt-baseline {
+    fill: var(--mg-text-4);
+    opacity: 0.45;
+}
+
+/* Phase row tint (SVG layer) */
+.mad-gantt-phase-bg { /* fill comes from inline style (per-phase hue) */ }
+
+/* ── FOOTER (stats + minimap) ─────────────────────────────────────── */
+.mad-gantt-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 14px;
+    background: var(--mg-surface-2);
+    border-top: 1px solid var(--mg-border-2);
+    min-height: var(--mg-footer-h);
+}
+.mad-gantt-footer-stats { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.mad-gantt-stat { display: flex; align-items: center; gap: 6px; }
+.mad-gantt-stat .stat-key {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mg-text-4);
+}
+.mad-gantt-stat .stat-val {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    color: var(--mg-text);
+}
+.mad-gantt-stat .stat-val.stat-crit { color: var(--mg-critical); }
+.mad-gantt-btn-today {
+    appearance: none;
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 5px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    padding: 4px 10px;
+    color: var(--mg-text-2);
+    cursor: pointer;
+    font-weight: 500;
+}
+.mad-gantt-btn-today:hover { background: var(--mg-surface-3); color: var(--mg-text); }
+
+/* Minimap */
+.mad-gantt-minimap {
+    width: 260px;
+    height: 80px;
+    background: var(--mg-surface);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: crosshair;
+    flex-shrink: 0;
+}
+.mad-gantt-minimap-viewport {
+    fill: color-mix(in oklch, var(--mg-accent) 12%, transparent);
+    stroke: var(--mg-accent);
+    stroke-width: 1.25;
+}
+
+/* ── WORKLOAD BAND ────────────────────────────────────────────────── */
+.mad-gantt-workload {
+    flex-shrink: 0;
+    border-top: 1px solid var(--mg-border-2);
+    background: var(--mg-surface-2);
+    padding: 8px 0 0;
+}
+.mad-gantt-workload-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+    padding: 0 12px;
+}
+.mad-gantt-workload-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mg-text-3);
+    font-weight: 600;
+}
+/* Toggle = segmented control. O radio nativo fica invisível (as "bolas
+   brancas" eram os inputs sem estilo); o label vira o botão. */
+.mad-gantt-workload-toggle {
+    display: inline-flex;
+    background: var(--mg-surface-2);
+    border: 1px solid var(--mg-border-2);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--mg-text-3);
+}
+.mad-gantt-workload-toggle label {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 120ms, color 120ms;
+    user-select: none;
+}
+.mad-gantt-workload-toggle label:hover { color: var(--mg-text); }
+.mad-gantt-workload-toggle input[type="radio"] {
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    margin: 0;
+}
+.mad-gantt-workload-toggle label:has(input:checked) {
+    background: var(--mg-surface);
+    color: var(--mg-text);
+    box-shadow: var(--mg-shadow-sm);
+}
+
+/* Linha alinhada com o chart: spacer (largura da sidebar) + scroller
+   espelhado pelo scrollSync. */
+.mad-gantt-workload-row { display: flex; }
+.mad-gantt-workload-spacer {
+    flex-shrink: 0;
+    border-right: 1px solid var(--mg-border-2);
+}
+.mad-gantt-workload-scroll { flex: 1; overflow: hidden; }
+.mad-gantt-workload-body { overflow: hidden; }
+
+/* ── TOOLTIP (portal in <body>) ───────────────────────────────────── */
+.mad-gantt-tooltip {
+    position: fixed;
+    /* acima dos overlays do app (modais notch/mad-ui usam 10000-10100) */
+    z-index: 10200;
+    min-width: 280px;
+    max-width: 340px;
+    background: var(--mg-surface, #fff);
+    border: 1px solid var(--mg-border-2, oklch(0.85 0.008 250));
+    border-radius: 8px;
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+    padding: 12px;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 12px;
+    color: var(--mg-text, oklch(0.18 0.01 250));
+    pointer-events: none;
+    animation: mg-tt-in 120ms ease-out;
+}
+:root[data-theme="dark"] .mad-gantt-tooltip,
+html.theme-dark .mad-gantt-tooltip,
+html.dark .mad-gantt-tooltip {
+    background: oklch(0.20 0.012 255);
+    border-color: oklch(0.34 0.018 255);
+    color: oklch(0.96 0.01 255);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+@keyframes mg-tt-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.mad-gantt-tooltip .tt-head {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px; flex-wrap: wrap;
+}
+.mad-gantt-tooltip .tt-code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid;
+}
+.mad-gantt-tooltip .tt-phase { font-size: 10.5px; opacity: 0.75; }
+.mad-gantt-tooltip .tt-crit,
+.mad-gantt-tooltip .tt-milestone {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-left: auto;
+}
+.mad-gantt-tooltip .tt-crit {
+    background: color-mix(in oklch, oklch(0.55 0.22 25) 12%, transparent);
+    color: oklch(0.55 0.22 25);
+    border: 1px solid color-mix(in oklch, oklch(0.55 0.22 25) 30%, transparent);
+}
+.mad-gantt-tooltip .tt-milestone {
+    background: color-mix(in oklch, oklch(0.62 0.16 155) 12%, transparent);
+    color: oklch(0.50 0.18 155);
+    border: 1px solid color-mix(in oklch, oklch(0.62 0.16 155) 30%, transparent);
+}
+.mad-gantt-tooltip .tt-name {
+    font-size: 13.5px; font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: -0.01em;
+}
+.mad-gantt-tooltip .tt-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in oklch, currentColor 8%, transparent);
+}
+.mad-gantt-tooltip .tt-cell { display: flex; flex-direction: column; gap: 2px; }
+.mad-gantt-tooltip .tt-key {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+    font-weight: 600;
+}
+.mad-gantt-tooltip .tt-val {
+    font-size: 11.5px;
+    display: flex; align-items: center; gap: 6px;
+}
+.mad-gantt-tooltip .tt-progress {
+    flex: 1; height: 4px;
+    background: color-mix(in oklch, currentColor 12%, transparent);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.mad-gantt-tooltip .tt-progress-fill {
+    height: 100%; border-radius: 2px;
+}
+.mad-gantt-tooltip .tt-assignees,
+.mad-gantt-tooltip .tt-deps {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid color-mix(in oklch, currentColor 8%, transparent);
+}
+.mad-gantt-tooltip .tt-people {
+    display: flex; flex-direction: column; gap: 4px;
+    margin-top: 4px;
+}
+.mad-gantt-tooltip .tt-person {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; opacity: 0.85;
+}
+.mad-gantt-tooltip .tt-avatar {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8px; font-weight: 600;
+    color: white;
+}
+.mad-gantt-tooltip .tt-dep-list {
+    margin-top: 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+/* ── Responsive (mobile) ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    /* largura da sidebar vem inline do Alpine (taskColWidth) — o cap
+       via max-width é o que efetivamente sobra pro chart no mobile */
+    .mad-gantt-tasklist,
+    .mad-gantt-tasklist-head { max-width: 45vw; }
+    .mad-gantt-search { width: 160px; min-width: 140px; }
+    .mad-gantt-topbar { padding: 8px 12px; gap: 8px; }
+    .mad-gantt-footer { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .mad-gantt-minimap { width: 100%; }
+}
+
+/* ── Legacy class shims (so old demos that target the old names
+       don't go completely unstyled). The pre-v2 component used:
+       .mad-gantt-header / .mad-gantt-btn(--today) / .mad-gantt-sidebar /
+       .mad-gantt-body / .mad-gantt-table / .mad-gantt-popover ──── */
+.mad-gantt-popover { display: none; }
+.mad-gantt-sidebar { /* alias of .mad-gantt-tasklist */ }
+.mad-gantt-table   { display: none; }    /* legacy table-based render is dead */
+
+/* ── Print ────────────────────────────────────────────────────────── */
+@media print {
+    .mad-gantt { min-height: 0; box-shadow: none; }
+    .mad-gantt-topbar-controls,
+    .mad-gantt-minimap { display: none !important; }
+    .mad-gantt-body,
+    .mad-gantt-chart-scroll,
+    .mad-gantt-header-scroll { overflow: visible !important; }
+    .mad-gantt * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

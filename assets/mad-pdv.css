@@ -1,0 +1,873 @@
+/* mad-pdv.css — frente de caixa (<mad-pdv>).
+   Todo valor de cor via tokens --mad-* (dark mode de graça, padrão sheet).
+   Print media no fim: só o cupom (.mad-pdv-receipt) imprime, 58/80mm. */
+
+.mad-pdv {
+    /* Família --mad-pdv-* (picker, parcelamento, inputs de coluna): apelidos
+       locais dos tokens globais. Sem isto o var() caía no fallback CLARO e a
+       frente de caixa ficava branca no tema escuro. */
+    --mad-pdv-surface: var(--mad-surface, #fff);
+    --mad-pdv-border:  var(--mad-border, #e5e7eb);
+    --mad-pdv-text:    var(--mad-text, #1f2937);
+    --mad-pdv-accent:  var(--mad-primary, #2563eb);
+    --mad-pdv-radius:  var(--mad-radius-md, 8px);
+
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 480px;
+    color: var(--mad-text, #1f2937);
+    font-size: 14px;
+}
+
+.mad-pdv--fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: var(--mad-bg, #f3f4f6);
+    padding: 12px;
+    overflow: auto;
+}
+
+/* ═══ Header ═══ */
+.mad-pdv-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+}
+.mad-pdv-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15px;
+}
+.mad-pdv-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.mad-pdv-meta {
+    color: var(--mad-text-muted, #6b7280);
+    font-size: 12px;
+}
+.mad-pdv-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--mad-warning-border, #f59e0b);
+    border-radius: 999px;
+    background: var(--mad-warning-soft, #fef3c7);
+    color: var(--mad-warning-text, #92400e);
+    font-size: 12px;
+    cursor: pointer;
+}
+.mad-pdv-iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--mad-text-muted, #6b7280);
+    cursor: pointer;
+}
+.mad-pdv-iconbtn:hover {
+    background: var(--mad-hover, #f3f4f6);
+    color: var(--mad-text, #1f2937);
+}
+
+/* ═══ Corpo: 2 colunas ═══ */
+.mad-pdv-body {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    gap: 10px;
+    align-items: start;
+    flex: 1;
+}
+@media (max-width: 900px) {
+    .mad-pdv-body { grid-template-columns: 1fr; }
+}
+
+.mad-pdv-main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* ═══ Scan bar ═══ */
+.mad-pdv-scanbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 2px solid var(--mad-primary, #2563eb);
+    border-radius: 10px;
+    background: var(--mad-surface, #fff);
+}
+.mad-pdv-scan-input {
+    flex: 1;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font-size: 17px;
+    font-weight: 500;
+}
+/* Botão do catálogo dentro da scan bar (o modal também tem hotkey). */
+.mad-pdv-scan-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface-2, #f8fafc);
+    color: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.mad-pdv-scan-pick:hover {
+    border-color: var(--mad-primary, #2563eb);
+    color: var(--mad-primary, #2563eb);
+}
+.mad-pdv-scan-pick i,
+.mad-pdv-scan-pick svg { width: 16px; height: 16px; }
+.mad-pdv-scan-pick kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 4px;
+    background: var(--mad-surface, #fff);
+    font-size: 11px;
+}
+/* Em tela estreita sobra só o ícone — a barra de código é o que não pode
+   encolher. */
+@media (max-width: 900px) {
+    .mad-pdv-scan-pick-label,
+    .mad-pdv-scan-pick kbd { display: none; }
+}
+
+.mad-pdv-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 60;
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+    box-shadow: var(--mad-shadow-lg, 0 10px 24px rgba(0, 0, 0, .12));
+}
+.mad-pdv-result {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.mad-pdv-result.is-active,
+.mad-pdv-result:hover {
+    background: var(--mad-hover, #f3f4f6);
+}
+.mad-pdv-result-img {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+.mad-pdv-result-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mad-pdv-result-code {
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 12px;
+}
+.mad-pdv-result-price { font-weight: 600; }
+.mad-pdv-result-empty {
+    padding: 10px 12px;
+    color: var(--mad-text-muted, #6b7280);
+    font-size: 13px;
+}
+
+/* ═══ Carrinho ═══ */
+.mad-pdv-cart {
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+    overflow: auto;
+    flex: 1;
+    min-height: 220px;
+}
+.mad-pdv-cart-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.mad-pdv-cart-table th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--mad-border, #e5e7eb);
+    background: var(--mad-surface-2, #f9fafb);
+    color: var(--mad-text-muted, #6b7280);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+.mad-pdv-cart-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--mad-border-soft, #f3f4f6);
+    vertical-align: middle;
+}
+.mad-pdv-cart-table tbody tr { cursor: default; }
+.mad-pdv-cart-table tbody tr.is-selected {
+    background: var(--mad-primary-soft, #eff6ff);
+}
+.mad-pdv-cart-table tbody tr.has-stock-warn {
+    background: var(--mad-warning-soft, #fef3c7);
+}
+.mad-pdv--compact .mad-pdv-cart-table td { padding: 3px 8px; }
+
+.mad-pdv-col-num     { width: 34px; color: var(--mad-text-dim, #9ca3af); }
+.mad-pdv-col-qty     { width: 128px; }
+.mad-pdv-col-money   { width: 110px; text-align: right; }
+.mad-pdv-col-actions { width: 40px; text-align: right; }
+
+.mad-pdv-cell-product {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.mad-pdv-line-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+.mad-pdv-line-name {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.mad-pdv-line-name > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mad-pdv-line-name small {
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 11px;
+}
+.mad-pdv-stock-badge {
+    color: var(--mad-warning-text, #92400e);
+    font-weight: 600;
+}
+.mad-pdv-line-total { font-weight: 700; }
+
+.mad-pdv-qty {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.mad-pdv-qty button {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    background: var(--mad-surface-2, #f9fafb);
+    color: inherit;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+}
+.mad-pdv-qty button:hover { background: var(--mad-hover, #f3f4f6); }
+.mad-pdv-qty input {
+    width: 52px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    text-align: center;
+    font-size: 13px;
+}
+.mad-pdv-unit {
+    margin-left: 4px;
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 11px;
+}
+.mad-pdv-money-input {
+    width: 90px;
+    padding: 3px 6px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 6px;
+    background: var(--mad-surface, #fff);
+    color: inherit;
+    text-align: right;
+    font-size: 13px;
+}
+
+/* Desconto com unidade (R$ ⇄ %) */
+.mad-pdv-disc-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.mad-pdv-disc-wrap .mad-pdv-money-input { width: 68px; }
+.mad-pdv-disc-unit {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 4px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 5px;
+    background: var(--mad-surface-2, #f9fafb);
+    color: var(--mad-text-muted, #6b7280);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+.mad-pdv-disc-unit:hover { background: var(--mad-hover, #f3f4f6); }
+.mad-pdv-disc-unit.is-static { cursor: default; border-color: transparent; background: transparent; }
+.mad-pdv-disc-hint {
+    display: block;
+    margin-top: 2px;
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 10px;
+    text-align: right;
+}
+
+.mad-pdv-cart-empty td {
+    padding: 36px 12px !important;
+    color: var(--mad-text-dim, #9ca3af);
+    text-align: center;
+}
+.mad-pdv-cart-empty i { vertical-align: middle; margin-right: 8px; }
+
+/* ═══ Hotkeys legend ═══ */
+.mad-pdv-hotkeys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 11px;
+}
+.mad-pdv-hotkeys kbd,
+.mad-pdv kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--mad-surface-2, #f9fafb);
+    font-family: inherit;
+    font-size: 10px;
+}
+
+/* ═══ Lateral ═══ */
+.mad-pdv-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+.mad-pdv-totals,
+.mad-pdv-customer,
+.mad-pdv-pay {
+    padding: 12px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+}
+.mad-pdv-total-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 0;
+    color: var(--mad-text-muted, #6b7280);
+}
+.mad-pdv-total-grand {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--mad-border, #e5e7eb);
+    color: var(--mad-text, #1f2937);
+    font-size: 22px;
+    font-weight: 800;
+}
+.mad-pdv-customer label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--mad-text-muted, #6b7280);
+    font-size: 12px;
+    font-weight: 600;
+}
+.mad-pdv-customer-select { width: 100%; }
+.mad-pdv-req { color: var(--mad-danger, #dc2626); }
+
+.mad-pdv-pay-title {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--mad-text-muted, #6b7280);
+}
+.mad-pdv-pay-methods {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+.mad-pdv-pay-method {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface-2, #f9fafb);
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.mad-pdv-pay-method:hover:not(:disabled) { background: var(--mad-hover, #f3f4f6); }
+.mad-pdv-pay-method.is-active {
+    border-color: var(--mad-primary, #2563eb);
+    background: var(--mad-primary-soft, #eff6ff);
+}
+.mad-pdv-pay-method:disabled { opacity: .45; cursor: not-allowed; }
+.mad-pdv-pay-method kbd { margin-left: auto; }
+
+.mad-pdv-pay-entry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+.mad-pdv-pay-entry label {
+    font-size: 12px;
+    color: var(--mad-text-muted, #6b7280);
+}
+.mad-pdv-pay-amount {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--mad-primary, #2563eb);
+    border-radius: 6px;
+    background: var(--mad-surface, #fff);
+    color: inherit;
+    text-align: right;
+    font-size: 15px;
+    font-weight: 600;
+}
+.mad-pdv-pay-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.mad-pdv-pay-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--mad-border-soft, #f3f4f6);
+    font-size: 13px;
+}
+.mad-pdv-pay-list li > span:first-child { flex: 1; }
+.mad-pdv-pay-list small { color: var(--mad-text-dim, #9ca3af); }
+
+.mad-pdv-pay-status { margin-top: 8px; }
+.mad-pdv-remaining { color: var(--mad-danger, #dc2626); font-size: 16px; }
+.mad-pdv-change    { color: var(--mad-success, #16a34a); font-size: 16px; }
+
+/* ═══ Botões ═══ */
+.mad-pdv-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--mad-primary, #2563eb);
+    border-radius: 8px;
+    background: var(--mad-primary, #2563eb);
+    color: var(--mad-primary-fg, #fff);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.mad-pdv-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.mad-pdv-btn:disabled { opacity: .5; cursor: not-allowed; }
+.mad-pdv-btn--finalize {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 15px;
+    background: var(--mad-success, #16a34a);
+    border-color: var(--mad-success, #16a34a);
+    color: var(--mad-success-fg, #fff);
+}
+.mad-pdv-btn--ghost {
+    background: transparent;
+    border-color: var(--mad-border, #e5e7eb);
+    color: var(--mad-text-muted, #6b7280);
+}
+.mad-pdv-btn--ghost:hover:not(:disabled) {
+    background: var(--mad-hover, #f3f4f6);
+    filter: none;
+}
+.mad-pdv-btn--danger,
+.mad-pdv-btn--ghost.mad-pdv-btn--danger {
+    color: var(--mad-danger, #dc2626);
+    border-color: var(--mad-danger, #dc2626);
+}
+.mad-pdv-btn--danger:not(.mad-pdv-btn--ghost) {
+    background: var(--mad-danger, #dc2626);
+    color: var(--mad-danger-fg, #fff);
+}
+.mad-pdv-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+/* ═══ Overlays ═══ */
+.mad-pdv-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, .45);
+}
+.mad-pdv-modal {
+    width: min(420px, 92vw);
+    padding: 16px;
+    border-radius: 10px;
+    background: var(--mad-surface, #fff);
+    box-shadow: var(--mad-shadow-xl, 0 20px 50px rgba(0, 0, 0, .25));
+}
+.mad-pdv-modal-title {
+    margin-bottom: 10px;
+    font-size: 15px;
+    font-weight: 700;
+}
+.mad-pdv-modal input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+    color: inherit;
+    font-size: 15px;
+}
+.mad-pdv-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+.mad-pdv-col-input {
+    width: 100%;
+    min-width: 60px;
+    padding: .2rem .35rem;
+    border: 1px solid var(--mad-pdv-border, #d4d8e0);
+    border-radius: 4px;
+    background: var(--mad-pdv-surface, #fff);
+    color: var(--mad-pdv-text, #14181f);
+    font: inherit;
+    font-size: .85rem;
+}
+
+/* Alinhamento das colunas custom do carrinho (Rev. 5) */
+.mad-pdv-col-align-left   { text-align: left; }
+.mad-pdv-col-align-center { text-align: center; }
+.mad-pdv-col-align-right  { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Parcelamento (Rev. 5) */
+.mad-pdv-installments {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    margin-top: .5rem;
+    padding-top: .5rem;
+    border-top: 1px dashed var(--mad-pdv-border, #d4d8e0);
+}
+
+.mad-pdv-installments label { display: flex; align-items: center; gap: .4rem; font-size: .85rem; }
+.mad-pdv-installments select,
+.mad-pdv-installments input {
+    flex: 1;
+    padding: .3rem .4rem;
+    border: 1px solid var(--mad-pdv-border, #d4d8e0);
+    border-radius: 4px;
+    background: var(--mad-pdv-surface, #fff);
+    color: var(--mad-pdv-text, #14181f);
+    font: inherit;
+}
+
+.mad-pdv-installment-preview { list-style: none; margin: 0; padding: 0; font-size: .8rem; }
+.mad-pdv-installment-preview li {
+    display: flex;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .15rem 0;
+    font-variant-numeric: tabular-nums;
+}
+.mad-pdv-installment-preview li > span:first-child { opacity: .6; }
+
+/* ── Catálogo de produtos (Rev. 5) ─────────────────────────────────────── */
+.mad-pdv-modal--picker { width: min(880px, 94vw); }
+
+.mad-pdv-picker-search {
+    width: 100%;
+    padding: .55rem .75rem;
+    margin-bottom: .75rem;
+    border: 1px solid var(--mad-pdv-border, #d4d8e0);
+    border-radius: var(--mad-pdv-radius, 8px);
+    background: var(--mad-pdv-surface, #fff);
+    color: var(--mad-pdv-text, #14181f);
+    font-size: .95rem;
+}
+
+.mad-pdv-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: .5rem;
+    max-height: 46vh;
+    overflow-y: auto;
+}
+
+.mad-pdv-picker-card {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    padding: .6rem;
+    text-align: left;
+    border: 1px solid var(--mad-pdv-border, #d4d8e0);
+    border-radius: var(--mad-pdv-radius, 8px);
+    background: var(--mad-pdv-surface, #fff);
+    color: var(--mad-pdv-text, #14181f);
+    cursor: pointer;
+}
+
+.mad-pdv-picker-card:hover,
+.mad-pdv-picker-card:focus-visible {
+    border-color: var(--mad-pdv-accent, #1e55e8);
+    outline: none;
+}
+
+.mad-pdv-picker-img { width: 100%; height: 72px; object-fit: contain; }
+.mad-pdv-picker-name { font-weight: 600; line-height: 1.2; }
+.mad-pdv-picker-code { font-size: .75rem; opacity: .7; font-variant-numeric: tabular-nums; }
+.mad-pdv-picker-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.mad-pdv-picker-stock {
+    font-size: .75rem;
+    opacity: .75;
+    font-variant-numeric: tabular-nums;
+}
+.mad-pdv-picker-stock.is-empty {
+    opacity: 1;
+    font-weight: 600;
+    color: var(--mad-pdv-danger, #d93a2b);
+}
+
+.mad-pdv-picker-empty { padding: 1.5rem; text-align: center; opacity: .7; }
+.mad-pdv-picker-page { align-self: center; opacity: .7; font-variant-numeric: tabular-nums; }
+
+.mad-pdv-held-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 300px;
+    overflow: auto;
+}
+.mad-pdv-held-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--mad-border-soft, #f3f4f6);
+}
+.mad-pdv-held-list li > span { flex: 1; }
+.mad-pdv-held-empty {
+    padding: 12px 0;
+    color: var(--mad-text-dim, #9ca3af);
+    text-align: center;
+}
+
+.mad-pdv-overlay--change { cursor: pointer; }
+.mad-pdv-change-card {
+    padding: 28px 48px;
+    border-radius: 14px;
+    background: var(--mad-surface, #fff);
+    text-align: center;
+    box-shadow: var(--mad-shadow-xl, 0 20px 50px rgba(0, 0, 0, .3));
+}
+.mad-pdv-change-label {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--mad-text-muted, #6b7280);
+}
+.mad-pdv-change-value {
+    margin: 6px 0;
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--mad-success, #16a34a);
+}
+.mad-pdv-change-hint {
+    color: var(--mad-text-dim, #9ca3af);
+    font-size: 12px;
+}
+
+/* ═══ Painel de config incompleta ═══ */
+.mad-pdv-config-error ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+/* ═══ Cupom ═══
+   Escondido na tela; visível no print E no preview de fallback (quando o
+   navegador ignora print(), ver mad-pdv.js). A tipografia mora FORA do
+   @media print justamente pra servir aos dois casos. */
+.mad-pdv-receipt-wrap { display: contents; }
+
+.mad-pdv-receipt {
+    display: none;
+    color: #000;
+    background: #fff;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+}
+.mad-pdv-receipt--w80 { width: 80mm; }
+.mad-pdv-receipt--w58 { width: 58mm; font-size: 10px; }
+
+.mad-pdv-receipt pre {
+    margin: 0 0 4px;
+    font-family: inherit;
+    white-space: pre-wrap;
+    text-align: center;
+}
+.mad-pdv-receipt-fiscal {
+    margin: 4px 0;
+    padding: 2px 0;
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    text-align: center;
+    font-weight: 700;
+}
+.mad-pdv-receipt-meta {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
+}
+.mad-pdv-receipt-lines { border-top: 1px dashed #000; padding-top: 3px; }
+.mad-pdv-receipt-line {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 6px;
+}
+.mad-pdv-receipt-line .rl-name  { grid-column: 1 / -1; font-weight: 600; }
+.mad-pdv-receipt-line .rl-total { text-align: right; }
+.mad-pdv-receipt-totals,
+.mad-pdv-receipt-payments {
+    margin-top: 4px;
+    padding-top: 3px;
+    border-top: 1px dashed #000;
+}
+.mad-pdv-receipt-totals > div,
+.mad-pdv-receipt-payments > div {
+    display: flex;
+    justify-content: space-between;
+}
+.mad-pdv-receipt-totals .rt-grand { font-size: 13px; font-weight: 800; }
+.mad-pdv-receipt-footer { margin-top: 6px; }
+
+/* ── Preview de fallback (print bloqueado) ─────────────────────────────── */
+.mad-pdv-receipt-note { display: none; }
+
+.mad-pdv-receipt-wrap.is-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 9600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    background: rgba(15, 23, 42, .45);
+}
+.mad-pdv-receipt-wrap.is-preview .mad-pdv-receipt-note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(520px, 92vw);
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--mad-surface, #fff);
+    color: var(--mad-text, #14181f);
+    font-size: 13px;
+    box-shadow: var(--mad-shadow-lg, 0 10px 24px rgba(0, 0, 0, .12));
+}
+.mad-pdv-receipt-wrap.is-preview .mad-pdv-receipt {
+    display: block;
+    max-width: 92vw;
+    max-height: 70vh;
+    overflow: auto;
+    padding: 14px 16px;
+    border-radius: 8px;
+    box-shadow: var(--mad-shadow-xl, 0 20px 50px rgba(0, 0, 0, .25));
+}
+
+@media print {
+    body * { visibility: hidden !important; }
+    .mad-pdv-receipt,
+    .mad-pdv-receipt * { visibility: visible !important; }
+    .mad-pdv-receipt {
+        display: block !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        max-height: none;
+        overflow: visible;
+        padding: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    /* O aviso do fallback é de tela — nunca sai no papel. */
+    .mad-pdv-receipt-note { display: none !important; }
+    .mad-pdv-receipt-wrap.is-preview {
+        position: static;
+        display: contents;
+        padding: 0;
+        background: none;
+    }
+}

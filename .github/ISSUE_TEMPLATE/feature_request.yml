@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a new component, prop or capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to build, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you imagine it in Blade or PHP. A sketch is enough.
