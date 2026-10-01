@@ -37,6 +37,8 @@ use Mad\View\MadBlade;
  * │  card-default             Cards como visualização padrão                    │
  * │  card-cols="3"            Colunas do grid de cards (default: 3)             │
  * │  selectable               Coluna de seleção (checkbox) + ações em lote      │
+ * │  row-click                Clique na linha executa a 1ª ação dela (o "clique │
+ * │                           padrão" do 4.0); ações de exclusão ficam de fora  │
  * │                                                                              │
  * │  <mad-bulk-action> — Ação em lote (exige <mad-grid selectable>)             │
  * │  ──────────────────────────────────────────────────────────────────────────  │
@@ -1519,6 +1521,11 @@ class MadGridCompiler
         if (static::has($a, 'no-export'))          $c[] = "'exportable' => false";
         if (static::has($a, 'no-column-chooser')) $c[] = "'columnChooser' => false";
         if (static::has($a, 'sticky'))             $c[] = "'sticky' => true";
+        // Clique padrão do 4.0: a linha dispara a 1ª ação dela. `row-click="false"`
+        // (valor explícito) desliga, mesma convenção do selectable.
+        if (static::has($a, 'row-click') && strtolower(static::str($a, 'row-click')) !== 'false') {
+            $c[] = "'rowClick' => true";
+        }
         // Carga adiada ("Carregar registros ao abrir = Não" do 4.0): o grid abre
         // vazio e só consulta o banco na primeira ação explícita do usuário
         // (Buscar/filtro/sort). Flag negativa nua, mesma convenção do no-export.

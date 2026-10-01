@@ -215,6 +215,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Sticky para thead e linhas de quebra ao rolar. */
     protected bool $sticky = false;
 
+    /**
+     * Clique na linha executa a primeira ação dela — <mad-grid row-click>, o
+     * "clique padrão" do 4.0 ("Desabilitar o click padrão = Não"). Só o
+     * template lê: quem escolhe e dispara o botão é o madDataGrid (mad-ui.js),
+     * então editar/navegar/confirmar/negar seguem iguais ao clique no ícone.
+     * Subclasse com columns() pode declarar `protected bool $rowClick = true;`.
+     */
+    protected bool $rowClick = false;
+
     /** Lado das ações: 'left' | 'right' */
     protected string $actionSide = 'right';
 
@@ -2472,6 +2481,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'loadButton'   => $this->_showLoadButton(),
             'loadHint'     => $this->_loadHint(),
             'sticky'       => $this->sticky,
+            'rowClick'     => $this->rowClick,
             'actionSide'   => $this->actionSide,
             'filterOps'    => $this->filterOps,
             'colFilters'   => $this->colFilters,
@@ -2589,6 +2599,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (isset($config['exportable']))     $this->exportable    = (bool)$config['exportable'];
         if (isset($config['refreshable']))    $this->refreshable   = (bool)$config['refreshable'];
         if (isset($config['sticky']))         $this->sticky        = (bool)$config['sticky'];
+        if (isset($config['rowClick']))       $this->rowClick      = (bool)$config['rowClick'];
         // no-auto-load: pública (serializada) — o hydrate() dos AJAX seguintes
         // lê do state; aqui só o primeiro render enxerga o Blade.
         if (isset($config['autoLoad']))       $this->autoLoad      = (bool)$config['autoLoad'];
@@ -2699,6 +2710,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'loadHint'      => $this->_loadHint(),
             'columnChooser' => $this->_inlineConfig['columnChooser'] ?? true,
             'sticky'        => $this->sticky,
+            'rowClick'      => $this->rowClick,
             'actionSide'    => $this->actionSide,
             'storageKey'    => str_replace('\\', '_', static::class),
             'gridClass'     => static::class,

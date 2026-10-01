@@ -6810,6 +6810,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dg-row.mad-dg-row-selected td {
   background: color-mix(in srgb, var(--mad-primary) 9%, transparent);
 }
+/* <mad-grid row-click>: a mão só aparece onde o clique faz algo — linha/card
+   com uma ação que não é de exclusão (o que o madDataGrid.onRowClick dispara). */
+.mad-dg-wrap[data-row-click] tr.mad-dg-row:has(.mad-dg-actions > button:not(.mad-dg-action-danger):not(:disabled):not([aria-disabled="true"])),
+.mad-dg-wrap[data-row-click] tr.mad-dg-row:has(.mad-dg-actions > button:not(.mad-dg-action-danger):not(:disabled):not([aria-disabled="true"])) + tr.mad-dg-row-detail,
+.mad-dg-wrap[data-row-click] .mad-dg-card:has(.mad-dg-card-actions > button:not(.mad-dg-card-action-danger):not(:disabled):not([aria-disabled="true"])) {
+  cursor: pointer;
+}
 .mad-dg-card { position: relative; }
 .mad-dg-card-select {
   position: absolute;

@@ -5129,6 +5129,57 @@ document.addEventListener('alpine:init', () => {
             });
         },
 
+        // ── Clique na linha (<mad-grid row-click>) ───────────────────
+        // O "clique padrão" do 4.0: clicar na linha (ou no card) executa a
+        // 1ª ação dela. Delegado na raiz do grid (@click do data-grid.blade),
+        // então vale para linha trocada pelo manage_row e após re-render.
+        // Não chama método nenhum: CLICA o botão da própria ação, e navegar,
+        // abrir drawer, pedir confirmação e o bloqueio do perfil seguem
+        // idênticos ao clique no ícone. Ação de exclusão nunca é o clique
+        // padrão; a 1ª ação restante desabilitada = linha sem clique (não
+        // pula para a seguinte, que o usuário não escolheu).
+        onRowClick(e) {
+            if (!this._cfg.rowClick || !e || e.defaultPrevented) return;
+            if (e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            const t = e.target;
+            if (!t || typeof t.closest !== 'function') return;
+            // O que já é clicável na linha tem precedência: botões de ação e
+            // de grupo, checkbox de seleção, links, campos, células editáveis.
+            if (t.closest('a, button, input, select, textarea, label, summary, [contenteditable], [role="button"], '
+                + '.mad-dg-actions-cell, .mad-dg-select-cell, .mad-dg-card-select, .mad-dg-card-footer, '
+                + '.mad-dg-edit-inline, .mad-dg-edit-click, .mad-dg-edit-dblclick, [data-mad-no-row-click]')) return;
+            if (this.editingCell) return;
+            // Arrastar para selecionar/copiar o texto da célula não é clique.
+            try {
+                const sel = window.getSelection && window.getSelection();
+                if (sel && !sel.isCollapsed && String(sel).trim() !== '') return;
+            } catch (_) {}
+
+            let item = t.closest('tr.mad-dg-row, tr.mad-dg-row-detail, .mad-dg-card');
+            // Grid dentro de grid: cada um responde só pelas próprias linhas.
+            if (!item || (e.currentTarget && item.closest('.mad-dg-wrap') !== e.currentTarget)) return;
+            // 2ª linha descritiva (row-detail) responde pela linha dela.
+            if (item.classList.contains('mad-dg-row-detail')) {
+                const prev = item.previousElementSibling;
+                if (!prev || prev.getAttribute('data-row-id') !== item.getAttribute('data-detail-for')) return;
+                item = prev;
+            }
+            const btn = this._rowClickAction(item);
+            if (btn) btn.click();
+        },
+
+        // Botão do clique padrão da linha/card: a 1ª ação que não é de
+        // exclusão. Menus "..." (grupos) ficam dentro de .mad-dg-dropdown-wrap
+        // e não entram. null = linha sem clique padrão.
+        _rowClickAction(item) {
+            const btns = item.querySelectorAll('.mad-dg-actions > button, .mad-dg-card-actions > button');
+            for (const b of btns) {
+                if (b.classList.contains('mad-dg-action-danger') || b.classList.contains('mad-dg-card-action-danger')) continue;
+                return (b.disabled || b.getAttribute('aria-disabled') === 'true') ? null : b;
+            }
+            return null;
+        },
+
         // ── Init de MAD Select/Pickr nas celulas editaveis ────────────
         // Chamado no init() e no startEdit() para garantir MAD Select em
         // <select data-mad-select> e <select data-mad-dbsearch> dentro

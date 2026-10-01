@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.108.0] — 2026-10-01
+
+### Novidades
+
+- **Listagens:** nova opção `row-click` no `<mad-grid>`: clicar em qualquer ponto da linha (ou do cartão) executa a primeira ação dela, como o "clique padrão" do MadBuilder 4. A ação de excluir nunca é disparada assim, e botões, links e campos da linha continuam com o próprio clique.
+
 ## [5.107.0] — 2026-09-30
 
 ### Novidades

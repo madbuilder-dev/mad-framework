@@ -56,6 +56,8 @@
     $columnChooser = $columnChooser ?? true;
     // no-auto-load ainda sem ação do usuário: empty-state vira dica + botão.
     $deferred   = $deferred ?? false;
+    // row-click: clicar na linha/card executa a 1ª ação (madDataGrid.onRowClick).
+    $rowClick   = (bool) ($rowClick ?? false);
     // require-filter: a dica pede filtro e $filterMissing vira aviso quando o
     // usuário tentou carregar sem preencher. load-hint troca o texto padrão.
     $requireFilter = $requireFilter ?? false;
@@ -164,12 +166,13 @@
 @endphp
 
 @php $colsConfigJson = json_encode($colsConfig, JSON_UNESCAPED_UNICODE); @endphp
-<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
-     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}@if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
+<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"{{ $rowClick ? ' data-row-click' : '' }}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
+     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $rowClick ? ', rowClick: true' : '' }}@if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
      x-init="init($el)"
      @mad-dg-page="handlePage($event)"
      @mad-dg-call="handleCall($event)"
-     @mad-dg-filter="handleFilter($event)">
+     @mad-dg-filter="handleFilter($event)"@if($rowClick)
+     @click="onRowClick($event)"@endif>
 
     {{-- ── Toolbar (busca + exportação + column chooser) ────────────── --}}
     @php

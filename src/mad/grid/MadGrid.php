@@ -63,6 +63,9 @@ class MadGrid extends MadDataGrid
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
         // Seleção de linhas + ações em lote (<mad-grid model=... selectable>).
         if (!empty($cfg['selectable'])) $this->selectable = true;
+        // row-click: protegida no MadDataGrid (só o template lê) — sem isto o
+        // render() do grid standalone nunca a veria.
+        if (!empty($cfg['rowClick']))   $this->rowClick   = true;
         if (!empty($cfg['bulkActions']) && is_array($cfg['bulkActions'])) {
             $this->bulkActions = static::_normalizeBulkActions($cfg['bulkActions']);
         }
@@ -108,6 +111,7 @@ class MadGrid extends MadDataGrid
         // row-detail: 2ª linha descritiva. Protegida no MadDataGrid — sem
         // este mapeamento o atributo seria compilado e nunca lido.
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
+        if (!empty($cfg['rowClick']))   $this->rowClick   = true;
         if (!empty($cfg['orderBy'])) $this->baseOrder = (string) $cfg['orderBy'];
         if (!empty($cfg['filters']) && is_array($cfg['filters'])) {
             $this->baseFilters = $cfg['filters'];
@@ -300,6 +304,7 @@ class MadGrid extends MadDataGrid
         if (isset($config['requireFilterFields'])) $grid->requireFilterFields = array_values((array)$config['requireFilterFields']);
         if (!empty($config['defaultSort']))$grid->defaultSort= $config['defaultSort'];
         if (!empty($config['selectable'])) $grid->selectable = true;
+        if (!empty($config['rowClick']))   $grid->rowClick   = true;
         $grid->boot();
         $grid->mount([]);
         return $grid->_renderWrapped();
