@@ -2,6 +2,7 @@
 namespace Mad\Component;
 use Mad\Form\MadForm;
 use Mad\Form\MadFormRegistry;
+use Mad\Form\MadValidationException;
 use Mad\Form\FieldListColumn;
 use Mad\Http\MadResponse;
 use Mad\Http\CurrentControl;
@@ -585,12 +586,20 @@ class MadComponentHandler
                 $result = $component->_resolveAndCall($action, $params);
             } catch (\Throwable $e) {
                 // Dá ao componente a chance de tratar o erro via exception()
-                if (!$component->_callExceptionHook($e)) {
+                if ($component->_callExceptionHook($e)) {
+                    // Tratado: re-renderiza o componente com o estado atual (ex: $this->erro)
+                    $result = null;
+                } elseif ($e instanceof MadValidationException) {
+                    // Validação que escapou da ação vira erro NO CAMPO, como o
+                    // `catch … return $e->asInline()` dos formulários. Ação
+                    // `void` não tem como devolver MadResponse — é o caso do
+                    // onShow() do bloco de filtros com campo obrigatório vazio
+                    // (fórum #77); antes caía no modal de erro 500.
+                    $result = $e->detailFormName() !== '' ? $e->asDetailForm() : $e->asInline();
+                } else {
                     foreach ($dfForms as $_df) { $_df->endDetailScope(); }
                     throw $e; // não tratado → propaga para handle() → JSON de erro
                 }
-                // Tratado: re-renderiza o componente com o estado atual (ex: $this->erro)
-                $result = null;
             }
 
             // Fecha ANTES do snapshot de estado/render: o diff do auto-bind tem

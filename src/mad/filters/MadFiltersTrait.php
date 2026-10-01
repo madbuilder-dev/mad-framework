@@ -53,10 +53,24 @@ trait MadFiltersTrait
     public string $dtFim  = '';
     public string $preset = '';
 
+    /**
+     * Campos marcados `required` no bloco <mad-*-filters>, registrados no render
+     * por declareFilterFields(): [campo do erro => ['label' => rótulo,
+     * 'fields' => [props que precisam de valor]]]. O daterange entra uma vez,
+     * pelo `name_start`, exigindo as duas pontas.
+     *
+     * Antes o `required` de um filtro só desenhava o asterisco: "Buscar" com
+     * Início preenchido e Fim vazio filtrava só pelo início (fórum #77). Agora
+     * o Aplicar/Atualizar recusa com o erro no campo e a grid não consulta com
+     * obrigatório vazio. Público porque as ações AJAX decidem sem ver o Blade.
+     */
+    public array $requiredFilters = [];
+
     /** Props "reservadas" — sao state interno do trait, nao filtros. */
     // requireFilterFields: config do <mad-grid require-filter-fields> — array
-    // público que o onLimpar zeraria se fosse tratado como filtro.
-    private static array $_MAD_FILTERS_RESERVED = ['form', 'mes', 'ano', 'dtIni', 'dtFim', 'preset', 'requireFilterFields'];
+    // público que o onLimpar zeraria se fosse tratado como filtro. Idem
+    // requiredFilters (config vinda do Blade).
+    private static array $_MAD_FILTERS_RESERVED = ['form', 'mes', 'ano', 'dtIni', 'dtFim', 'preset', 'requireFilterFields', 'requiredFilters'];
 
     /** Cache de colunas por (database, modelClass). Vazio = schema desconhecido. */
     private static array $__columnsCache = [];
@@ -280,10 +294,17 @@ trait MadFiltersTrait
     // HANDLERS (publicos pra serem chamados via MadWire)
     // ───────────────────────────────────────────────────────────────────
 
-    /** Handler primario de submit do form de filtro. */
+    /**
+     * Handler primario de submit do form de filtro.
+     *
+     * Filtro obrigatório vazio lança MadValidationException ANTES de gravar a
+     * sessão e de recarregar: o handler do wire marca o campo, como no
+     * formulário, e a tela continua mostrando a última busca válida.
+     */
     public function onShow(): void
     {
         $this->syncFormFields();
+        $this->assertRequiredFilters();
         $this->saveFilterSession();
         $this->applyFiltersChanged();
     }
@@ -295,7 +316,122 @@ trait MadFiltersTrait
     public function onAtualizar(): void
     {
         $this->syncFormFields();
+        $this->assertRequiredFilters();
         $this->applyFiltersChanged();
+    }
+
+    /**
+     * Recusa a busca quando um filtro `required` do bloco está vazio.
+     *
+     * @throws \Mad\Form\MadValidationException ['campo' => 'O campo X é obrigatório.']
+     */
+    protected function assertRequiredFilters(): void
+    {
+        $errors = $this->requiredFilterErrors();
+        if ($errors !== []) {
+            throw new \Mad\Form\MadValidationException($errors, array_keys($this->requiredFilters));
+        }
+    }
+
+    /**
+     * Chaves (as de $requiredFilters) dos filtros obrigatórios sem valor.
+     *
+     * @return array<int,string>
+     */
+    protected function missingRequiredFilters(): array
+    {
+        $missing = [];
+        foreach ($this->requiredFilters as $key => $def) {
+            foreach ((array) ($def['fields'] ?? []) as $name) {
+                if (self::_requiredValueIsEmpty($this->_requiredFilterValue((string) $name))) {
+                    $missing[] = (string) $key;
+                    break;
+                }
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Mensagem de cada filtro obrigatório vazio, na mesma redação do
+     * formulário ("O campo Fim é obrigatório.").
+     *
+     * @return array<string,string>
+     */
+    protected function requiredFilterErrors(): array
+    {
+        $missing = $this->missingRequiredFilters();
+        if ($missing === []) {
+            return [];
+        }
+
+        $data = $rules = $attrs = [];
+        foreach ($missing as $key) {
+            $data[$key]  = '';
+            $rules[$key] = 'required';
+            $attrs[$key] = $this->_requiredFilterLabel($key);
+        }
+
+        return \Mad\Form\MadValidator::validate($data, $rules, [], $attrs);
+    }
+
+    /**
+     * Valor atual de um filtro: a prop pública da tela (o que o `mad:model`
+     * preenche) ou, sem prop declarada, o campo no MadForm.
+     */
+    private function _requiredFilterValue(string $name): mixed
+    {
+        if ($name === '' || $name[0] === '_') {
+            return null;
+        }
+        if (property_exists($this, $name)) {
+            $p = new \ReflectionProperty($this, $name);
+            if ($p->isPublic() && !$p->isStatic()) {
+                return $p->isInitialized($this) ? $p->getValue($this) : null;
+            }
+        }
+        if (isset($this->form) && $this->form instanceof MadForm) {
+            return $this->form->fields[$name] ?? null;
+        }
+
+        return null;
+    }
+
+    /** Vazio para o `required`: null, só espaços, [] ou lista só de vazios. */
+    private static function _requiredValueIsEmpty(mixed $v): bool
+    {
+        if ($v === null || $v === []) return true;
+        if (is_string($v)) return trim($v) === '';
+        if (is_array($v)) {
+            foreach ($v as $item) {
+                if (!self::_requiredValueIsEmpty($item)) return false;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Rótulo do campo na mensagem: o que o usuário vê na tela (postado pelo
+     * wire em `mad_labels`) > o do schema do form > o do atributo `label` >
+     * o nome.
+     */
+    private function _requiredFilterLabel(string $key): string
+    {
+        $posted = $_POST['mad_labels'][$key] ?? null;
+        if (is_string($posted) && trim($posted) !== '') {
+            return trim($posted);
+        }
+        $props = \Mad\Form\MadFormRegistry::requestFieldProps($key);
+        $label = trim((string) ($props['label'] ?? ''));
+        if ($label !== '') {
+            return $label;
+        }
+        $label = trim((string) ($this->requiredFilters[$key]['label'] ?? ''));
+
+        return $label !== '' ? $label : $key;
     }
 
     /** Alias publico — compatibilidade com mad:click="onRefresh". */
@@ -528,21 +664,24 @@ trait MadFiltersTrait
     }
 
     /**
-     * Congela os filtros ATIVOS como texto em `$exportMeta['filters']` — o
-     * `{FILTERS}` das bandas do PDF exportado pela grade.
+     * Registra os filtros obrigatórios em $requiredFilters e congela os
+     * filtros ATIVOS como texto em `$exportMeta['filters']` — o `{FILTERS}`
+     * das bandas do PDF exportado pela grade.
      *
      * Chamado pelo bloco compilado de <mad-*-filters>, no render. Guardar o
      * TEXTO resolvido (e não a metadata) é deliberado: `$__dashFields` carrega
      * o `inner_b64` de cada <mad-select-field> e inflaria o mad_state, que
      * viaja em toda requisição AJAX da tela.
      *
-     * Host sem `$exportMeta` (dashboards) é ignorado — o método existe pra
+     * Host sem `$exportMeta` (dashboards) não exporta — o método existe pra
      * todos os hosts da trait, mas só a grade tem exportação.
      *
      * @param array<int,array<string,mixed>> $fields metadata dos campos
      */
     public function declareFilterFields(array $fields): void
     {
+        $this->requiredFilters = self::requiredFiltersOf($fields);
+
         if (! property_exists($this, 'exportMeta')) {
             return;
         }
@@ -556,6 +695,68 @@ trait MadFiltersTrait
         }
 
         $this->exportMeta['filters'] = implode('  ·  ', $parts);
+    }
+
+    /**
+     * Filtros com `required` na metadata compilada do bloco (MadDashFiltersCompiler).
+     *
+     * Só o atributo literal conta (`required`, `required="true"`); um
+     * `:required="..."` é expressão de runtime e fica de fora. O daterange
+     * exige as duas pontas e responde pelo `name_start`, que é onde o campo
+     * mostra o erro.
+     *
+     * @param array<int,array<string,mixed>> $fields
+     * @return array<string,array{label:string,fields:array<int,string>}>
+     */
+    public static function requiredFiltersOf(array $fields): array
+    {
+        $out = [];
+        foreach ($fields as $f) {
+            $attrs = is_array($f['attrs'] ?? null) ? $f['attrs'] : [];
+            if (!self::_attrIsOn($attrs['required'] ?? null)) continue;
+
+            $label = $attrs['label'] ?? '';
+            // Rótulo com Blade (`{{ __('x') }}`) só se resolve no render; aí
+            // vale o que o wire posta em `mad_labels`.
+            $label = is_string($label) && !str_contains($label, '{{') && !str_contains($label, '{!!')
+                ? trim(strip_tags($label))
+                : '';
+
+            if (($f['type'] ?? '') === 'daterange') {
+                $start = self::_firstAttr($attrs, ['name_start', 'name-start', 'nameStart']);
+                $end   = self::_firstAttr($attrs, ['name_end', 'name-end', 'nameEnd']);
+                $names = array_values(array_filter([$start, $end], fn ($n) => $n !== ''));
+                if ($names === []) continue;
+                $out[$names[0]] = ['label' => $label, 'fields' => $names];
+                continue;
+            }
+
+            $name = self::_firstAttr($attrs, ['name']);
+            if ($name === '') continue;
+            $out[$name] = ['label' => $label, 'fields' => [$name]];
+        }
+
+        return $out;
+    }
+
+    /** Atributo booleano ligado: presença nua ou valor que não seja false/0/off/no. */
+    private static function _attrIsOn(mixed $v): bool
+    {
+        if ($v === null || $v === false) return false;
+        if ($v === true) return true;
+
+        return !in_array(strtolower(trim((string) $v)), ['false', '0', 'off', 'no'], true);
+    }
+
+    /** Primeiro atributo string não vazio entre as grafias aceitas. */
+    private static function _firstAttr(array $attrs, array $keys): string
+    {
+        foreach ($keys as $k) {
+            $v = $attrs[$k] ?? null;
+            if (is_string($v) && trim($v) !== '') return trim($v);
+        }
+
+        return '';
     }
 
     /**

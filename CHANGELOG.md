@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.108.1] — 2026-10-01
+
+### Correções
+
+- **Listagens:** filtro marcado como obrigatório agora é respeitado. Buscar com Início preenchido e Fim vazio aponta o erro no campo e não filtra só por uma das datas; a listagem abre vazia e só busca com os obrigatórios preenchidos. Republique o projeto para aplicar.
+- **Listagens:** campo de filtro escrito colado na abertura do bloco (`<mad-grid-filters style="form"><mad-date-field … />`, na mesma linha) sumia da tela. Agora aparece normalmente.
+- **Reatividade (MadWire):** erro de validação não tratado numa ação passa a aparecer no campo, como no formulário, em vez da janela de erro.
+
 ## [5.108.0] — 2026-10-01
 
 ### Novidades

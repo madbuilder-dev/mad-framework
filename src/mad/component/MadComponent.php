@@ -1258,6 +1258,9 @@ abstract class MadComponent
         // valor; `exportGroupConfig` agrupava o PDF por qualquer coluna.
         'searchcolumns', 'basefilters', 'baseorder', 'exportmeta', 'exportgroupconfig',
         'bulkactions', 'requirefilterfields',
+        // Filtros obrigatórios do bloco de filtros (MadFiltersTrait): config
+        // do Blade, não campo digitado — zerá-la pulava a trava de busca.
+        'requiredfilters',
         // Filtro avançado do grid (MadGridCustomFilters): defs = allowlist de
         // colunas, state = regras (só mudam pelos handlers onCustomFilter*).
         'customfilterdefs', 'customfilterstate', 'customfilterconfig', 'customfilterseal',

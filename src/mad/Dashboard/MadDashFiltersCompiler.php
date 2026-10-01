@@ -106,8 +106,14 @@ class MadDashFiltersCompiler
     /**
      * Attribute matcher — lida com valores quoted contendo '>':
      * attr="val" | attr='val' | attr=word | @click="..." | :prop="..." | bool attr.
+     *
+     * Valor sem aspas segue o HTML: sem espaço, aspas, `=`, `<`, `>` nem crase.
+     * Com `\S+` o backtracking aceitava `style="form"><mad-date-field` como um
+     * valor sem aspas quando o campo vinha colado na abertura do bloco
+     * (`<mad-grid-filters style="form"><mad-date-field … />`): o padrão do
+     * bloco self-closing casava até o `/>` do CAMPO e o campo sumia da tela.
      */
-    private const ATTR_PATTERN = '(?:\s+(?:@?:?[a-zA-Z0-9_:.-]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|\S+))?))*';
+    private const ATTR_PATTERN = '(?:\s+(?:@?:?[a-zA-Z0-9_:.-]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?))*';
 
     /**
      * Componente "host" de cada alias de filtro — o que o bloco filtra.

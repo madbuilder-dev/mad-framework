@@ -370,9 +370,20 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * gridConfig, perPage…) ficam de fora — é por isso que totalActiveFilters()
      * não serve aqui: ele as conta e nunca chega a zero. Regras de carregamento
      * (:filters / baseFilters) também não contam: não foram escolha do usuário.
+     *
+     * Filtro `required` do bloco de filtros vazio barra antes de tudo, mesmo
+     * com outros preenchidos (fórum #77: Início sem Fim filtrava só pelo
+     * início). Sem require-filter, os obrigatórios preenchidos bastam.
      */
     protected function _hasUserFilter(): bool
     {
+        if ($this->requiredFilters !== [] && $this->missingRequiredFilters() !== []) {
+            return false;
+        }
+        if (!$this->requireFilter) {
+            return true;
+        }
+
         $formData = (isset($this->form) && $this->form instanceof \Mad\Form\MadForm)
             ? (array) $this->form->getDataRaw()
             : [];
@@ -439,10 +450,21 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return (property_exists($this, 'gridConfig') && is_array($this->gridConfig)) ? $this->gridConfig : [];
     }
 
-    /** Botão "Carregar registros" do estado vazio: some com no-load-button e sempre com require-filter. */
+    /**
+     * A carga depende de filtro do usuário: `require-filter` no grid ou campo
+     * `required` no bloco de filtros. Nos dois casos a grid abre vazia, sem o
+     * botão "Carregar registros", e nenhuma ação consulta enquanto
+     * _hasUserFilter() for falso.
+     */
+    protected function _filterGateOn(): bool
+    {
+        return $this->requireFilter || $this->requiredFilters !== [];
+    }
+
+    /** Botão "Carregar registros" do estado vazio: some com no-load-button e sempre com filtro obrigatório. */
     protected function _showLoadButton(): bool
     {
-        return !$this->requireFilter && (($this->_bladeGridConfig()['loadButton'] ?? true) !== false);
+        return !$this->_filterGateOn() && (($this->_bladeGridConfig()['loadButton'] ?? true) !== false);
     }
 
     /** Texto personalizado da listagem vazia (load-hint); '' = texto traduzido padrão. */
@@ -847,6 +869,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
             // Toda abertura de um grid no-auto-load começa adiada.
             unset($state['loadRequested']);
+            // Config do Blade (o bloco de filtros declara de novo a cada
+            // render) — guardada, sobreviveria à tela que tirou o `required`.
+            unset($state['requiredFilters']);
         }
 
         session([$key => $state]);
@@ -1958,7 +1983,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** @param GridColumn[] $columns */
     private function _canStreamExport(array $columns): bool
     {
-        if (empty($this->model) || ($this->requireFilter && !$this->_hasUserFilter())) {
+        if (empty($this->model) || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
             return false;
         }
         foreach (self::STREAM_EXPORT_HOOKS as $method) {
@@ -2279,7 +2304,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _countForExport(): ?int
     {
-        if (empty($this->model) || ($this->requireFilter && !$this->_hasUserFilter())) {
+        if (empty($this->model) || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
             return null;
         }
         foreach (['query', '_autoQuery', '_runQuery', 'loadData'] as $method) {
@@ -2476,7 +2501,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'permExport'   => $this->_permExportMode(),
             'refreshable'  => $this->refreshable,
             'deferred'     => $this->_isDeferred(),
-            'requireFilter' => $this->requireFilter,
+            'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
             'loadButton'   => $this->_showLoadButton(),
             'loadHint'     => $this->_loadHint(),
@@ -2607,6 +2632,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->requireFilter = true;
             $this->autoLoad      = false;
         }
+        // Campo `required` no bloco de filtros: o bloco renderiza ANTES do grid
+        // (hoistFiltersOutOfHost) e já registrou $requiredFilters — mesma
+        // abertura do require-filter, sem consultar com o obrigatório vazio.
+        if ($this->requiredFilters !== []) {
+            $this->autoLoad = false;
+        }
         if (isset($config['requireFilterFields'])) $this->requireFilterFields = array_values((array)$config['requireFilterFields']);
         // Seleção de linhas: o Blade manda (flag + ações em lote); o state
         // leva ao AJAX — onBulkOpen() resolve o alvo pelo índice sem o Blade.
@@ -2704,7 +2735,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'permExport'    => $this->_permExportMode(),
             'refreshable'   => $this->refreshable,
             'deferred'      => $this->_isDeferred(),
-            'requireFilter' => $this->requireFilter,
+            'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
             'loadButton'    => $this->_showLoadButton(),
             'loadHint'      => $this->_loadHint(),
@@ -3234,8 +3265,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // (onReload, onShow/onAtualizar, busca, sort, página, por página e até
         // a chamada direta do browser — loadData é público) passam por aqui.
         // O hydrate() roda antes do fill() e ainda enxerga os filtros antigos;
-        // a ação logo depois reavalia com os valores novos.
-        if ($this->requireFilter) {
+        // a ação logo depois reavalia com os valores novos. Vale também para
+        // campo `required` do bloco de filtros: ordenar ou paginar com Fim vazio
+        // não pode filtrar só pelo Início.
+        if ($this->_filterGateOn()) {
             if (!$this->_hasUserFilter()) {
                 $this->_filterMissing = true;
                 $this->_dataLoaded = false;

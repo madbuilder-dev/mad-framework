@@ -752,7 +752,7 @@ trait MadGridCustomFilters
         try {
             // Mesmas travas da carga: filtro obrigatório não atendido e grid
             // no-auto-load sem condição não contam (nem revelam o total).
-            if ($this->requireFilter && !$this->_hasUserFilter()) {
+            if ($this->_filterGateOn() && !$this->_hasUserFilter()) {
                 return null;
             }
             if ($rules === [] && $this->_isDeferred()) {

@@ -47,6 +47,12 @@ class MadValidationException extends \RuntimeException
         return $this->errors;
     }
 
+    /** Detail-form de onde veio a validação ('' = formulário principal). */
+    public function detailFormName(): string
+    {
+        return $this->dfName;
+    }
+
     /**
      * Erros ÓRFÃOS: campo com erro que a tela não tem.
      *
