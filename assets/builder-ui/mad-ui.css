@@ -1561,7 +1561,9 @@ textarea.mad-textarea:read-only:focus {
 
 /* Alturas ajustáveis pelo tema (editor de temas → "Alturas e densidade"):
    --mad-card-header-py / --mad-card-footer-py, --mad-page-header-py / -mb /
-   -icon, --mad-page-title-size e --mad-dg-toolbar-py. NENHUMA é declarada no
+   -icon, --mad-page-title-size, --mad-dg-toolbar-py, --mad-drawer-header-py,
+   --mad-form-section-header-py e --mad-form-section-icon (a gaveta também
+   segue o ícone e o título do cabeçalho da página). NENHUMA é declarada no
    framework, de propósito: cada regra traz o valor de hoje como fallback do
    var(), então sem tema nada muda e cada layout (stripe, dock…) mantém o seu.
    Declarar em `:root, .mad-ui` faria o default vencer o :root do tema por
@@ -2152,7 +2154,7 @@ textarea.mad-textarea:read-only:focus {
 .mad-drawer-header {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 16px;
-  padding: var(--mad-s5);
+  padding: var(--mad-drawer-header-py, var(--mad-s5)) var(--mad-s5);
   border-bottom: 1px solid var(--mad-border);
   flex-shrink: 0;
 }
@@ -2163,7 +2165,8 @@ textarea.mad-textarea:read-only:focus {
   display: flex; align-items: center; gap: 12px; flex-shrink: 0;
 }
 .mad-drawer-header-icon {
-  width: 40px; height: 40px;
+  /* Gaveta = cabeçalho da tela aberta nela: segue o ícone do cabeçalho da página. */
+  width: var(--mad-page-header-icon, 40px); height: var(--mad-page-header-icon, 40px);
   border-radius: 50%;
   border: 1px solid var(--mad-border);
   background: var(--mad-bg);
@@ -2172,7 +2175,7 @@ textarea.mad-textarea:read-only:focus {
   color: var(--mad-text-subtle);
 }
 .mad-drawer-header-vdivider {
-  width: 1px; height: 32px;
+  width: 1px; height: calc(var(--mad-page-header-icon, 40px) - 8px);
   background: var(--mad-border);
   flex-shrink: 0;
 }
@@ -2192,7 +2195,7 @@ textarea.mad-textarea:read-only:focus {
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 15px; flex-shrink: 0;
 }
-.mad-drawer-title    { font-size: 1.1rem; font-weight: 600; color: var(--mad-text); letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mad-drawer-title    { font-size: var(--mad-page-title-size, 1.1rem); font-weight: 600; color: var(--mad-text); letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mad-drawer-subtitle { font-size: var(--mad-text-xs); color: var(--mad-text-subtle); }
 
 
@@ -2206,13 +2209,13 @@ textarea.mad-textarea:read-only:focus {
   margin-bottom: var(--mad-s4);
 }
 .mad-form-section-header       { 
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: var(--mad-form-section-header-py, 6px);
+  padding-bottom: var(--mad-form-section-header-py, 6px);
 }
 .mad-form-section-meta         { display: flex; align-items: center; gap: 12px; }
 .mad-form-section-icon         {
   display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px;
+  width: var(--mad-form-section-icon, 36px); height: var(--mad-form-section-icon, 36px);
   border-radius: 8px;
   background: color-mix(in srgb, var(--mad-primary) 10%, transparent);
   flex-shrink: 0;
@@ -6099,13 +6102,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px;
+  padding: var(--mad-drawer-header-py, 20px) 20px;
   border-bottom: 1px solid var(--mad-border);
   flex-shrink: 0;
 }
 .mad-drawer-title {
   font-weight: 600;
-  font-size: 1.1rem;
+  font-size: var(--mad-page-title-size, 1.1rem);
   letter-spacing: -0.02em;
   color: var(--mad-text);
   overflow: hidden;

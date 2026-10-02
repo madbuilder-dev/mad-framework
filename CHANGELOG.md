@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.112.1] — 2026-10-02
+
+### Melhorias
+
+- **Temas:** os ajustes de altura do tema passam a valer também para formulários abertos em gaveta: a barra de título da gaveta e o cabeçalho das seções com ícone ficam mais baixos com a densidade compacta. Quem não ajustar continua com as medidas de antes. Republique o projeto para aplicar.
+
 ## [5.112.0] — 2026-10-02
 
 ### Novidades
