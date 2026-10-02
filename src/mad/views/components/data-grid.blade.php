@@ -413,7 +413,8 @@
 
     {{-- ── Column chooser (fora do table-wrap para não ser clipado) ── --}}
     @if(!empty($colsConfig))
-    <div class="mad-dg-col-chooser-wrap">
+    {{-- Painel abre do lado do botão: à esquerda quando ele está no <th> das ações à esquerda. --}}
+    <div class="mad-dg-col-chooser-wrap{{ $hasActions && $actionSide === 'left' ? ' mad-dg-col-chooser-wrap-start' : '' }}">
         <div class="mad-dg-col-chooser-panel"
              x-show="colChooserOpen"
              x-cloak
@@ -462,7 +463,18 @@
                     </th>
                     @endif
                     @if($hasActions && $actionSide === 'left')
-                    <th class="mad-dg-th mad-dg-th-actions" style="width:90px;"></th>
+                    {{-- O botão do seletor mora no <th> das ações nos DOIS lados: com
+                         ações à esquerda (padrão das listagens geradas) ele não
+                         aparecia em lugar nenhum — a barra só o mostra sem ações. --}}
+                    <th class="mad-dg-th mad-dg-th-actions" style="width:90px;">
+                        @if($columnChooser && $hasChoosable)
+                        <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
+                                @click.stop="colChooserOpen=!colChooserOpen"
+                                title="{{ __('grid.choose_columns') }}">
+                            <i data-lucide="columns-2" style="width:14px;height:14px;"></i>
+                        </button>
+                        @endif
+                    </th>
                     @endif
 
                     @foreach($visibleColumns as $col)

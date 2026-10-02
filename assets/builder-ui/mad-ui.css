@@ -7788,6 +7788,14 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   min-width: 180px;
   padding: 6px 0;
 }
+/* Ações à esquerda: o botão do seletor está no canto esquerdo do cabeçalho. */
+.mad-dg-col-chooser-wrap-start {
+  justify-content: flex-start;
+}
+.mad-dg-col-chooser-wrap-start .mad-dg-col-chooser-panel {
+  right: auto;
+  left: 0;
+}
 .mad-dg-col-chooser-title {
   display: flex;
   align-items: center;

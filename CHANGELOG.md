@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.111.1] — 2026-10-02
+
+### Correções
+
+- **Listagens:** com os botões de ação à esquerda, que é o padrão das listagens geradas, o botão do seletor de colunas não aparecia. Agora ele fica no cabeçalho da coluna de ações, dos dois lados. Republique o projeto para aplicar.
+
 ## [5.111.0] — 2026-10-02
 
 ### Novidades
