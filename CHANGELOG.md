@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.112.0] — 2026-10-02
+
+### Novidades
+
+- **Temas:** a altura do cabeçalho da página, do cabeçalho e do rodapé dos cards e da barra acima das colunas da listagem agora pode ser ajustada no tema, para telas mais compactas. Quem não ajustar continua com as medidas de antes. Republique o projeto para aplicar.
+
+### Correções
+
+- **Listagens:** a barra acima das colunas aparecia vazia, sem nenhum botão, para perfis sem permissão de exportar ou quando nenhuma coluna podia ser ocultada. Agora ela só aparece quando tem algo dentro. Republique o projeto para aplicar.
+
 ## [5.111.3] — 2026-10-02
 
 ### Correções

@@ -179,9 +179,11 @@
 
     {{-- ── Toolbar (busca + exportação + column chooser) ────────────── --}}
     @php
-        $hasExport  = $exportable ?? true;
+        // Mesmas condições dos botões lá embaixo: perfil sem exportar
+        // (`hide`) ou todas as colunas `not-hideable` desenhavam a barra vazia.
+        $hasExport  = ($exportable ?? true) && $permExport !== 'hide';
         $hasRefresh = $refreshable ?? false;
-        $hasChooser = $columnChooser && !$hasActions && !empty($colsConfig);
+        $hasChooser = $columnChooser && !$hasActions && $hasChoosable;
         $showToolbar = $searchable || $hasExport || $hasChooser || $cardView || $hasRefresh || $cfEnabled;
     @endphp
     @if($showToolbar)
@@ -216,7 +218,7 @@
                 </button>
             </div>
             @endif
-            @if(($exportable ?? true) && $permExport !== 'hide')
+            @if($hasExport)
             <div class="mad-dg-export-wrap" x-data="{ exportOpen: false }">
                 <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click.stop="exportOpen=!exportOpen"
                         @if($_exportDeny !== '') title="{{ $_exportDeny }}"
@@ -237,7 +239,7 @@
                 </div>
             </div>
             @endif
-            @if($columnChooser && !$hasActions && $hasChoosable)
+            @if($hasChooser)
             <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
                     @click.stop="colChooserOpen=!colChooserOpen"
                     title="{{ __('grid.choose_columns') }}">
