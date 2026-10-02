@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.113.0] — 2026-10-02
+
+### Novidades
+
+- **Formulário:** a seção ganhou `no-header`, que esconde ícone, título e linha mesmo com título preenchido. Útil quando o formulário abre em gaveta, que já mostra o título da tela na barra de cima. Republique o projeto para aplicar.
+
 ## [5.112.1] — 2026-10-02
 
 ### Melhorias
