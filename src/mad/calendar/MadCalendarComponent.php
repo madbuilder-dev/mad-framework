@@ -26,10 +26,15 @@ use Mad\View\MadBlade;
  * │      model="Evento" database="business"                                  │
  * │      title-field="titulo" start-field="data_inicio" end-field="data_fim"│
  * │      color-field="cor" default-view="agendaWeek" editable               │
- * │      click-target="EventoForm::onEdit({id})"                            │
+ * │      event-form="EventoForm"                                            │
  * │      period-type="date-range" date-field="data_inicio" remember-filters/>│
  * │                                                                         │
  * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * `event-form="EventoForm"` liga o formulário dos eventos num atributo só:
+ * clique no evento → EventoForm::onEdit({id}); clique em horário vazio →
+ * EventoForm::onCreate({date}); botão "Novo" na toolbar. `click-target` /
+ * `day-click-target` explícitos continuam valendo e ganham do `event-form`.
  *
  * Subclass adiciona PHP somente pra:
  *   - onSearch()              — busca custom (id-or-text, regras de negocio)
@@ -106,6 +111,11 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     protected string $clickTargetMode    = '';
     protected string $dayClickTarget     = '';
     protected string $slotClickTarget    = '';
+    /**
+     * Formulário dos eventos (classe em gaveta/modal). Atalho para os três
+     * cliques — ver docblock da classe. Vazio = calendário só de visualização.
+     */
+    protected string $eventForm          = '';
     protected string $eventUpdateMethod  = 'onEventUpdate';
     protected string $dayClickMethod     = 'onDayClick';
     protected string $eventClickMethod   = 'onEventClick';
@@ -173,7 +183,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         'defaultView', 'timeRange', 'enableDays', 'noWeekend', 'locale', 'currentDate',
         'slotDuration', 'numDays', 'height', 'fullHeight', 'calendarId', 'header', 'extraOptions',
         'editable', 'noDragging', 'noResizing', 'autoUpdate', 'confirmUpdate',
-        'clickTarget', 'clickTargetMode', 'dayClickTarget', 'slotClickTarget',
+        'clickTarget', 'clickTargetMode', 'dayClickTarget', 'slotClickTarget', 'eventForm',
         'eventUpdateMethod', 'dayClickMethod', 'eventClickMethod', 'slotClickMethod',
         'popoverTitle', 'popoverContent', 'popoverTrigger',
         'resourceModel', 'resourceDatabase', 'resourceIdField', 'resourceTitleField',
@@ -548,7 +558,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     public function onEventClick(string $id, string $title, string $view): MadResponse
     {
         if ($this->clickTarget === '') {
-            return (new MadResponse());
+            return $this->_openEventForm('onEdit', ['id' => $id]);
         }
         [$class, $method, $params] = $this->_parseTarget($this->clickTarget, [
             'id' => $id, 'title' => $title,
@@ -562,7 +572,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     public function onDayClick(string $date, string $view): MadResponse
     {
         if ($this->dayClickTarget === '') {
-            return (new MadResponse());
+            return $this->_openEventForm('onCreate', ['date' => $date]);
         }
         [$class, $method, $params] = $this->_parseTarget($this->dayClickTarget, [
             'date' => $date,
@@ -576,12 +586,45 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     public function onSlotClick(string $date, string $resourceId, string $resourceTitle): MadResponse
     {
         if ($this->slotClickTarget === '') {
-            return (new MadResponse());
+            return $this->_openEventForm('onCreate', ['date' => $date, 'resourceId' => $resourceId]);
         }
         [$class, $method, $params] = $this->_parseTarget($this->slotClickTarget, [
             'date' => $date, 'resourceId' => $resourceId, 'resourceTitle' => $resourceTitle,
         ]);
         return MadResponse::open($class, $params, $method);
+    }
+
+    /**
+     * Botão "Novo" da toolbar (só existe com `event-form`). O evento novo
+     * nasce na próxima hora cheia de hoje — o usuário ajusta no formulário.
+     */
+    public function onAddEvent(): MadResponse
+    {
+        $next = (new \DateTimeImmutable('now'))->setTime((int) date('H'), 0)->modify('+1 hour');
+
+        return $this->_openEventForm('onCreate', ['date' => $next->format('Y-m-d H:i:s')]);
+    }
+
+    /**
+     * Abre o `event-form` no método pedido. Sem formulário vinculado, nada
+     * acontece (calendário só de visualização). Formulário que não existe mais
+     * (apagado/renomeado depois de vinculado) avisa em vez de quebrar o clique.
+     * Formulário comum sem `onCreate()` abre vazio (mount) com a data nos params.
+     */
+    protected function _openEventForm(string $method, array $params): MadResponse
+    {
+        $form = trim($this->eventForm);
+        if ($form === '') {
+            return new MadResponse();
+        }
+        if (!class_exists($form)) {
+            return MadToast::warning(mad_t('mad.calendar_form_missing', ['form' => $form]));
+        }
+        if (!method_exists($form, $method)) {
+            $method = 'show';
+        }
+
+        return MadResponse::open($form, $params, $method);
     }
 
     public function onReload(): void
@@ -652,7 +695,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             'slotDuration', 'numDays',
             'height', 'calendarId', 'header', 'extraOptions',
             'confirmUpdate', 'clickTarget', 'clickTargetMode',
-            'dayClickTarget', 'slotClickTarget',
+            'dayClickTarget', 'slotClickTarget', 'eventForm',
             'eventUpdateMethod', 'dayClickMethod', 'eventClickMethod', 'slotClickMethod',
             'popoverTitle', 'popoverContent', 'popoverTrigger',
             'resourceModel', 'resourceDatabase', 'resourceIdField', 'resourceTitleField',
@@ -813,6 +856,9 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         // Callbacks PHP
         $cal->onDayClick($this->dayClickMethod);
         $cal->onEventClick($this->eventClickMethod);
+        if (trim($this->eventForm) !== '') {
+            $cal->onAddEvent('onAddEvent', mad_t('mad.btn.new'));
+        }
         if ($this->editable) {
             $cal->onEventUpdate($this->eventUpdateMethod);
         }
@@ -838,8 +884,11 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             $cal->onSlotClick($this->slotClickMethod);
         }
 
-        // Slot duration tambem aplica em views nao-resource quando explicito
-        if (!$wantResource && $this->slotDuration !== '' && $this->slotDuration !== '01:00') {
+        // Slot duration tambem aplica em views nao-resource. SEMPRE enviado: o
+        // default da prop (01:00) é o que o editor mostra como "1 hora", mas o
+        // FullCalendar sozinho cai em 00:30 — pular o 01:00 fazia o app mostrar
+        // meia hora enquanto o editor prometia uma.
+        if (!$wantResource && $this->slotDuration !== '') {
             $cal->option('slotDuration', $this->slotDuration . (substr_count($this->slotDuration, ':') === 1 ? ':00' : ''));
         }
 

@@ -20,7 +20,8 @@ namespace Mad\Calendar;
  * │               height, full-height, calendar-id, header,                      │
  * │               editable, no-dragging, no-resizing, auto-update,               │
  * │               confirm-update, click-target, click-target-mode,               │
- * │               day-click-target, slot-click-target, event-update-method,      │
+ * │               day-click-target, slot-click-target, event-form,               │
+ * │               event-update-method,                                           │
  * │               day-click-method, event-click-method, slot-click-method,       │
  * │               popover-title, popover-content, popover-trigger,               │
  * │               period-type, date-field, period-fields, remember-filters,      │
@@ -189,6 +190,7 @@ class MadCalendarCompiler
             'click-target-mode'      => 'clickTargetMode',
             'day-click-target'       => 'dayClickTarget',
             'slot-click-target'      => 'slotClickTarget',
+            'event-form'             => 'eventForm',
             'event-update-method'    => 'eventUpdateMethod',
             'day-click-method'       => 'dayClickMethod',
             'event-click-method'     => 'eventClickMethod',

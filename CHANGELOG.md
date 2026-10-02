@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.109.0] — 2026-10-01
+
+### Novidades
+
+- **Calendário:** novo atributo `event-form` no `<mad-calendar>` para ligar o formulário dos eventos. Clicar num evento abre a edição, clicar num horário vazio abre um evento novo com a data e a hora preenchidas, e a barra do calendário ganha o botão "Novo". Quando o formulário fecha, o calendário recarrega os eventos sem sair da semana em que você está.
+
+### Correções
+
+- **Calendário:** os botões da barra (anterior, próximo, Hoje, Dia, Semana, Mês e Lista) passam a usar a cor principal do tema, e as setas de anterior e próximo voltam a aparecer. Antes os botões saíam azuis e as setas apareciam como quadrados vazios. Republique o projeto para aplicar.
+- **Calendário:** a duração de slot de 1 hora, que é o padrão, aparecia no app com divisões de 30 minutos. Agora o app mostra a mesma duração do editor. Republique o projeto para aplicar.
+
 ## [5.108.1] — 2026-10-01
 
 ### Correções

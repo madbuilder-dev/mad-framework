@@ -9701,18 +9701,55 @@ textarea.mad-dg-inline-input {
   font-size: 1.15rem !important;
   font-weight: 600;
 }
-.mad-fc-wrap .fc-button {
+/* Botões da toolbar = botão primário do tema (o mesmo <mad-btn variant="primary">).
+   `.mad-fc-wrap .fc …` (3 classes) vence o `.fc-button-group button` cinza e o
+   `.fc-today-button` do notch-base.css, que eram escritos para o FullCalendar 3. */
+.mad-fc-wrap .fc {
+  --fc-button-text-color: var(--mad-primary-fg, #ffffff);
+  --fc-button-bg-color: var(--mad-primary, #18181b);
+  --fc-button-border-color: var(--mad-primary, #18181b);
+  --fc-button-hover-bg-color: var(--mad-primary-hover, var(--mad-primary, #18181b));
+  --fc-button-hover-border-color: var(--mad-primary-hover, var(--mad-primary, #18181b));
+  --fc-button-active-bg-color: var(--mad-primary-hover, var(--mad-primary, #18181b));
+  --fc-button-active-border-color: var(--mad-primary-hover, var(--mad-primary, #18181b));
+}
+.mad-fc-wrap .fc .fc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--button-height, 32px) !important;
+  padding: 0 12px;
   font-size: 0.8rem;
-  padding: 4px 10px;
+  line-height: 1;
+  text-shadow: none;
+  box-shadow: none;
 }
-.mad-fc-wrap .fc-button-primary {
-  background-color: var(--mad-primary, #3b82f6);
-  border-color: var(--mad-primary, #3b82f6);
+.mad-fc-wrap .fc .fc-button-primary {
+  background: var(--fc-button-bg-color);
+  border-color: var(--fc-button-border-color);
+  color: var(--fc-button-text-color);
 }
-.mad-fc-wrap .fc-button-primary:not(:disabled).fc-button-active,
-.mad-fc-wrap .fc-button-primary:not(:disabled):active {
-  background-color: var(--mad-primary-hover, #2563eb);
-  border-color: var(--mad-primary-hover, #2563eb);
+.mad-fc-wrap .fc .fc-button-primary:not(:disabled):hover {
+  background: var(--fc-button-hover-bg-color);
+  border-color: var(--fc-button-hover-border-color);
+  color: var(--fc-button-text-color);
+}
+.mad-fc-wrap .fc .fc-button-primary:not(:disabled).fc-button-active,
+.mad-fc-wrap .fc .fc-button-primary:not(:disabled):active {
+  background: var(--fc-button-active-bg-color);
+  border-color: var(--fc-button-active-border-color);
+  color: var(--fc-button-text-color);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .25);
+}
+.mad-fc-wrap .fc .fc-button-primary:disabled {
+  opacity: .55;
+}
+.mad-fc-wrap .fc .fc-button:focus-visible {
+  outline: 2px solid var(--mad-primary, #18181b);
+  outline-offset: 2px;
+}
+.mad-fc-wrap .fc .fc-button .fc-icon {
+  font-size: 1.1em;
 }
 .mad-fc-wrap .fc-daygrid-event {
   border-radius: var(--mad-radius-sm, 4px);

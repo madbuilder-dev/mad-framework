@@ -28,6 +28,9 @@ return [
         'filters' => [
             'selected' => ':n seleccionados',
         ],
+
+        // Calendário com `event-form` apontando para uma classe que não existe.
+        'calendar_form_missing' => 'No se encontró el formulario ":form". Vincule otro formulario al calendario.',
         'dashf' => [
             'filters'           => 'Filtros',
             'filters_with_count'=> 'Filtros (:n)',

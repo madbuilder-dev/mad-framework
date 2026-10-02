@@ -8521,6 +8521,8 @@ document.addEventListener('alpine:init', () => {
         let _calendar = null;
         let _dragFlag  = false;
         let _resizeFlag = false;
+        let _overlayCloseHandler = null;
+        let _refetchTimer = null;
 
         return {
             init() {
@@ -8540,9 +8542,15 @@ document.addEventListener('alpine:init', () => {
                     slotMaxTime:  cfg.maxTime || '24:00:00',
                     hiddenDays:   cfg.hiddenDays || [],
                     allDaySlot:   false,
-                    themeSystem:  'bootstrap',
+                    // 'standard', não 'bootstrap': o tema bootstrap desenha
+                    // anterior/próximo com ícones Font Awesome (que o app não
+                    // carrega — viravam quadrados vazios) e pinta os botões com
+                    // o azul do .btn-primary em vez da cor do tema. O standard
+                    // usa a fonte de ícones do próprio FullCalendar e as classes
+                    // .fc-button-primary, que o mad-ui.css liga ao --mad-primary.
+                    themeSystem:  'standard',
                     headerToolbar: {
-                        left:   'prev,next today',
+                        left:   'prev,next today' + (cfg.addEventMethod && wrapper ? ' madNew' : ''),
                         center: 'title',
                         right:  'timeGridDay,timeGridWeek,dayGridMonth,listWeek',
                     },
@@ -8560,6 +8568,16 @@ document.addEventListener('alpine:init', () => {
                     opts.events = { url: cfg.eventsUrl };
                 } else if (cfg.events && cfg.events.length) {
                     opts.events = cfg.events;
+                }
+
+                // ── Botão "Novo" (event-form) ──────────────────────
+                if (cfg.addEventMethod && wrapper) {
+                    opts.customButtons = {
+                        madNew: {
+                            text: cfg.addEventLabel || 'Novo',
+                            click: () => MadWire.call(wrapper, cfg.addEventMethod, []),
+                        },
+                    };
                 }
 
                 // ── Altura ─────────────────────────────────────────
@@ -8630,6 +8648,31 @@ document.addEventListener('alpine:init', () => {
                     });
                     ro.observe(el);
                 }
+
+                // ── Formulário fechou → recarrega os eventos ────────
+                // O formulário do evento (event-form, click-target) abre em
+                // gaveta/modal e fecha com closeDrawer()/closeModal() depois de
+                // salvar ou excluir. Recarregar aqui mostra a mudança sem
+                // re-render da tela: o usuário continua na semana em que estava.
+                _overlayCloseHandler = (e) => {
+                    if (!e || !e.detail || e.detail.action !== 'close') return;
+                    if (!el.isConnected) return;
+                    clearTimeout(_refetchTimer);
+                    _refetchTimer = setTimeout(() => {
+                        if (_calendar) _calendar.refetchEvents();
+                    }, 150);
+                };
+                window.addEventListener('maddrawer', _overlayCloseHandler);
+                window.addEventListener('madmodal', _overlayCloseHandler);
+            },
+
+            destroy() {
+                if (_overlayCloseHandler) {
+                    window.removeEventListener('maddrawer', _overlayCloseHandler);
+                    window.removeEventListener('madmodal', _overlayCloseHandler);
+                    _overlayCloseHandler = null;
+                }
+                clearTimeout(_refetchTimer);
             },
 
             /** Acesso ao objeto FullCalendar (para uso avançado via Alpine) */

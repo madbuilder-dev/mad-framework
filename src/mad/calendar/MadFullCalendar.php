@@ -35,6 +35,9 @@ class MadFullCalendar
     protected string $dayClickMethod    = '';
     protected string $eventClickMethod  = '';
     protected string $eventUpdateMethod = '';
+    /** Botão "Novo" na toolbar (só com `event-form`). Recebe: () */
+    protected string $addEventMethod    = '';
+    protected string $addEventLabel     = '';
 
     // Popover
     protected string $popTitle   = '';
@@ -243,6 +246,17 @@ class MadFullCalendar
         return $this;
     }
 
+    /**
+     * Botão "Novo" na toolbar, à direita do "Hoje". Chama o método sem
+     * argumentos — quem decide a data/hora do evento novo é o servidor.
+     */
+    public function onAddEvent(string $method, string $label): static
+    {
+        $this->addEventMethod = $method;
+        $this->addEventLabel  = $label;
+        return $this;
+    }
+
     // ── Resources (Timeline View) ────────────────────────────────────
 
     /**
@@ -332,6 +346,8 @@ class MadFullCalendar
             'dayClickMethod'    => $this->dayClickMethod,
             'eventClickMethod'  => $this->eventClickMethod,
             'eventUpdateMethod' => $this->eventUpdateMethod,
+            'addEventMethod'    => $this->addEventMethod,
+            'addEventLabel'     => $this->addEventLabel,
             'popTitle'          => $this->popTitle,
             'popContent'        => $this->popContent,
             'extraOptions'      => $this->options,
