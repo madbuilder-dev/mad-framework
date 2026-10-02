@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.111.3] — 2026-10-02
+
+### Correções
+
+- **Temas:** um tema configurado como Claro abria escuro quando o computador do usuário estava em modo escuro. Agora o app abre no modo escolhido no tema, e a troca feita no botão de sol/lua continua valendo. Republique o projeto para aplicar.
+
 ## [5.111.2] — 2026-10-02
 
 ### Correções
