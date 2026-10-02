@@ -7828,6 +7828,27 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 .mad-dg-col-chooser-check::before {
   display: none !important;
 }
+/* <mad-col hide-below>: na tela estreita a coluna fica fora de qualquer
+   jeito — a caixa trava e a dica embaixo diz por quê. */
+.mad-dg-col-chooser-narrow {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  cursor: default;
+  color: var(--mad-text-muted);
+}
+.mad-dg-col-chooser-narrow:hover {
+  background: none;
+}
+.mad-dg-col-chooser-narrow .mad-dg-col-chooser-check {
+  cursor: default;
+  opacity: .5;
+}
+.mad-dg-col-chooser-hint {
+  flex-basis: 100%;
+  padding-left: 22px;
+  font-size: 0.72rem;
+  color: var(--mad-text-muted);
+}
 
 /* ── Hidden column (column chooser) ─────────────────────────────── */
 .mad-dg-col-hidden {

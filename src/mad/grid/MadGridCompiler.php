@@ -112,6 +112,7 @@ use Mad\View\MadBlade;
  * │  badge="A:success:Ativo"  Badge colorido por valor                          │
  * │  :badge="$badgeMap"       Badge via expressão PHP                           │
  * │  hide / hidden            Coluna oculta                                     │
+ * │  hide-below="768"         Oculta em telas mais estreitas que 768px           │
  * │  edit                     Edição inline                                     │
  * │  edit-type="money"        Tipo de edição (text, money, select, date...)     │
  * │  edit-mode="click"        Modo de edição (dblclick, click, inline)          │
@@ -1862,6 +1863,18 @@ class MadGridCompiler
         if (static::has($a, 'sort', 'sortable'))  $c[] = "'sortable' => true";
         if (static::has($a, 'hide', 'hidden'))     $c[] = "'hidden' => true";
         if (static::has($a, 'edit', 'editable'))   $c[] = "'editable' => true";
+
+        // hide-below="768": some em telas mais estreitas que 768px (aceita
+        // "768px"). Valor que não é número positivo não emite nada — coluna
+        // sempre visível, igual à ausência do atributo.
+        if (isset($a['hide-below'])) {
+            if ($a['hide-below']['type'] === 'php') {
+                $c[] = "'hideBelow' => (int) (" . static::emit($a['hide-below']) . ")";
+            } else {
+                $hb = preg_replace('/\s*px$/i', '', trim(static::str($a, 'hide-below')));
+                if (ctype_digit((string) $hb) && (int) $hb > 0) $c[] = "'hideBelow' => " . (int) $hb;
+            }
+        }
 
         // Card role
         if (isset($a['card-role'])) $c[] = "'cardRole' => " . static::qs(static::str($a, 'card-role'));

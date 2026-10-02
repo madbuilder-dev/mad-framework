@@ -562,6 +562,8 @@ class GridColBuilder
     public function center(): static        { $this->cfg['align']     = 'center';     return $this; }
     public function right(): static         { $this->cfg['align']     = 'right';      return $this; }
     public function hide(): static          { $this->cfg['hidden']    = true;         return $this; }
+    /** Oculta a coluna em telas mais estreitas que $px. */
+    public function hideBelow(int $px): static { $this->cfg['hideBelow'] = $px;      return $this; }
     public function edit(): static          { $this->cfg['editable']  = true;         return $this; }
     public function html(): static          { $this->cfg['renderType'] = 'html';      return $this; }
     public function total(string $f): static{ $this->cfg['totalFunc'] = $f;           return $this; }

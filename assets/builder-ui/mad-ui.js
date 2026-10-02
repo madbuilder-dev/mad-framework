@@ -5045,6 +5045,26 @@ document.addEventListener('alpine:init', () => {
             } catch(e) {}
         }
 
+        // ── <mad-col hide-below="N"> ──────────────────────────────────
+        // O "Ocultar coluna quando a largura da tela estiver abaixo de" do
+        // 4.0: a coluna some em tela (viewport) mais estreita que N px.
+        // Calculado ANTES do 1º render, como o colVisibility — no celular a
+        // coluna já nasce escondida. `max-width: N - 0.02px` é "menor que N"
+        // mesmo em viewport de largura fracionada (a conta do Bootstrap).
+        const _narrowQ   = {};   // N → [fields]
+        const _colNarrow = {};
+        const _narrowMq  = n => (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
+            ? window.matchMedia('(max-width: ' + (Number(n) - 0.02) + 'px)') : null;
+        _cols.forEach(c => {
+            const n = parseInt(c.hideBelow, 10);
+            if (n > 0) (_narrowQ[n] = _narrowQ[n] || []).push(c.field);
+        });
+        Object.keys(_narrowQ).forEach(n => {
+            const q = _narrowMq(n);
+            const on = !!(q && q.matches);
+            _narrowQ[n].forEach(f => { _colNarrow[f] = on; });
+        });
+
         return {
         // ── Inline editing ───────────────────────────────────────────
         editingCell:    null,
@@ -5059,6 +5079,8 @@ document.addEventListener('alpine:init', () => {
         cols:           _cols,
         colVisibility:  _colVisibility,
         colChooserOpen: false,
+        // Colunas escondidas AGORA pelo hide-below (field → true).
+        colNarrow:      _colNarrow,
 
         // ── View mode (table / card) ────────────────────────────────
         viewMode: 'table',
@@ -5096,6 +5118,36 @@ document.addEventListener('alpine:init', () => {
 
             // Volta de formulário (?_mad_return=ID): destaca a linha salva.
             this.$nextTick(() => this._focusReturnRow(el || this.$el));
+
+            // hide-below: acompanha a largura da tela.
+            this._watchNarrow();
+        },
+
+        destroy() {
+            if (this._narrowOff) this._narrowOff();
+        },
+
+        // Um listener por limiar: só CRUZAR o limiar dispara (girar o celular,
+        // redimensionar a janela) — arrastar a borda não re-renderiza a grid.
+        _watchNarrow() {
+            const offs = [];
+            Object.keys(_narrowQ).forEach(n => {
+                const q = _narrowMq(n);
+                if (!q) return;
+                const onChange = (e) => {
+                    _narrowQ[n].forEach(f => { this.colNarrow[f] = !!e.matches; });
+                    this._refreshStickyHead();
+                };
+                // Safari < 14 só tem addListener.
+                if (typeof q.addEventListener === 'function') {
+                    q.addEventListener('change', onChange);
+                    offs.push(() => q.removeEventListener('change', onChange));
+                } else if (typeof q.addListener === 'function') {
+                    q.addListener(onChange);
+                    offs.push(() => q.removeListener(onChange));
+                }
+            });
+            this._narrowOff = offs.length ? () => offs.forEach(off => off()) : null;
         },
 
         // ── Volta de formulário: linha salva visível + URL limpa ─────
@@ -5209,12 +5261,24 @@ document.addEventListener('alpine:init', () => {
         },
 
         // ── Column chooser methods ───────────────────────────────────
+        // Fora da tela: escolha do usuário no seletor OU hide-below. É o gate
+        // de cabeçalho, células, totais, quebras e campos do cartão.
         isColHidden(field) {
-            return this.colVisibility[field] === false;
+            return this.colVisibility[field] === false || this.colNarrow[field] === true;
         },
 
-        visibleColCount() {
-            const hidden = this.cols.filter(c => this.colVisibility[c.field] === false).length;
+        // Escondida pelo hide-below (o seletor mostra a coluna desabilitada).
+        isColNarrow(field) {
+            return this.colNarrow[field] === true;
+        },
+
+        // Colunas na tela (colspan). `chosen` = só a escolha do seletor, sem o
+        // hide-below — é o que a exportação leva: exportar pelo celular sai
+        // com as mesmas colunas que no computador.
+        visibleColCount(chosen) {
+            const hidden = this.cols.filter(c => chosen
+                ? this.colVisibility[c.field] === false
+                : this.isColHidden(c.field)).length;
             return (this._cfg.colCount || this.cols.length) - hidden;
         },
 
@@ -5223,7 +5287,11 @@ document.addEventListener('alpine:init', () => {
             const hidden = Object.keys(this.colVisibility).filter(f => !this.colVisibility[f]);
             const sk = this._cfg.storageKey || '';
             if (sk) localStorage.setItem('mad-dg-cols:' + sk, JSON.stringify(hidden));
-            // Invalida o proxy do sticky header para forçar rebuild com as novas larguras
+            this._refreshStickyHead();
+        },
+
+        // Invalida o proxy do sticky header para forçar rebuild com as novas larguras
+        _refreshStickyHead() {
             this.$nextTick(() => {
                 const proxy = document.querySelector('.mad-dg-thead-proxy');
                 if (proxy) {
@@ -5489,7 +5557,8 @@ document.addEventListener('alpine:init', () => {
         // ── Exportação com a seleção atual do column chooser ────────
         handleExport(format) {
             const w = this._wrapper || this.$el.closest('[mad-component]');
-            const hidden = Object.keys(this.colVisibility).filter(f => this.isColHidden(f));
+            // Só a escolha do seletor: o hide-below é da tela, não do arquivo.
+            const hidden = Object.keys(this.colVisibility).filter(f => this.colVisibility[f] === false);
             if (w) return MadWire.call(w, 'onExport' + format, [hidden]);
         },
 

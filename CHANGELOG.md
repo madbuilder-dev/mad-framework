@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.110.0] — 2026-10-02
+
+### Novidades
+
+- **Listagens:** nova opção `hide-below` no `<mad-col>`: a coluna some quando a tela é mais estreita que a largura informada, em pixels (ex.: `hide-below="768"` esconde no celular). Volta ao alargar a tela, e a exportação continua levando a coluna.
+
 ## [5.109.0] — 2026-10-01
 
 ### Novidades

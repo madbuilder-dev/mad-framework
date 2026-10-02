@@ -67,6 +67,13 @@ class GridColumn
     public string  $group      = '';
     public bool    $hidden     = false;
     public bool    $hideable   = true;    // false = coluna sempre visível, não aparece no chooser
+    /**
+     * Oculta a coluna quando a TELA (viewport) é mais estreita que N px — o
+     * "Ocultar coluna quando a largura da tela estiver abaixo de" do 4.0.
+     * 0 = sempre visível. Quem esconde é o madDataGrid no navegador (mesmo
+     * gate do seletor de colunas); a exportação ignora.
+     */
+    public int     $hideBelow  = 0;
     public bool    $editable      = false;
     // text | select | date | number | textarea | money
     // | numeric | dbcombo | dbunique-search | datetime | color | spinner
@@ -505,6 +512,13 @@ class GridColumn
     public function hidden(): self
     {
         $this->hidden = true;
+        return $this;
+    }
+
+    /** Oculta a coluna em telas mais estreitas que $px (0 = sempre visível). */
+    public function hideBelow(int $px): self
+    {
+        $this->hideBelow = max(0, $px);
         return $this;
     }
 

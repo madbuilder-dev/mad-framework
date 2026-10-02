@@ -217,8 +217,8 @@
             <div class="mad-dg-export-wrap" x-data="{ exportOpen: false }">
                 <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click.stop="exportOpen=!exportOpen"
                         @if($_exportDeny !== '') title="{{ $_exportDeny }}"
-                        @else :disabled="visibleColCount() === 0"
-                        :title="visibleColCount() === 0 ? @js(__('grid.export_no_columns')) : @js(__('grid.export'))"@endif>
+                        @else :disabled="visibleColCount(true) === 0"
+                        :title="visibleColCount(true) === 0 ? @js(__('grid.export_no_columns')) : @js(__('grid.export'))"@endif>
                     <i data-lucide="download" style="width:14px;height:14px;"></i>
                 </button>
                 <div class="mad-dg-export-menu" x-show="exportOpen" x-cloak @click.outside="exportOpen=false">
@@ -422,13 +422,20 @@
             </div>
             @foreach($colsConfig as $colCfg)
             @if(!empty($colCfg['hideable']))
-            <label class="mad-dg-col-chooser-item">
+            {{-- hide-below: na tela estreita a coluna fica fora de qualquer jeito —
+                 a caixa trava (marcar não a traria) e diz por quê. --}}
+            @php $_hbCol = !empty($colCfg['hideBelow']); @endphp
+            <label class="mad-dg-col-chooser-item"@if($_hbCol) :class="{ 'mad-dg-col-chooser-narrow': isColNarrow('{{ $colCfg['field'] }}') }"@endif>
                 <input type="checkbox"
                        name="check-{{ $colCfg['field'] }}"
                        class="mad-dg-col-chooser-check"
                        x-init="$el.checked = (colVisibility['{{ $colCfg['field'] }}'] !== false)"
+                       @if($_hbCol) :disabled="isColNarrow('{{ $colCfg['field'] }}')" @endif
                        @change="toggleCol('{{ $colCfg['field'] }}')"/>
                 <span>{{ $colCfg['label'] }}</span>
+                @if($_hbCol)
+                <small class="mad-dg-col-chooser-hint" x-show="isColNarrow('{{ $colCfg['field'] }}')" x-cloak>{{ __('grid.hidden_narrow') }}</small>
+                @endif
             </label>
             @endif
             @endforeach

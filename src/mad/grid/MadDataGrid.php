@@ -2475,10 +2475,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $columns = $this->_effectiveColumns();
         $this->_detectRenderFields($columns);
 
-        $colsConfig = array_values(array_map(
-            fn($c) => ['field' => $c->fieldKey, 'label' => $c->label, 'hideable' => $c->hideable],
-            array_filter($columns, fn($c) => !$c->hidden)
-        ));
+        $colsConfig = static::_colsClientConfig($columns);
 
         return ['components.data-grid', [
             'columns'      => $columns,
@@ -2704,10 +2701,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->_groupLabelCache = $this->_resolveGroupLabels();
             $this->_postProcessRows($columns);
         }
-        $colsConfig = array_values(array_map(
-            fn($c) => ['field' => $c->fieldKey, 'label' => $c->label, 'hideable' => $c->hideable],
-            array_filter($columns, fn($c) => !$c->hidden)
-        ));
+        $colsConfig = static::_colsClientConfig($columns);
 
         $this->_fillExportMeta();
 
@@ -2967,6 +2961,20 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     // Movidos aqui para serem acessíveis tanto por MadDataGrid (self mode)
     // quanto por MadGrid (standalone mode).
 
+    /**
+     * Colunas que o madDataGrid conhece no navegador (seletor de colunas e
+     * `hide-below`). `hideBelow` só vai quando ligado — o x-data da grid sem a
+     * opção fica byte a byte igual.
+     */
+    public static function _colsClientConfig(array $columns): array
+    {
+        return array_values(array_map(
+            fn($c) => ['field' => $c->fieldKey, 'label' => $c->label, 'hideable' => $c->hideable]
+                + ($c->hideBelow > 0 ? ['hideBelow' => $c->hideBelow] : []),
+            array_filter($columns, fn($c) => !$c->hidden)
+        ));
+    }
+
     public static function _colFromConfig(array $c): GridColumn
     {
         $col = GridColumn::make($c['field'] ?? '', $c['label'] ?? '');
@@ -2975,6 +2983,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($c['align']))     $col->align($c['align']);
         if (!empty($c['sortable']))  $col->sortable();
         if (!empty($c['hidden']))    $col->hidden();
+        if (!empty($c['hideBelow'])) $col->hideBelow((int) $c['hideBelow']);
         if (!empty($c['cardRole']))  $col->cardRole($c['cardRole']);
         if (!empty($c['editable'])) {
             $editType = $c['editType'] ?? 'text';
