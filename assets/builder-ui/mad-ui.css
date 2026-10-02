@@ -1345,7 +1345,9 @@ textarea.mad-textarea:read-only:focus {
   align-items: center;
   gap: 4px;
   width: 100%;
-  min-height: 38px;
+  /* Mesma altura do .mad-input: o tema do app fixa a dos inputs em
+     --button-height; sem tema, os 38px de sempre. */
+  min-height: var(--button-height, 38px);
   padding: 5px 30px 5px 12px;
   border: 1.5px solid var(--mad-border);
   border-radius: var(--mad-radius);
@@ -1403,6 +1405,10 @@ textarea.mad-textarea:read-only:focus {
   min-width: 60px;
   border: 0; outline: 0;
   padding: 0; margin: 0;
+  /* O tema do app dá altura a TODO <input> (height: --button-height); aqui
+     dentro isso somava padding+borda do controle e o campo de tags (e o combo
+     ao abrir) ficava mais alto que os vizinhos. */
+  height: auto; min-height: 0;
   background: transparent;
   font: inherit;
   color: var(--mad-input-color, var(--mad-text));
@@ -1585,6 +1591,20 @@ textarea.mad-textarea:read-only:focus {
   display: flex;
   align-items: center;
   gap: var(--mad-s2);
+}
+/* Cards lado a lado esticam até o mais alto da linha: o rodapé desce para o
+   fundo (antes ficava logo abaixo do conteúdo, desalinhado do vizinho, com uma
+   faixa vazia embaixo). Só card com rodapé vira coluna — quem usa .mad-card
+   cru com outro conteúdo não muda. */
+.mad-card:has(> .mad-card-footer) {
+  display: flex;
+  flex-direction: column;
+}
+.mad-card > .mad-card-footer {
+  margin-top: auto;
+}
+.mad-card > .mad-card-footer:last-child {
+  border-radius: 0 0 calc(var(--mad-radius-lg) - 1px) calc(var(--mad-radius-lg) - 1px);
 }
 
 
@@ -3900,11 +3920,26 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-right: none;
   border-radius: var(--mad-radius) 0 0 var(--mad-radius);
 }
+/* Cantos por LADO (longhand), não shorthand: o input sozinho no grupo (numeric/
+   number/money sem prefixo nem sufixo) casa :first-child E :last-child, e o
+   shorthand do segundo zerava os cantos que o primeiro tinha dado — o campo
+   saía com a esquerda reta ao lado de um campo de texto todo arredondado. */
 .mad-input-group .mad-input:first-child {
-  border-radius: var(--mad-radius) 0 0 var(--mad-radius);
+  border-top-left-radius: var(--mad-radius);
+  border-bottom-left-radius: var(--mad-radius);
 }
 .mad-input-group .mad-input:last-child {
-  border-radius: 0 var(--mad-radius) var(--mad-radius) 0;
+  border-top-right-radius: var(--mad-radius);
+  border-bottom-right-radius: var(--mad-radius);
+}
+/* Botões do spinner (− +) e do seek (buscar / limpar) num campo de formulário
+   esticam até a altura do input, em vez dos 38px fixos: com o tema que define
+   a altura dos campos (--button-height), o input ficava mais baixo que os
+   botões ao lado. Na célula editável da grade a altura fixa continua. */
+.mad-field .mad-input-group > .mad-spinner-btn,
+.mad-field .mad-input-group > .mad-seek-btn,
+.mad-field .mad-input-group > .mad-seek-clear-btn {
+  height: auto;
 }
 .mad-input-addon-r {
   border-left: none;
@@ -6116,6 +6151,12 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-input-group .mad-input[type="number"] {
   -moz-appearance: textfield;
+}
+/* Cantos retos e valor centralizado são do SPINNER (input entre os botões − e +).
+   Escrita para todo `type=number` em grupo, a regra pegava também o
+   <mad-number-field>: cantos retos e `align` ignorado (a especificidade vencia
+   o .mad-text-right). */
+.mad-input-group .mad-spinner-btn + .mad-input[type="number"] {
   border-radius: 0;
   flex: 1;
   text-align: center;

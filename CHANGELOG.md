@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.111.2] — 2026-10-02
+
+### Correções
+
+- **Formulários:** campos numérico, de número, de tags e de seleção saíam com altura ou cantos diferentes dos campos de texto; agora seguem o mesmo padrão, e o de número respeita o alinhamento escolhido. Republique o projeto para aplicar.
+- **Formulários:** em cards lado a lado, o rodapé do card com menos conteúdo não descia até o fundo e ficava desalinhado do vizinho. Republique o projeto para aplicar.
+
 ## [5.111.1] — 2026-10-02
 
 ### Correções
