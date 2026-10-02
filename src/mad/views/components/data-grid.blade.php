@@ -54,6 +54,9 @@
     $cfEnabled     = !empty($customFilters['enabled']);
     $colsConfig    = $colsConfig ?? [];
     $columnChooser = $columnChooser ?? true;
+    // Botão do seletor só com alguma coluna que ele ofereça (`not-hideable`
+    // tira a coluna dele) — senão abriria um painel vazio.
+    $hasChoosable  = (bool) array_filter($colsConfig, fn($c) => !empty($c['hideable']));
     // no-auto-load ainda sem ação do usuário: empty-state vira dica + botão.
     $deferred   = $deferred ?? false;
     // row-click: clicar na linha/card executa a 1ª ação (madDataGrid.onRowClick).
@@ -234,7 +237,7 @@
                 </div>
             </div>
             @endif
-            @if($columnChooser && !$hasActions && !empty($colsConfig))
+            @if($columnChooser && !$hasActions && $hasChoosable)
             <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
                     @click.stop="colChooserOpen=!colChooserOpen"
                     title="{{ __('grid.choose_columns') }}">
@@ -930,7 +933,7 @@
 
                     @if($hasActions && $actionSide === 'right')
                     <th class="mad-dg-th mad-dg-th-actions" style="width:90px;">
-                        @if($columnChooser && !empty($colsConfig))
+                        @if($columnChooser && $hasChoosable)
                         <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
                                 @click.stop="colChooserOpen=!colChooserOpen"
                                 title="{{ __('grid.choose_columns') }}">

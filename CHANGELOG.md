@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.111.0] — 2026-10-02
+
+### Novidades
+
+- **Listagens:** nova opção `not-hideable` no `<mad-col>`: a coluna fica sempre visível e sai do seletor de colunas. Se alguém já tinha escondido essa coluna pelo seletor, ela volta a aparecer.
+
 ## [5.110.0] — 2026-10-02
 
 ### Novidades

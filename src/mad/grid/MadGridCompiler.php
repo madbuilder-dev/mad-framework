@@ -113,6 +113,7 @@ use Mad\View\MadBlade;
  * │  :badge="$badgeMap"       Badge via expressão PHP                           │
  * │  hide / hidden            Coluna oculta                                     │
  * │  hide-below="768"         Oculta em telas mais estreitas que 768px           │
+ * │  not-hideable             Fora do seletor de colunas (sempre visível)        │
  * │  edit                     Edição inline                                     │
  * │  edit-type="money"        Tipo de edição (text, money, select, date...)     │
  * │  edit-mode="click"        Modo de edição (dblclick, click, inline)          │
@@ -1244,6 +1245,18 @@ class MadGridCompiler
         return null;
     }
 
+    /** `<mad-col not-hideable>` / `hideable="false"` / `:hideable="false"`. */
+    protected static function isNotHideable(array $a): bool
+    {
+        if (isset($a['not-hideable'])) {
+            return strtolower(trim(static::str($a, 'not-hideable'))) !== 'false';
+        }
+        if (!isset($a['hideable']) || $a['hideable']['type'] === 'bool') {
+            return false;
+        }
+        return in_array(strtolower(trim((string) $a['hideable']['value'])), ['false', '0'], true);
+    }
+
     /** Verifica se algum dos nomes de atributo existe (booleano ou qualquer valor). */
     protected static function has(array $attrs, string ...$keys): bool
     {
@@ -1863,6 +1876,12 @@ class MadGridCompiler
         if (static::has($a, 'sort', 'sortable'))  $c[] = "'sortable' => true";
         if (static::has($a, 'hide', 'hidden'))     $c[] = "'hidden' => true";
         if (static::has($a, 'edit', 'editable'))   $c[] = "'editable' => true";
+
+        // not-hideable: coluna fora do seletor de colunas (sempre visível).
+        // Flag negativa porque o padrão é ocultável — o `hideable` nu do
+        // editor antigo não mudava nada. Aceita também hideable="false" e
+        // :hideable="false"; not-hideable="false" não faz nada, como row-click.
+        if (static::isNotHideable($a)) $c[] = "'hideable' => false";
 
         // hide-below="768": some em telas mais estreitas que 768px (aceita
         // "768px"). Valor que não é número positivo não emite nada — coluna

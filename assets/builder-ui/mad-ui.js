@@ -5038,10 +5038,14 @@ document.addEventListener('alpine:init', () => {
         const _colVisibility = {};
         _cols.forEach(c => { _colVisibility[c.field] = true; });
         const _sk = cfg.storageKey || '';
+        // `not-hideable`: fora do seletor — escolha antiga guardada no
+        // navegador (de quando a coluna era ocultável) não a esconde mais;
+        // sem a caixa no seletor ela ficaria escondida para sempre.
+        const _fixed = new Set(_cols.filter(c => c.hideable === false).map(c => c.field));
         if (_sk) {
             try {
                 const saved = localStorage.getItem('mad-dg-cols:' + _sk);
-                if (saved) JSON.parse(saved).forEach(f => { _colVisibility[f] = false; });
+                if (saved) JSON.parse(saved).forEach(f => { if (!_fixed.has(f)) _colVisibility[f] = false; });
             } catch(e) {}
         }
 

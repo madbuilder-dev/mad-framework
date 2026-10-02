@@ -1754,9 +1754,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         // O chooser usa fieldKey (inclusive para campos de relacionamento) e
-        // guarda a seleção no navegador. O cliente só pode REMOVER colunas.
+        // guarda a seleção no navegador. O cliente só pode REMOVER colunas —
+        // e só as que o seletor oferece (`not-hideable` fica sempre).
         $visibleCols = array_values(array_filter($columns, fn($c) =>
-            !$c->hidden && $c->checkDisplay() && !in_array($c->fieldKey, $hiddenColumns, true)
+            !$c->hidden && $c->checkDisplay()
+            && (!$c->hideable || !in_array($c->fieldKey, $hiddenColumns, true))
         ));
         if (empty($visibleCols)) {
             throw new \RuntimeException(__('grid.export_no_columns'));
@@ -2984,6 +2986,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($c['sortable']))  $col->sortable();
         if (!empty($c['hidden']))    $col->hidden();
         if (!empty($c['hideBelow'])) $col->hideBelow((int) $c['hideBelow']);
+        if (array_key_exists('hideable', $c) && !$c['hideable']) $col->notHideable();
         if (!empty($c['cardRole']))  $col->cardRole($c['cardRole']);
         if (!empty($c['editable'])) {
             $editType = $c['editType'] ?? 'text';
