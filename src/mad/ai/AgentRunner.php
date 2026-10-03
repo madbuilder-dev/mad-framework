@@ -2,6 +2,7 @@
 
 namespace Mad\Ai;
 
+use Laravel\Ai\Exceptions\StreamErrorException;
 use Laravel\Ai\Streaming\Events\Error as AiError;
 use Laravel\Ai\Streaming\Events\TextDelta;
 
@@ -46,22 +47,35 @@ final class AgentRunner
         $prompt   = trim($context) !== '' ? $context . "\n\n" . $userMessage : $userMessage;
         $response = $agent->stream($prompt, provider: MadAi::provider(), model: MadAi::model());
 
-        $response->each(function ($event) use (&$text, &$aborted, $sink): bool {
-            if ($sink->aborted()) {
-                $aborted = true;
+        $errored = false;
+        try {
+            $response->each(function ($event) use (&$text, &$aborted, &$errored, $sink): bool {
+                if ($sink->aborted()) {
+                    $aborted = true;
 
-                return false; // interrompe a iteracao (corta custo de token)
+                    return false; // interrompe a iteracao (corta custo de token)
+                }
+
+                if ($event instanceof TextDelta) {
+                    $text .= $event->delta;
+                    $sink->textDelta($event->delta);
+                } elseif ($event instanceof AiError) {
+                    $errored = true;
+                    $sink->error((string) ($event->message ?? 'Erro no modelo de IA.'));
+                }
+
+                return true;
+            });
+        } catch (StreamErrorException $e) {
+            // laravel/ai 1.0: depois do evento Error o passo termina em excecao.
+            // O erro ja foi pro iframe pelo evento; deixar subir fazia o
+            // controller somar um 2o erro generico e descartar o turno.
+            if (! $errored) {
+                $sink->error($e->getMessage() !== '' ? $e->getMessage() : 'Erro no modelo de IA.');
             }
 
-            if ($event instanceof TextDelta) {
-                $text .= $event->delta;
-                $sink->textDelta($event->delta);
-            } elseif ($event instanceof AiError) {
-                $sink->error((string) ($event->message ?? 'Erro no modelo de IA.'));
-            }
-
-            return true;
-        });
+            return new AgentResult($text, null, $aborted);
+        }
 
         // ->usage so e populado quando a iteracao completa (getIterator combina o
         // usage de todos os StreamEnd). Em abort a iteracao para e a propriedade

@@ -2,7 +2,7 @@
 
 namespace Mad\Ai;
 
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 
 /**
  * AgentResult — retorno de AgentRunner::run().
@@ -19,7 +19,7 @@ final class AgentResult
 {
     public function __construct(
         public string $text,
-        public ?Usage $usage,
+        public ?TextUsage $usage,
         public bool $aborted,
     ) {
     }

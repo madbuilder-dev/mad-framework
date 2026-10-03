@@ -3,7 +3,7 @@
 namespace Mad\Ai;
 
 use Laravel\Ai\Gateway\OpenRouter\OpenRouterGateway;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 
 /**
  * CostTrackingOpenRouterGateway — gateway OpenRouter que captura o custo.
@@ -20,7 +20,9 @@ use Laravel\Ai\Responses\Data\Usage;
  */
 final class CostTrackingOpenRouterGateway extends OpenRouterGateway
 {
-    protected function extractUsage(array $data): Usage
+    // laravel/ai 1.0: o pai devolve TextUsage. Tipo divergente aqui nao e
+    // excecao, e erro FATAL de compilacao (o try/catch do MadAi::boot nao pega).
+    protected function extractUsage(array $data): TextUsage
     {
         $cost = $data['usage']['cost'] ?? null;
         if (is_numeric($cost)) {

@@ -196,9 +196,9 @@ final class EmbedChatController
 
                 if ($result->usage !== null && ! $sink->aborted()) {
                     $sink->usage([
-                        'prompt'      => $result->usage->promptTokens,
-                        'completion'  => $result->usage->completionTokens,
-                        'total'       => $result->usage->promptTokens + $result->usage->completionTokens,
+                        'prompt'      => $result->usage->inputTokens,
+                        'completion'  => $result->usage->outputTokens,
+                        'total'       => $result->usage->inputTokens + $result->usage->outputTokens,
                         'cached'      => $result->usage->cacheReadInputTokens,
                         'cache_write' => $result->usage->cacheWriteInputTokens,
                     ]);

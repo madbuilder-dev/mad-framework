@@ -2,7 +2,7 @@
 
 namespace Mad\Ai;
 
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,14 +19,17 @@ final class UsageLog
     private const DB = 'log';
 
     /** @param array<string, mixed> $ctx userId/tokenId/tokenPrefix/systemSlug/unitId/context/provider/model/requestId/status/metadata */
-    public static function record(?Usage $usage, array $ctx, string $db = self::DB): void
+    public static function record(?TextUsage $usage, array $ctx, string $db = self::DB): void
     {
         try {
             EmbedSchema::ensure(self::DB);
             $pdo = DB::connection(self::DB)->getPdo();
 
-            $prompt     = $usage?->promptTokens;
-            $completion = $usage?->completionTokens;
+            // laravel/ai 1.0: `inputTokens` inclui o cache em todo provider (no
+            // 0.8 o Anthropic direto descontava; OpenRouter e Coding Plan ja
+            // incluiam). Os campos de cache sao subconjuntos dele.
+            $prompt     = $usage?->inputTokens;
+            $completion = $usage?->outputTokens;
 
             // Schema = o da tela "Consumo de IA" já portada (AiTokenUsage):
             // token_id / cache_read_tokens / cache_write_tokens / reasoning_tokens.
@@ -49,7 +52,7 @@ final class UsageLog
                 (int) ($completion ?? 0),
                 (int) ($usage?->cacheWriteInputTokens ?? 0),
                 (int) ($usage?->cacheReadInputTokens ?? 0),
-                0,
+                (int) ($usage?->reasoningTokens ?? 0),
                 (int) (($prompt ?? 0) + ($completion ?? 0)),
                 (string) ($ctx['requestId'] ?? ''),
                 (string) ($ctx['status'] ?? ''),

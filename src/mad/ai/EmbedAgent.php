@@ -2,46 +2,34 @@
 
 namespace Mad\Ai;
 
-use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Attributes\CacheInstructions;
+use Laravel\Ai\Attributes\CacheToolDefinitions;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\HasProviderOptions;
-use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Enums\Lab;
-use Laravel\Ai\ObjectSchema;
-use Laravel\Ai\Tools\ToolNameResolver;
 
 /**
- * EmbedAgent — AnonymousAgent com teto de iteracoes + prompt cache (Anthropic).
+ * EmbedAgent — AnonymousAgent com teto de iteracoes + prompt cache.
  *
  * #[MaxSteps] limita as rodadas modelo↔tools por turno (sem ele o gateway usa
  * round(count(tools) * 1.5) — alto demais com 24 tools).
  *
- * HasProviderOptions liga o prompt cache da Anthropic: o laravel/ai 0.7.2 nao
- * tem suporte nativo a cache_control, mas faz `array_merge($body, $providerOptions)`
- * como ULTIMO passo do buildTextRequestBody — entao sobrescrevemos:
- *   - `system`: string → bloco [{type:text, cache_control:ephemeral}]
- *   - `tools`:  re-mapeadas no MESMO formato do MapsTools::mapTool
- *               (name/description/input_schema), com cache_control na ULTIMA
- *               (um breakpoint cobre o array inteiro de tools)
- *
- * O loop de tools do gateway reusa o $requestBody ja merged (handleStreaming-
- * ToolCalls so faz append de messages e re-POST), entao o cache_control
- * sobrevive a todas as iteracoes do turno. tool_choice nao conflita: sem
- * schema o gateway seta {type:auto} e o merge nao toca nessa chave.
- *
  * Cache por driver:
- *   - anthropic  → override de system+tools com cache_control (acima).
+ *   - anthropic  → #[CacheInstructions] + #[CacheToolDefinitions] (nativos do
+ *     laravel/ai 1.0): o system vira bloco com cache_control e a ULTIMA tool
+ *     ganha o breakpoint (um breakpoint cobre o array inteiro de tools). Ate o
+ *     0.8 isto era feito a mao aqui, re-mapeando as tools numa copia do
+ *     MapsTools::mapTool via providerOptions.
  *   - openrouter → caching e AUTOMATICO nos providers que suportam (OpenAI,
  *     Gemini 2.5+, DeepSeek, Grok; modelos :free custam 0 de qualquer jeito).
  *     Injetamos `usage: {include: true}` (accounting nativo OpenRouter) para o
- *     stream final trazer cached_tokens/cache_write_tokens + cost — o gateway
- *     0.7.2 ja parseia `prompt_tokens_details.*` para o Usage. Marcacao
- *     explicita p/ Claude-via-OpenRouter exigiria cache_control multipart
- *     DENTRO de `messages` (dinamicas) — sem hook no 0.7.2; nao suportado.
+ *     stream final trazer cached_tokens/cache_write_tokens + cost.
  *   - outros → [].
  */
 #[MaxSteps(12)]
+#[CacheInstructions]
+#[CacheToolDefinitions]
 final class EmbedAgent extends AnonymousAgent implements HasProviderOptions
 {
     /**
@@ -62,71 +50,6 @@ final class EmbedAgent extends AnonymousAgent implements HasProviderOptions
     {
         $driver = $provider instanceof Lab ? $provider->value : (string) $provider;
 
-        return match ($driver) {
-            'anthropic'  => $this->anthropicOptions(),
-            'openrouter' => ['usage' => ['include' => true]],
-            default      => [],
-        };
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function anthropicOptions(): array
-    {
-        $options = [];
-
-        $system = (string) $this->instructions;
-        if ($system !== '') {
-            $options['system'] = [
-                ['type' => 'text', 'text' => $system, 'cache_control' => ['type' => 'ephemeral']],
-            ];
-        }
-
-        $tools = $this->mapToolsWithCacheControl();
-        if ($tools !== []) {
-            $options['tools'] = $tools;
-        }
-
-        return $options;
-    }
-
-    /**
-     * Re-mapeia as tools no formato Anthropic (espelho de MapsTools::mapTool) e
-     * marca a ULTIMA com cache_control — a Anthropic cacheia ate o breakpoint,
-     * cobrindo o array inteiro.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function mapToolsWithCacheControl(): array
-    {
-        $mapped = [];
-
-        foreach ($this->tools as $tool) {
-            if (! $tool instanceof Tool) {
-                continue; // ProviderTool (web search/fetch) nao e usado no embed
-            }
-
-            $schema = $tool->schema(new JsonSchemaTypeFactory());
-
-            $inputSchema = ['type' => 'object', 'properties' => (object) []];
-            if (filled($schema)) {
-                $schemaArray = (new ObjectSchema($schema))->toSchema();
-                $inputSchema['properties'] = (object) ($schemaArray['properties'] ?? []);
-                $inputSchema['required']   = $schemaArray['required'] ?? [];
-            }
-
-            $mapped[] = [
-                'name'         => ToolNameResolver::resolve($tool),
-                'description'  => (string) $tool->description(),
-                'input_schema' => $inputSchema,
-            ];
-        }
-
-        if ($mapped !== []) {
-            $mapped[count($mapped) - 1]['cache_control'] = ['type' => 'ephemeral'];
-        }
-
-        return $mapped;
+        return $driver === 'openrouter' ? ['usage' => ['include' => true]] : [];
     }
 }

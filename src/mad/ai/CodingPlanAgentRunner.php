@@ -6,7 +6,7 @@ use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\ObjectSchema;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Tools\ToolNameResolver;
 
 /**
@@ -184,7 +184,8 @@ final class CodingPlanAgentRunner
         $messages = self::buildMessages($system, $history, $userMessage, $context);
 
         $finalText = '';
-        $usage     = new Usage();
+        // Soma das rodadas; vira TextUsage (readonly no laravel/ai 1.0) no fim.
+        $usage     = ['in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0];
         $aborted   = false;
 
         // Estado dos guards (um turno): nudges são one-shot/escalonados pra
@@ -317,9 +318,16 @@ final class CodingPlanAgentRunner
             }
         }
 
-        $hasUsage = $usage->promptTokens > 0 || $usage->completionTokens > 0;
+        $hasUsage = $usage['in'] > 0 || $usage['out'] > 0;
+        // Nomeados: o construtor do TextUsage poe cache READ antes do WRITE.
+        $total = new TextUsage(
+            inputTokens: $usage['in'],
+            outputTokens: $usage['out'],
+            cacheReadInputTokens: $usage['cache_read'],
+            cacheWriteInputTokens: $usage['cache_write'],
+        );
 
-        return new AgentResult($finalText, $hasUsage && ! $aborted ? $usage : null, $aborted);
+        return new AgentResult($finalText, $hasUsage && ! $aborted ? $total : null, $aborted);
     }
 
     /**
@@ -410,7 +418,7 @@ final class CodingPlanAgentRunner
      * @param list<array<string, mixed>> $defs
      * @return array{0: string, 1: list<array{id: string, name: string, input: array<string, mixed>}>, 2: int}|null
      */
-    private function streamRound(array $sess, array $messages, array $defs, Usage $usage, bool &$aborted, bool &$leaked): ?array
+    private function streamRound(array $sess, array $messages, array $defs, array &$usage, bool &$aborted, bool &$leaked): ?array
     {
         $body = json_encode(
             ['messages' => $messages] + ($defs !== [] ? ['tools' => $defs] : []),
@@ -433,7 +441,7 @@ final class CodingPlanAgentRunner
         $deliveredChars = 0;
         $unmeasurable   = false;
 
-        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, $usage, $sink, &$aborted, &$leaked, &$muted, &$roundOut, &$deliveredChars, &$unmeasurable): void {
+        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, &$usage, $sink, &$aborted, &$leaked, &$muted, &$roundOut, &$deliveredChars, &$unmeasurable): void {
             $type = (string) ($ev['type'] ?? '');
             $d    = (array) ($ev['data'] ?? []);
             if ($type === 'text_delta') {
@@ -479,10 +487,11 @@ final class CodingPlanAgentRunner
                 }
             } elseif ($type === 'usage') {
                 $roundOut                      = ($roundOut ?? 0) + (int) ($d['completion_tokens'] ?? 0);
-                $usage->promptTokens          += (int) ($d['prompt_tokens'] ?? 0);
-                $usage->completionTokens      += (int) ($d['completion_tokens'] ?? 0);
-                $usage->cacheReadInputTokens  += (int) ($d['cache_read_input_tokens'] ?? 0);
-                $usage->cacheWriteInputTokens += (int) ($d['cache_creation_input_tokens'] ?? 0);
+                // `prompt_tokens` do agente ja inclui o cache (mesma semantica do TextUsage).
+                $usage['in']          += (int) ($d['prompt_tokens'] ?? 0);
+                $usage['out']         += (int) ($d['completion_tokens'] ?? 0);
+                $usage['cache_read']  += (int) ($d['cache_read_input_tokens'] ?? 0);
+                $usage['cache_write'] += (int) ($d['cache_creation_input_tokens'] ?? 0);
             } elseif ($type === 'error') {
                 $failed = (string) ($d['message'] ?? 'Erro no modelo de IA.');
             }

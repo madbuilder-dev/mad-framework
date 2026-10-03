@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.114.0] — 2026-10-02
+
+### Atenção
+
+- **Dependências:** o framework passa a usar o Laravel AI 1.0 e o Laravel MCP 1.0. Republique o projeto para atualizar. Quem atualiza as dependências do app à mão precisa subir `laravel/ai` e `laravel/mcp` para `^1.0.1` no `composer.json`.
+
+### Melhorias
+
+- **MCP:** o servidor MCP do app aceita clientes na versão mais nova do protocolo e continua atendendo os clientes antigos.
+- **Assistente de IA:** o consumo de tokens com Anthropic passa a incluir os tokens lidos do cache do prompt, como já acontecia com OpenRouter, e os tokens de raciocínio passam a ser registrados.
+
 ## [5.113.0] — 2026-10-02
 
 ### Novidades
