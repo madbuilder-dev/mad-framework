@@ -25,6 +25,9 @@ use Laravel\Ai\Enums\Lab;
  *     Gemini 2.5+, DeepSeek, Grok; modelos :free custam 0 de qualquer jeito).
  *     Injetamos `usage: {include: true}` (accounting nativo OpenRouter) para o
  *     stream final trazer cached_tokens/cache_write_tokens + cost.
+ *     Claude (`anthropic/*`) NAO cacheia sozinho pelo OpenRouter: os
+ *     breakpoints sao postos no CostTrackingOpenRouterGateway (ele ve o modelo
+ *     e o corpo inteiro).
  *   - outros → [].
  */
 #[MaxSteps(12)]

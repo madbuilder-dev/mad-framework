@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.114.1] — 2026-10-03
+
+### Melhorias
+
+- **Assistente de IA:** com modelos Claude pelo OpenRouter, o assistente passa a reaproveitar o cache entre as mensagens da conversa: a partir da segunda mensagem cada resposta custa de 5 a 7 vezes menos. Republique o projeto para aplicar.
+
 ## [5.114.0] — 2026-10-02
 
 ### Atenção
