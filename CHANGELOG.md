@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.115.2] — 2026-10-04
+
+### Correções
+
+- **Documentos (PDF):** o cabeçalho e o rodapé do documento apareciam em uma página só (o rodapé, por exemplo, só na última). Agora se repetem em todas as páginas. Republique o projeto para aplicar.
+
 ## [5.115.1] — 2026-10-04
 
 ### Correções

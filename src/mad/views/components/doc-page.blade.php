@@ -80,6 +80,30 @@
     $marginTop    = $mm($m[0] + $bandMm['header']);
     $marginBottom = $mm($m[2] + $bandMm['footer']);
 
+    // Faixas FORA do <main>: o Dompdf só repete `position:fixed` em todas as
+    // páginas quando o elemento é filho direto do <body>. Dentro do <main> a
+    // faixa saía numa página só — a 1ª se vinha antes do corpo, a última se
+    // vinha depois (madbuilder/builder#134). Cada faixa é a <div> raiz que o
+    // componente da banda emite (data-mad-doc-band); o fim dela é achado
+    // contando as <div> aninhadas (banda livre tem divs dentro).
+    $bandsHtml = '';
+    $bodyHtml = (string) ($slot ?? '');
+    $bandOpen = '/<div\b[^>]*\bdata-mad-doc-band="(?:header|footer)"[^>]*>/';
+    while (preg_match($bandOpen, $bodyHtml, $bandM, PREG_OFFSET_CAPTURE)) {
+        $start = $bandM[0][1];
+        $pos = $start + strlen($bandM[0][0]);
+        $depth = 1;
+        while ($depth > 0 && preg_match('/<div\b|<\/div\s*>/i', $bodyHtml, $tagM, PREG_OFFSET_CAPTURE, $pos)) {
+            $depth += str_starts_with(strtolower($tagM[0][0]), '</') ? -1 : 1;
+            $pos = $tagM[0][1] + strlen($tagM[0][0]);
+        }
+        if ($depth > 0) {
+            break; // HTML quebrado: deixa a faixa onde está
+        }
+        $bandsHtml .= substr($bodyHtml, $start, $pos - $start) . "\n";
+        $bodyHtml = substr($bodyHtml, 0, $start) . substr($bodyHtml, $pos);
+    }
+
     $wmEnabled = trim((string) $watermarkText) !== '';
     $wmColor = preg_match('/^#[0-9a-fA-F]{3,6}$/', $watermarkColor) ? $watermarkColor : '#94a3b8';
     $wmOpacity = max(0.0, min(1.0, (float) $watermarkOpacity));
@@ -135,8 +159,8 @@
     {{ $watermarkText }}
 </div>
 @endif
-<main>
-{!! $slot !!}
+{!! $bandsHtml !!}<main>
+{!! $bodyHtml !!}
 </main>
 </body>
 </html>
