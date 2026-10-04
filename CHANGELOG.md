@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.115.1] — 2026-10-04
+
+### Correções
+
+- **Copilot IA:** ao responder um ranking (ex.: "Em seguida: vendedor 5…"), o assistente às vezes pedia desculpas ("Você tem razão — vou executar agora…") e fazia uma consulta que ninguém pediu. Agora a resposta termina normalmente. Republique o projeto para aplicar.
+
+## [5.115.0] — 2026-10-04
+
+### Correções
+
+- **Listagens:** sem "Título da exportação", o arquivo exportado (CSV, Excel, PDF) e o cabeçalho do PDF saíam com o nome técnico da tela (ex.: `EquipamentoList`). Agora usam o título da tela (ex.: "Equipamentos"). Republique o projeto para aplicar.
+
 ## [5.114.1] — 2026-10-03
 
 ### Melhorias

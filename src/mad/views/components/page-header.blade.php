@@ -8,6 +8,12 @@
     // Tela embutida num <mad-transporter> (MadTransporter::embedHeader()).
     $_embed      = \Mad\Ui\MadTransporter::embedHeader();
     $_hasActions = $actions || !empty(trim($slot ?? ''));
+    // Título da tela também é o nome padrão da exportação da listagem (arquivo
+    // e cabeçalho do PDF) quando ela não declara título — ver MadDataGrid.
+    $_headerOwner = \Mad\Component\MadRenderContext::getComponent();
+    if ($_headerOwner !== null && method_exists($_headerOwner, '_notePageHeaderTitle')) {
+        $_headerOwner->_notePageHeaderTitle($title);
+    }
 @endphp
 @if($_embed === 'compact' || $_embed === 'title')
     {{-- Embutida: a página de fora já mostra título e breadcrumb. Fica a barra

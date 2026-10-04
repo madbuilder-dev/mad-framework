@@ -191,8 +191,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected bool $refreshable = false;
 
     /** Título da exportação (aparece no header do PDF e no sheet name do XLSX).
-     *  Se vazio, usa $title ou nome da classe. */
+     *  Se vazio: $title da tela → título do <mad-page-header> da tela → nome da
+     *  classe legível, sem o sufixo List ("EquipamentoList" → "Equipamento"). */
     protected string $exportTitle = '';
+
+    /** Título do <mad-page-header> desta tela, anotado durante o render (ver
+     *  _notePageHeaderTitle). Não serializado: todo redesenho completo passa
+     *  pelo cabeçalho de novo, e o resultado viaja congelado no exportMeta. */
+    protected string $_pageHeaderTitle = '';
 
     /** Nome-base do arquivo exportado (sem extensao).
      *  Se vazio, usa $exportTitle. Ex: 'relatorio-clientes' → relatorio-clientes.csv/xlsx/pdf. */
@@ -1611,7 +1617,42 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Título default da exportação (mesma regra de sempre). */
     private function _defaultExportTitle(): string
     {
-        return $this->exportTitle ?: (static::$title ?: static::class);
+        if ($this->exportTitle !== '') {
+            return $this->exportTitle;
+        }
+        $title = trim(static::getTitle());
+        if ($title !== '') {
+            return $title;
+        }
+        if ($this->_pageHeaderTitle !== '') {
+            return $this->_pageHeaderTitle;
+        }
+
+        return static::_humanizedClassTitle();
+    }
+
+    /**
+     * @internal Chamado pelo `<mad-page-header>` enquanto ESTA tela renderiza
+     * (MadRenderContext::getComponent()). O primeiro cabeçalho vale: uma tela
+     * embutida tem render próprio e anota no próprio componente.
+     */
+    public function _notePageHeaderTitle(mixed $title): void
+    {
+        if ($this->_pageHeaderTitle !== '' || !(is_scalar($title) || $title instanceof \Stringable)) {
+            return;
+        }
+        $plain = trim(html_entity_decode(strip_tags((string) $title), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $this->_pageHeaderTitle = (string) preg_replace('/\s+/u', ' ', $plain);
+    }
+
+    /** "EquipamentoList" → "Equipamento"; "OrdemServicoList" → "Ordem Servico". */
+    protected static function _humanizedClassTitle(): string
+    {
+        $base = class_basename(static::class);
+        $stem = (string) preg_replace('/(?<=.)(?:Listagem|Lista|List)$/', '', $base);
+        $human = trim(\Illuminate\Support\Str::headline($stem));
+
+        return $human !== '' ? $human : $base;
     }
 
     /**

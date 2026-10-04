@@ -51,7 +51,31 @@ final class CodingPlanAgentRunner
      * produção (MiniMax/GLM). Casa no FINAL do texto (últimos ~280 chars).
      */
     private const CONTINUE_INTENT_RE =
-        '/\b(let me|let\'?s|i\'?ll|i will|i need to|now i|next|going to|deixa eu|vou|agora vou|em seguida|pr[óo]ximo passo|preciso)\b/iu';
+        '/\b(let me|let\'?s|i\'?ll|i will|i need to|now i|going to|deixa eu|vou|agora vou|pr[óo]ximo passo)\b/iu';
+
+    /**
+     * "em seguida", "next" e "preciso" sozinhos não anunciam trabalho: em
+     * ranking são conectivo de lista. Soltos no regex de cima, a resposta
+     * "…vendedor 3 com 71,6%. Em seguida: vendedor 5 (65,5%)…" levava o nudge
+     * de narração e o modelo escrevia ao usuário "Você tem razão — vou
+     * executar agora a comparação…" e rodava uma consulta que ninguém pediu
+     * (Copilot de um CRM, 04/10/2026). Só contam com AÇÃO na primeira pessoa
+     * logo depois ("em seguida vou montar…", "next, I'll…", "preciso
+     * consultar…") ou quando o texto acaba em ":" (anúncio pendurado).
+     */
+    private const WEAK_INTENT_RE = '/(?<!\p{L})(?:em seguida|next|preciso)(?!\p{L})/iu';
+
+    private const FIRST_PERSON_ACTION =
+        '(?:vou|vamos|irei|iremos|eu|preciso|devo|tenho que|posso|deixa eu|i|i\'?ll|i will|we\'?ll|we will|let me|let\'?s|'
+        . '\p{L}{2,}(?:arei|erei|irei|aremos|eremos|iremos)|'
+        . 'busco|consulto|monto|crio|gero|calculo|verifico|confiro|mostro|exibo|listo|fa[çc]o|analiso|comparo|'
+        . 'preparo|executo|chamo|rodo|trago|ajusto|filtro|cruzo|somo)';
+
+    private const WEAK_INTENT_ACTION_RE =
+        '/(?<!\p{L})(?:em seguida|next)\s*,?\s+(?:[\p{L}\p{N}_-]+\s+){0,2}?' . self::FIRST_PERSON_ACTION . '(?!\p{L})'
+        // "preciso" + infinitivo, fora do impessoal ("é preciso revisar")
+        . '|(?<!\p{L})(?<!é )(?<!e )(?<!foi )(?<!era )(?<!ser )(?<!será )(?<!seria )(?<!fosse )'
+        . 'preciso\s+(?:\p{L}+\s+)?\p{L}{2,}(?:ar|er|ir|or)(?:-(?:lo|la|los|las))?(?!\p{L})/iu';
 
     /**
      * "ainda"/"falta" só anunciam trabalho seguidos (em até duas palavras) de
@@ -370,7 +394,9 @@ final class CodingPlanAgentRunner
         $tail = mb_substr($text, -280);
 
         return preg_match(self::CONTINUE_INTENT_RE, $tail) === 1
-            || preg_match(self::PENDING_REMAINDER_RE, $tail) === 1;
+            || preg_match(self::PENDING_REMAINDER_RE, $tail) === 1
+            || preg_match(self::WEAK_INTENT_ACTION_RE, $tail) === 1
+            || (str_ends_with(rtrim($tail), ':') && preg_match(self::WEAK_INTENT_RE, $tail) === 1);
     }
 
     /** Último parágrafo não-vazio casa algum padrão de bail? */
