@@ -280,8 +280,9 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         if ($start !== '' && $this->startField !== '') {
             $q->where($this->startField, '>=', $start);
         }
-        if ($end !== '' && $this->endField !== '') {
-            $q->where($this->endField, '<=', $end);
+        $endCol = $this->_endColumn();
+        if ($end !== '' && $endCol !== '') {
+            $q->where($endCol, '<=', $end);
         } elseif ($end !== '' && $this->startField !== '') {
             $q->where($this->startField, '<=', $end);
         }
@@ -371,8 +372,8 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             'title' => (string) $this->_resolveFieldOrTemplate($r, $this->titleField),
             'start' => $this->_normalizeDateTime((string) ($this->_resolvePath($r, $this->startField) ?? '')),
         ];
-        if ($this->endField !== '') {
-            $endVal = $this->_resolvePath($r, $this->endField);
+        if (($endCol = $this->_endColumn()) !== '') {
+            $endVal = $this->_resolvePath($r, $endCol);
             if ($endVal !== null && $endVal !== '') {
                 $event['end'] = $this->_normalizeDateTime((string) $endVal);
             }
@@ -530,17 +531,18 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         try {
             $oldStart = '';
             $oldEnd   = '';
-            DB::connection($db)->transaction(function () use ($recKey, $start, $end, &$oldStart, &$oldEnd) {
+            $endCol   = $this->_endColumn();
+            DB::connection($db)->transaction(function () use ($recKey, $start, $end, $endCol, &$oldStart, &$oldEnd) {
                 $cls = $this->_resolveModelClass($this->model);
                 $rec = $cls::find($recKey);
                 if (!$rec) {
                     throw new \Exception("Registro {$recKey} nao encontrado em {$this->model}");
                 }
                 $oldStart = (string) ($rec->{$this->startField} ?? '');
-                $oldEnd   = $this->endField !== '' ? (string) ($rec->{$this->endField} ?? '') : '';
+                $oldEnd   = $endCol !== '' ? (string) ($rec->{$endCol} ?? '') : '';
 
                 if ($this->startField !== '') $rec->{$this->startField} = $start;
-                if ($this->endField   !== '') $rec->{$this->endField}   = $end;
+                if ($endCol           !== '') $rec->{$endCol}           = $end;
                 $rec->save();
             });
 
@@ -993,6 +995,48 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
      * e devolve o nome original — o erro real estoura no ponto de uso, com a
      * mesma semantica do legado.
      */
+    /**
+     * Coluna de fim que dá pra usar DE VERDADE: a do `end-field` (padrão `end`),
+     * desde que exista na tabela do model. Sem ela o evento é pontual.
+     *
+     * O padrão `end` era usado às cegas: num calendário só com `start-field`
+     * (tabela sem coluna `end`) o filtro da janela virava `"end" <= …` — no
+     * SQLite um texto literal, que nenhum evento satisfaz; no Postgres/MySQL um
+     * erro de coluna que o getEvents engole — e o calendário abria VAZIO, sem
+     * erro nem log. Caminho de relação/expressão e introspecção que falha
+     * seguem como antes.
+     */
+    private function _endColumn(): string
+    {
+        $f = trim($this->endField);
+        if ($f === '' || $this->model === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $f)) {
+            return $f;
+        }
+        try {
+            $cls   = $this->_resolveModelClass($this->model);
+            $model = new $cls();
+            $conn  = $model->getConnectionName();
+            $table = $model->getTable();
+        } catch (\Throwable) {
+            return $f;
+        }
+
+        $cols = \Mad\Database\DataScope::memo('calendar.columns', ($conn ?? '') . '|' . $table, static function () use ($conn, $table): ?array {
+            try {
+                $c = array_map('strtolower', \Illuminate\Support\Facades\Schema::connection($conn)->getColumnListing($table));
+
+                return $c !== [] ? $c : null;
+            } catch (\Throwable) {
+                return null;
+            }
+        });
+        if ($cols === null) {
+            return $f;
+        }
+
+        return in_array(strtolower($f), $cols, true) ? $f : '';
+    }
+
     private function _resolveModelClass(string $model): string
     {
         try {

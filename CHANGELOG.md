@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.117.10] — 2026-10-05
+
+### Correções
+
+- **Calendário:** um calendário configurado só com o campo de data de início (sem data de fim) abria vazio, sem nenhum evento. Agora mostra os eventos no dia e na hora de início. Republique o projeto para aplicar.
+
 ## [5.117.9] — 2026-10-04
 
 ### Correções
