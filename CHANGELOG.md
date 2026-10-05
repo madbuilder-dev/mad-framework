@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.117.11] — 2026-10-05
+
+### Correções
+
+- **Monitoramento (MadTrace):** a verificação automática de saúde do servidor era registrada como acesso no painel de Desempenho e esgotava a cota mensal de eventos em poucos dias, deixando de registrar os erros reais do app. Agora ela fica de fora. Republique o projeto para aplicar.
+
 ## [5.117.10] — 2026-10-05
 
 ### Correções

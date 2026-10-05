@@ -240,6 +240,11 @@ class MadTrace
             'perf_timeout_ms'    => 1500,
             'before_send'        => null,   // callable(array $payload): ?array — use setBeforeSend() (config:cache não aceita closure)
             'ignore_routes'      => [],     // rotas a não rastrear
+            // caminhos da URL a não rastrear no APM (só a transação; erro
+            // continua sendo capturado). `/up` é o health check do Laravel:
+            // o healthcheck do container bate nele a cada 30 s e, amostrado,
+            // consumia a cota mensal do projeto sem dizer nada útil.
+            'ignore_paths'       => ['/up'],
             // endpoint dedicado p/ APM (schema 2). null = mesmo endpoint do DSN.
             'apm_endpoint'       => null,
             // jobs: o backend só aceita kind:infra (snapshot agregado via agente
@@ -1058,6 +1063,13 @@ class MadTrace
             }
         }
 
+        // ignore_paths — casa pelo CAMINHO da URL, não pela rota: rota de
+        // closure sem nome (o health check `/up`) chega aqui como "Closure",
+        // nome que não identifica nada.
+        if (self::isIgnoredPath()) {
+            return;
+        }
+
         $durationMs = (microtime(true) - self::$t0) * 1000;
         $status     = function_exists('http_response_code') ? (int) http_response_code() : 0;
         if ($status <= 0) {
@@ -1357,6 +1369,28 @@ class MadTrace
             return $method !== '' ? "{$class}::{$method}" : $class;
         }
         return null;
+    }
+
+    /** O caminho da request atual está em `ignore_paths`? (query string não conta) */
+    private static function isIgnoredPath(): bool
+    {
+        $uri = $_SERVER['REQUEST_URI'] ?? null;
+        if (!is_string($uri) || $uri === '') {
+            return false;
+        }
+        $path = parse_url($uri, PHP_URL_PATH);
+        if (!is_string($path) || $path === '') {
+            return false;
+        }
+        $path = '/' . trim($path, '/');
+
+        foreach ((array) (self::$config['ignore_paths'] ?? []) as $pat) {
+            $pat = '/' . trim((string) $pat, '/');
+            if ($path === $pat || (function_exists('fnmatch') && @fnmatch($pat, $path))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static function currentUrl(): string
