@@ -260,6 +260,9 @@ return [
             'error_title'      => 'Erro',
             'record_not_found' => 'Registro :id não encontrado em :model',
             'move_failed'      => 'Não foi possível mover o card. Tente de novo ou avise o administrador.',
+            'stage_move_failed' => 'Não foi possível reordenar as colunas. Tente de novo ou avise o administrador.',
+            'stage_not_found'  => 'Coluna :id não pertence a este quadro.',
+            'stages_locked'    => 'A reordenação de colunas não está habilitada neste quadro.',
         ],
 
         'sheet' => [
@@ -353,6 +356,51 @@ return [
         'action_delete'     => 'Excluir',
         'action_export'     => 'Exportar',
         'no_permission_to'  => 'Sem permissão para :action',
+        'no_permission_heading' => 'Sem permissão',
+
+        // Seletor de ícones (<mad-icon-field>)
+        'icon_field' => [
+            'placeholder'  => 'Selecione um ícone',
+            'select'       => 'Selecionar ícone',
+            'search'       => 'Buscar ícone...',
+            'clear_search' => 'Limpar busca',
+            'all'          => 'Todos',
+            'recent'       => 'Recentes',
+            'none'         => 'Nenhum ícone encontrado',
+            'term'         => 'Termo: ":q"',
+            'count_one'    => ':n ícone',
+            'count_many'   => ':n ícones',
+            'loaded'       => '(:n carregados)',
+            'clear'        => 'Limpar seleção',
+        ],
+
+        // Tela inicial (WelcomeView)
+        'welcome' => [
+            'greeting'          => 'Bem-vindo, :name',
+            'access_today'      => 'Acessos hoje',
+            'changes_today'     => 'Alterações hoje',
+            'notifications'     => 'Notificações',
+            'messages'          => 'Mensagens',
+            'shortcuts'         => 'Atalhos rápidos',
+            'accesses'          => ':count acessos',
+            'no_shortcuts'      => 'Sem atalhos ainda',
+            'no_shortcuts_hint' => 'Seus atalhos aparecerão conforme você usar o sistema.',
+            'see_all'           => 'Ver todas',
+            'no_notifications'  => 'Nenhuma notificação',
+            'recent_activity'   => 'Atividade recente',
+            'activity_insert'   => 'Você criou em :screen',
+            'activity_update'   => 'Você editou em :screen',
+            'activity_delete'   => 'Você excluiu em :screen',
+            'activity_other'    => 'Você alterou em :screen',
+            'records'           => ' (:count registros)',
+            'no_activity'       => 'Nenhuma atividade recente',
+            'no_activity_hint'  => 'Sua atividade aparecerá aqui conforme você usar o sistema.',
+            'now'               => 'agora',
+            'minutes_ago'       => 'há :n min',
+            'hours_ago'         => 'há :n h',
+            'yesterday'         => 'ontem',
+            'days_ago'          => 'há :n dias',
+        ],
 
         // ── Site público (componentes <mad-site-*>) ──────────────────────────
         // Texto que o VISITANTE lê. Segunda pessoa, sem jargão e sem promessa

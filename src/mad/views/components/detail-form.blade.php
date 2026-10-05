@@ -58,6 +58,30 @@
     // ── Normalizar rows (garantir __id) ─────────────────────────────────────
     $normalizedRows = \Mad\Form\FieldListColumn::normalizeRows($rows);
 
+    // ── Colunas calculadas (`evaluate`) nas linhas que já existem (#84) ─────
+    // A linha adicionada no navegador é calculada pelo gêmeo JS
+    // (`_applyEvaluates`); a que veio do banco era montada com `toArray()` e
+    // saía 0 — e o total do rodapé junto. Mesma regra do servidor
+    // (MadDetailFormRef::evaluateRow), aplicada antes da formatação abaixo.
+    $_dfEvalCols = array_values(array_filter(array_map(
+        fn($c) => $c->evaluate ? ['field' => $c->field, 'evaluate' => $c->evaluate] : null,
+        $columns
+    )));
+    if ($_dfEvalCols && $normalizedRows) {
+        try {
+            $_dfModelCls = $model ? \Mad\Form\ModelOptionsLoader::resolveModelClass($model) : '';
+        } catch (\Throwable $e) {
+            $_dfModelCls = '';
+        }
+        $_dfEval = new \Mad\Form\MadDetailFormRef($name, $_dfEvalCols, $_dfModelCls);
+        foreach ($normalizedRows as $_dfI => $_dfRow) {
+            $_dfEval->evaluateRow($_dfRow);
+            $normalizedRows[$_dfI] = $_dfRow;
+        }
+        unset($_dfEval, $_dfModelCls, $_dfRow, $_dfI);
+    }
+    unset($_dfEvalCols);
+
     // ── Transform CALLABLE / token de mídia: pré-computa no servidor ────────
     // O cliente não executa `Classe::metodo` nem monta o HTML de `file-thumb`.
     // Token built-in (money/cpf/date-long/…) NÃO entra aqui: tem gêmeo JS

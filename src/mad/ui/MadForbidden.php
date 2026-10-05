@@ -92,6 +92,39 @@ class MadForbidden
     }
 
     /**
+     * Corpo JSON da recusa no canal do wire (status 403 vai no cabeçalho).
+     *
+     * `title` é o título do aviso: sem ele o `mad-livewire.js` abria um diálogo
+     * de ERRO intitulado "Exceção" — a regra de acesso do perfil parecia pane do
+     * sistema. `forbidden` diz ao cliente que é recusa, não falha.
+     *
+     * @return array{error: string, title: string, forbidden: true}
+     */
+    public static function wirePayload(?string $key = null): array
+    {
+        return [
+            'error'     => self::actionMessage($key),
+            'title'     => self::heading(),
+            'forbidden' => true,
+        ];
+    }
+
+    /** Título curto do aviso de recusa: "Sem permissão". */
+    public static function heading(): string
+    {
+        try {
+            $t = \Mad\I18n\MadLang::t('mad.no_permission_heading');
+            if (is_string($t) && $t !== '' && $t !== 'mad.no_permission_heading') {
+                return $t;
+            }
+        } catch (\Throwable) {
+            // cai na reserva
+        }
+
+        return 'Sem permissão';
+    }
+
+    /**
      * É uma navegação direta do navegador, de alguém logado?
      *
      * Espelha o `MadAppController::isDirectNavigation()`: GET sem

@@ -525,7 +525,7 @@ class MadComponentHandler
             // isso parece defeito do sistema em vez de regra do perfil.
             $negada = PermissionGate::deniedActionKey($component, $action);
             if ($negada !== null) {
-                return ['error' => MadForbidden::actionMessage($negada), 'status' => 403];
+                return MadForbidden::wirePayload($negada) + ['status' => 403];
             }
 
             $params = [];

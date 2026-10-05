@@ -136,6 +136,47 @@ final class MadDocRuntime
     }
 
     /**
+     * Valor impresso no meio de um parágrafo do documento, escapado, com o
+     * hífen entre letras/dígitos trocado pelo hífen NÃO separável (U+2011).
+     *
+     * O PDF quebra a linha em hífen: "OS-2026-0001" no fim da linha virava
+     * "OS-" / "2026-0001". `white-space: nowrap` no valor inteiro seria pior
+     * (um nome longo nunca quebraria); assim o valor continua quebrando nos
+     * espaços e só o código fica inteiro.
+     */
+    public static function inline(mixed $value): string
+    {
+        if (is_bool($value)) {
+            $value = $value ? '1' : '';
+        }
+        $html = e(is_scalar($value) || $value instanceof \Stringable ? (string) $value : '');
+
+        return (string) preg_replace('/(?<=[\p{L}\p{N}])-(?=[\p{L}\p{N}])/u', '&#8209;', $html);
+    }
+
+    /**
+     * Compila os ecos `{{ … }}` de dentro de <mad-doc-text>/<mad-doc-heading>
+     * para {@see inline()} — roda no MadBlade antes de a tag virar componente.
+     * `{!! !!}` (HTML do autor), `{{-- --}}` e `@{{` ficam como estão.
+     */
+    public static function compileInlineEchoes(string $template): string
+    {
+        return (string) preg_replace_callback(
+            '#(<mad-doc-(text|heading)\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)(.*?)(</mad-doc-\2\s*>)#s',
+            static function (array $m): string {
+                $body = (string) preg_replace_callback(
+                    '/(?<!@)\{\{(?!--)\s*(.+?)\s*\}\}/s',
+                    static fn (array $e): string => '{!! \\Mad\\Doc\\MadDocRuntime::inline(' . $e[1] . ') !!}',
+                    $m[3]
+                );
+
+                return $m[1] . $body . $m[4];
+            },
+            $template
+        );
+    }
+
+    /**
      * Formata um valor cru conforme o tipo de coluna do documento.
      *
      * Built-ins delegam pro resolver ÚNICO compartilhado com o grid

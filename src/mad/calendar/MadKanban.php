@@ -323,7 +323,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         }
 
         // Badges — defaults sensatos se nada configurado
-        $badgeConfigs = !empty($cardBadges) ? $cardBadges : $this->_defaultBadges();
+        $badgeConfigs = $this->_effectiveBadges((array) $cardBadges);
         $badges = [];
         foreach ($badgeConfigs as $cfg) {
             $b = $this->_resolveBadge($item, $cfg, $id);
@@ -639,20 +639,65 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             $badges[] = ['type' => 'id'];
         }
 
-        if (!$noState) {
-            $stageRel = $this->_inferStageRelation();
-            if ($stageRel) {
-                $title = $this->stageTitleField !== '' ? $this->stageTitleField : 'nome';
-                $color = $this->stageColorField !== '' ? $this->stageColorField : 'cor';
-                $badges[] = [
-                    'type'      => 'text',
-                    'path'      => "{$stageRel}.{$title}",
-                    'colorPath' => "{$stageRel}.{$color}",
-                ];
-            }
+        if (!$noState && ($state = $this->_stateBadgeConfig()) !== null) {
+            $badges[] = $state;
         }
 
         return $badges;
+    }
+
+    /**
+     * Badge de estado: nome e cor da etapa do card, pela relação com a tabela
+     * de etapas. null = o model não tem a relação (não há o que mostrar).
+     */
+    protected function _stateBadgeConfig(): ?array
+    {
+        $stageRel = $this->_inferStageRelation();
+        if (!$stageRel) {
+            return null;
+        }
+        $title = $this->stageTitleField !== '' ? $this->stageTitleField : 'nome';
+        $color = $this->stageColorField !== '' ? $this->stageColorField : 'cor';
+
+        return [
+            'type'      => 'text',
+            'path'      => "{$stageRel}.{$title}",
+            'colorPath' => "{$stageRel}.{$color}",
+        ];
+    }
+
+    /**
+     * Badges que o card mostra: os declarados ou, sem nenhum, o par padrão
+     * (#ID + Estado). `<mad-kanban-badge type="state">` declarado ganha o mesmo
+     * caminho da etapa que o par padrão usa — antes ele caía no badge de texto
+     * sem `path` e sumia do card (o canvas do Studio mostrava, o app não).
+     * `color`/`color-path` declarados no badge continuam valendo.
+     */
+    protected function _effectiveBadges(array $cardBadges): array
+    {
+        if (empty($cardBadges)) {
+            return $this->_defaultBadges();
+        }
+        $out = [];
+        foreach ($cardBadges as $cfg) {
+            if (is_array($cfg) && ($cfg['type'] ?? '') === 'state'
+                && empty($cfg['path']) && empty($cfg['value'])) {
+                $state = $this->_stateBadgeConfig();
+                if ($state === null) {
+                    continue;
+                }
+                if (!empty($cfg['colorPath'])) {
+                    $state['colorPath'] = (string) $cfg['colorPath'];
+                } elseif (!empty($cfg['color'])) {
+                    unset($state['colorPath']);
+                    $state['color'] = (string) $cfg['color'];
+                }
+                $cfg = $state;
+            }
+            $out[] = $cfg;
+        }
+
+        return $out;
     }
 
     protected function _resolveBadge(object $item, array $cfg, int|string $id): ?array
@@ -803,18 +848,44 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     }
 
     /**
-     * Infere nome da relacao do stage a partir do stageField.
-     * Ex: stageField='estado_pedido_venda_id' → 'estado_pedido_venda'
+     * Nome da relação do card com a etapa, a partir do stageField.
+     * Ex: stageField='status_os_id' → 'statusOs' (o model gerado declara a
+     * relação em camelCase) ou 'status_os' (convenção antiga, snake).
+     *
+     * Devolvia sempre o snake: com etapa de nome composto o badge de estado
+     * procurava `$card->status_os`, que não é relação nenhuma, e sumia do card.
+     * Agora vale o método que existe no model e devolve uma relação; sem
+     * nenhum, fica o snake (comportamento anterior).
      */
     private function _inferStageRelation(): string
     {
-        $f = $this->stageField;
-        if ($f === '') return '';
-        if (str_ends_with($f, '_id')) {
-            return substr($f, 0, -3);
+        if ($this->_stageRelationName !== null) {
+            return $this->_stageRelationName;
         }
-        return $f;
+        $f = $this->stageField;
+        if ($f === '') {
+            return $this->_stageRelationName = '';
+        }
+        $base = str_ends_with($f, '_id') ? substr($f, 0, -3) : $f;
+
+        try {
+            $modelClass = $this->_resolveModelFqcn($this->model);
+            $probe      = new $modelClass();
+            foreach (array_unique([$base, \Illuminate\Support\Str::camel($base)]) as $cand) {
+                if (method_exists($probe, $cand)
+                    && $probe->{$cand}() instanceof \Illuminate\Database\Eloquent\Relations\Relation) {
+                    return $this->_stageRelationName = $cand;
+                }
+            }
+        } catch (\Throwable) {
+            // model não resolve ou o método exige argumentos: fica o snake
+        }
+
+        return $this->_stageRelationName = $base;
     }
+
+    /** Memo de _inferStageRelation() (por instância; não vai pro estado). */
+    private ?string $_stageRelationName = null;
 
     /**
      * Hook executado após mover um card entre colunas.
@@ -1134,7 +1205,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 }
             }
         };
-        $collect($card['badges'] ?? $this->cardBadges);
+        $collect($this->_effectiveBadges((array) ($card['badges'] ?? $this->cardBadges)));
         $collect($card['meta']   ?? $this->cardMeta);
         $collect($card['footer'] ?? $this->cardFooter);
 
@@ -1388,6 +1459,105 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             'hasMore' => count($items) === $this->cardsPerLoad,
         ];
         return $response;
+    }
+
+    /**
+     * Chamado pelo JS quando o usuário arrasta o cabeçalho de uma coluna
+     * (`stages-reorderable`). Grava a sequência nova (1..N) na coluna de ordem
+     * da tabela de etapas (`stage-order-field`, default `ordem`) e chama
+     * afterStageMove(). Antes a opção do painel não fazia nada: o framework
+     * guardava a flag e nenhum código a lia.
+     *
+     * A tela já está na ordem nova (move otimista do drag): sucesso devolve só
+     * ops parciais. Recusa mostra o erro e redesenha o board na ordem do banco
+     * — é o próprio rollback, sem op dedicada no cliente.
+     *
+     * Ordem `desc` grava a sequência invertida, para a tela continuar na ordem
+     * em que o usuário soltou.
+     */
+    public function onStageMove(string $stageId, string $orderJson): MadResponse
+    {
+        try {
+            if (!$this->stagesReorderable) {
+                throw new \RuntimeException(mad_t('mad.kanban.stages_locked'));
+            }
+            $stageClass = $this->_resolveModelFqcn($this->stageModel);
+            $field      = $this->_stageOrderColumn($stageClass);
+            if ($field === null) {
+                throw new \RuntimeException(mad_t('mad.kanban.stage_move_failed'));
+            }
+
+            $ordered = array_values(array_unique(array_map('strval', array_filter(
+                (array) (json_decode($orderJson, true) ?: []),
+                static fn ($v) => is_scalar($v) && (string) $v !== ''
+            ))));
+            if (!in_array((string) $stageId, $ordered, true)) {
+                throw new \RuntimeException(mad_t('mad.kanban.stage_not_found', ['id' => $stageId]));
+            }
+
+            // Só etapas DESTE quadro (o board lista a tabela inteira de etapas;
+            // id de fora é recusado em vez de gravado às cegas).
+            $pk   = $this->_keyName($stageClass);
+            $rows = $stageClass::query()->whereIn($pk, $ordered)->get()->keyBy(fn ($r) => (string) $r->{$pk});
+            foreach ($ordered as $id) {
+                if (!isset($rows[$id])) {
+                    throw new \RuntimeException(mad_t('mad.kanban.stage_not_found', ['id' => $id]));
+                }
+            }
+
+            $desc = strtolower($this->stageOrderDirection) === 'desc';
+            $n    = count($ordered);
+            $conn = (new $stageClass())->getConnectionName() ?: (string) config('database.default');
+            DB::connection($conn)->transaction(function () use ($ordered, $rows, $field, $desc, $n, $stageId) {
+                foreach ($ordered as $seq => $id) {
+                    $r = $rows[$id];
+                    $r->{$field} = $desc ? $n - $seq : $seq + 1;
+                    $r->save();
+                }
+                $this->afterStageMove((string) $stageId, $ordered);
+            });
+        } catch (\Throwable $e) {
+            // Redesenha o board na ordem do banco = desfaz o move otimista.
+            $this->forceFullRender();
+            return MadMessage::error(
+                mad_t('mad.kanban.error_title'),
+                \Mad\Ui\MadUserError::message($e, mad_t('mad.kanban.stage_move_failed'), static::class . '::onStageMove')
+            );
+        }
+
+        // A tela já está na ordem nova. Uma op (sem efeito no cliente) mantém a
+        // resposta no caminho parcial — sem ops, o handler manda o HTML inteiro.
+        $this->_skipFullRender = true;
+        $response = new MadResponse();
+        $response->ops[] = ['op' => 'kanban_stages_moved', 'stageId' => (string) $stageId];
+        return $response;
+    }
+
+    /**
+     * Hook executado depois que o usuário reordena as colunas do quadro, dentro
+     * da mesma transação da gravação (lançar desfaz a ordem nova).
+     *
+     * @param string       $stageId    etapa que foi arrastada
+     * @param list<string> $orderedIds ids das etapas na ordem nova, da esquerda para a direita
+     */
+    protected function afterStageMove(string $stageId, array $orderedIds): void
+    {
+        // Override para logging/auditoria.
+    }
+
+    /**
+     * Coluna de ordem das ETAPAS que dá pra gravar: `stage-order-field`
+     * (default `ordem`), identificador válido, diferente da chave e existente
+     * na tabela. null = o quadro ordena pela chave e não há o que gravar.
+     */
+    private function _stageOrderColumn(string $stageClass): ?string
+    {
+        $field = trim($this->stageOrderField) !== '' ? trim($this->stageOrderField) : 'ordem';
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) || $field === $this->_keyName($stageClass)) {
+            return null;
+        }
+
+        return $this->_modelHasColumn($stageClass, $field) ? $field : null;
     }
 
     // ── Colunas de ordem / contadores ────────────────────────────────────

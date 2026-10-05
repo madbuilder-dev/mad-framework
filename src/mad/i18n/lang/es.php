@@ -260,6 +260,9 @@ return [
             'error_title'      => 'Error',
             'record_not_found' => 'Registro :id no encontrado en :model',
             'move_failed'      => 'No fue posible mover la tarjeta. Inténtelo de nuevo o avise al administrador.',
+            'stage_move_failed' => 'No fue posible reordenar las columnas. Inténtelo de nuevo o avise al administrador.',
+            'stage_not_found'  => 'La columna :id no pertenece a este tablero.',
+            'stages_locked'    => 'La reordenación de columnas no está habilitada en este tablero.',
         ],
 
         'sheet' => [
@@ -353,6 +356,51 @@ return [
         'action_delete'     => 'Eliminar',
         'action_export'     => 'Exportar',
         'no_permission_to'  => 'Sin permiso para :action',
+        'no_permission_heading' => 'Sin permiso',
+
+        // Seletor de ícones (<mad-icon-field>)
+        'icon_field' => [
+            'placeholder'  => 'Seleccione un ícono',
+            'select'       => 'Seleccionar ícono',
+            'search'       => 'Buscar ícono...',
+            'clear_search' => 'Limpiar búsqueda',
+            'all'          => 'Todos',
+            'recent'       => 'Recientes',
+            'none'         => 'Ningún ícono encontrado',
+            'term'         => 'Término: ":q"',
+            'count_one'    => ':n ícono',
+            'count_many'   => ':n íconos',
+            'loaded'       => '(:n cargados)',
+            'clear'        => 'Limpiar selección',
+        ],
+
+        // Tela inicial (WelcomeView)
+        'welcome' => [
+            'greeting'          => 'Bienvenido, :name',
+            'access_today'      => 'Accesos hoy',
+            'changes_today'     => 'Cambios hoy',
+            'notifications'     => 'Notificaciones',
+            'messages'          => 'Mensajes',
+            'shortcuts'         => 'Accesos rápidos',
+            'accesses'          => ':count accesos',
+            'no_shortcuts'      => 'Aún no hay accesos rápidos',
+            'no_shortcuts_hint' => 'Tus accesos rápidos aparecerán a medida que uses el sistema.',
+            'see_all'           => 'Ver todas',
+            'no_notifications'  => 'Ninguna notificación',
+            'recent_activity'   => 'Actividad reciente',
+            'activity_insert'   => 'Creaste registros en :screen',
+            'activity_update'   => 'Editaste registros en :screen',
+            'activity_delete'   => 'Eliminaste registros en :screen',
+            'activity_other'    => 'Cambiaste registros en :screen',
+            'records'           => ' (:count registros)',
+            'no_activity'       => 'Sin actividad reciente',
+            'no_activity_hint'  => 'Tu actividad aparecerá aquí a medida que uses el sistema.',
+            'now'               => 'ahora',
+            'minutes_ago'       => 'hace :n min',
+            'hours_ago'         => 'hace :n h',
+            'yesterday'         => 'ayer',
+            'days_ago'          => 'hace :n días',
+        ],
 
         // ── Sitio público (componentes <mad-site-*>) ─────────────────────────
         'site_menu'                    => 'Abrir menú',

@@ -1808,6 +1808,73 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return [$columns, $visibleCols];
     }
 
+    /**
+     * Texto do `{FILTERS}` da exportação: os filtros da barra (congelados no
+     * render) mais os do funil do cabeçalho de cada coluna. Antes o funil era
+     * respeitado nas linhas mas não aparecia no texto — o leitor do PDF não
+     * sabia que o relatório estava filtrado (#81).
+     *
+     * @param list<GridColumn> $columns
+     */
+    protected function _exportFiltersText(string $barText, array $columns): string
+    {
+        $parts = trim($barText) !== '' ? [trim($barText)] : [];
+        foreach ($this->colFilters as $key => $f) {
+            $value = $f['value'] ?? null;
+            if (static::_filterValueIsEmpty($value)) {
+                continue;
+            }
+            $field = (string) ($f['field'] ?? $key);
+            $col   = null;
+            foreach ($columns as $c) {
+                if (! ($c instanceof GridColumn)) continue;
+                $cField = $c->colFilterField ?: $c->field;
+                if ($cField === $field || $c->field === $field || GridRenderHelpers::rowDataKey($c->field) === $field) {
+                    $col = $c;
+                    break;
+                }
+            }
+            $label   = $col ? trim(strip_tags($col->label)) : '';
+            $display = $col ? static::_colFilterDisplay($col, $value, (string) ($f['display'] ?? ''), $this->colFilters) : '';
+            if ($display === '') {
+                $display = trim((string) ($f['display'] ?? '')) ?: trim(static::_filterValueLabel($value));
+            }
+            if ($display === '') {
+                continue;
+            }
+            $parts[] = ($label !== '' ? $label : $field) . ': ' . $display;
+        }
+
+        return implode('  ·  ', $parts);
+    }
+
+    /**
+     * Rótulo do valor de um funil de coluna, igual ao chip "Filtros aplicados":
+     * filtro tipado sai do mesmo `filterChipLabel` (opção do select, Sim/Não,
+     * "de X até Y", nome do registro do dbcombo); o legado usa o texto que o
+     * navegador mandou, resolvendo pelo model quando ele é o próprio id.
+     */
+    private static function _colFilterDisplay(GridColumn $col, mixed $value, string $display, array $colFilters): string
+    {
+        if ($col->filterKind !== '') {
+            $labels = static::_buildFilterCaches([$col], $colFilters)[2][$col->field] ?? [];
+
+            return trim(static::filterChipLabel($col, $value, $labels));
+        }
+        if (is_scalar($value) && ($display === '' || $display === (string) $value) && $col->filterModel !== '') {
+            try {
+                $record = $col->filterModel::find($value);
+                if ($record !== null) {
+                    $df = $col->filterDisplay ?: 'nome';
+                    $display = (string) (str_contains($df, '{') ? $record->render($df) : ($record->$df ?? $display));
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return trim($display);
+    }
+
     /** Título e nome-base do arquivo exportado (exportMeta > props > título da tela). */
     private function _exportNames(): array
     {
@@ -1849,6 +1916,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // `filters` vem congelado do render, que é quando o <mad-dash-filters>
         // declara os campos.
         $meta = $this->exportMeta;
+        // Funil do cabeçalho da coluna entra no `{FILTERS}` junto da barra (#81).
+        $meta['filters']   = $this->_exportFiltersText((string) ($meta['filters'] ?? ''), $columns);
         $meta['period']    = $this->reportPeriodLabel();
         $meta['groupBand'] = $this->groupBand;
         $meta['rowDetail'] = $this->rowDetail !== '';

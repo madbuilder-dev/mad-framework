@@ -1198,7 +1198,12 @@ const MadWire = (() => {
                         ? window.MadWebRoute(data.redirect) : data.redirect;
                     return;
                 }
-                if (typeof __mad_error === 'function') {
+                // Recusa por permissão (403) é regra do perfil, não pane: aviso
+                // com o título que o servidor manda ("Sem permissão"). Antes
+                // saía um diálogo de ERRO intitulado "Exceção".
+                if ((res.status === 403 || data.forbidden) && typeof __mad_warning === 'function') {
+                    __mad_warning(data.title || 'Sem permissão', data.error);
+                } else if (typeof __mad_error === 'function') {
                     __mad_error('Exceção', data.error);
                 } else {
                     alert('Erro: ' + data.error);

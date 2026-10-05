@@ -147,7 +147,9 @@
                         {{ $f['display'] }}
                     </div>
                 @else
-                    <span class="{{ $f['class'] }}">
+                    {{-- Rodapé de texto (ex.: vendedor): classe própria — sem ela o
+                         ícone saía no tamanho padrão do Lucide (24px). --}}
+                    <span class="mad-kanban-card-foot-text {{ $f['class'] }}">
                         @if (!empty($f['icon']))
                             <i data-lucide="{{ $f['icon'] }}"></i>
                         @endif

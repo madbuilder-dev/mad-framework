@@ -267,6 +267,9 @@ return [
             'error_title'      => 'Error',
             'record_not_found' => 'Record :id not found in :model',
             'move_failed'      => 'The card could not be moved. Try again or contact the administrator.',
+            'stage_move_failed' => 'The columns could not be reordered. Try again or contact the administrator.',
+            'stage_not_found'  => 'Column :id does not belong to this board.',
+            'stages_locked'    => 'Column reordering is not enabled on this board.',
         ],
 
         // Batch-entry sheet (MadSheet)
@@ -365,6 +368,51 @@ return [
         'action_delete'     => 'Delete',
         'action_export'     => 'Export',
         'no_permission_to'  => 'No permission to :action',
+        'no_permission_heading' => 'No permission',
+
+        // Seletor de ícones (<mad-icon-field>)
+        'icon_field' => [
+            'placeholder'  => 'Select an icon',
+            'select'       => 'Select icon',
+            'search'       => 'Search icon...',
+            'clear_search' => 'Clear search',
+            'all'          => 'All',
+            'recent'       => 'Recent',
+            'none'         => 'No icon found',
+            'term'         => 'Term: ":q"',
+            'count_one'    => ':n icon',
+            'count_many'   => ':n icons',
+            'loaded'       => '(:n loaded)',
+            'clear'        => 'Clear selection',
+        ],
+
+        // Tela inicial (WelcomeView)
+        'welcome' => [
+            'greeting'          => 'Welcome, :name',
+            'access_today'      => 'Logins today',
+            'changes_today'     => 'Changes today',
+            'notifications'     => 'Notifications',
+            'messages'          => 'Messages',
+            'shortcuts'         => 'Quick shortcuts',
+            'accesses'          => ':count visits',
+            'no_shortcuts'      => 'No shortcuts yet',
+            'no_shortcuts_hint' => 'Your shortcuts will show up as you use the system.',
+            'see_all'           => 'See all',
+            'no_notifications'  => 'No notifications',
+            'recent_activity'   => 'Recent activity',
+            'activity_insert'   => 'You added records in :screen',
+            'activity_update'   => 'You edited records in :screen',
+            'activity_delete'   => 'You deleted records in :screen',
+            'activity_other'    => 'You changed records in :screen',
+            'records'           => ' (:count records)',
+            'no_activity'       => 'No recent activity',
+            'no_activity_hint'  => 'Your activity will show up here as you use the system.',
+            'now'               => 'just now',
+            'minutes_ago'       => ':n min ago',
+            'hours_ago'         => ':n h ago',
+            'yesterday'         => 'yesterday',
+            'days_ago'          => ':n days ago',
+        ],
 
         // ── Public site (<mad-site-*> components) ────────────────────────────
         'site_menu'                    => 'Open menu',

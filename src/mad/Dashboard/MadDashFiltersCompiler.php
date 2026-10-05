@@ -308,6 +308,18 @@ class MadDashFiltersCompiler
         );
     }
 
+    /** Miolo da tag sem nada além de espaço, `{{-- --}}` e `<!-- -->`? */
+    private static function innerIsBlank(string $b64): bool
+    {
+        if ($b64 === '') {
+            return true;
+        }
+        $inner = (string) base64_decode($b64, true);
+        $inner = (string) preg_replace(['/\{\{--.*?--\}\}/s', '/<!--.*?-->/s'], '', $inner);
+
+        return trim($inner) === '';
+    }
+
     /**
      * Parses inner HTML, extracting metadata for each known native filter tag.
      */
@@ -376,6 +388,14 @@ class MadDashFiltersCompiler
             if (isset($attrs['filter-op'])) {
                 $rawHtml = preg_replace('/\s*filter-op\s*=\s*(?:"[^"]*"|\'[^\']*\'|\S+)/', '', $rawHtml);
             }
+            // Select opcional sem placeholder ganha a opção vazia "Todos" (#74).
+            // Sem ela o navegador marca a 1ª opção e qualquer "Aplicar" da barra
+            // (um form só para todos os filtros) enviava esse valor: a lista
+            // filtrava sozinha e "Limpar filtros" não tinha para onde voltar.
+            // Expressão (não texto) para seguir o idioma de quem abre a tela.
+            if ($data['tag'] === 'mad-select-field' && self::selectNeedsEmptyOption($attrs)) {
+                $rawHtml = preg_replace('#^<mad-select-field\b#', '<mad-select-field :placeholder="mad_t(\'mad.dashf.all\')"', $rawHtml, 1);
+            }
 
             $fields[] = [
                 'tag'      => $data['tag'],
@@ -398,6 +418,28 @@ class MadDashFiltersCompiler
      * Preserves :prefix (bind) and @prefix (alpine) in attribute names.
      * Values stored as literal strings (without surrounding quotes).
      */
+    /**
+     * Select de filtro precisa da opção vazia? Não quando o autor já deu um
+     * placeholder, quando é obrigatório (vazio não é escolha válida) ou de
+     * seleção múltipla (lá "nada marcado" já é o vazio).
+     */
+    private static function selectNeedsEmptyOption(array $attrs): bool
+    {
+        if (isset($attrs['placeholder']) || isset($attrs[':placeholder'])) {
+            return false;
+        }
+        foreach (['required', 'multiple'] as $flag) {
+            if (isset($attrs[$flag]) && $attrs[$flag] !== 'false') {
+                return false;
+            }
+            if (isset($attrs[':' . $flag]) && trim((string) $attrs[':' . $flag]) !== 'false') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static function parseAttrs(string $str): array
     {
         $attrs = [];
@@ -467,6 +509,14 @@ class MadDashFiltersCompiler
 
     private static function buildOutput(array $wrapperAttrs, array $fields): string
     {
+        // Sem nenhum filtro declarado (tag vazia, só com comentários/blocos da
+        // plataforma, ou self-closing), a barra virava uma faixa com só
+        // "Atualizar" e "Limpar" — espaço ocupado sugerindo filtros que não
+        // existem. Conteúdo próprio (layout custom) continua renderizando.
+        if ($fields === [] && self::innerIsBlank((string) ($wrapperAttrs['_raw_inner_b64'] ?? ''))) {
+            return '';
+        }
+
         $style = (string) ($wrapperAttrs['style'] ?? 'toolbar');
         $renderer = self::STYLE_RENDERERS[$style] ?? self::STYLE_RENDERERS['toolbar'];
 

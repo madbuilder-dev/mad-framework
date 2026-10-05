@@ -529,12 +529,31 @@ trait MadFiltersTrait
 
         switch ($pt) {
             case 'month-year':
+                if ($this->mes === '' && $this->ano === '') {
+                    break;
+                }
                 $mesCol = $this->periodColumnFor('mes', $model);
                 $anoCol = $this->periodColumnFor('ano', $model);
-                if ($this->mes !== '' && $mesCol && $this->modelHasColumn($model, $mesCol)) {
+                $hasMes = $mesCol && $this->modelHasColumn($model, $mesCol);
+                $hasAno = $anoCol && $this->modelHasColumn($model, $anoCol);
+                // Tabela sem `mes`/`ano` (só tem data, ex.: dt_abertura): o filtro
+                // não recortava nada e não avisava (#87). Com a coluna de data da
+                // tela, o mês/ano recorta por ela.
+                if (!$hasMes && !$hasAno) {
+                    if ($df !== '' && $this->modelHasColumn($model, $df)) {
+                        if ($this->mes !== '') $q->whereMonth($df, '=', (int) $this->mes);
+                        if ($this->ano !== '') $q->whereYear($df, '=', (int) $this->ano);
+                    } else {
+                        $this->periodFilterWarning('[MadFilters] filtro mês/ano ignorado em ' . ($model ?: 'consulta')
+                            . ': a tabela não tem colunas mes/ano e a tela não define $dateField. Use o período por data'
+                            . ' (date-range com dtIni/dtFim) ou defina $dateField.');
+                    }
+                    break;
+                }
+                if ($this->mes !== '' && $hasMes) {
                     $q->where($mesCol, '=', $this->mes);
                 }
-                if ($this->ano !== '' && $anoCol && $this->modelHasColumn($model, $anoCol)) {
+                if ($this->ano !== '' && $hasAno) {
                     $q->where($anoCol, '=', $this->ano);
                 }
                 break;
@@ -554,6 +573,24 @@ trait MadFiltersTrait
             case 'preset':
                 $this->applyPresetsToQuery($q);
                 break;
+        }
+    }
+
+    /**
+     * Aviso de filtro de período que não pôde recortar (#87). Uma vez por
+     * mensagem por requisição: o mesmo dashboard chama o filtro por cartão.
+     */
+    protected function periodFilterWarning(string $message): void
+    {
+        static $seen = [];
+        if (isset($seen[$message])) {
+            return;
+        }
+        $seen[$message] = true;
+        try {
+            \Illuminate\Support\Facades\Log::warning($message);
+        } catch (\Throwable $e) {
+            error_log($message);
         }
     }
 
@@ -1242,6 +1279,16 @@ trait MadFiltersTrait
                     if ((string) $opt[2] === (string) $value) {
                         $label = trim(strip_tags($opt[3]));
                         if ($label !== '') return $label;
+                    }
+                }
+            }
+            // `:items="['execucao' => 'Execução', …]"` — o que o gerador emite.
+            // Sem isto a etiqueta mostrava o valor cru ("Tipo: execucao", #74).
+            $items = (string) ($field['attrs'][':items'] ?? '');
+            if ($items !== '' && preg_match_all('/([\'"])((?:(?!\1).)*)\1\s*=>\s*([\'"])((?:(?!\3).)*)\3/u', $items, $pairs, PREG_SET_ORDER)) {
+                foreach ($pairs as $pair) {
+                    if ((string) $pair[2] === (string) $value && trim($pair[4]) !== '') {
+                        return trim($pair[4]);
                     }
                 }
             }

@@ -118,6 +118,12 @@ class MadBladeCompiler extends BladeCompiler
             $value = \Mad\Doc\MadDocRepeaterCompiler::compile($value);
         }
 
+        // 1.55. Valores ({{ }}) no meio dos parágrafos/títulos do documento não
+        //       quebram a linha no hífen (OS-2026-0001) — ver MadDocRuntime::inline.
+        if (strpos($value, '<mad-doc-text') !== false || strpos($value, '<mad-doc-heading') !== false) {
+            $value = \Mad\Doc\MadDocRuntime::compileInlineEchoes($value);
+        }
+
         // 1.6. Preprocessa <mad-doc-data-table> + filhos <mad-doc-data-table-column>.
         //      Mesma motivação do 1.5: agregamos os filhos em :columns="[…]"
         //      e emitimos um <x-doc-data-table> com :rows vindos da query do model

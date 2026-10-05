@@ -4642,6 +4642,16 @@ document.addEventListener('alpine:init', () => {
                 var sv = (val === null || val === undefined) ? '' : String(val);
                 if (this._keepTyped(el, fieldName, sv)) return;   // '' não apaga o digitado
 
+                // Mesmo valor que já está no campo: não regrava nem dispara
+                // input/change. O CNPJ preenche o CEP, o CEP faz a própria busca
+                // e devolve o MESMO estado — o change do estado recarregava a
+                // cidade pelo depends-on, que piscava "Selecione..." até a
+                // cidade ser escrita de novo.
+                if (sv !== '' && String(el.value == null ? '' : el.value) === sv) {
+                    this._rememberFill(el, fieldName, sv);
+                    return;
+                }
+
                 if (el.tagName === 'SELECT') {
                     // Rotulo vindo do servidor (`_labels`): a cidade recem
                     // criada — ou qualquer id fora da lista carregada com a
@@ -6519,6 +6529,15 @@ document.addEventListener('alpine:init', () => {
                 this.$nextTick(() => {
                     this._icons();
                     const pop = this._pop();
+                    // Abre para BAIXO do rodapé quando cabe na tela: para cima ele
+                    // cobria o "Nenhuma condição ainda". Sem espaço (painel no pé
+                    // da tela, celular) continua abrindo para cima.
+                    const menu = pop && pop.querySelector('.mad-dg-cf-saved');
+                    const foot = pop && pop.querySelector('.mad-dg-cf-foot');
+                    if (menu && foot) {
+                        const room = window.innerHeight - foot.getBoundingClientRect().bottom;
+                        menu.classList.toggle('is-below', room >= menu.offsetHeight + 12);
+                    }
                     const el = pop && pop.querySelector('.mad-dg-cf-saved-item, .mad-dg-cf-save-new:not([disabled])');
                     if (el) el.focus();
                 });
@@ -9068,6 +9087,7 @@ document.addEventListener('alpine:init', () => {
 
         return {
             dragging: null,        // { cardId, fromStageId }
+            draggingStage: null,   // { stageId, before: [ids] } — arrasto de coluna
             dragOverStage: null,
             loadingMore: {},       // { stageId: bool }
             offsets: {},           // { stageId: int }
@@ -9268,6 +9288,85 @@ document.addEventListener('alpine:init', () => {
                 if (this._indicator && this._indicator.parentNode) {
                     this._indicator.parentNode.removeChild(this._indicator);
                 }
+            },
+
+            // ── Reordenar colunas (stages-reorderable) ───────────────
+            // O cabeçalho é a alça; a coluna muda de lugar ao vivo durante o
+            // arrasto e, ao soltar, o servidor grava a ordem nova (onStageMove).
+            // Recusa do servidor redesenha o board na ordem do banco.
+
+            onStageDragStart(e) {
+                if (!cfg.stagesReorderable) return;
+                // Arrasto que nasce num botão de ação da coluna não é reorder.
+                if (e.target.closest && e.target.closest('button, a, input, select, textarea')) {
+                    e.preventDefault();
+                    return;
+                }
+                const col = e.currentTarget.closest('.mad-kanban-col');
+                if (!col) return;
+                this.draggingStage = { stageId: String(col.dataset.stageId), before: this._stageOrder() };
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', 'stage:' + col.dataset.stageId);
+                requestAnimationFrame(() => col.classList.add('mad-kanban-col--dragging'));
+            },
+
+            onStageDragOver(e) {
+                if (!this.draggingStage) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const board   = _board || this.$el;
+                const dragged = this._stageCol(this.draggingStage.stageId);
+                const over    = e.currentTarget;
+                if (!dragged || over === dragged || over.parentNode !== board) return;
+                const r = over.getBoundingClientRect();
+                const after = e.clientX > r.left + r.width / 2;
+                const ref = after ? over.nextElementSibling : over;
+                if (ref !== dragged && dragged.nextElementSibling !== ref) board.insertBefore(dragged, ref);
+            },
+
+            onStageDrop(e) {
+                if (!this.draggingStage) return;
+                e.preventDefault();
+                const { stageId, before } = this.draggingStage;
+                this._endStageDrag();
+                const after = this._stageOrder();
+                if (after.join('\u0000') === before.join('\u0000')) return;
+                if (_wrapper) {
+                    MadWire.call(_wrapper, 'onStageMove', [stageId, JSON.stringify(after)]);
+                }
+            },
+
+            onStageDragEnd() {
+                // Soltou fora de uma coluna (ou Esc): volta à ordem do início.
+                if (this.draggingStage) this._restoreStageOrder(this.draggingStage.before);
+                this._endStageDrag();
+            },
+
+            _endStageDrag() {
+                const col = this.draggingStage ? this._stageCol(this.draggingStage.stageId) : null;
+                if (col) col.classList.remove('mad-kanban-col--dragging');
+                this.draggingStage = null;
+            },
+
+            _stageCol(stageId) {
+                const board = _board || this.$el;
+                return Array.from(board.children).find(c =>
+                    c.classList.contains('mad-kanban-col') && String(c.dataset.stageId) === String(stageId)) || null;
+            },
+
+            _stageOrder() {
+                const board = _board || this.$el;
+                return Array.from(board.children)
+                    .filter(c => c.classList.contains('mad-kanban-col'))
+                    .map(c => String(c.dataset.stageId));
+            },
+
+            _restoreStageOrder(ids) {
+                const board = _board || this.$el;
+                (ids || []).forEach(id => {
+                    const col = this._stageCol(id);
+                    if (col) board.appendChild(col);
+                });
             },
 
             // ── Infinite scroll ──────────────────────────────────────

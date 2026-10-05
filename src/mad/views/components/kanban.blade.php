@@ -14,6 +14,7 @@
     // cobre inclusive id no PATH (`/app/clientes/__MAD_id__/editar`).
     $clickNav = \Mad\Ui\MadAction::navTarget((string) ($clickTarget ?? ''), 'onShow');
     $draggable  = $__component->isDraggable();
+    $stagesReorderable = method_exists($__component, 'isStagesReorderable') && $__component->isStagesReorderable();
     $perLoad    = $__component->getCardsPerLoad();
     $topScroll  = method_exists($__component, 'hasTopScroll') ? $__component->hasTopScroll() : false;
     $titleField = method_exists($__component, 'getStageTitleField') ? $__component->getStageTitleField() : 'nome';
@@ -47,6 +48,7 @@
          stages: {{ json_encode(array_values($stagesJson)) }},
          cardsPerLoad: {{ $perLoad }},
          draggable: {{ $draggable ? 'true' : 'false' }},
+         stagesReorderable: {{ $stagesReorderable ? 'true' : 'false' }},
          clickTarget: {{ json_encode((string) ($clickNav['class'] ?? '')) }},
          clickMethod: {{ json_encode((string) ($clickNav['method'] ?? 'onShow')) }},
          clickUrl: {{ json_encode((string) ($clickNav['url'] ?? '')) }},
@@ -58,13 +60,23 @@
     {{-- stage id nunca é interpolado dentro de expressão Alpine (id com aspa
          quebraria/injetaria JS) — as expressões leem $el.dataset.stageId. --}}
     <div class="mad-kanban-col" data-stage-id="{{ $sid }}"
+         @if ($stagesReorderable)
+         @dragover="onStageDragOver($event)"
+         @drop="onStageDrop($event)"
+         @endif
          :class="{ 'mad-kanban-col--drag-over': dragOverStage === $el.dataset.stageId }">
 
         {{-- Header --}}
         @php
             $stageActions = method_exists($__component, 'getStageActions') ? $__component->getStageActions($stage) : [];
         @endphp
-        <div class="mad-kanban-col-header">
+        {{-- stages-reorderable: o cabeçalho é a alça para arrastar a coluna. --}}
+        <div class="mad-kanban-col-header @if ($stagesReorderable) mad-kanban-col-header--draggable @endif"
+             @if ($stagesReorderable)
+             draggable="true"
+             @dragstart="onStageDragStart($event)"
+             @dragend="onStageDragEnd($event)"
+             @endif>
             <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                 <div class="mad-kanban-col-dot" style="background-color:{{ $__component->safeColor($stage->{$colorField} ?? null, 'var(--mad-text-muted, #71717a)') }}"></div>
                 <span class="mad-kanban-col-title">{{ $stage->{$titleField} ?? '' }}</span>

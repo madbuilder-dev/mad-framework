@@ -196,18 +196,18 @@ class MadSiteWireController
      */
     private static function recusa(?array $post = null): JsonResponse
     {
-        $mensagem = 'forbidden';
+        $corpo = ['error' => 'forbidden'];
 
         if ($post !== null) {
             try {
-                $mensagem = MadForbidden::actionMessage(PermissionGate::deniedWireActionKey($post));
+                $corpo = MadForbidden::wirePayload(PermissionGate::deniedWireActionKey($post));
             } catch (\Throwable) {
-                $mensagem = 'forbidden';
+                $corpo = ['error' => 'forbidden'];
             }
         }
 
         return new JsonResponse(
-            ['error' => $mensagem],
+            $corpo,
             403,
             ['X-Mad-Site-Wire' => '1', 'Cache-Control' => 'no-store, private'],
         );

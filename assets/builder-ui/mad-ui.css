@@ -7580,6 +7580,7 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 }
 .mad-dg-cf-menu { z-index: 4; width: 290px; max-width: calc(100% - 16px); }
 .mad-dg-cf-saved { z-index: 3; bottom: calc(100% + 6px); left: 8px; width: 320px; max-width: calc(100% - 16px); }
+.mad-dg-cf-saved.is-below { bottom: auto; top: calc(100% + 6px); }
 .mad-dg-cf-menu-search { position: relative; padding: 8px; border-bottom: 1px solid var(--mad-border); }
 .mad-dg-cf-menu-search svg {
   position: absolute;
@@ -7860,6 +7861,18 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   border-bottom: 1px solid var(--mad-border);
   margin-bottom: 4px;
 }
+.mad-dg-col-chooser-title-text { flex: 1; }
+.mad-dg-col-chooser-close {
+  border: 0;
+  background: transparent;
+  color: var(--mad-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.mad-dg-col-chooser-close:hover { color: var(--mad-text); background: var(--mad-bg-muted, #f4f4f5); }
 .mad-dg-col-chooser-item {
   display: flex;
   align-items: center;
@@ -10146,6 +10159,10 @@ textarea.mad-dg-inline-input {
   padding: 10px 12px;
   border-radius: 12px 12px 0 0;
 }
+/* stages-reorderable: o cabeçalho é a alça para arrastar a coluna. */
+.mad-kanban-col-header--draggable { cursor: grab; }
+.mad-kanban-col-header--draggable:active { cursor: grabbing; }
+.mad-kanban-col--dragging { opacity: .45; }
 .mad-kanban-col-dot {
   width: 10px;
   height: 10px;
@@ -10532,6 +10549,15 @@ textarea.mad-dg-inline-input {
   color: var(--mad-text-subtle, #a1a1aa);
 }
 .mad-kanban-card-date svg { width: 10px; height: 10px; }
+.mad-kanban-card-foot-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--mad-text-muted, #71717a);
+}
+.mad-kanban-card-foot-text svg { width: 12px; height: 12px; flex-shrink: 0; }
 
 /* ── Drag & drop indicator ── */
 .mad-kanban-drop-indicator {
@@ -10900,6 +10926,14 @@ textarea.mad-dg-inline-input {
   border-color: #fca5a5;
 }
 .mad-tl-dot--danger svg { color: #dc2626; }
+
+/* Cor em hex (tipo/etapa/categoria do cadastro): fundo e borda translúcidos
+   da própria cor — leem sobre o fundo claro e o escuro —, ícone na cor. */
+.mad-tl-dot--custom {
+  background: color-mix(in srgb, var(--mad-tl-c) 18%, transparent);
+  border-color: color-mix(in srgb, var(--mad-tl-c) 55%, transparent);
+}
+.mad-tl-dot--custom svg { color: var(--mad-tl-c); }
 
 /* ── Time label ── */
 .mad-tl-time {

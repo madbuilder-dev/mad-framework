@@ -220,9 +220,11 @@
             @endif
             @if($hasExport)
             <div class="mad-dg-export-wrap" x-data="{ exportOpen: false }">
-                <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click.stop="exportOpen=!exportOpen"
-                        @if($_exportDeny !== '') title="{{ $_exportDeny }}"
-                        @else :disabled="visibleColCount(true) === 0"
+                {{-- Exportar negado: o próprio botão fica apagado, com a dica, igual
+                     à lixeira — antes só os formatos dentro do menu ficavam. --}}
+                <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm"
+                        @if($_exportDeny !== '') aria-disabled="true" data-mad-deny title="{{ $_exportDeny }}"
+                        @else @click.stop="exportOpen=!exportOpen" :disabled="visibleColCount(true) === 0"
                         :title="visibleColCount(true) === 0 ? @js(__('grid.export_no_columns')) : @js(__('grid.export'))"@endif>
                     <i data-lucide="download" style="width:14px;height:14px;"></i>
                 </button>
@@ -241,7 +243,7 @@
             @endif
             @if($hasChooser)
             <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
-                    @click.stop="colChooserOpen=!colChooserOpen"
+                    @click.stop="colChooserOpen=!colChooserOpen; colChooserOpen && $nextTick(() => { const p = $refs.colChooserPanel; if (p && p.parentElement) p.style.top = Math.max(0, $el.getBoundingClientRect().bottom - p.parentElement.getBoundingClientRect().top + 4) + 'px'; })"
                     title="{{ __('grid.choose_columns') }}">
                 <i data-lucide="columns-2" style="width:14px;height:14px;"></i>
             </button>
@@ -417,14 +419,20 @@
     @if(!empty($colsConfig))
     {{-- Painel abre do lado do botão: à esquerda quando ele está no <th> das ações à esquerda. --}}
     <div class="mad-dg-col-chooser-wrap{{ $hasActions && $actionSide === 'left' ? ' mad-dg-col-chooser-wrap-start' : '' }}">
+        {{-- O botão posiciona o painel logo abaixo dele (top dinâmico): com top:0
+             o painel cobria o botão no <th> das ações e não fechava pelo clique.
+             O × do título fecha também. --}}
         <div class="mad-dg-col-chooser-panel"
+             x-ref="colChooserPanel"
              x-show="colChooserOpen"
              x-cloak
              @click.outside="colChooserOpen=false"
              @keydown.escape.window="colChooserOpen=false">
             <div class="mad-dg-col-chooser-title">
                 <i data-lucide="columns-2" style="width:13px;height:13px;"></i>
-                {{ __('grid.visible_columns') }}
+                <span class="mad-dg-col-chooser-title-text">{{ __('grid.visible_columns') }}</span>
+                <button type="button" class="mad-dg-col-chooser-close" @click.stop="colChooserOpen=false"
+                        aria-label="{{ mad_t('mad.btn.close') }}">&times;</button>
             </div>
             @foreach($colsConfig as $colCfg)
             @if(!empty($colCfg['hideable']))
@@ -471,7 +479,7 @@
                     <th class="mad-dg-th mad-dg-th-actions" style="width:90px;">
                         @if($columnChooser && $hasChoosable)
                         <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
-                                @click.stop="colChooserOpen=!colChooserOpen"
+                                @click.stop="colChooserOpen=!colChooserOpen; colChooserOpen && $nextTick(() => { const p = $refs.colChooserPanel; if (p && p.parentElement) p.style.top = Math.max(0, $el.getBoundingClientRect().bottom - p.parentElement.getBoundingClientRect().top + 4) + 'px'; })"
                                 title="{{ __('grid.choose_columns') }}">
                             <i data-lucide="columns-2" style="width:14px;height:14px;"></i>
                         </button>
@@ -949,7 +957,7 @@
                     <th class="mad-dg-th mad-dg-th-actions" style="width:90px;">
                         @if($columnChooser && $hasChoosable)
                         <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-col-chooser-btn"
-                                @click.stop="colChooserOpen=!colChooserOpen"
+                                @click.stop="colChooserOpen=!colChooserOpen; colChooserOpen && $nextTick(() => { const p = $refs.colChooserPanel; if (p && p.parentElement) p.style.top = Math.max(0, $el.getBoundingClientRect().bottom - p.parentElement.getBoundingClientRect().top + 4) + 'px'; })"
                                 title="{{ __('grid.choose_columns') }}">
                             <i data-lucide="columns-2" style="width:14px;height:14px;"></i>
                         </button>
@@ -1764,7 +1772,9 @@
 
     {{-- ── Footer: info + per-page + paginação ───────────────────────── --}}
     <div class="mad-dg-footer">
-        <span class="mad-dg-info">
+        {{-- data-range-tpl: o mad.js monta "1–1 de 1" quando o manage_row põe a
+             1ª linha numa lista que estava vazia (#75) — no idioma do app. --}}
+        <span class="mad-dg-info" data-range-tpl="{{ __('grid.range', ['from' => '__F__', 'to' => '__T__', 'total' => '__N__']) }}">
             @if($total > 0){{ __('grid.range', ['from' => $pgStart, 'to' => $pgEnd, 'total' => $total]) }}@elseif($deferred)@else {{ __('grid.no_records') }} @endif
         </span>
         <div class="mad-dg-per-page">

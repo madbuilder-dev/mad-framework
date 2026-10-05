@@ -104,11 +104,23 @@
                 if ($both_sides) {
                     $sideClass = ($itemIndex % 2 === 0) ? ' mad-tl-item--left' : ' mad-tl-item--right';
                 }
-                $dotColor = $item['color'] ? ' mad-tl-dot--' . $item['color'] : '';
+                // Cor: variante (success/info/warning/danger) vira classe; hex —
+                // o que tabela de domínio guarda (tipo, etapa, categoria) — vira
+                // a variável --mad-tl-c no próprio marcador. Antes o hex virava
+                // a classe `mad-tl-dot--#1E55E8`, que não existe: marcador cinza.
+                $dotColor = '';
+                $dotStyle = '';
+                $_c = trim((string) ($item['color'] ?? ''));
+                if (preg_match('/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $_c)) {
+                    $dotColor = ' mad-tl-dot--custom';
+                    $dotStyle = '--mad-tl-c:' . $_c;
+                } elseif ($_c !== '' && preg_match('/^[a-z][a-z0-9_-]*$/i', $_c)) {
+                    $dotColor = ' mad-tl-dot--' . $_c;
+                }
                 $itemIndex++;
             @endphp
             <div class="mad-tl-item{{ $sideClass }}">
-                <div class="mad-tl-dot{{ $dotColor }}">
+                <div class="mad-tl-dot{{ $dotColor }}"@if($dotStyle) style="{{ $dotStyle }}"@endif>
                     @if($item['icon'])
                         <i data-lucide="{{ $item['icon'] }}"></i>
                     @endif

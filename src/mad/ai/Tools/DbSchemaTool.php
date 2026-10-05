@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Mad\Ai\SseSink;
+use Mad\Ai\UserDirectory;
 use Mad\Mcp\McpManifest;
 use Mad\Mcp\McpAccess;
 
@@ -97,11 +98,24 @@ final class DbSchemaTool implements Tool
                 static fn (array $f): string => (string) ($f['name'] ?? '')
                     . (isset($f['type']) ? (' ' . $f['type']) : '')
                     . (! empty($f['pk']) ? ' pk' : '')
-                    . (! empty($f['fk']) && is_string($f['fk']) ? (' → ' . $f['fk']) : '')
+                    . (! empty($f['fk']) && is_string($f['fk']) ? (' → ' . UserDirectory::rewriteFk($f['fk'])) : '')
                     . (! empty($f['desc']) && is_string($f['desc']) ? (' — ' . $f['desc']) : '')
                     . (! empty($f['pii']) ? ' (pii: valor mascarado)' : ''),
                 $cols
             );
+        }
+
+        // Nome dos usuários (vendedor, responsável, criado por…): a tabela de
+        // usuários é protegida inteira; o assistente lê id e nome por esta
+        // relação virtual. Só com alguma tabela liberada — e nunca por cima de
+        // uma tabela de verdade com o mesmo nome.
+        $realUsersTable = false;
+        try {
+            $realUsersTable = $sb !== null && $sb->hasTable(UserDirectory::TABLE);
+        } catch (\Throwable) {
+        }
+        if ($tables !== [] && ! $realUsersTable) {
+            $tables[UserDirectory::TABLE] = UserDirectory::schemaColumns();
         }
 
         $out = ['driver' => $driver, 'tables' => $tables];

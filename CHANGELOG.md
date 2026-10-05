@@ -12,6 +12,138 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.117.9] — 2026-10-04
+
+### Correções
+
+- **Listagens:** no filtro avançado, o menu "Meus filtros" abria para cima e cobria o texto do painel. Agora abre para baixo quando há espaço na tela. Republique o projeto para aplicar.
+
+## [5.117.8] — 2026-10-04
+
+### Correções
+
+- **Listagens:** o painel "Escolher colunas" cobria o próprio botão que o abriu e não fechava clicando nele de novo. Agora abre logo abaixo do botão, fecha pelo mesmo botão e tem um "×" para fechar. Republique o projeto para aplicar.
+
+## [5.117.7] — 2026-10-04
+
+### Correções
+
+- **App gerado:** trocar de página ou baixar um arquivo enchia o console do navegador com "fragmento falhou … Failed to fetch" (notificações, mensagens e busca do cabeçalho), sem nada de errado de fato. Esses avisos falsos saíram; erros reais continuam aparecendo. Republique o projeto para aplicar.
+
+## [5.117.6] — 2026-10-04
+
+### Correções
+
+- **Documentos (PDF):** num parágrafo do documento, um código como "OS-2026-0001" no fim da linha era quebrado no hífen ("OS-" numa linha e "2026-0001" na outra). Agora o código fica inteiro e a linha quebra antes dele. Republique o projeto para aplicar.
+
+## [5.117.5] — 2026-10-04
+
+### Correções
+
+- **Componentes:** a linha do tempo (`<mad-timeline>`) passa a usar cores em hexadecimal (ex.: a cor cadastrada no tipo de atividade) no marcador de cada item. Antes só as cores prontas (sucesso, informação, aviso, perigo) funcionavam e as demais saíam cinza. Republique o projeto para aplicar.
+
+## [5.117.4] — 2026-10-04
+
+### Correções
+
+- **Kanban:** o ícone do rodapé de texto do cartão (ex.: vendedor) aparecia grande, bem maior que o texto. Agora tem o mesmo tamanho dos outros ícones do cartão. Republique o projeto para aplicar.
+
+## [5.117.3] — 2026-10-04
+
+### Correções
+
+- **Formulários:** o seletor de ícones mostrava "1739 icone s" no rodapé e outros textos sem acento. Agora mostra "1739 ícones", com todos os textos corretos e no idioma do usuário. Republique o projeto para aplicar.
+
+## [5.117.2] — 2026-10-04
+
+### Correções
+
+- **App gerado:** a tela inicial do administrador ("Bem-vindo, …") mostrava textos sem acento, como "ALTERACOES HOJE", "NOTIFICACOES" e "Atalhos rapidos". Agora aparecem corretos e acompanham o idioma do usuário (português, português de Portugal, inglês e espanhol). Republique o projeto para aplicar.
+
+## [5.117.1] — 2026-10-04
+
+### Correções
+
+- **Importação de dados:** ao importar uma planilha, a tela mostrava "Erro na importação" mesmo com os dados já gravados, e quem tentava de novo duplicava os registros. Agora mostra o resultado da importação, e uma falha ao registrar o histórico não vira mais erro na tela. Republique o projeto para aplicar.
+
+## [5.117.0] — 2026-10-04
+
+### Melhorias
+
+- **Agente de IA:** o Chat IA do app passa a responder com o nome das pessoas em perguntas sobre vendedor, responsável ou quem criou o registro ("Ana Ribeiro", não "vendedor 3"). Ele vê só o nome dos usuários da unidade ou empresa atual; login, e-mail e senha continuam fora do alcance. Republique o projeto para aplicar.
+
+## [5.116.5] — 2026-10-04
+
+### Correções
+
+- **Dashboards:** dashboard, Kanban ou calendário sem nenhum filtro declarado não mostram mais uma barra de filtros vazia, só com os botões Atualizar e Limpar. Republique o projeto para aplicar.
+
+## [5.116.4] — 2026-10-04
+
+### Correções
+
+- **Formulários:** ao preencher o CNPJ com busca automática de endereço, o campo Cidade recarregava duas vezes e passava um instante em "Selecione..." antes de voltar com a cidade. Agora carrega uma vez só. Republique o projeto para aplicar.
+
+## [5.116.3] — 2026-10-04
+
+### Correções
+
+- **Permissões:** com a ação Exportar negada no perfil, o botão de exportar da listagem passa a ficar apagado, com a dica "Sem permissão para exportar", igual às outras ações negadas. Antes ele parecia ativo e só os formatos dentro do menu ficavam desabilitados. Republique o projeto para aplicar.
+
+## [5.116.2] — 2026-10-04
+
+### Correções
+
+- **Permissões:** quando o servidor recusa uma ação por falta de permissão no perfil, o app passa a mostrar um aviso "Sem permissão" em vez de um erro intitulado "Exceção", que parecia falha do sistema.
+
+## [5.116.1] — 2026-10-04
+
+### Correções
+
+- **Kanban:** o badge de estado do cartão (nome e cor da etapa) não aparecia no app quando a etapa tinha nome composto, como "Status da OS", mesmo aparecendo no editor. Republique o projeto para aplicar.
+
+## [5.116.0] — 2026-10-04
+
+### Correções
+
+- **Kanban:** a opção "Habilitar evento de ordenação" passa a funcionar: arraste o cabeçalho de uma coluna para mudar a ordem das etapas, e a nova ordem fica gravada. Antes a opção não fazia nada no app. Republique o projeto para aplicar.
+
+## [5.115.8] — 2026-10-04
+
+### Correções
+
+- **Calendário:** na visão Mês do tema padrão, evento com horário aparecia como uma barra escura com o título ilegível. Agora mostra o ponto colorido, a hora e o título, como nas outras visões.
+
+## [5.115.7] — 2026-10-04
+
+### Correções
+
+- **Listagens:** no PDF exportado, o `{FILTERS}` do cabeçalho passa a listar também os filtros aplicados pelo funil das colunas (ex.: "Tipo: Pessoa física"), com o mesmo texto do chip "Filtros aplicados". Antes o relatório saía filtrado sem dizer por quê.
+
+## [5.115.6] — 2026-10-04
+
+### Correções
+
+- **Dashboards:** o filtro "Período mês/ano" não recortava nada numa tabela que só tem data (sem colunas de mês e ano), e os indicadores continuavam iguais ao escolher o mês. Agora ele recorta pela coluna de data da tela; sem nenhuma das duas, o app registra um aviso no log. Republique o projeto para aplicar.
+
+## [5.115.5] — 2026-10-04
+
+### Correções
+
+- **Listagens:** com "Após salvar" atualizando a listagem sem recarregar, a linha nova aparecia mas o rodapé continuava com a contagem antiga (ex.: "1–9 de 9" com 10 linhas na tela). Agora o rodapé soma a linha nova. Republique o projeto para aplicar.
+
+## [5.115.4] — 2026-10-04
+
+### Correções
+
+- **Formulários:** num detalhe (`<mad-detail-form>`), a coluna calculada (`evaluate`) mostrava R$ 0,00 em todas as linhas que vieram do banco ao abrir o registro para edição, e o total do rodapé também. Agora as linhas existentes já chegam calculadas. Republique o projeto para aplicar.
+
+## [5.115.3] — 2026-10-04
+
+### Correções
+
+- **Listagens:** na barra de filtros, uma lista de opções sem o texto "Todos" passava a filtrar sozinha pelo primeiro valor quando outro filtro era aplicado, e a etiqueta mostrava o valor técnico (ex.: "Tipo: execucao"). Agora a lista começa em "Todos" e a etiqueta mostra o nome da opção. Republique o projeto para aplicar.
+
 ## [5.115.2] — 2026-10-04
 
 ### Correções

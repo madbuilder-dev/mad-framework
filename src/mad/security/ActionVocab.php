@@ -60,6 +60,7 @@ final class ActionVocab
             'onEventUpdate',       // agenda
             'onTaskUpdate',        // kanban
             'onCardMove',          // kanban
+            'onStageMove',         // kanban: reordenar colunas
             'onSaveBatch',         // planilha
             'onReparent',          // organograma
             // conciliação

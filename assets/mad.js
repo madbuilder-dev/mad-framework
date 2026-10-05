@@ -173,6 +173,47 @@ window._madRangeAfterRemove = function (text, remaining, perPage) {
     return { text: out + s.slice(last) };
 };
 
+// Par do _madRangeAfterRemove para o manage_row que INSERE uma linha (#75):
+// "Após salvar" punha a linha nova na grid e o rodapé seguia "1–1 de 1" com 2
+// linhas na tela. Pura (tests/js/grid-manage-row-footer.test.mjs): texto atual
+// do rodapé, linhas NA PÁGINA depois da inserção e o modelo traduzido do
+// rodapé (`data-range-tpl`, com __F__/__T__/__N__) para a lista que estava vazia.
+window._madRangeAfterInsert = function (text, rowsOnPage, tpl) {
+    const s = String(text || '');
+    const nums = [];
+    const re = /\d+(?:[.,]\d{3})*/g;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+        nums.push({ at: m.index, raw: m[0], n: parseInt(m[0].replace(/[.,]/g, ''), 10) });
+    }
+    if (nums.length === 3) {
+        const from = nums[0].n, to = nums[1].n, total = nums[2].n;
+        const newTotal = total + 1;
+        const newTo = Math.min(newTotal, Math.max(to + 1, from + rowsOnPage - 1));
+        let out = '';
+        let last = 0;
+        [[nums[1], newTo], [nums[2], newTotal]].forEach(function (pair) {
+            out += s.slice(last, pair[0].at) + String(pair[1]);
+            last = pair[0].at + pair[0].raw.length;
+        });
+        return { text: out + s.slice(last) };
+    }
+    if (tpl && rowsOnPage > 0) {
+        return { text: String(tpl).replace('__F__', '1').replace('__T__', String(rowsOnPage)).replace('__N__', String(rowsOnPage)) };
+    }
+    return null;
+};
+
+// Aplica o _madRangeAfterInsert no rodapé de UMA grid (`.mad-dg-wrap`).
+window._madGridFooterAfterInsert = function (wrap) {
+    if (!wrap) return;
+    const info = wrap.querySelector('.mad-dg-info');
+    if (!info) return;
+    const rows = wrap.querySelectorAll('.mad-dg-body tr[data-row-id]').length;
+    const act = _madRangeAfterInsert(info.textContent.trim(), rows, info.getAttribute('data-range-tpl') || '');
+    if (act && act.text !== undefined) info.textContent = act.text;
+};
+
 // Aplica o _madRangeAfterRemove no rodapé de UMA grid (`.mad-dg-wrap`).
 window._madGridFooterAfterRemove = function (wrap) {
     if (!wrap) return;
@@ -1876,6 +1917,7 @@ const Mad = {
                             if (emptyTr) emptyTr.style.display = 'none';
                             tbody.insertAdjacentHTML('afterbegin', op.html);
                             const newRow = tbody.querySelector(`tr[data-row-id="${_madCssId(op.rowId)}"]`);
+                            if (newRow) _madGridFooterAfterInsert(newRow.closest('.mad-dg-wrap'));
                             if (newRow) {
                                 newRow.classList.add('mad-dg-row-highlight');
                                 if (window.lucide) lucide.createIcons({ attrs: { class: ['lucide'] }, nameAttr: 'data-lucide' });

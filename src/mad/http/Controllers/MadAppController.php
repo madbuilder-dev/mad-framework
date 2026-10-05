@@ -33,9 +33,10 @@ class MadAppController
             // Recusa de AÇÃO numa tela que abre diz o que foi recusado ("Sem
             // permissão para excluir"); recusa da TELA mantém o recado de
             // sempre — e as três portas do wire respondem igual.
-            return new JsonResponse([
-                'error' => MadForbidden::actionMessage(PermissionGate::deniedWireActionKey($_POST)),
-            ], 403);
+            return new JsonResponse(
+                MadForbidden::wirePayload(PermissionGate::deniedWireActionKey($_POST)),
+                403
+            );
         }
 
         try {

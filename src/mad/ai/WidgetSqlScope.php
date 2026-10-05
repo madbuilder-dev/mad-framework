@@ -67,9 +67,14 @@ final class WidgetSqlScope
         }
 
         $mentioned = [];
+        // Diretório de usuários (id, nome): relação virtual, só quando o banco
+        // não tem uma tabela de verdade com esse nome — ver UserDirectory.
+        $users = false;
         foreach (ProtectedData::mentionedNames($sql) as $tok) {
             if (isset($rel[$tok])) {
                 $mentioned[$tok] = $rel[$tok];
+            } elseif ($tok === UserDirectory::TABLE) {
+                $users = true;
             }
         }
 
@@ -79,12 +84,12 @@ final class WidgetSqlScope
             }
         }
 
-        if ($mentioned === []) {
+        if ($mentioned === [] && ! $users) {
             return ['ok' => true, 'with' => ''];
         }
 
         $grammar = DB::connection($db)->getQueryGrammar();
-        $ctes    = [];
+        $ctes    = $users ? [UserDirectory::cte($db)] : [];
         foreach ($mentioned as $info) {
             $name      = $info['name'];
             $qualified = $grammar->wrap(($info['schema'] !== '' ? $info['schema'] . '.' : '') . $name);

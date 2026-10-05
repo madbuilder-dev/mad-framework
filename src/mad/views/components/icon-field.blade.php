@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'name' => '', 'value' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'placeholder' => 'Selecione um icone', 'size' => 'md', 'allowClear' => true])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'name' => '', 'value' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'placeholder' => '', 'size' => 'md', 'allowClear' => true])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -18,6 +18,7 @@
     $hasError = !empty($error);
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     $allowClearJs = $allowClear ? 'true' : 'false';
+    $placeholder  = (string) $placeholder !== '' ? (string) $placeholder : mad_t('mad.icon_field.placeholder');
 
     \Mad\Form\MadFormRegistry::register($name, 'icon', [
         'label'    => strip_tags($label),
@@ -59,14 +60,14 @@
              x-cloak
              x-transition.opacity.duration.150ms
              role="dialog"
-             aria-label="Selecionar icone">
+             aria-label="{{ mad_t('mad.icon_field.select') }}">
 
             <div class="mad-iconfield-search">
                 <i data-lucide="search" aria-hidden="true"></i>
                 <input type="text"
                        x-model="query"
                        @input="filter()"
-                       placeholder="Buscar icone..."
+                       placeholder="{{ mad_t('mad.icon_field.search') }}"
                        x-ref="searchInput"
                        autocomplete="off"
                        @keydown.escape.prevent="close()"
@@ -79,7 +80,7 @@
                         class="mad-iconfield-clear-btn"
                         x-show="query"
                         @click.prevent="query = ''; filter(); $refs.searchInput.focus()"
-                        aria-label="Limpar busca">
+                        aria-label="{{ mad_t('mad.icon_field.clear_search') }}">
                     <i data-lucide="x"></i>
                 </button>
             </div>
@@ -89,7 +90,7 @@
                         :class="{ 'is-active': tab === 'all' }"
                         @click.prevent="tab = 'all'; filter()">
                     <i data-lucide="grid-3x3"></i>
-                    <span>Todos</span>
+                    <span>{{ mad_t('mad.icon_field.all') }}</span>
                     <span class="mad-iconfield-count" x-text="all.length"></span>
                 </button>
                 <button type="button" role="tab"
@@ -97,7 +98,7 @@
                         :class="{ 'is-active': tab === 'recent' }"
                         @click.prevent="tab = 'recent'; filter()">
                     <i data-lucide="clock"></i>
-                    <span>Recentes</span>
+                    <span>{{ mad_t('mad.icon_field.recent') }}</span>
                     <span class="mad-iconfield-count" x-text="recents.length"></span>
                 </button>
             </div>
@@ -120,24 +121,25 @@
                 </template>
                 <div x-show="!visible.length" class="mad-iconfield-empty">
                     <i data-lucide="search-x" aria-hidden="true"></i>
-                    <p>Nenhum icone encontrado</p>
-                    <small x-text="query ? `Termo: '${query}'` : ''"></small>
+                    <p>{{ mad_t('mad.icon_field.none') }}</p>
+                    <small x-text="query ? @js(mad_t('mad.icon_field.term')).replace(':q', query) : ''"></small>
                 </div>
             </div>
 
             <div class="mad-iconfield-footer">
                 <span class="mad-iconfield-stats">
-                    <span x-text="filtered.length"></span> icone<span x-show="filtered.length !== 1">s</span>
+                    {{-- Uma frase só, com o plural traduzido ("1739 ícones"); o "s" ficava solto. --}}
+                    <span x-text="(filtered.length === 1 ? @js(mad_t('mad.icon_field.count_one')) : @js(mad_t('mad.icon_field.count_many'))).replace(':n', filtered.length)"></span>
                     <span x-show="visible.length < filtered.length"
                           class="mad-iconfield-stats-extra"
-                          x-text="`(${visible.length} carregados)`"></span>
+                          x-text="@js(mad_t('mad.icon_field.loaded')).replace(':n', visible.length)"></span>
                 </span>
                 <button type="button"
                         class="mad-iconfield-clear-all"
                         @click.prevent="clear()"
                         x-show="selectedIcon && allowClear">
                     <i data-lucide="x-circle"></i>
-                    Limpar selecao
+                    {{ mad_t('mad.icon_field.clear') }}
                 </button>
             </div>
         </div>

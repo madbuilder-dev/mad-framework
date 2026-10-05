@@ -171,7 +171,14 @@ final class WidgetSqlGuard
         try {
             $rows = DB::connection($db)->select($wrapped);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Erro ao executar a SQL: ' . $e->getMessage()];
+            // A mensagem do Laravel anexa conexão, arquivo do banco e a SQL
+            // executada — que inclui as CTEs de escopo (e a do diretório de
+            // usuários, com todos os nomes). O modelo só precisa do erro do banco.
+            $msg = $e instanceof \Illuminate\Database\QueryException && $e->getPrevious() !== null
+                ? $e->getPrevious()->getMessage()
+                : $e->getMessage();
+
+            return ['ok' => false, 'error' => 'Erro ao executar a SQL: ' . $msg];
         }
 
         // stdClass → assoc, valores escalares (objetos/binários viram string)
