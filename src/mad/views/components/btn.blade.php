@@ -3,6 +3,49 @@
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
     $block    = !empty($block);
+    $attrs    = is_scalar($attrs) || $attrs instanceof \Stringable ? (string) $attrs : '';
+
+    // ── Atributos que o componente não declara ──────────────────────────────
+    // O pipeline do MadBlade não tem `$attributes`: cada atributo da tag chega
+    // como VARIÁVEL camelCase e o que o template não emite é descartado em
+    // silêncio — `<mad-btn style="margin-left:auto">` saía sem o style e o
+    // botão ficava no lugar errado, sem erro nem aviso. Repassa `style` e os
+    // atributos HTML que fazem sentido num botão/link: `data-*`, `aria-*` (os
+    // não declarados abaixo), `x-*` (Alpine), handlers `on*` e uma lista curta
+    // de atributos nativos. Os declarados (@props) continuam com o tratamento
+    // deles, e o que já veio em `attrs=""` vence (atributo duplicado seria
+    // ignorado pelo browser).
+    $_userStyle = '';
+    $_passAttrs = '';
+    foreach (get_defined_vars() as $_pk => $_pv) {
+        if ($_pk === 'style') {
+            $_userStyle = is_scalar($_pv) || $_pv instanceof \Stringable ? trim((string) $_pv) : '';
+            continue;
+        }
+        if (! preg_match('/^(?:(?:data|aria|x)[A-Z0-9][A-Za-z0-9]*|on[a-z]{3,}|tabindex|role|form|formaction|formenctype|formmethod|formnovalidate|formtarget|autofocus|accesskey|rel|download|value|lang|dir|draggable|hidden|translate|spellcheck|popovertarget|popovertargetaction)$/', $_pk)) {
+            continue;
+        }
+        if (in_array($_pk, ['ariaLabel', 'ariaPressed', 'ariaExpanded', 'ariaControls', 'ariaHaspopup', 'ariaDescribedby'], true)) {
+            continue; // declarados: tratados no bloco de identidade mais abaixo
+        }
+        if ($_pv === false || $_pv === null || (! is_scalar($_pv) && ! $_pv instanceof \Stringable)) {
+            continue;
+        }
+        $_pName = strtolower((string) preg_replace('/([a-z0-9])([A-Z])/', '$1-$2', $_pk));
+        if ($_pName === 'tabindex' && $href && $disabled) {
+            continue; // link desabilitado já sai com tabindex="-1"
+        }
+        if (preg_match('/(^|\s)' . preg_quote($_pName, '/') . '\s*=/i', $attrs)) {
+            continue;
+        }
+        $_passAttrs .= ' ' . ($_pv === true
+            ? $_pName
+            : $_pName . '="' . htmlspecialchars((string) $_pv, ENT_QUOTES, 'UTF-8', false) . '"');
+    }
+    // Antes do `confirm`: um `onclick` escrito direto na tag também é embrulhado.
+    if ($_passAttrs !== '') {
+        $attrs = ltrim($_passAttrs) . ($attrs !== '' ? ' ' . $attrs : '');
+    }
 
     // confirm="msg" — pergunta antes de executar a ação do botão.
     // O onclick do navigate/target já vem pronto (e html-escapado) em $attrs:
@@ -76,6 +119,14 @@
         $title    = '';   // a dica do perfil vai na tag e vence o title do chamador
     }
 
+    // `style` da tag. Quem escreveu style em `attrs=""` continua mandando nele.
+    // Link desabilitado soma a opacidade ao style do autor (um atributo só).
+    $_hasAttrStyle = (bool) preg_match('/(^|\s)style\s*=/i', $attrs);
+    $_styleOut = $_hasAttrStyle ? '' : $_userStyle;
+    if ($href && $disabled) {
+        $_styleOut = ($_styleOut !== '' ? rtrim($_styleOut, "; \t") . ';' : '') . 'opacity:.45;pointer-events:none;';
+    }
+
     $variantClass = "mad-btn-{$variant}";
     $sizeClass    = $size    ? " mad-btn-{$size}"  : '';
     $blockClass   = $block   ? ' mad-btn-block'    : '';
@@ -138,7 +189,8 @@
 <a href="{{ $href }}"
    class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }} {{ $class }}"
    @if($name) data-mad-btn="{{ $name }}" @endif
-   @if($disabled) aria-disabled="true" tabindex="-1" style="opacity:.45;pointer-events:none;" @endif
+   @if($disabled) aria-disabled="true" tabindex="-1" @endif
+   @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
    @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif
    {!! $_extraAttrs !!} {!! $attrs !!}>
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>
@@ -152,6 +204,7 @@
         class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }} {{ $class }}"
         @if($name) data-mad-btn="{{ $name }}" @endif
         @if($disabled) disabled @endif
+        @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
         @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif
         {!! $_extraAttrs !!} {!! $attrs !!}>
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>

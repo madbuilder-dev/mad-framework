@@ -276,6 +276,20 @@ class MadGridCompiler
      */
     protected static array $_filterExprs = [];
 
+    /**
+     * Trechos mascarados pelo {@see compile()} durante a compilação em curso:
+     * token `MAD__BLADE_COMMENT__N__` / `MAD__BLADE_PHPBLOCK__N__` → original.
+     *
+     * O `strtr` do fim do compile() só restaura o que ficou em TEXTO no
+     * template. Bloco que guarda um pedaço do corpo de forma opaca — base64 do
+     * `<mad-detail-fields>`, `var_export` do `<mad-db-blocks-row>`, string do
+     * popover do `<mad-col-filter>` — tem que restaurar ANTES de serializar
+     * (ver {@see unmask()}); senão o token vai parar na tela e o `@php` some.
+     *
+     * @var array<string, string>
+     */
+    protected static array $_masks = [];
+
     // ── Fronteira de tag: corrida de atributos CIENTE DE ASPAS ────────────────
 
     /**
@@ -329,6 +343,32 @@ class MadGridCompiler
 
     public static function compile(string $template): string
     {
+        // Reentrante: um bloco pode acabar compilando outro template (ex.: um
+        // renderString durante a compilação) — cada chamada tem as suas máscaras.
+        $mascarasDeFora = static::$_masks;
+        try {
+            return static::compileMasked($template);
+        } finally {
+            static::$_masks = $mascarasDeFora;
+        }
+    }
+
+    /**
+     * Devolve os trechos mascarados (comentário Blade e `@php … @endphp`) ao
+     * original. Para quem SERIALIZA um pedaço do corpo antes do fim do
+     * {@see compile()} — base64, var_export, string PHP. O pedaço é compilado
+     * pelo Blade de novo em runtime (renderString), então o comentário some lá
+     * e o `@php` roda lá, exatamente como se tivesse sido escrito fora da tag.
+     */
+    protected static function unmask(string $s): string
+    {
+        return static::$_masks && str_contains($s, 'MAD__BLADE_')
+            ? strtr($s, static::$_masks)
+            : $s;
+    }
+
+    protected static function compileMasked(string $template): string
+    {
         $entrada = $template;
 
         // Protege comentarios Blade {{-- --}} dos regex de <mad-*>: esta compilacao
@@ -354,6 +394,9 @@ class MadGridCompiler
             $comments[$token] = $m[0];
             return $token;
         }, $template);
+
+        // Visível para os blocos que serializam trecho do corpo (ver unmask()).
+        static::$_masks = $comments;
 
         // IMPORTANTE: <mad-detail-form> deve ser compilado ANTES de <mad-grid>,
         // porque pode conter <mad-grid> interno como wrapper de colunas.
@@ -595,7 +638,9 @@ class MadGridCompiler
         }
 
         if ($rowSlot !== '') {
-            $prefix .= $phpOpen . ' $_mad_db_blocks_row_slot = ' . var_export($rowSlot, true) . '; ' . $phpClose;
+            // var_export escapa o trecho AGORA; o strtr do fim do compile
+            // devolveria o original cru dentro da string (aspa quebra o PHP).
+            $prefix .= $phpOpen . ' $_mad_db_blocks_row_slot = ' . var_export(static::unmask($rowSlot), true) . '; ' . $phpClose;
             $propsStr .= ' :rowSlot="$_mad_db_blocks_row_slot"';
         }
 
@@ -1128,7 +1173,11 @@ class MadGridCompiler
 
         $rowsExpr = '$' . $name . ' ?? []';
 
-        $fieldSlotB64 = base64_encode($fieldSlot);
+        // O slot vai em base64 (opaco para o strtr do fim do compile): restaura
+        // AQUI o que o compile mascarou. Sem isto o `{{-- --}}` do slot virava o
+        // texto MAD__BLADE_COMMENT__N__ no formulário do detalhe e o `@php` do
+        // slot sumia (as variáveis dele não existiam no render dos campos).
+        $fieldSlotB64 = base64_encode(static::unmask($fieldSlot));
 
         return "<?php \$_df_{$name}_fs = base64_decode('{$fieldSlotB64}'); "
              . "\$__env->startComponent('components.detail-form', ["
@@ -1595,7 +1644,9 @@ class MadGridCompiler
             return null;
         }
 
-        $text = trim(strip_tags($body));
+        // O rótulo vira string PHP (não passa pelo Blade de novo): comentário
+        // e `@php` mascarados pelo compile() não podem entrar no texto do botão.
+        $text = trim(strip_tags((string) preg_replace('/MAD__BLADE_(?:COMMENT|PHPBLOCK)__\d+__/', '', $body)));
         if (isset($a['label'])) {
             $c[] = static::kv('label', static::strExpr($a, 'label'));
         } else {
@@ -2125,7 +2176,7 @@ class MadGridCompiler
         if (static::has($a, 'filter-popover') || isset($a['data-fpop-key'])) {
             if (isset($a['data-fpop-key'])) {
                 $key  = static::str($a, 'data-fpop-key');
-                $html = static::$_filterPopovers[$key] ?? '';
+                $html = static::unmask(static::$_filterPopovers[$key] ?? '');
                 $c[]  = static::kv('filterPopover', static::qs($html));
             } else {
                 $c[] = "'filterPopover' => '__default__'";
@@ -2172,7 +2223,7 @@ class MadGridCompiler
             // Se tem conteúdo customizado (fpop), reutiliza
             if (isset($a['data-fpop-key'])) {
                 $key  = static::str($a, 'data-fpop-key');
-                $html = static::$_filterPopovers[$key] ?? '';
+                $html = static::unmask(static::$_filterPopovers[$key] ?? '');
                 $c[]  = static::kv('filterPopoverHtml', static::qs($html));
             }
         }
@@ -2443,8 +2494,11 @@ class MadGridCompiler
             $rest = substr_replace($rest, '', $off, $len);
         }
         // compile() já mascarou {{-- --}} em MAD__BLADE_COMMENT__N__ (ver o topo
-        // do compile) — grepar por '{{--' aqui nunca casaria.
+        // do compile) — grepar por '{{--' aqui nunca casaria. O aviso de sobra
+        // mostra o trecho ORIGINAL (um `@php` descartado aparece como `@php`,
+        // não como o token).
         $rest = preg_replace('/MAD__BLADE_COMMENT__\d+__/', '', (string) $rest);
+        $rest = static::unmask((string) $rest);
         $rest = preg_replace('/<!--[\s\S]*?-->/s', '', (string) $rest);
         if (trim((string) $rest) !== '') {
             $offender = preg_match('/<\s*(\/?[a-zA-Z][\w:.-]*)/', $rest, $om)

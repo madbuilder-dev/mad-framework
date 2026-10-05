@@ -610,7 +610,7 @@ const Mad = {
             if (this._httpError(res, html, { url: url, method: 'POST', source: 'Mad.postForm' })) return;
 
             if (friendly || url.indexOf('static=1') >= 0) {
-                this._parsePartial(html);
+                this._parsePartial(html, res, { url: url, method: 'POST', source: 'Mad.postForm' });
             } else {
                 this._injectFull(html, url);
             }
@@ -678,7 +678,7 @@ const Mad = {
                     this._reinit(el);
                 }
             } else {
-                this._parsePartial(text);
+                this._parsePartial(text, res, { url: url, method: 'POST', source: 'Mad.exec' });
             }
         } catch (e) {
             this._onError(e);
@@ -732,7 +732,7 @@ const Mad = {
                     this.restoreUiState(el, ui);
                 }
             } else {
-                this._parsePartial(text);
+                this._parsePartial(text, res, { url: url, method: 'GET', source: 'Mad.get' });
             }
         } catch (e) {
             this._onError(e);
@@ -763,6 +763,7 @@ const Mad = {
             if (this._offline(res)) return;
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
+            if (this._errorFragment(html, res, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
 
             // Cria container temporário no body
             const container = document.createElement('div');
@@ -1511,18 +1512,31 @@ const Mad = {
                     break;
                 }
 
-                case 'fl_rows': {
-                    // FieldListColumn::setRows — substitui rows do field-list/detail-form.
-                    // MadWire._request trata isso no partial path; aqui e o fallback para
-                    // quando o servidor emite full-render (html) + fl_rows juntos.
-                    const w  = document.querySelector('[mad-component]') || document;
-                    const fl = w.querySelector(`[data-mad-fl-name="${op.target}"]`)
-                            || w.querySelector(`[data-mad-df-name="${op.target}"]`);
-                    if (fl && window.Alpine) {
-                        try {
-                            const ad = Alpine.$data(fl);
-                            if (ad) ad.rows = op.rows || [];
-                        } catch (e) { console.error('Mad fl_rows:', e); }
+                case 'fl_rows':
+                case 'df_add':
+                case 'df_delete':
+                case 'df_display':
+                case 'df_field_error': {
+                    // Ops de lista (field-list / detail-form). Chegam aqui quando o
+                    // servidor redesenha o componente inteiro (html + ops) — ex.: a
+                    // ação do before-add mexeu numa prop array. O código é o MESMO
+                    // do caminho parcial (MadWire.applyListOp); antes o df_add caía
+                    // no default deste switch e a linha não entrava, sem aviso.
+                    const live = scope && scope.isConnected !== false ? scope : null;
+                    const w = live || document.querySelector('[mad-component]');
+                    if (w && typeof MadWire !== 'undefined' && MadWire && typeof MadWire.applyListOp === 'function') {
+                        MadWire.applyListOp(op, w);
+                    } else if (op.op === 'fl_rows') {
+                        // Sem o MadWire carregado: só o fl_rows, como sempre.
+                        const root = w || document;
+                        const fl = root.querySelector(`[data-mad-fl-name="${op.target}"]`)
+                                || root.querySelector(`[data-mad-df-name="${op.target}"]`);
+                        if (fl && window.Alpine) {
+                            try {
+                                const ad = Alpine.$data(fl);
+                                if (ad) ad.rows = op.rows || [];
+                            } catch (e) { console.error('Mad fl_rows:', e); }
+                        }
                     }
                     break;
                 }
@@ -2153,7 +2167,43 @@ const Mad = {
         }
     },
 
-    _parsePartial(html) {
+    /**
+     * Erro de TELA que o servidor renderizou com status 200 (MadComponent::
+     * _renderError → MadErrorRenderer com debug, MadErrorPage::internal sem
+     * debug — os dois marcados com `data-mad-error-page`). Quem abre gaveta/
+     * modal (Mad.get, Mad.overlay) jogava esse HTML no #mad_partial, no fim da
+     * página — fora da vista, ou embaixo de uma listagem comprida: a tela não
+     * abria e nada dizia por quê.
+     *
+     * Mostra o erro num diálogo e devolve true (o chamador aborta a injeção).
+     * O conteúdo é o que o servidor mandou: sem debug ele não tem código fonte.
+     */
+    _errorFragment(html, res = null, ctx = null) {
+        const kind = (window.MadErrorModal && typeof window.MadErrorModal.errorFragmentKind === 'function')
+            ? window.MadErrorModal.errorFragmentKind(html)
+            : ((/\bdata-mad-error-page="(overlay|debug|internal)"/.exec(String(html || '')) || [])[1] || '');
+        if (!kind) return false;
+
+        // Camada pronta (debug com Ignition): já é um overlay fixo — basta pôr no body.
+        if (kind === 'overlay') {
+            const box = document.createElement('div');
+            box.innerHTML = html;
+            document.body.appendChild(box);
+            return true;
+        }
+        if (window.MadErrorModal) {
+            window.MadErrorModal.showResponse(
+                { status: 500, statusText: 'Erro ao abrir a tela', url: (res && res.url) || (ctx && ctx.url) || '' },
+                html,
+                Object.assign({ source: 'Mad' }, ctx || {}));
+            return true;
+        }
+        MadDialog.show({ type: 'error', title: 'Erro', message: 'A tela não pôde ser aberta. A falha foi registrada.' });
+        return true;
+    },
+
+    _parsePartial(html, res = null, ctx = null) {
+        if (this._errorFragment(html, res, ctx)) return;
         html = html.trim()
             .replace(/window\.opener\./g, '')
             .replace(/window\.close\(\);/g, '');

@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.118.0] — 2026-10-05
+
+### Novidades
+
+- **Campos:** o `<mad-btn>` passa a aceitar `style` e outros atributos escritos na tag (`data-*`, `aria-*`, `x-*`, `onclick`, `tabindex`…). Antes eram ignorados sem aviso. Republique o projeto para aplicar.
+
+### Correções
+
+- **Detalhe:** na grade de itens editável, o combo que depende de outra coluna da linha ficava vazio e os totais ligados à grade não atualizavam. Republique o projeto para aplicar.
+- **Detalhe:** com validação ao adicionar ou excluir item, o item não entrava nem saía da lista, sem aviso, quando ela ficava numa cortina lateral ou a validação mudava outros dados da tela. Republique o projeto para aplicar.
+- **Detalhe:** comentários e blocos `@php` nos campos do item apareciam como "MAD__BLADE_…" no formulário do detalhe, e o código dos blocos não rodava. Republique o projeto para aplicar.
+- **Detalhe:** valor que a tela preenchia numa linha da grade (ex.: o total copiado para a linha) aparecia zerado, e o que se digitava ali podia se perder ao salvar. Republique o projeto para aplicar.
+- **Formulário:** quando uma ação ou a abertura de um formulário em janela falhava no servidor, a tela ficava esperando sem mostrar nada. Agora o erro aparece num aviso. Republique o projeto para aplicar.
+
 ## [5.117.11] — 2026-10-05
 
 ### Correções

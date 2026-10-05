@@ -110,12 +110,22 @@ textarea.mad-errm-pane{outline:0}
 
     function _isErrorPage(text) {
         if (!text) return false;
+        // Erro de tela renderizado pelo framework (MadComponent::_renderError,
+        // MadErrorRenderer, MadErrorPage::internal): fragmento SEM <html> que
+        // pode chegar com status 200. A marca vem do servidor.
+        if (_errorFragmentKind(text)) return true;
         const head = String(text).slice(0, 6000);
         if (!/<!doctype html|<html[\s>]/i.test(head)) {
             // Fatal do PHP com display_errors, sem casco HTML
             return /(Fatal error|Parse error|Uncaught \w*(Error|Exception))/i.test(head);
         }
         return /(Whoops|Server Error|Internal Server Error|Stack trace|Illuminate\\|Exception|Fatal error|Parse error|vendor\/laravel)/i.test(head);
+    }
+
+    /** 'overlay' | 'debug' | 'internal' quando o HTML é um erro de tela marcado pelo servidor. */
+    function _errorFragmentKind(text) {
+        const m = /\bdata-mad-error-page="(overlay|debug|internal)"/.exec(String(text || ''));
+        return m ? m[1] : '';
     }
 
     // ── Extração de dados da página de erro HTML ─────────────────────────────
@@ -506,8 +516,14 @@ textarea.mad-errm-pane{outline:0}
             try { data = JSON.parse(text); } catch (e) {}
 
             if (data === null || typeof data !== 'object') {
-                if (!res.ok || _isErrorPage(text)) showResponse(res, text, context);
-                else console.error('[MadErrorModal] resposta não-JSON:', text);
+                // Esperava JSON e veio outra coisa (HTML de erro com status 200,
+                // corpo vazio, página de outro sistema…). Antes, com status 200,
+                // ia só pro console e quem chamou saía calado: a ação "sumia".
+                showResponse(
+                    (!res.ok || _isErrorPage(text))
+                        ? res
+                        : { status: res.status, statusText: 'Resposta inesperada do servidor', url: res.url },
+                    text, context);
                 return null;
             }
 
@@ -534,10 +550,23 @@ textarea.mad-errm-pane{outline:0}
         guardJson:     guardJson,
         close:         close,
         isErrorPage:   _isErrorPage,
+        errorFragmentKind: _errorFragmentKind,
         buildMarkdown: _buildMarkdown,
         _extract:      _extractFromHtml,
     };
 })();
+
+/**
+ * Listas (field-list / detail-form) de um componente, inclusive as que moram
+ * num painel teleportado (`<mad-drawer>`/`<mad-modal>` dentro da tela) — ver
+ * MadWire.ownedNodes. Sem o MadWire carregado, só o que está no wrapper.
+ */
+function _madListNodes(wrapper, sel) {
+    if (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.ownedNodes === 'function') {
+        return MadWire.ownedNodes(wrapper, sel);
+    }
+    return Array.prototype.slice.call(wrapper.querySelectorAll(sel));
+}
 
 /**
  * Coleta dados de todos os mad-field-lists dentro de um wrapper.
@@ -550,7 +579,7 @@ textarea.mad-errm-pane{outline:0}
  */
 function _madCollectDetailForms(wrapper, body) {
     var result = {};
-    wrapper.querySelectorAll('[data-mad-df-name]').forEach(function(df) {
+    _madListNodes(wrapper, '[data-mad-df-name]').forEach(function(df) {
         var name = df.getAttribute('data-mad-df-name');
         if (!name) return;
         try {
@@ -567,7 +596,7 @@ function _madCollectDetailForms(wrapper, body) {
 
 function _madCollectFieldLists(wrapper, body) {
     var result = {};
-    wrapper.querySelectorAll('[data-mad-fl-name]').forEach(function(fl) {
+    _madListNodes(wrapper, '[data-mad-fl-name]').forEach(function(fl) {
         var name = fl.getAttribute('data-mad-fl-name');
         if (!name) return;
         try {
@@ -680,6 +709,33 @@ const MadWire = (() => {
     /** `wrapper.querySelectorAll(sel)` + o que o componente teleportou. */
     function _componentNodes(wrapper, sel) {
         return [...wrapper.querySelectorAll(sel), ..._teleportedNodes(wrapper, sel)];
+    }
+
+    /**
+     * Listas do componente (`[data-mad-df-name]` / `[data-mad-fl-name]`),
+     * inclusive as que moram num painel TELEPORTADO (`<mad-drawer>` /
+     * `<mad-modal>` dentro da tela). Diferente do _teleportedNodes, aqui o nó
+     * da lista é justamente o que se procura — ele não pode ser filtrado como
+     * "editor de detail-form".
+     *
+     * Sem isso o `wrapper.querySelector` não enxergava o detail-form da gaveta:
+     * a resposta do before-add (`df_add`) caía no vazio — a linha não entrava,
+     * sem erro — e o salvar mandava o formulário sem as linhas do detalhe.
+     */
+    function _ownedNodes(wrapper, sel) {
+        if (!wrapper || !wrapper.querySelectorAll) return [];
+        const out = [...wrapper.querySelectorAll(sel)];
+        _componentRoots(wrapper).slice(1).forEach(root => {
+            root.querySelectorAll(sel).forEach(n => {
+                if (!out.includes(n) && _closestAcross(n, '[mad-component]') === wrapper) out.push(n);
+            });
+        });
+        return out;
+    }
+
+    /** Primeiro nó do componente que casa `sel` (ver _ownedNodes). */
+    function _ownedNode(wrapper, sel) {
+        return _ownedNodes(wrapper, sel)[0] || null;
     }
 
     function _getWrapper(el) {
@@ -935,11 +991,202 @@ const MadWire = (() => {
     function _errContext(wrapper, action, params, models) {
         return {
             source:    'MadWire',
+            method:    'POST',
             component: wrapper ? (wrapper.getAttribute('mad-component') || '') : '',
             action:    action || '',
             params:    params || [],
             models:    models || {},
         };
+    }
+
+    // ── Ops de lista (field-list / detail-form) ──────────────────────────────
+
+    /**
+     * fl_rows, df_add, df_delete, df_display e df_field_error — implementação
+     * ÚNICA para os dois caminhos da resposta: o parcial (aqui no _requestNow)
+     * e o redesenho completo (Mad.applyOps, em mad.js, depois do morph).
+     *
+     * Antes só o parcial os conhecia. Quando a ação do `before-add` mexia numa
+     * prop array/objeto, o servidor redesenhava o componente inteiro; o df_add
+     * ia para o Mad.applyOps, que não sabia o que era — a linha não entrava e
+     * nada avisava.
+     *
+     * Devolve true quando o op é de lista (tratado aqui), false nos demais.
+     */
+    function _applyListOp(op, wrapper) {
+        if (op.op === 'fl_rows') {
+            // Substitui todas as rows de um field-list ou detail-form via Alpine
+            const fl = _ownedNode(wrapper, `[data-mad-fl-name="${op.target}"]`)
+                    || _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (fl && window.Alpine) {
+                try {
+                    const ad = Alpine.$data(fl);
+                    if (ad) {
+                        let rows = op.rows || [];
+                        // Field-list: as células de dinheiro / número / desconto /
+                        // arquivo guardam o OBJETO da linha do momento em que nasceram.
+                        // Linha que volta do servidor com o MESMO __id é reaproveitada
+                        // pelo x-for (mesma chave) e a célula fica presa ao objeto
+                        // antigo: mostrava o valor velho e o que se digitava ia para
+                        // uma linha que já não estava na lista (sumia no salvar).
+                        // Chave nova = a linha renasce com as células ligadas a ela.
+                        if (fl.hasAttribute('data-mad-fl-name')) {
+                            const atuais = new Set((ad.rows || []).map(r => r && r.__id));
+                            rows = rows.map(r => (r && atuais.has(r.__id))
+                                ? { ...r, __id: Date.now().toString(36) + Math.random().toString(36).slice(2) }
+                                : r);
+                        }
+                        ad.rows = rows;
+                    }
+                } catch(e) { console.error('[MadWire] fl_rows error:', e); }
+            }
+        } else if (op.op === 'df_add') {
+            // Insere/atualiza uma row no detail-form (resposta do before-add)
+            const df = _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (!df) {
+                console.warn('[MadWire] df_add: detail-form "' + op.target + '" não encontrado no componente — a linha não foi inserida.');
+            } else if (window.Alpine) {
+                try {
+                    const ad = Alpine.$data(df);
+                    if (ad) {
+                        const row = { ...op.row };
+                        if (op.editIndex >= 0 && op.editIndex < ad.rows.length) {
+                            row.__id = ad.rows[op.editIndex].__id;
+                            ad.rows[op.editIndex] = row;
+                        } else {
+                            row.__id = row.__id || (Date.now().toString(36) + Math.random().toString(36).slice(2));
+                            ad.rows.push(row);
+                        }
+                        ad._resetForm();
+                        ad._closeFormOverlay();
+                        if (typeof _madLucide === 'function') _madLucide();
+                    }
+                } catch(e) { console.error('[MadWire] df_add error:', e); }
+            }
+        } else if (op.op === 'df_delete') {
+            // Remove uma row do detail-form (resposta do before-delete)
+            const df = _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (!df) {
+                console.warn('[MadWire] df_delete: detail-form "' + op.target + '" não encontrado no componente.');
+            } else if (window.Alpine) {
+                try {
+                    const ad = Alpine.$data(df);
+                    if (ad && op.index >= 0 && op.index < ad.rows.length) {
+                        ad.rows.splice(op.index, 1);
+                        if (ad.editIndex === op.index) ad._resetForm();
+                        else if (ad.editIndex > op.index) ad.editIndex--;
+                    }
+                } catch(e) { console.error('[MadWire] df_delete error:', e); }
+            }
+        } else if (op.op === 'df_display') {
+            // Preenche as colunas de APRESENTAÇÃO de uma row já
+            // inserida — caminho de relacionamento ({produto->nome})
+            // e template composto, que só o servidor resolve.
+            // Casado por __id, não por índice: o usuário pode ter
+            // mexido na lista durante o round-trip.
+            const df = _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (df && window.Alpine) {
+                try {
+                    const ad = Alpine.$data(df);
+                    const r  = ad && Array.isArray(ad.rows)
+                        ? ad.rows.find(x => x && x.__id === op.rowId)
+                        : null;
+                    if (r) {
+                        const vals = op.values || {};
+                        Object.keys(vals).forEach(k => { r[k] = vals[k]; });
+                    }
+                } catch(e) { console.error('[MadWire] df_display error:', e); }
+            }
+        } else if (op.op === 'df_field_error') {
+            // Erro de campo scoped ao detail-form (não afeta campos master com mesmo name).
+            // mode=drawer: o sub-form é teleportado pro body (x-teleport do <x-drawer>)
+            // e sai de dentro de [data-mad-df-name] — o fallback global por
+            // [data-df-fields][data-df-name] acha o container teleportado
+            // (mesma estratégia do _getFieldsContainer no madDetailForm).
+            const df = _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (df) {
+                const scope = df.querySelector('[data-df-fields]')
+                    || document.querySelector(`[data-df-fields][data-df-name="${op.target}"]`)
+                    || df;
+                const errEl = scope.querySelector(`[data-field-error="${op.field}"]`);
+                if (errEl) { errEl.innerHTML = op.message; errEl.classList.add('mad-error'); }
+                const inp = scope.querySelector(`#${op.field}`) || scope.querySelector(`[name="${op.field}"]`);
+                if (inp) inp.classList.add('mad-input-error');
+            }
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Ops de uma resposta PARCIAL do wire, no escopo do componente: `bind` (os
+     * <span> do @madBind e as props do @madWire), ops de lista, `fl_combo`,
+     * `close_overlay`; o resto vai pro Mad.applyOps com o componente de escopo.
+     *
+     * Usado pelo _requestNow e — via MadWire.applyOps — pelos POSTs que o
+     * mad-ui.js faz direto (eventos on-add / on-remove / on-totalize e cascata
+     * do <mad-field-list>). Antes esses mandavam tudo para o Mad.applyOps, que
+     * não conhece `bind`: o resumo de um on-totalize (@madBind) não mudava.
+     */
+    function _applyWireOps(ops, wrapper, componentId = '') {
+        const data = { id: componentId || (wrapper && wrapper.getAttribute ? wrapper.getAttribute('mad-id') : '') };
+        (ops || []).forEach(op => {
+            if (op.op === 'bind') {
+                // Atualiza só o span gerado por @madBind('prop')
+                _componentNodes(wrapper, `[data-mad-bind="${op.prop}"]`).forEach(el => {
+                    el.innerHTML = op.content;
+                });
+                // Tambem atualiza Alpine state em qualquer [x-data] do wrapper
+                // que contenha a prop (gerado por @madWire).
+                if (window.Alpine) {
+                    const _coerce = (cur, next) => {
+                        if (typeof cur === 'number') {
+                            const n = Number(next);
+                            return Number.isNaN(n) ? next : n;
+                        }
+                        if (typeof cur === 'boolean') {
+                            return next === true || next === 'true' || next === '1' || next === 1;
+                        }
+                        return next;
+                    };
+                    const _patch = (el) => {
+                        try {
+                            const ad = Alpine.$data(el);
+                            if (ad && Object.prototype.hasOwnProperty.call(ad, op.prop)) {
+                                ad[op.prop] = _coerce(ad[op.prop], op.content);
+                            }
+                        } catch (e) { /* el sem Alpine scope */ }
+                    };
+                    _patch(wrapper);
+                    wrapper.querySelectorAll('[x-data]').forEach(_patch);
+                }
+            } else if (_applyListOp(op, wrapper)) {
+                // fl_rows / df_add / df_delete / df_display / df_field_error
+                // — tratados em _applyListOp (mesmo código do redesenho completo).
+            } else if (op.op === 'fl_combo') {
+                // setItems('campo[]') — aplica em TODAS as rows dos field-lists
+                if (typeof _madFlApplyComboAll === 'function') {
+                    _madFlApplyComboAll(wrapper, op.target, op.options);
+                }
+            } else if (op.op === 'close_overlay') {
+                // Componente anexado à linha da grid (row-attach):
+                // "fechar" = remover a <tr> de attach, não há drawer.
+                const attachTr = wrapper.closest && wrapper.closest('tr.mad-dg-attach-row');
+                if (attachTr) {
+                    attachTr.remove();
+                } else {
+                    const evName = op.type === 'modal' ? 'madmodal' : 'maddrawer';
+                    window.dispatchEvent(new CustomEvent(evName, {
+                        detail: { name: data.id, action: 'close' }
+                    }));
+                }
+            } else if (typeof Mad !== 'undefined' && Mad.applyOps) {
+                // Escopo = este componente: erro de campo e set() acham o
+                // campo DELE antes de um homônimo da página (ver _opTarget).
+                Mad.applyOps([op], wrapper);
+            }
+        });
     }
 
     // ── Loading ──────────────────────────────────────────────────────────────
@@ -1157,14 +1404,34 @@ const MadWire = (() => {
                 data = JSON.parse(text);
             } catch (_) {
                 _setLoading(wrapper, false, sourceForm);
+                const errCtx = _errContext(wrapper, action, params, models);
                 // Página de erro do Laravel/PHP (500 com HTML) — antes os scripts
                 // rodavam e NADA aparecia: o dev só via no DevTools. Agora abre o
                 // modal 90×90 com a página, o texto e o markdown pro agente de IA.
+                // Vale também para o erro de tela marcado pelo framework, que
+                // pode vir com status 200 (ver _isErrorPage).
                 if ((!res.ok || _madErrorPage(text)) && window.MadErrorModal) {
-                    window.MadErrorModal.showResponse(res, text, _errContext(wrapper, action, params, models));
+                    window.MadErrorModal.showResponse(res, text, errCtx);
                     return;
                 }
-                _execHtmlScripts(text);
+                // Legado: HTML com <script> (ex.: __mad_error(...) de código antigo)
+                // — os scripts são a resposta, rodam como sempre.
+                if (/<script\b/i.test(text)) {
+                    _execHtmlScripts(text);
+                    return;
+                }
+                // Nem JSON, nem script (ex.: ação que ecoou uma página e encerrou,
+                // corpo vazio): antes isto era descartado e a ação "sumia" — o
+                // usuário ficava esperando um resultado que nunca aparecia.
+                if (window.MadErrorModal) {
+                    window.MadErrorModal.showResponse(
+                        { status: res.status, statusText: 'Resposta inesperada do servidor', url: res.url || endpoint },
+                        text, errCtx);
+                } else if (typeof __mad_error === 'function') {
+                    __mad_error('Exceção', 'Resposta inesperada do servidor.');
+                } else {
+                    alert('Resposta inesperada do servidor.');
+                }
                 return;
             }
 
@@ -1215,138 +1482,7 @@ const MadWire = (() => {
                 // Atualiza o estado encriptado no wrapper (para a próxima ação)
                 wrapper.setAttribute('mad-state', data.mad_state);
                 // Aplica ops — 'bind' é scoped ao wrapper; outros vão via Mad.applyOps
-                (data.ops || []).forEach(op => {
-                    if (op.op === 'bind') {
-                        // Atualiza só o span gerado por @madBind('prop')
-                        _componentNodes(wrapper, `[data-mad-bind="${op.prop}"]`).forEach(el => {
-                            el.innerHTML = op.content;
-                        });
-                        // Tambem atualiza Alpine state em qualquer [x-data] do wrapper
-                        // que contenha a prop (gerado por @madWire).
-                        if (window.Alpine) {
-                            const _coerce = (cur, next) => {
-                                if (typeof cur === 'number') {
-                                    const n = Number(next);
-                                    return Number.isNaN(n) ? next : n;
-                                }
-                                if (typeof cur === 'boolean') {
-                                    return next === true || next === 'true' || next === '1' || next === 1;
-                                }
-                                return next;
-                            };
-                            const _patch = (el) => {
-                                try {
-                                    const ad = Alpine.$data(el);
-                                    if (ad && Object.prototype.hasOwnProperty.call(ad, op.prop)) {
-                                        ad[op.prop] = _coerce(ad[op.prop], op.content);
-                                    }
-                                } catch (e) { /* el sem Alpine scope */ }
-                            };
-                            _patch(wrapper);
-                            wrapper.querySelectorAll('[x-data]').forEach(_patch);
-                        }
-                    } else if (op.op === 'fl_rows') {
-                        // Substitui todas as rows de um field-list ou detail-form via Alpine
-                        const fl = wrapper.querySelector(`[data-mad-fl-name="${op.target}"]`)
-                                || wrapper.querySelector(`[data-mad-df-name="${op.target}"]`);
-                        if (fl && window.Alpine) {
-                            try {
-                                const ad = Alpine.$data(fl);
-                                if (ad) ad.rows = op.rows || [];
-                            } catch(e) { console.error('[MadWire] fl_rows error:', e); }
-                        }
-                    } else if (op.op === 'df_add') {
-                        // Insere/atualiza uma row no detail-form (resposta do before-add)
-                        const df = wrapper.querySelector(`[data-mad-df-name="${op.target}"]`);
-                        if (df && window.Alpine) {
-                            try {
-                                const ad = Alpine.$data(df);
-                                if (ad) {
-                                    const row = { ...op.row };
-                                    if (op.editIndex >= 0 && op.editIndex < ad.rows.length) {
-                                        row.__id = ad.rows[op.editIndex].__id;
-                                        ad.rows[op.editIndex] = row;
-                                    } else {
-                                        row.__id = row.__id || (Date.now().toString(36) + Math.random().toString(36).slice(2));
-                                        ad.rows.push(row);
-                                    }
-                                    ad._resetForm();
-                                    ad._closeFormOverlay();
-                                    if (typeof _madLucide === 'function') _madLucide();
-                                }
-                            } catch(e) { console.error('[MadWire] df_add error:', e); }
-                        }
-                    } else if (op.op === 'df_delete') {
-                        // Remove uma row do detail-form (resposta do before-delete)
-                        const df = wrapper.querySelector(`[data-mad-df-name="${op.target}"]`);
-                        if (df && window.Alpine) {
-                            try {
-                                const ad = Alpine.$data(df);
-                                if (ad && op.index >= 0 && op.index < ad.rows.length) {
-                                    ad.rows.splice(op.index, 1);
-                                    if (ad.editIndex === op.index) ad._resetForm();
-                                    else if (ad.editIndex > op.index) ad.editIndex--;
-                                }
-                            } catch(e) { console.error('[MadWire] df_delete error:', e); }
-                        }
-                    } else if (op.op === 'df_display') {
-                        // Preenche as colunas de APRESENTAÇÃO de uma row já
-                        // inserida — caminho de relacionamento ({produto->nome})
-                        // e template composto, que só o servidor resolve.
-                        // Casado por __id, não por índice: o usuário pode ter
-                        // mexido na lista durante o round-trip.
-                        const df = wrapper.querySelector(`[data-mad-df-name="${op.target}"]`);
-                        if (df && window.Alpine) {
-                            try {
-                                const ad = Alpine.$data(df);
-                                const r  = ad && Array.isArray(ad.rows)
-                                    ? ad.rows.find(x => x && x.__id === op.rowId)
-                                    : null;
-                                if (r) {
-                                    const vals = op.values || {};
-                                    Object.keys(vals).forEach(k => { r[k] = vals[k]; });
-                                }
-                            } catch(e) { console.error('[MadWire] df_display error:', e); }
-                        }
-                    } else if (op.op === 'df_field_error') {
-                        // Erro de campo scoped ao detail-form (não afeta campos master com mesmo name).
-                        // mode=drawer: o sub-form é teleportado pro body (x-teleport do <x-drawer>)
-                        // e sai de dentro de [data-mad-df-name] — o fallback global por
-                        // [data-df-fields][data-df-name] acha o container teleportado
-                        // (mesma estratégia do _getFieldsContainer no madDetailForm).
-                        const df = wrapper.querySelector(`[data-mad-df-name="${op.target}"]`);
-                        if (df) {
-                            const scope = df.querySelector('[data-df-fields]')
-                                || document.querySelector(`[data-df-fields][data-df-name="${op.target}"]`)
-                                || df;
-                            const errEl = scope.querySelector(`[data-field-error="${op.field}"]`);
-                            if (errEl) { errEl.innerHTML = op.message; errEl.classList.add('mad-error'); }
-                            const inp = scope.querySelector(`#${op.field}`) || scope.querySelector(`[name="${op.field}"]`);
-                            if (inp) inp.classList.add('mad-input-error');
-                        }
-                    } else if (op.op === 'fl_combo') {
-                        // setItems('campo[]') — aplica em TODAS as rows dos field-lists
-                        if (typeof _madFlApplyComboAll === 'function') {
-                            _madFlApplyComboAll(wrapper, op.target, op.options);
-                        }
-                    } else if (op.op === 'close_overlay') {
-                        // Componente anexado à linha da grid (row-attach):
-                        // "fechar" = remover a <tr> de attach, não há drawer.
-                        const attachTr = wrapper.closest && wrapper.closest('tr.mad-dg-attach-row');
-                        if (attachTr) {
-                            attachTr.remove();
-                        } else {
-                            const evName = op.type === 'modal' ? 'madmodal' : 'maddrawer';
-                            window.dispatchEvent(new CustomEvent(evName, {
-                                detail: { name: data.id, action: 'close' }
-                            }));
-                        }
-                    } else if (typeof Mad !== 'undefined' && Mad.applyOps) {
-                        // Escopo = este componente: erro de campo e set() acham o
-                        // campo DELE antes de um homônimo da página (ver _opTarget).
-                        Mad.applyOps([op], wrapper);
-                    }
-                });
+                _applyWireOps(data.ops || [], wrapper, data.id);
                 _setLoading(wrapper, false, sourceForm);
                 return;
             }
@@ -1550,6 +1686,13 @@ const MadWire = (() => {
         resolveWrapper(el) { return el ? _getWrapper(el) : null; },
 
         /**
+         * `closest('[mad-component]')` que atravessa teleports, SEM o fallback
+         * "primeiro componente da página" do resolveWrapper — null quando o
+         * elemento não pertence a componente nenhum.
+         */
+        closestComponent(el) { return el ? _closestAcross(el, '[mad-component]') : null; },
+
+        /**
          * Raízes DOM do componente: o wrapper + os painéis que ele teleportou
          * pro <body> (drawer). Usado pelo Mad.applyOps para escopar alvos.
          */
@@ -1557,6 +1700,26 @@ const MadWire = (() => {
 
         /** Nós do componente que casam `sel`, incluindo os teleportados. */
         componentNodes(wrapper, sel) { return wrapper ? _componentNodes(wrapper, sel) : []; },
+
+        /**
+         * Listas do componente (`[data-mad-df-name]`, `[data-mad-fl-name]`),
+         * inclusive as de um painel teleportado. Usado pelos coletores
+         * (_madCollectDetailForms / _madCollectFieldLists).
+         */
+        ownedNodes(wrapper, sel) { return _ownedNodes(wrapper, sel); },
+
+        /**
+         * Aplica um op de lista (fl_rows / df_add / df_delete / df_display /
+         * df_field_error) no componente. Usado pelo Mad.applyOps no redesenho
+         * completo — o mesmo código do caminho parcial. True = era op de lista.
+         */
+        applyListOp(op, wrapper) { return wrapper ? _applyListOp(op, wrapper) : false; },
+
+        /**
+         * Ops de uma resposta do wire recebida FORA do _request (POSTs diretos
+         * do mad-ui.js): mesmas regras do caminho parcial — `bind` incluído.
+         */
+        applyOps(ops, wrapper) { if (wrapper) _applyWireOps(ops, wrapper); },
 
         /**
          * Chama a ação do componente. `models` ({nome: valor}) vai junto dos

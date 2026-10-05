@@ -31,8 +31,11 @@ class MadErrorRenderer
         $component  = $componentClass ? htmlspecialchars($componentClass, ENT_QUOTES) : '';
         $compLabel  = $component ? "<span style=\"color:#a78bfa;\">{$component}</span> &mdash; " : '';
 
+        // data-mad-error-page: o front (mad.js / mad-livewire.js) reconhece o
+        // fragmento como ERRO mesmo com status 200 e o mostra num diálogo, em vez
+        // de despejá-lo num contêiner invisível (ex.: #mad_partial do Mad.get).
         return <<<HTML
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:960px;margin:24px auto;background:#1e1e2e;color:#cdd6f4;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.3);font-size:14px;line-height:1.6;">
+        <div data-mad-error-page="debug" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:960px;margin:24px auto;background:#1e1e2e;color:#cdd6f4;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.3);font-size:14px;line-height:1.6;">
             <!-- Header -->
             <div style="background:#f38ba8;color:#1e1e2e;padding:20px 24px;">
                 <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;opacity:.7;margin-bottom:4px;">{$compLabel}{$type}</div>

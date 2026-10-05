@@ -642,7 +642,7 @@ abstract class MadComponent
                     );
 
                     echo <<<HTML
-                    <div onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;">
+                    <div data-mad-error-page="overlay" onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;">
                         <div style="width:95%;height:95%;background:#1e1e2e;border-radius:12px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;">
                             <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#313244;color:#cdd6f4;font-family:-apple-system,sans-serif;font-size:13px;">
                                 <span>Erro em <strong>{$class}</strong></span>

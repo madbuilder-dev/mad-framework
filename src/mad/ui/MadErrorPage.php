@@ -103,7 +103,7 @@ class MadErrorPage
                         class="mad-btn mad-btn-primary">{$retry}</button>
                 <a href="{$url}" class="mad-btn mad-btn-secondary">{$home}</a>
             </div>
-            HTML);
+            HTML, 'internal');
     }
 
     /** Recusa de acesso (403), versão do usuário final. */
@@ -128,10 +128,15 @@ class MadErrorPage
      * shell (o `Mad.bootShell()` refaz o pedido com `X-Mad-Partial` e injeta o
      * fragmento), e um documento completo aqui quebraria a página.
      */
-    private static function card(string $icon, string $accent, string $title, string $body, string $actions): string
+    private static function card(string $icon, string $accent, string $title, string $body, string $actions, string $errorKind = ''): string
     {
+        // Erro de tela (não a recusa de acesso) leva a marca que o front usa para
+        // mostrar o fragmento num diálogo quando ele chega com status 200 numa
+        // requisição que não troca a tela inteira (Mad.get de gaveta/modal).
+        $marker = $errorKind !== '' ? ' data-mad-error-page="' . self::esc($errorKind) . '"' : '';
+
         return <<<HTML
-        <div class="mad-ui mad-error-page" role="alert"
+        <div class="mad-ui mad-error-page" role="alert"{$marker}
              style="max-width:520px;margin:48px auto;padding:0 16px;text-align:center;
                     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
             <div style="width:56px;height:56px;border-radius:14px;margin:0 auto 18px;

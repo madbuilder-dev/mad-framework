@@ -36,6 +36,74 @@ function _madWireJson(res, context) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Cabeçalhos de TODO POST para o wire (/app/_mad-wire) feito por este arquivo.
+//
+// O entry point do wire exige o X-CSRF-TOKEN de quem está logado (o mesmo
+// esquema do MadWire, em mad-livewire.js). Cada fetch montava os headers à
+// mão e dois deles esqueciam o token: a cascata de colunas do <mad-field-list>
+// (depends-on) e os eventos on-add/on-remove/on-totalize voltavam 403 "CSRF
+// token mismatch" — o combo dependente ficava vazio e o total não atualizava.
+// Um lugar só: POST novo para o wire usa este helper.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _madWireHeaders(extra) {
+    var headers = { 'X-Requested-With': 'XMLHttpRequest' };
+    var meta  = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? (meta.getAttribute('content') || '') : '';
+    if (token) headers['X-CSRF-TOKEN'] = token;
+    if (extra) {
+        Object.keys(extra).forEach(function (k) { headers[k] = extra[k]; });
+    }
+    return headers;
+}
+
+// Resposta de um POST direto ao wire (eventos e cascata do <mad-field-list>):
+// mesmo tratamento do caminho parcial do MadWire. Duas coisas que se perdiam:
+//  - `bind` (o <span> do @madBind): o Mad.applyOps não conhece — o resumo que
+//    um on-totalize atualiza não mudava na tela;
+//  - o estado: ação que não muda nada (ou que mexe em prop array) responde com
+//    o componente redesenhado (`html`), sem `mad_state` solto — aqui não há
+//    redesenho (o usuário está digitando na grade), mas o estado novo vem
+//    dentro do html e tem que ir pro wrapper, senão a próxima ação parte do
+//    estado velho.
+function _madSyncWireState(wrapper, data) {
+    if (!wrapper || !data) return;
+    var st = data.mad_state || '';
+    if (!st && typeof data.html === 'string') {
+        var m = /\bmad-state="([^"]*)"/.exec(data.html);
+        if (m) {
+            var ta = document.createElement('textarea');
+            ta.innerHTML = m[1];   // desfaz o htmlspecialchars do atributo
+            st = ta.value;
+        }
+    }
+    if (st) wrapper.setAttribute('mad-state', st);
+}
+
+function _madApplyWireOps(ops, wrapper) {
+    if (!ops || !ops.length) return;
+    if (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.applyOps === 'function' && wrapper) {
+        MadWire.applyOps(ops, wrapper);
+    } else if (typeof Mad !== 'undefined' && Mad.applyOps) {
+        Mad.applyOps(ops, wrapper || null);
+    }
+}
+
+// [mad-component] dono de `el`, atravessando teleport: um <mad-field-list> ou
+// <mad-detail-form> dentro de um <mad-drawer>/<mad-modal> da tela vive num
+// clone no <body>, onde o closest() puro não acha o componente — e o evento
+// (cascata, on-add, on-totalize, before-add/before-delete) sumia calado.
+function _madOwnerComponent(el) {
+    if (!el || !el.closest) return null;
+    var direct = el.closest('[mad-component]');
+    if (direct) return direct;
+    if (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.closestComponent === 'function') {
+        try { return MadWire.closestComponent(el); } catch (e) { return null; }
+    }
+    return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAD service URL — endpoints estáticos (db combo/search/entry, cep/cnpj, …).
 // Monta a rota amigável /app/services/{slug}/{metodo}?static=1 direto.
 // static=1 é legítimo aqui: são métodos PHP estáticos (echo JSON direto).
@@ -835,7 +903,7 @@ document.addEventListener('change', function(e) {
     var action = el.getAttribute('data-mad-fl-change');
     if (!action) return;
 
-    var wrapper = el.closest('[mad-component]');
+    var wrapper = _madOwnerComponent(el);
     var row     = el.closest('.mad-fl-row');
     if (!wrapper || !row) return;
 
@@ -869,15 +937,9 @@ document.addEventListener('change', function(e) {
         _madCollectFieldLists(wrapper, body);
     }
 
-    // CSRF: mesmo esquema do MadWire (mad-livewire.js) — o entry point do wire
-    // valida o header X-CSRF-TOKEN. Sem ele a requisição retorna 403 e o
-    // onChange do field-list (ex: troca de tabela na importação) não dispara.
-    var _csrfMeta  = document.querySelector('meta[name="csrf-token"]');
-    var _csrfToken = _csrfMeta ? (_csrfMeta.getAttribute('content') || '') : '';
-    var _flHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
-    if (_csrfToken) _flHeaders['X-CSRF-TOKEN'] = _csrfToken;
-
-    fetch(endpoint, { method: 'POST', body: body, headers: _flHeaders })
+    // CSRF: o entry point do wire valida o X-CSRF-TOKEN (ver _madWireHeaders).
+    // Sem ele a requisição volta 403 e o onChange do field-list não dispara.
+    fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
         .then(function(r) { return _madWireJson(r, { source: 'mad-fl-change', method: 'POST' }); })
         .then(function(data) {
             if (!data) return;   // erro do servidor já exibido (MadErrorModal)
@@ -886,21 +948,21 @@ document.addEventListener('change', function(e) {
                 return;
             }
             // Atualiza o state criptografado no wrapper
-            if (data.mad_state) {
-                wrapper.setAttribute('mad-state', data.mad_state);
-            }
-            // Aplica ops do field-list na row de origem
+            _madSyncWireState(wrapper, data);
+            // Aplica ops do field-list na row de origem; o resto (toast, bind,
+            // alert…) com as regras do wire, no escopo do componente.
             var ops = data.ops || [];
+            var others = [];
             ops.forEach(function(op) {
                 if (op.op === 'fl_combo') {
                     _madFlApplyCombo(row, op.target, op.options);
                 } else if (op.op === 'fl_val') {
                     _madFlApplyVal(row, op.target, op.content);
-                } else if (typeof Mad !== 'undefined' && Mad.applyOps) {
-                    // Ops genéricos (toast, alert, etc.) — delega ao Mad global
-                    Mad.applyOps([op]);
+                } else {
+                    others.push(op);
                 }
             });
+            _madApplyWireOps(others, wrapper);
         })
         .catch(function(err) {
             console.error('[mad-fl-change] Erro de rede:', err);
@@ -1021,7 +1083,7 @@ document.addEventListener('change', function(e) {
     var deps = row.querySelectorAll('[data-mad-fl-depends="' + fieldName + '"]');
     if (!deps.length) return;
 
-    var wrapper  = el.closest('[mad-component]');
+    var wrapper  = _madOwnerComponent(el);
     if (!wrapper) return;
     var endpoint = wrapper.getAttribute('mad-endpoint');
     if (!endpoint) return;
@@ -1049,7 +1111,7 @@ document.addEventListener('change', function(e) {
             value:  parentValue
         }));
 
-        fetch(endpoint, { method: 'POST', body: body })
+        fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
             .then(function(r) { return _madWireJson(r, { source: 'mad-fl-depends', method: 'POST' }); })
             .then(function(data) {
                 if (!data) return;   // erro do servidor já exibido (MadErrorModal)
@@ -1060,9 +1122,9 @@ document.addEventListener('change', function(e) {
                     }
                     return;
                 }
-                if (data.mad_state) wrapper.setAttribute('mad-state', data.mad_state);
+                _madSyncWireState(wrapper, data);
 
-                // Separa fl_combo (escopo row) dos demais ops (escopo global via Mad.applyOps).
+                // Separa fl_combo (escopo row) dos demais ops (regras do wire, ver _madApplyWireOps).
                 // Sem esse split, alert/script/toast/dump_modal/reload_combo etc. eram
                 // silenciosamente ignorados — incluindo os alertas injetados pelo handler
                 // quando TExceptionView emite __mad_error em modo debug.
@@ -1077,9 +1139,7 @@ document.addEventListener('change', function(e) {
                     _madFlApplyCombo(row, op.target, op.options);
                 });
 
-                if (globalOps.length && typeof Mad !== 'undefined' && Mad.applyOps) {
-                    Mad.applyOps(globalOps);
-                }
+                _madApplyWireOps(globalOps, wrapper);
             })
             .catch(function(err) {
                 console.error('[mad-fl-depends] Erro:', err);
@@ -6622,11 +6682,7 @@ document.addEventListener('alpine:init', () => {
                 wrapper.querySelectorAll('input[type="hidden"][name^="__mad_"]').forEach(inp => {
                     if (inp.value !== '' && !inp.closest('form[data-mad-submit]')) body.append(inp.name, inp.value);
                 });
-                const headers = { 'X-Requested-With': 'XMLHttpRequest' };
-                const csrf = document.querySelector('meta[name="csrf-token"]');
-                if (csrf && csrf.getAttribute('content')) headers['X-CSRF-TOKEN'] = csrf.getAttribute('content');
-
-                fetch(endpoint, { method: 'POST', body, headers, signal: ctl.signal })
+                fetch(endpoint, { method: 'POST', body, headers: _madWireHeaders(), signal: ctl.signal })
                     .then(res => (res.ok && res.headers.get('X-Mad-Offline') !== '1') ? res.text() : '')
                     .then(text => {
                         if (_.countCtl !== ctl) return;
@@ -6894,7 +6950,7 @@ document.addEventListener('alpine:init', () => {
             // ── Despacha evento para o backend (mesmo padrão do data-mad-fl-change)
             _fireFlEvent(action, params) {
                 if (!action) return;
-                const wrapper = this.$el.closest('[mad-component]');
+                const wrapper = _madOwnerComponent(this.$el);
                 if (!wrapper) return;
                 const endpoint = wrapper.getAttribute('mad-endpoint');
                 if (!endpoint) return;
@@ -6918,16 +6974,13 @@ document.addEventListener('alpine:init', () => {
                     _madCollectFieldLists(wrapper, body);
                 }
 
-                fetch(endpoint, { method: 'POST', body: body })
+                fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
                     .then(r => _madWireJson(r, { source: 'mad-fl-event', method: 'POST' }))
                     .then(data => {
                         if (!data) return;   // erro do servidor já exibido (MadErrorModal)
                         if (data.error) { console.error('[mad-fl-event]', data.error); return; }
-                        if (data.mad_state) wrapper.setAttribute('mad-state', data.mad_state);
-                        const ops = data.ops || [];
-                        if (ops.length && typeof Mad !== 'undefined' && Mad.applyOps) {
-                            Mad.applyOps(ops);
-                        }
+                        _madSyncWireState(wrapper, data);
+                        _madApplyWireOps(data.ops || [], wrapper);
                     })
                     .catch(err => console.error('[mad-fl-event] Erro de rede:', err));
             },
@@ -8137,17 +8190,23 @@ document.addEventListener('alpine:init', () => {
                 // sub-form pro <body>, entao dentro do @click do botao "Adicionar"
                 // o `$el` e o BOTAO — fora do wrapper — e todo closest() volta
                 // null. Mesmo idioma ja usado no madCalendar (`_wrapper` no init).
-                this._wrapper = this.$el.closest('[mad-component]');
+                this._wrapper = this._ownerOf(this.$el);
                 this._resetForm();
                 // Bind pode precisar aguardar modal/drawer renderizar
                 this.$nextTick(() => this._bindFormInputs());
             },
 
+            // [mad-component] dono de `el`. O detail-form pode morar num painel
+            // TELEPORTADO da tela (<mad-drawer>/<mad-modal>): ali o closest()
+            // morre na raiz do clone no <body>, e o MadWire atravessa o
+            // teleport de volta até o componente (mesmo critério do mad:click).
+            _ownerOf(el) { return _madOwnerComponent(el); },
+
             // Wrapper do componente, resiliente ao teleport do drawer.
             _getComponentWrapper() {
                 if (this._wrapper && this._wrapper.isConnected) return this._wrapper;
                 const root = document.querySelector('[data-mad-df-name="' + this.name + '"]');
-                this._wrapper = root ? root.closest('[mad-component]') : null;
+                this._wrapper = root ? this._ownerOf(root) : null;
                 return this._wrapper;
             },
 
@@ -8517,8 +8576,12 @@ document.addEventListener('alpine:init', () => {
                 // Se tem before-delete handler, faz AJAX para validação server-side
                 if (this.beforeDelete) {
                     const row = this.rows[index] || {};
-                    const w = this.$el.closest('[mad-component]');
+                    // Mesmo teleport do before-add: `$el` dentro de uma gaveta
+                    // não acha o wrapper com closest() e a exclusão sumia calada.
+                    const w = this._getComponentWrapper();
                     if (w) MadWire.call(w, this.beforeDelete, [row, index]);
+                    else console.error('[madDetailForm] before-delete="' + this.beforeDelete
+                        + '": wrapper [mad-component] nao encontrado no detail "' + this.name + '".');
                     return; // A resposta vem via op df_delete
                 }
 
