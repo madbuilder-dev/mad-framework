@@ -45,19 +45,29 @@ final class DataScope
     }
 
     /**
-     * Segmento de chave do escopo corrente: `t{tenant}.u{unidade}` (+ `.us{usuário}`
-     * com $withUser). String vazia quando a tenancy está desligada e $force é
+     * Segmento de chave do escopo corrente: `t{tenant}.u{unidade}` (+ `.adm` na
+     * visão de todas as empresas do administrador do dono, + `.us{usuário}` com
+     * $withUser). String vazia quando a tenancy está desligada e $force é
      * false — assim nenhuma chave de app de unidade única muda.
      */
     public static function cacheKey(bool $withUser = false, bool $force = false): string
     {
-        if (! $force && ! self::active()) {
+        // Visão do administrador (AdminScope): a leitura não filtra empresa nem
+        // unidade — nem o filtro por unidade gerado no model, que existe sem a
+        // tenancy ligada. A chave tem que ser SEMPRE própria: sem `.adm` um
+        // usuário comum receberia o painel/memo do administrador (ou o inverso).
+        // Opção desligada: readsAll() é false e a chave é a de sempre.
+        $adminAll = AdminScope::readsAll();
+        if (! $force && ! $adminAll && ! self::active()) {
             return '';
         }
 
         // `.u` = unidades que a leitura enxerga: o id da ativa (a chave de
         // sempre) ou, no modo "todas as unidades", o hash da lista do usuário.
         $key = 't' . (TenantContext::id() ?? '-') . '.u' . UnitContext::scopeKey();
+        if ($adminAll) {
+            $key .= '.adm';
+        }
         if ($withUser) {
             $key .= '.us' . (self::userId() ?? '-');
         }

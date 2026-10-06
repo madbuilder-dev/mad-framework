@@ -136,6 +136,14 @@ abstract class MadComponent
     protected static string $side = 'right';
 
     /**
+     * Clique na área escurecida fecha a gaveta/modal da tela? Desligado: a
+     * tela costuma ser um formulário e o clique fora perdia o que foi
+     * digitado. X, Esc, Voltar e Salvar fecham sempre. Ligue em telas só de
+     * consulta, se quiser o fechamento rápido.
+     */
+    protected static bool $closeOnBackdrop = false;
+
+    /**
      * Bag de dados de formulário legado — armazena automaticamente qualquer campo
      * cujo `name` não corresponda a uma prop pública declarada pelo desenvolvedor.
      *
@@ -185,6 +193,7 @@ abstract class MadComponent
     public static function getTitle(): string   { return static::translatedTitle(static::$title); }
     public static function getSize(): string    { return static::$size; }
     public static function getSide(): string    { return static::$side; }
+    public static function getCloseOnBackdrop(): bool { return static::$closeOnBackdrop; }
 
     /**
      * Título da tela no idioma do usuário. O título é gravado como texto no

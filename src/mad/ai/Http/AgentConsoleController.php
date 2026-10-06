@@ -262,8 +262,9 @@ final class AgentConsoleController
             return;
         }
 
-        // Re-gate admin: só admin executa a ação. Defesa contra approved forjado.
-        if ((string) session('login') !== 'admin') {
+        // Re-gate admin: só o administrador do dono (login `admin` E grupo 1)
+        // executa a ação. Defesa contra approved forjado.
+        if (! \Mad\Security\OwnerAdmin::session()) {
             $sink->error('Voce nao tem permissao para executar esta acao (admin requerido).');
             $saveAll();
             $sink->done();

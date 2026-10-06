@@ -28,9 +28,11 @@ class ModelOptionsLoader
      * @param string         $value       Coluna do label OU máscara '{col} ...'
      * @param string|null    $ordercolumn Coluna de ordenação (default: $key)
      * @param string         $orderDir    Direção ('asc'|'desc'; default asc — retrocompatível)
+     * @param array|null     $missing     (saída) colunas do display que a consulta não trouxe —
+     *                                    ver {@see itemsFromQuery()}
      * @return array<int|string, string>
      */
-    public static function items($model, $key, $value, $ordercolumn = null, string $orderDir = 'asc'): array
+    public static function items($model, $key, $value, $ordercolumn = null, string $orderDir = 'asc', ?array &$missing = null): array
     {
         $key   = trim((string) $key);
         $value = trim((string) $value);
@@ -54,7 +56,7 @@ class ModelOptionsLoader
             $order = $value;
         }
 
-        return self::itemsFromQuery($query, $key, $value, $order, $orderDir);
+        return self::itemsFromQuery($query, $key, $value, $order, $orderDir, $missing);
     }
 
     /**
@@ -75,10 +77,17 @@ class ModelOptionsLoader
      * @param  string      $value       Coluna do label OU máscara '{col} ...'
      * @param  string|null $ordercolumn Coluna de ordenação (opcional; default: ordem do builder)
      * @param  string      $orderDir    Direção do order ('asc'|'desc'; default asc — retrocompatível)
+     * @param  array|null  $missing     (saída) colunas do display que a consulta NÃO trouxe, lidas
+     *                                  no 1º registro. Coluna inexistente não lança — o SELECT é
+     *                                  `*` e o rótulo só sai em branco —, então quem quer avisar
+     *                                  o erro (\Mad\Form\OptionsLoadError) precisa desta lista.
+     *                                  Tabela vazia = [] (não há registro para conferir).
      * @return array<int|string, string>
      */
-    public static function itemsFromQuery($query, string $key, string $value, ?string $ordercolumn = null, string $orderDir = 'asc'): array
+    public static function itemsFromQuery($query, string $key, string $value, ?string $ordercolumn = null, string $orderDir = 'asc', ?array &$missing = null): array
     {
+        $missing = [];
+
         if (! \Mad\Database\QuerySource::isQuery($query)) {
             throw new Exception(
                 'ModelOptionsLoader::itemsFromQuery requer um Eloquent/Query Builder.'
@@ -128,8 +137,13 @@ class ModelOptionsLoader
             $records = $q->get();
         }
 
-        $items = [];
+        $items   = [];
+        $checked = false;
         foreach ($records as $object) {
+            if (! $checked) {
+                $missing = self::missingDisplayColumns($object, $value);
+                $checked = true;
+            }
             if ($isMask) {
                 $label = self::renderMask($object, $value);
             } elseif (strpos($value, '->') !== false) {
@@ -196,6 +210,54 @@ class ModelOptionsLoader
             "ModelOptionsLoader: model \"{$model}\" não encontrado "
             . "(tentado \"{$model}\", registry e \"{$candidate}\")."
         );
+    }
+
+    /**
+     * Colunas SIMPLES do display (nome nu ou tokens `{col}` da máscara) que o
+     * registro não tem. Chain (`{estado->sigla}`) fica de fora: ele resolve por
+     * relação/convenção de FK, não por coluna do SELECT.
+     *
+     * Lê o token exatamente como o renderMask (só o `$` da frente sai): um
+     * `{ nome }` com espaço ou um id-ref cru `{entity_column_id:12}` também saem
+     * em branco no rótulo, e por isso também entram aqui.
+     *
+     * @return array<int, string>
+     */
+    public static function missingDisplayColumns(object $object, string $value): array
+    {
+        $value = trim($value);
+        $cols  = [];
+        if (strpos($value, '{') !== false) {
+            if (preg_match_all('/\{(.*?)\}/', $value, $m)) {
+                foreach ($m[1] as $token) {
+                    $prop = ltrim($token, '$');
+                    if ($prop !== '' && strpos($prop, '->') === false) {
+                        $cols[] = $prop;
+                    }
+                }
+            }
+        } elseif ($value !== '' && strpos($value, '->') === false) {
+            $cols[] = $value;
+        }
+
+        $missing = [];
+        foreach (array_unique($cols) as $col) {
+            try {
+                $has = $object instanceof Model
+                    ? array_key_exists($col, $object->getAttributes())
+                        || $object->hasGetMutator($col)
+                        || $object->hasAttributeGetMutator($col)
+                        || method_exists($object, $col)
+                    : property_exists($object, $col) || isset($object->{$col});
+            } catch (\Throwable $e) {
+                $has = true; // na dúvida, não acusa
+            }
+            if (! $has) {
+                $missing[] = $col;
+            }
+        }
+
+        return $missing;
     }
 
     /** Renderiza máscara '{col} ({outra})' lendo atributos do model. */

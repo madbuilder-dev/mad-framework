@@ -3,8 +3,11 @@
 namespace Mad\Form;
 
 use Illuminate\Validation\DatabasePresenceVerifier;
+use Mad\Database\AdminScope;
 use Mad\Database\DataScope;
 use Mad\Database\ScopedModels;
+use Mad\Database\TenantContext;
+use Mad\Database\UnitContext;
 
 /**
  * ScopedPresenceVerifier — as regras `unique` e `exists` contam as MESMAS linhas
@@ -38,6 +41,20 @@ use Mad\Database\ScopedModels;
  * pode recusar um código que existe noutra filial do usuário, nunca deixa
  * passar um que o banco recusaria.
  *
+ * Visão do administrador do dono (mad.tenant.admin_scope = 'all',
+ * {@see AdminScope}) — a leitura dele não filtra empresa nem unidade, mas o
+ * índice físico continua (tenant_id|unit_id, coluna). A conta segue o
+ * REGISTRO, não a visão:
+ *  - `unique` na edição (há id a ignorar) → na empresa/unidade DO REGISTRO
+ *    editado: editar o pedido da empresa B confere a numeração da B;
+ *  - `unique` no cadastro novo de regra sobre model (`Rule::unique(Model::class)`,
+ *    a que o MadBuilder gera) → na empresa/unidade ATIVA, onde o carimbo vai pôr
+ *    o registro;
+ *  - `exists` (e `unique` em string sem id) → sem filtro: o mesmo universo que o
+ *    combo do administrador mostra. No unique é um superconjunto conservador do
+ *    índice — pode recusar um código que só existe noutra empresa, nunca deixa
+ *    passar um que o banco recusaria.
+ *
  * Usado pelo MadValidator (formulários) e pela validação da API REST
  * (ApiResourceController). App sem tenancy: comportamento idêntico ao
  * DatabasePresenceVerifier do Laravel.
@@ -48,7 +65,7 @@ class ScopedPresenceVerifier extends DatabasePresenceVerifier
     {
         return parent::getCount(
             $collection, $column, $value, $excludeId, $idColumn,
-            $this->withScope((string) $collection, (string) $column, $extra),
+            $this->withScope((string) $collection, (string) $column, $extra, $excludeId, $idColumn),
         );
     }
 
@@ -64,7 +81,7 @@ class ScopedPresenceVerifier extends DatabasePresenceVerifier
      * Condições de escopo da tabela (unit_id/tenant_id) acrescidas às da regra.
      * Nunca lança: na dúvida, a regra segue como o Laravel faria.
      */
-    private function withScope(string $table, string $column, array $extra): array
+    private function withScope(string $table, string $column, array $extra, $excludeId = null, $idColumn = null): array
     {
         try {
             $model = ScopedModels::forTable($this->connection, $table);
@@ -73,7 +90,9 @@ class ScopedPresenceVerifier extends DatabasePresenceVerifier
             }
 
             $scope = [];
-            if (method_exists($model, 'madUnitScopeIds')) {
+            if (AdminScope::readsAll()) {
+                $scope = $this->adminWriteScope($model, $table, $excludeId, $idColumn);
+            } elseif (method_exists($model, 'madUnitScopeIds')) {
                 if (($unitIds = $model::madUnitScopeIds()) !== null) {
                     $scope['unit_id'] = $unitIds;
                 }
@@ -106,6 +125,59 @@ class ScopedPresenceVerifier extends DatabasePresenceVerifier
         }
 
         return $extra;
+    }
+
+    /**
+     * Escopo do `unique` na visão do administrador: a empresa/unidade DO
+     * REGISTRO editado (excludeId) ou, no cadastro novo de regra sobre model
+     * (o Laravel só passa idColumn no `unique`), a ativa. `exists` e `unique`
+     * em string sem id: [] (sem filtro). Nunca lança.
+     *
+     * @param  class-string  $model
+     * @return array<string, int>
+     */
+    private function adminWriteScope(string $model, string $table, $excludeId, $idColumn): array
+    {
+        $columns = [];
+        if (method_exists($model, 'madTenantScoped') && $model::madTenantScoped()) {
+            $columns['tenant_id'] = TenantContext::id();
+        }
+        if (method_exists($model, 'madUnitScoped') && $model::madUnitScoped()) {
+            $columns['unit_id'] = UnitContext::id();
+        }
+        if ($columns === []) {
+            return [];
+        }
+
+        if ($excludeId !== null && $excludeId !== '' && strtoupper((string) $excludeId) !== 'NULL') {
+            // Edição: conta onde o registro MORA (lido sem escopo, pela PK).
+            try {
+                $row = $this->table($table)
+                    ->where($idColumn ?: 'id', $excludeId)
+                    ->first(array_keys($columns));
+            } catch (\Throwable) {
+                $row = null;
+            }
+            if ($row === null) {
+                return []; // registro não achado: conta sem filtro (conservador)
+            }
+            $own = [];
+            foreach (array_keys($columns) as $col) {
+                $v = $row->{$col} ?? null;
+                if ($v !== null && $v !== '' && is_numeric($v)) {
+                    $own[$col] = (int) $v;
+                }
+            }
+
+            return $own;
+        }
+
+        if ($idColumn === null || $idColumn === '') {
+            return []; // exists (ou unique em string sem id): sem filtro
+        }
+
+        // Cadastro novo: onde o carimbo vai pôr o registro.
+        return array_filter($columns, static fn ($v) => $v !== null);
     }
 
     /** A regra já filtra por esta coluna (`->where('unit_id', ...)`)? */

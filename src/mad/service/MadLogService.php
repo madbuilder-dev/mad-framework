@@ -3,15 +3,21 @@
 namespace Mad\Service;
 
 /**
- * STUB DO SPIKE — o MadLogService real (debug console SQL) é legado-pesado:
- * usa a sessão legada, o log global de SQL legado, o dispatcher legado e a
- * emissão de script legada.
+ * No-op — o MadLogService legado alimentava o console de depuração no rodapé
+ * das telas, que foi DESCONTINUADO na v5 (não volta; o backlog F1-08 que
+ * previa portá-lo foi encerrado na 5.119.3, fórum #8). O diagnóstico de hoje é
+ * o painel de SQL dos dashboards (Mad\Support\MadDebug::sqlPanel), o menu Logs
+ * do app e o MadTrace.
  *
- * BACKLOG F1-08: portar debug console para Laravel (DB::listen + session()),
- * ou extrair para pacote opcional. Chamado por:
- *   - MadComponentHandler::handle():57  → getDebugPayload()
- *   - MadResponse:919                   → getDebugPayload()
- *   - util/GlobalFunctions.php:84,105   → addDebugData(), finalizeDebugLogging()
+ * A classe continua porque ainda é chamada:
+ *   - MadComponentHandler::handle() e MadResponse::send() → getDebugPayload()
+ *   - util/GlobalFunctions.php (md/mdd)                   → addDebugData(), finalizeDebugLogging()
+ *
+ * ⚠️ NÃO remova o __callStatic: o ShellViewModel dos apps gerados antes da
+ * 5.119.3 (app/lib/builder, fora do pacote — não se atualiza junto com ele)
+ * chama `MadLogService::isDebugConsoleEnabled()` em toda tela. Sem o
+ * catch-all, atualizar só o pacote derrubaria o layout desses apps com
+ * "Call to undefined method".
  */
 class MadLogService
 {
@@ -28,7 +34,7 @@ class MadLogService
     {
     }
 
-    /** Qualquer outro método do serviço real vira no-op no spike. */
+    /** Qualquer outro método do serviço legado vira no-op (compat — ver o docblock da classe). */
     public static function __callStatic(string $name, array $args)
     {
         return null;

@@ -214,7 +214,9 @@
         </button>
     </div>
 
-    <x-modal :name="$dfOverlayName" :title="$formTitle ?: 'Detalhe'" :size="$dfModalSize">
+    {{-- Formulário do item: clique fora não fecha (perdia o que foi digitado);
+         fecha no X, no Esc, em Cancelar e ao adicionar/atualizar. --}}
+    <x-modal :name="$dfOverlayName" :title="$formTitle ?: 'Detalhe'" :size="$dfModalSize" :close-on-backdrop="false">
         <div data-df-fields data-df-name="{{ $name }}" @keydown.enter.prevent="addOrUpdate()">
             {!! $formHtml !!}
         </div>
@@ -236,7 +238,8 @@
         </button>
     </div>
 
-    <x-drawer :name="$dfOverlayName" :title="$formTitle ?: 'Detalhe'" :size="$dfDrawerSize">
+    {{-- Idem modal: clique fora não fecha a cortina do item. --}}
+    <x-drawer :name="$dfOverlayName" :title="$formTitle ?: 'Detalhe'" :size="$dfDrawerSize" :close-on-backdrop="false">
         <div data-df-fields data-df-name="{{ $name }}" @keydown.enter.prevent="addOrUpdate()">
             {!! $formHtml !!}
         </div>

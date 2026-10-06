@@ -283,6 +283,10 @@ abstract class MadPdvComponent extends MadComponent
 
     public function hydrate(): void
     {
+        // Caixa lê produto, preço, estoque e cliente da empresa/unidade ATIVA,
+        // mesmo para o administrador com a visão de todas as empresas.
+        \Mad\Database\AdminScope::strict();
+
         // O state do wire só carrega props públicas — a config declarativa
         // vem dos attrs do <mad-pdv> e é cacheada em sessão pelo
         // _renderInlinePdv. Restaura antes de qualquer action.
@@ -307,6 +311,10 @@ abstract class MadPdvComponent extends MadComponent
 
     public function _renderInlinePdv(array $config): string
     {
+        // Antes de qualquer leitura (cliente padrão, SQL da busca de cliente
+        // que vai no token): o caixa é sempre da empresa/unidade ATIVA.
+        \Mad\Database\AdminScope::strict();
+
         $this->_applyInlineConfig($config);
 
         // Closures não passam por json_encode (chave) nem serialize cru

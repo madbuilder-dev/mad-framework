@@ -172,7 +172,9 @@
             @endif
         </div>
     @elseif($addMode === 'modal')
-        <mad-modal name="db-blocks-{{ $name }}-modal" :title="'Adicionar'" size="md">
+        {{-- Formulário de inclusão: clique fora não fecha (perdia o que foi
+             digitado) — X e Esc fecham. --}}
+        <mad-modal name="db-blocks-{{ $name }}-modal" :title="'Adicionar'" size="md" :close-on-backdrop="false">
             @if($formSlot)
                 <form data-mad-submit="blockAdd" novalidate>
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
@@ -186,7 +188,7 @@
             @endif
         </mad-modal>
     @else
-        <mad-drawer name="db-blocks-{{ $name }}-drawer" :title="'Adicionar'" size="md">
+        <mad-drawer name="db-blocks-{{ $name }}-drawer" :title="'Adicionar'" size="md" :close-on-backdrop="false">
             @if($formSlot)
                 <form data-mad-submit="blockAdd" novalidate>
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">

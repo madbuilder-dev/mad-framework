@@ -335,7 +335,7 @@ const Mad = {
             else          window.MadTabs.navigate(payload);
             return;
         }
-        this._injectFull(html, url);
+        this._injectFull(html, url, { history: !!opts.history });
     },
 
     /** Injeta e reinicializa um fragmento num container (aba ou #mad_main). */
@@ -422,15 +422,25 @@ const Mad = {
         }
     },
 
-    async load(url, callback) {
+    /**
+     * opts.history: a navegação veio do voltar/avançar do NAVEGADOR (popstate).
+     * O pedido leva X-Mad-History — a listagem reabre na página, ordem, busca
+     * e filtros em que o usuário a deixou (MadDataGrid::HISTORY_HEADER) — e a
+     * URL não é empilhada de novo: o navegador já está nessa entrada.
+     */
+    async load(url, callback, opts) {
+        opts = opts || {};
         // Rota amigável (/app/...) vai direto com X-Mad-Partial (senão o
         // resolver devolve o casco). URL em formato de query (?class=) é
         // reescrita pra /app/* pelo shim de fetch (mad-web-routing.js).
         const friendly = this._isFriendlyUrl(url);
+        const headers = {};
+        if (friendly)     headers['X-Mad-Partial'] = '1';
+        if (opts.history) headers['X-Mad-History'] = '1';
 
         MadLoader.show();
         try {
-            const res  = await fetch(url, friendly ? { headers: { 'X-Mad-Partial': '1' } } : undefined);
+            const res  = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
             if (this._offline(res)) return;
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.load' })) return;
@@ -439,7 +449,7 @@ const Mad = {
             // ligadas vira aba nova. A classe vem do header X-Mad-Class; no
             // formato ?class= ainda da pra extrair da propria URL.
             const parsed = url.indexOf('class=') >= 0 ? this._parseClassMethodParams(url) : null;
-            this._deliver(html, url, res, { tab: true, cls: parsed && parsed.cls ? parsed.cls : '' });
+            this._deliver(html, url, res, { tab: true, cls: parsed && parsed.cls ? parsed.cls : '', history: !!opts.history });
             if (typeof callback === 'function') callback(html);
         } catch (e) {
             this._onError(e);
@@ -2145,7 +2155,7 @@ const Mad = {
 
     // ── Injeção de HTML ───────────────────────────────────────────────────────
 
-    _injectFull(html, url) {
+    _injectFull(html, url, opts) {
         // Abas ligadas: o "conteudo principal" e a aba ativa — qualquer caminho
         // que chegue aqui (redirect de MadResponse, callbacks legados) troca o
         // conteudo dela e mantem URL/rotulo em dia. Overlays nunca passam aqui.
@@ -2156,8 +2166,10 @@ const Mad = {
         const el = document.querySelector(this.contentTarget);
         if (el) this._injectInto(el, html, url);
 
-        // Atualiza a URL do browser
-        if (url && !url.includes('register_state=false') && history.pushState) {
+        // Atualiza a URL do browser — menos no voltar/avançar do navegador
+        // (opts.history): ele já está na entrada. Empilhar de novo apagava o
+        // "avançar" e prendia o "voltar" na mesma tela.
+        if (url && !(opts && opts.history) && !url.includes('register_state=false') && history.pushState) {
             // Roteia URL em formato de query (?class=...) pra rota amigavel
             // (/app/slug) ANTES do pushState — senao a barra mostra a query
             // crua mesmo com a rota declarada.
@@ -3172,6 +3184,65 @@ const MadOverlayEsc = {
 MadOverlayEsc.bind();
 // ── fim Esc ──
 
+// ── Clique fora fecha a gaveta / modal (só onde é permitido) ─────────────────
+// O overlay marca `data-mad-close-on-backdrop="1"` quando o clique na área
+// escurecida pode fechar — `<mad-drawer>`/`<mad-modal>` avulsos, por padrão. A
+// tela aberta com $wrapper DRAWER/MODAL e o formulário do <mad-detail-form>
+// marcam "0": o clique fora fechava o formulário e perdia o que foi digitado.
+//
+// Fecha só se o botão DESCEU e SUBIU na própria área escura. O `@click.self`
+// de antes não distinguia: quem arrasta a seleção do texto de um campo e solta
+// fora gera o click no ancestral comum — o overlay — e a gaveta fechava. Com
+// um diálogo, confirmação ou dropdown aberto no mousedown, o clique é dele (a
+// gaveta fica). Capture no window: decide antes do handler que fecha o
+// dropdown no mousedown do document.
+const MadOverlayBackdrop = {
+    _down: null,   // overlay em que o botão desceu (e podia fechar)
+    _up:   null,   // overlay em que o botão subiu, se for o mesmo
+
+    /** O próprio overlay (a área escura) que aceita fechar no clique fora, ou null. */
+    _layer(t) {
+        if (!t || !t.getAttribute || t.getAttribute('data-mad-overlay') === null) return null;
+        return t.getAttribute('data-mad-close-on-backdrop') === '1'
+            && t.getAttribute('data-mad-dismissible') !== '0' ? t : null;
+    },
+
+    _blocked(doc) {
+        for (const b of (doc || document).querySelectorAll(MadOverlayEsc.BLOCKERS)) {
+            if (MadOverlayEsc._visible(b)) return true;
+        }
+        return false;
+    },
+
+    onDown(e) {
+        const el = (e.button === undefined || e.button === 0) ? MadOverlayBackdrop._layer(e.target) : null;
+        MadOverlayBackdrop._down = el && !MadOverlayBackdrop._blocked() ? el : null;
+        MadOverlayBackdrop._up = null;
+    },
+
+    onUp(e) {
+        const down = MadOverlayBackdrop._down;
+        MadOverlayBackdrop._up = down && e.target === down ? down : null;
+    },
+
+    onClick(e) {
+        const el = MadOverlayBackdrop._down;
+        const close = !!el && MadOverlayBackdrop._up === el && e.target === el;
+        MadOverlayBackdrop._down = MadOverlayBackdrop._up = null;
+        if (close) MadOverlayEsc.close(el);
+    },
+
+    bind() {
+        if (window.__madOverlayBackdropBound) return;
+        window.__madOverlayBackdropBound = true;
+        window.addEventListener('mousedown', MadOverlayBackdrop.onDown, true);
+        window.addEventListener('mouseup', MadOverlayBackdrop.onUp, true);
+        window.addEventListener('click', MadOverlayBackdrop.onClick, true);
+    },
+};
+MadOverlayBackdrop.bind();
+// ── fim clique fora ──
+
 // ── Expor Mad em window para acesso de scripts em outros escopos ──────────────
 // `const Mad` cria binding global, mas NAO propriedade em window. Scripts que
 // usam `window.Mad` (tipo o override de __mad_load_page em <mad-tab-bar>)
@@ -3243,7 +3314,7 @@ window.madCopy = function (text) {
 // ── Navegação via popstate (browser back/forward) ─────────────────────────────
 
 window.addEventListener('popstate', (e) => {
-    if (e.state?.url) Mad.load(e.state.url);
+    if (e.state?.url) Mad.load(e.state.url, null, { history: true });
 });
 
 // ── Event listeners globais ───────────────────────────────────────────────────

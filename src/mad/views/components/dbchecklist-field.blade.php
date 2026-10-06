@@ -66,14 +66,25 @@
 
     // Carrega items do banco — :query (Builder) tem prioridade sobre model puro.
     // Builder: get() preserva global scopes (soft-delete). Records: caminho legado.
+    // Falha ao carregar: lista vazia para o usuário final, motivo no log e, com
+    // APP_DEBUG, no próprio campo (fórum #41) — ver \Mad\Form\OptionsLoadError.
     $items = [];
     $_rawObjects = [];  // objetos originais para transforms
     $objects = null;
+    $__optError = null;
+    $__optCtx   = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy,
+    ];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $objects = (clone $query)->get()->all();
         } catch (\Throwable $e) {
             $objects = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbchecklist-field', $__optCtx);
         }
     } elseif ($model) {
         try {
@@ -82,9 +93,14 @@
             $objects = \Mad\Database\QuerySource::recordsFromQuery($__m2::query(), $order);
         } catch (\Throwable $e) {
             $objects = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbchecklist-field', $__optCtx);
         }
     }
     if ($objects) {
+        $__optError ??= \Mad\Form\OptionsLoadError::handleMissing(
+            \Mad\Form\ModelOptionsLoader::missingDisplayColumns(reset($objects), $display),
+            'mad-dbchecklist-field', $__optCtx
+        );
         try {
             foreach ($objects as $obj) {
                 if (method_exists($obj, 'toArray')) {
@@ -145,5 +161,6 @@
     'foreignKey'  => $foreignKey,
     'itemKey'     => $itemKey,
     'database'    => $database,
+    'optionsError' => $__optError,
 ]); ?>
 <?php echo $__env->renderComponent(); ?>

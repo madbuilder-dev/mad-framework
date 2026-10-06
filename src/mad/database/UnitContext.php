@@ -26,6 +26,10 @@ namespace Mad\Database;
  * readIds() é o que o global scope do BelongsToUnit usa; id() segue sendo a
  * unidade ativa (carimbo, licença, telas de admin da unidade). Override set()
  * é sempre estrito: job/API/teste que fixa uma unidade enxerga só ela.
+ *
+ * VISÃO DO ADMINISTRADOR (mad.tenant.admin_scope = 'all', {@see AdminScope}):
+ * para o administrador do dono do app, readIds() devolve null (sem filtro de
+ * unidade). id() e allowedIds() não mudam — a gravação não amplia.
  */
 class UnitContext
 {
@@ -54,6 +58,12 @@ class UnitContext
         return ($sid === null || $sid === '') ? null : (int) $sid;
     }
 
+    /** Contexto fixado por set() (job, console, API REST, teste)? */
+    public static function overridden(): bool
+    {
+        return self::$hasOverride;
+    }
+
     /** 'all' só com o valor exato; qualquer outro (inclusive vazio) = 'active'. */
     public static function mode(): string
     {
@@ -68,12 +78,19 @@ class UnitContext
 
     /**
      * Unidades que a LEITURA enxerga agora (ordenadas, sem repetição). null =
-     * sem unidade (o scope não filtra — fail-open, como id()).
+     * sem unidade (o scope não filtra — fail-open, como id()) ou visão de
+     * todas as empresas do administrador do dono ({@see AdminScope::readsAll()}).
      *
      * @return list<int>|null
      */
     public static function readIds(): ?array
     {
+        // Visão de todas as empresas do administrador do dono: sem filtro de
+        // unidade (null, como "sem unidade"). Gravação segue na ativa (id()).
+        if (AdminScope::readsAll()) {
+            return null;
+        }
+
         $active = self::id();
         if (self::$hasOverride || self::mode() !== 'all') {
             return $active === null ? null : [$active];
@@ -117,7 +134,8 @@ class UnitContext
      * Segmento de chave de cache/memo da leitura corrente: o id da ativa quando a
      * leitura é de uma unidade só (a chave de sempre); 'a' + hash da lista no
      * modo 'all' com mais de uma — dois usuários com a mesma ativa e listas
-     * diferentes não podem dividir cache. '-' sem unidade.
+     * diferentes não podem dividir cache. '-' sem unidade e na visão de todas
+     * as empresas do administrador (o DataScope::cacheKey() acrescenta `.adm`).
      */
     public static function scopeKey(): string
     {

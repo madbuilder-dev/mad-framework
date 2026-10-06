@@ -32,6 +32,7 @@ class MadDbSearchService extends MadComponent
         $depValue = (string) ($param['depValue'] ?? ''); // valor do campo pai (depends-on)
 
         $results = [];
+        $error   = null; // aviso da falha, só com APP_DEBUG (\Mad\Form\OptionsLoadError)
 
         if ($token !== '') {
             // Só token de busca (ou sem finalidade, cunhado antes): o de cascata
@@ -172,14 +173,22 @@ class MadDbSearchService extends MadComponent
                             }
                         }
                     } catch (\Throwable $e) {
+                        // Lista vazia para o usuário, como antes; o motivo vai
+                        // para o log em vez de sumir (fórum #41).
                         $results = [];
+                        $error = \Mad\Form\OptionsLoadError::handle($e, 'mad-db*-search-field (busca)', [
+                            'model'    => $model !== '' ? $model : 'consulta (:query)',
+                            'database' => $database,
+                            'display'  => $display,
+                            'order_by' => $order,
+                        ]);
                     }
                 }
             }
         }
 
         header('Content-Type: application/json');
-        echo json_encode(['results' => $results]);
+        echo json_encode($error !== null ? ['results' => $results, 'error' => $error] : ['results' => $results]);
     }
 
     /** Aplica LIKE/ILIKE num Query\Builder (caminho :query/derived table). */

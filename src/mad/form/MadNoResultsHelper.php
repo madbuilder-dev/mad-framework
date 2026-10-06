@@ -331,6 +331,14 @@ class MadNoResultsHelper
             $items = \Mad\Form\ModelOptionsLoader::itemsFromQuery($__q, $keyField, $display, $orderBy ?: null);
             return self::normalizeOptions($items ?: []);
         } catch (\Throwable $e) {
+            // Combo do cadastro rápido vazio, como antes — mas com o motivo no log.
+            OptionsLoadError::report($e, 'cadastro rápido (dbcombo)', [
+                'field'    => (string)($raw['name'] ?? ''),
+                'model'    => $model,
+                'database' => $database,
+                'display'  => $display,
+                'order_by' => $orderBy,
+            ]);
             return [];
         }
     }

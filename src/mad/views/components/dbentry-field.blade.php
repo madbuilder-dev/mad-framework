@@ -63,6 +63,16 @@
     $query = $query ?? null;
     $querySql = '';
     $queryBindings = [];
+    // Falha ao montar a busca (model que não resolve, filtro inválido): o campo
+    // segue como antes para o usuário final, o motivo vai para o log e, com
+    // APP_DEBUG, aparece no próprio campo (fórum #41) — ver \Mad\Form\OptionsLoadError.
+    $__optError = null;
+    $__optCtx   = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $column,
+    ];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         [$querySql, $queryBindings] = \Mad\Database\QuerySource::compileSql($query);
         $database = \Mad\Database\QuerySource::connectionName($query) ?: $database;
@@ -77,6 +87,7 @@
         } catch (\Throwable $e) {
             $querySql = '';
             $queryBindings = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbentry-field', $__optCtx);
         }
     }
 
@@ -114,5 +125,6 @@
         @if($readonly) readonly @endif
         {!! $attrs !!}
     >
+    @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

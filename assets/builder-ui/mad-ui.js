@@ -119,6 +119,42 @@ function _madServiceUrl(slug, method, params) {
          + '?' + new URLSearchParams(extra).toString();
 }
 
+/**
+ * Aviso "Erro ao carregar opções: …" de um campo que lê do banco, vindo de um
+ * endpoint de opções (recarga da cascata do dbcombo, busca dbunique/dbmulti,
+ * dbentry, combo do cadastro rápido).
+ *
+ * O servidor só manda `error` com APP_DEBUG ligado (\Mad\Form\OptionsLoadError);
+ * em produção a resposta não tem a chave e isto só tira um aviso antigo. É a
+ * mesma linha que o render do campo emite (partials/options-error), para o
+ * erro aparecer no próprio campo e não só no log — antes a cascata vinha vazia
+ * sem rastro nenhum na tela. Só mexe na linha que ELE criou (valor "ajax"): o
+ * aviso do render (ex.: coluna do display inexistente) não some porque uma
+ * busca seguinte voltou sem erro.
+ */
+function _madOptionsError(el, msg) {
+    var field = (el && el.closest) ? el.closest('.mad-field') : null;
+    if (!field) return;
+    var cur = field.querySelector('p[data-mad-options-error="ajax"]');
+    if (!msg) {
+        if (cur && cur.parentNode) cur.parentNode.removeChild(cur);
+        return;
+    }
+    msg = String(msg);
+    if (window.console && console.warn) console.warn('[mad] ' + msg);
+    if (!cur) {
+        cur = document.createElement('p');
+        cur.className = 'mad-field-hint mad-error';
+        cur.setAttribute('data-mad-options-error', 'ajax');
+        cur.setAttribute('role', 'alert');
+        var slot = field.querySelector('[data-field-error]');
+        if (slot && slot.parentNode) slot.parentNode.insertBefore(cur, slot);
+        else field.appendChild(cur);
+    }
+    cur.textContent = msg;
+}
+window._madOptionsError = _madOptionsError;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Numeric helpers — formatação pt-BR (separador milhar '.', decimal ',')
 // Disponíveis globalmente para uso na grid e em componentes Blade.
@@ -1288,6 +1324,7 @@ function _madRefreshQuickCombos(pop) {
             .then(function (data) {
                 // Popover fechado/reaberto antes da resposta — select destacado
                 if (!document.body.contains(sel)) return;
+                _madOptionsError(sel, data.error);
                 var list = Array.isArray(data.options) ? data.options : [];
                 if (!list.length) return;
                 var prev      = sel.value;
@@ -1910,6 +1947,7 @@ function _madSelectFactory() {
             fetch(_madServiceUrl('db-search', 'onSearch', params))
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
+                    _madOptionsError(el, d.error);
                     self.results = d.results || [];
                     self.results.forEach(function (r) { self._labelMap[r.value] = r.text; });
                     self.activeIndex = self.results.length ? 0 : -1;
@@ -2661,6 +2699,7 @@ document.addEventListener('change', function(e) {
                 return _madExtractJson(text) || { options: {} };
             })
             .then(function(data) {
+                _madOptionsError(dep, data.error);
                 var options = data.options || {};
                 // Valor posto no filho ENQUANTO o fetch voava — a mesma resposta
                 // do servidor que setou o pai costuma trazer o filho junto
@@ -3921,6 +3960,7 @@ function _madInitDbEntry(root) {
                 fetch(_madServiceUrl('db-entry', 'onSearch', { token: token, q: q }))
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
+                        _madOptionsError(el, data.error);
                         _renderDbEntryDropdown(el, data.items || []);
                     })
                     .catch(function () { removeDropdown(); });

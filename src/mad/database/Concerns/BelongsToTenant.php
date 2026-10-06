@@ -4,7 +4,9 @@ namespace Mad\Database\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Mad\Database\AdminScope;
 use Mad\Database\TenantContext;
+use Mad\Database\TenantScopeViolation;
 
 /**
  * BelongsToTenant — F6 (modo POOL). Isolação por LINHA em tabelas data-plane que
@@ -14,6 +16,11 @@ use Mad\Database\TenantContext;
  * hoje, sem filtro). Quando ON e há tenant corrente (TenantContext::id()):
  *   - leitura: global scope adiciona WHERE tenant_id = <atual>;
  *   - escrita: preenche tenant_id vazio no save, preservando o escopo original no update.
+ *
+ * Visão do administrador do dono (mad.tenant.admin_scope = 'all',
+ * {@see AdminScope}): a LEITURA dele não filtra ({@see TenantContext::readId()});
+ * o carimbo continua sendo o tenant ativo, e um registro de OUTRA empresa
+ * editado por ele não muda de empresa (TenantScopeViolation).
  *
  * Aplicado só nos models data-plane (business/comm/ged/ai). Control (iam/log)
  * NUNCA usa — identidade/auditoria são globais.
@@ -28,7 +35,17 @@ trait BelongsToTenant
      */
     public static function madTenantScopeId(): ?int
     {
-        return config('mad.tenant.row_scope_enabled') ? TenantContext::id() : null;
+        return config('mad.tenant.row_scope_enabled') ? TenantContext::readId() : null;
+    }
+
+    /**
+     * O escopo por tenant está ligado para esta tabela (independe de quem lê)?
+     * O verificador de unique/exists usa na visão do administrador, quando
+     * madTenantScopeId() é null mas o índice físico continua (tenant_id, coluna).
+     */
+    public static function madTenantScoped(): bool
+    {
+        return (bool) config('mad.tenant.row_scope_enabled');
     }
 
     public static function bootBelongsToTenant(): void
@@ -41,9 +58,9 @@ trait BelongsToTenant
             if (! config('mad.tenant.row_scope_enabled')) {
                 return; // flag OFF => sem filtro (comportamento de hoje)
             }
-            $tid = TenantContext::id();
+            $tid = TenantContext::readId();
             if ($tid === null) {
-                return; // sem tenant corrente => sem filtro
+                return; // sem tenant corrente (ou visão do administrador) => sem filtro
             }
             $builder->where($builder->getModel()->getTable() . '.tenant_id', $tid);
         });
@@ -60,6 +77,17 @@ trait BelongsToTenant
                 $scope = ($original !== null && $original !== '') ? $original : TenantContext::id();
                 if ($scope !== null) {
                     $model->tenant_id = $scope;
+                }
+
+                return;
+            }
+
+            // Visão do administrador: ele edita registros de outras empresas,
+            // mas não os muda de empresa — só a leitura amplia.
+            if ($model->exists && $model->isDirty('tenant_id') && AdminScope::readsAll()) {
+                $original = $model->getRawOriginal('tenant_id');
+                if ($original !== null && $original !== '' && (int) $original !== (int) TenantContext::id()) {
+                    throw new TenantScopeViolation(is_int($value) ? $value : (string) $value);
                 }
             }
         });

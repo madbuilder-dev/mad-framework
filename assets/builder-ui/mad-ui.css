@@ -1563,7 +1563,9 @@ textarea.mad-textarea:read-only:focus {
    --mad-card-header-py / --mad-card-footer-py, --mad-page-header-py / -mb /
    -icon, --mad-page-title-size, --mad-dg-toolbar-py, --mad-drawer-header-py,
    --mad-form-section-header-py e --mad-form-section-icon (a gaveta também
-   segue o ícone e o título do cabeçalho da página). NENHUMA é declarada no
+   segue o ícone e o título do cabeçalho da página), mais
+   --mad-page-header-icon-display (`none` oculta o ícone do cabeçalho da
+   página; a gaveta não segue esta). NENHUMA é declarada no
    framework, de propósito: cada regra traz o valor de hoje como fallback do
    var(), então sem tema nada muda e cada layout (stripe, dock…) mantém o seu.
    Declarar em `:root, .mad-ui` faria o default vencer o :root do tema por
@@ -5108,13 +5110,18 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   flex: 1;
 }
 .mad-page-header-left > div:last-child { min-width: 0; }
+/* Ícone + divisor do cabeçalho: --mad-page-header-icon-display (tema → "Alturas
+   e densidade" → "Mostrar ícone do cabeçalho da página"; `none` oculta os dois
+   em todas as telas). Sem declaração no framework, como as alturas: o fallback
+   é o display de hoje. Os layouts (stripe, dock…) não redeclaram o display do
+   ícone; os que já escondem o divisor continuam com `display: none` próprio. */
 .mad-page-header-icon {
   width: var(--mad-page-header-icon, 40px);
   height: var(--mad-page-header-icon, 40px);
   border-radius: 50%;
   border: 1px solid #e5e7eb;
   background: #fff;
-  display: flex;
+  display: var(--mad-page-header-icon-display, flex);
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -5122,6 +5129,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-size: 16px;
 }
 .mad-page-header-vsep {
+  display: var(--mad-page-header-icon-display, block);
   flex-shrink: 0;
   width: 1px;
   height: calc(var(--mad-page-header-icon, 40px) - 8px);

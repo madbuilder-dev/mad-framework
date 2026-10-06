@@ -252,5 +252,7 @@
             </table>
         </div>
     </div>
+    {{-- Só o <mad-dbchecklist-field> repassa (falha ao carregar do banco, com APP_DEBUG). --}}
+    @include('components.partials.options-error', ['optionsError' => $optionsError ?? null])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

@@ -12,6 +12,68 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.122.1] — 2026-10-06
+
+### Correções
+
+- **Segurança:** o cadastro público e o cadastro de usuários da unidade permitiam usar o login de outro usuário, inclusive o do administrador. Agora o login é único, sem diferenciar maiúsculas, e `admin` não pode ser escolhido no cadastro público. Republique o projeto para aplicar.
+- **Segurança:** com o Licenciamento ligado, o administrador de uma unidade não vê nem altera mais a conta do administrador do sistema, e nome, e-mail, login e senha de quem também trabalha em outras unidades só o administrador do sistema altera. Republique o projeto para aplicar.
+- **Segurança:** a Central de Comando, o acesso a todos os documentos e a entrada durante a manutenção passam a exigir o usuário `admin` do grupo Administrador, e não só o login. Republique o projeto para aplicar.
+
+### Atenção
+
+- **Usuários:** se o app já tiver usuários com o mesmo login, ao atualizar o mais antigo é mantido e os demais são renomeados (`login__dup2`, `__dup3`…) e desativados, com aviso no log. Confira a tela de usuários e reative quem for legítimo com outro login; os tokens MCP desses usuários precisam ser gerados de novo.
+
+## [5.122.0] — 2026-10-06
+
+### Novidades
+
+- **Multi-empresa:** o administrador do app (usuário `admin` do grupo Administrador) pode passar a ver nas listagens, campos de seleção, filtros e painéis os registros de todas as empresas e unidades, sem trocar de empresa no topo. A opção vem desligada, não vale para o administrador de uma unidade nem com o Licenciamento ligado, e cadastro novo continua indo para a empresa ativa. Republique o projeto para aplicar.
+
+## [5.121.0] — 2026-10-06
+
+### Novidades
+
+- **Temas:** o ícone do cabeçalho da página (e o divisor ao lado dele) pode ser ocultado em todas as telas pelo tema, na opção "Mostrar ícone do cabeçalho da página". Sem mexer nela, nada muda. Republique o projeto para aplicar.
+
+## [5.120.0] — 2026-10-06
+
+### Novidades
+
+- **Listagem (grid):** o botão Exportar pode mostrar um texto ao lado do ícone com `export-label="Exportar"`; `export-label` sem valor usa "Exportar" no idioma do app. Sem a opção, continua só o ícone. Republique o projeto para aplicar.
+
+## [5.119.3] — 2026-10-06
+
+### Correções
+
+- **Central de Comando:** o cartão "Debug Console" dizia "Debug ON" ao clicar em Alternar, mas nenhum painel de depuração aparecia nas telas: esse console foi descontinuado na versão 5. O cartão foi retirado para não confundir. Republique o projeto para aplicar.
+
+## [5.119.2] — 2026-10-06
+
+### Correções
+
+- **Listagem (grid):** sair de um formulário aberto em página inteira pelo voltar do navegador levava a listagem de volta para a primeira página, e voltar de novo reabria a mesma listagem em vez de sair dela. Agora ela volta na mesma página, com a mesma ordem, busca e filtros; abrir pelo menu continua começando do zero. Um botão Voltar faz o mesmo com `:params="['_mad_return' => '']"`. Republique o projeto para aplicar.
+- **Listagem (grid):** em listagens escritas à mão no código, salvar um formulário de página inteira (ou voltar dele) reabria a listagem na primeira página, e não na página em que o usuário estava. Agora volta na mesma página, como nas listagens geradas. Republique o projeto para aplicar.
+
+## [5.119.1] — 2026-10-06
+
+### Correções
+
+- **Formulário:** um campo de lista vinda do banco (DB Combo, DB Radio…) que não conseguia carregar as opções aparecia vazio ou com as opções em branco, sem pista. Agora o motivo vai para o log do app e, com a depuração ligada, aparece no próprio campo. Republique o projeto para aplicar.
+
+## [5.119.0] — 2026-10-06
+
+### Novidades
+
+- **Layout:** `<mad-drawer>` e `<mad-modal>` ganham `close-on-backdrop`: com `close-on-backdrop="false"`, o clique na área escurecida não fecha a janela, e o X e o Esc continuam funcionando.
+- **Layout:** uma tela só de consulta aberta em cortina lateral ou janela pode voltar a fechar no clique fora com `protected static bool $closeOnBackdrop = true` na classe da tela.
+
+### Correções
+
+- **Formulário:** o formulário aberto em cortina lateral ou em janela fechava com qualquer clique fora dele e perdia o que foi digitado. Agora fecha só em Salvar, Voltar, no X ou no Esc. Republique o projeto para aplicar.
+- **Detalhe:** o formulário do item do mestre-detalhe, aberto em cortina lateral ou em janela, também não fecha mais ao clicar fora. Republique o projeto para aplicar.
+- **Layout:** selecionar o texto de um campo arrastando o mouse até fora da janela não a fecha mais, e `dismissible="false"` escrito sem `:` passa a ser respeitado. Republique o projeto para aplicar.
+
 ## [5.118.0] — 2026-10-05
 
 ### Novidades

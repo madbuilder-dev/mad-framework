@@ -50,7 +50,7 @@ final class GridSavedFilterStore
     public const RULES_MAX = 20;
 
     /** Grupo "Administrador" do IAM (id estável do seed de referência). */
-    private const ADMIN_GROUP_ID = 1;
+    private const ADMIN_GROUP_ID = \Mad\Security\OwnerAdmin::GROUP_ID;
 
     public function __construct(private string $db = 'iam')
     {
@@ -77,8 +77,10 @@ final class GridSavedFilterStore
 
     /**
      * Administrador para fins de filtro compartilhado: grupo Administrador do
-     * IAM, admin da unidade ativa (`unit_admin='Y'`, injetado pelo
-     * PermissionResolver) ou o login `admin`.
+     * IAM ou admin da unidade ativa (`unit_admin='Y'`, injetado pelo
+     * PermissionResolver). O login `admin` sozinho NÃO basta: é texto do
+     * cadastro, e o administrador do dono já está no grupo 1
+     * ({@see \Mad\Security\OwnerAdmin}).
      */
     public static function isAdmin(): bool
     {
@@ -86,9 +88,8 @@ final class GridSavedFilterStore
             if (!function_exists('session')) return false;
             $groups = array_map('intval', (array) (session('usergroupids') ?: []));
             if (in_array(self::ADMIN_GROUP_ID, $groups, true)) return true;
-            if ((string) session('unit_admin') === 'Y') return true;
 
-            return (string) session('login') === 'admin';
+            return (string) session('unit_admin') === 'Y';
         } catch (\Throwable $e) {
             return false;
         }

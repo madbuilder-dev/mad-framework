@@ -179,6 +179,19 @@
     }
 
     $options = [];
+    // Falha ao carregar (model que não resolve, coluna de display/order-by que
+    // não existe, SQL inválido, conexão errada): o combo continua vazio para o
+    // usuário final, mas o motivo vai para o log e, com APP_DEBUG, aparece no
+    // próprio campo. Antes o catch engolia tudo sem rastro (fórum #41).
+    $__optError = null;
+    $__optCtx   = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy,
+    ];
+    $__optMissing = [];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         // Novo padrão: builder pronto fornece o WHERE; soft-delete preservado.
         try {
@@ -186,10 +199,12 @@
                 $query,
                 $keyField,
                 $display,
-                $orderBy ?: null, $orderDir ?: 'asc'
+                $orderBy ?: null, $orderDir ?: 'asc',
+                $__optMissing
             );
         } catch (\Throwable $e) {
             $options = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbcombo-field', $__optCtx);
         }
     } elseif ($model) {
         $parentValue = '';
@@ -223,13 +238,15 @@
                     $__cq->where($dependsColumn, '=', $parentValue);
                 }
                 $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc'
+                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
                 );
             } catch (\Throwable $e) {
                 $options = [];
+                $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbcombo-field', $__optCtx);
             }
         }
     }
+    $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbcombo-field', $__optCtx);
 
     // Para depends-on, criptografa toda a config da query num token assinado.
     // O cliente nao ve nem manipula model/database/display/column — so o token
@@ -342,6 +359,9 @@
         {!! $attrs !!}
     >
         <option value="">{{ $placeholder }}</option>
+        @if($__optError !== null)
+            <option value="" disabled data-mad-options-error>{{ $__optError }}</option>
+        @endif
         @foreach($options as $optKey => $optLabel)
             <option value="{{ $optKey }}"
                     @if((string)$optKey === (string)$selected) selected @endif>
@@ -350,6 +370,7 @@
         @endforeach
     </select>
     @if($_createBtn !== '')</div>{!! $_createBtn !!}</div>@endif
+    @include('components.partials.options-error', ['optionsError' => $__optError])
     {{-- Slot de erro SEMPRE presente: MadResponse::fieldError() escreve em
          [data-field-error="campo"]. Sem o elemento no DOM a mensagem some. --}}
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>

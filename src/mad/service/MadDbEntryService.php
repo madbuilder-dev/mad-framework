@@ -26,6 +26,7 @@ class MadDbEntryService extends MadComponent
         $q     = trim((string) ($param['q'] ?? ''));
 
         $items = [];
+        $error = null; // aviso da falha, só com APP_DEBUG (\Mad\Form\OptionsLoadError)
 
         if ($token !== '' && $q !== '') {
             $config = MadStateCrypt::decryptFor('db-entry', $token);
@@ -75,14 +76,21 @@ class MadDbEntryService extends MadComponent
                             }
                         }
                     } catch (\Throwable $e) {
+                        // Sem sugestões para o usuário, como antes; o motivo vai
+                        // para o log em vez de sumir (fórum #41).
                         $items = [];
+                        $error = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbentry-field (busca)', [
+                            'model'    => $model !== '' ? $model : 'consulta (:query)',
+                            'database' => $database,
+                            'display'  => $column,
+                        ]);
                     }
                 }
             }
         }
 
         header('Content-Type: application/json');
-        echo json_encode(['items' => $items]);
+        echo json_encode($error !== null ? ['items' => $items, 'error' => $error] : ['items' => $items]);
     }
 
     /** Nunca renderiza — endpoint estatico puro. */

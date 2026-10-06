@@ -4,6 +4,7 @@ namespace Mad\Service;
 
 use Mad\Component\MadComponent;
 use Mad\Form\ModelOptionsLoader;
+use Mad\Form\OptionsLoadError;
 use Mad\Http\MadStateCrypt;
 
 /**
@@ -32,6 +33,10 @@ class MadDbComboService extends MadComponent
         $value = (string) ($param['value'] ?? '');
 
         $options = [];
+        // Aviso da falha (só com APP_DEBUG; ver \Mad\Form\OptionsLoadError). O
+        // combo filho continua vazio, mas o motivo vai para o log — antes o catch
+        // engolia tudo e a cascata "não carregava" sem rastro (fórum #41).
+        $error = null;
 
         if ($token !== '') {
             $config = MadStateCrypt::decryptFor('db-combo', $token);
@@ -71,7 +76,11 @@ class MadDbComboService extends MadComponent
                             }
                             $__q->where($column, '=', $value);
                         }
-                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir);
+                        $missing = [];
+                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir, $missing);
+                        $error = OptionsLoadError::handleMissing($missing, 'mad-dbcombo-field (recarga)', [
+                            'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
+                        ]);
                         if ($isFull) {
                             // Lista ordenada, nao mapa: chave numerica em JSON
                             // vira objeto cujo Object.keys itera inteiros em
@@ -85,13 +94,16 @@ class MadDbComboService extends MadComponent
                         }
                     } catch (\Throwable $e) {
                         $options = [];
+                        $error = OptionsLoadError::handle($e, 'mad-dbcombo-field (recarga)', [
+                            'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
+                        ]);
                     }
                 }
             }
         }
 
         header('Content-Type: application/json');
-        echo json_encode(['options' => $options]);
+        echo json_encode($error !== null ? ['options' => $options, 'error' => $error] : ['options' => $options]);
     }
 
     /** Nunca renderiza — endpoint estatico puro. */

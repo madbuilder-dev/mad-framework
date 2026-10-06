@@ -31,6 +31,7 @@ class MadComponentWrapper
             'id'      => $component->_getId(),
             'title'   => $component::getTitle(),
             'size'    => $component::getSize(),
+            'closeOnBackdrop' => $component::getCloseOnBackdrop(),
         ]);
     }
 
@@ -42,6 +43,7 @@ class MadComponentWrapper
             'title'   => $component::getTitle(),
             'size'    => $component::getSize(),
             'side'    => $component::getSide(),
+            'closeOnBackdrop' => $component::getCloseOnBackdrop(),
         ]);
     }
 }

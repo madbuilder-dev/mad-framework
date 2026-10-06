@@ -182,6 +182,10 @@
         // Mesmas condições dos botões lá embaixo: perfil sem exportar
         // (`hide`) ou todas as colunas `not-hideable` desenhavam a barra vazia.
         $hasExport  = ($exportable ?? true) && $permExport !== 'hide';
+        // `<mad-grid export-label>` (fórum #74): texto ao lado do ícone.
+        // Vazio = só o ícone, como sempre foi — o @if do <span> fica na
+        // coluna 0 para o botão sem texto sair byte a byte igual ao de antes.
+        $_exportLabel = trim((string) ($exportLabel ?? ''));
         $hasRefresh = $refreshable ?? false;
         $hasChooser = $columnChooser && !$hasActions && $hasChoosable;
         $showToolbar = $searchable || $hasExport || $hasChooser || $cardView || $hasRefresh || $cfEnabled;
@@ -227,6 +231,9 @@
                         @else @click.stop="exportOpen=!exportOpen" :disabled="visibleColCount(true) === 0"
                         :title="visibleColCount(true) === 0 ? @js(__('grid.export_no_columns')) : @js(__('grid.export'))"@endif>
                     <i data-lucide="download" style="width:14px;height:14px;"></i>
+@if($_exportLabel !== '')
+                    <span class="mad-dg-export-label">{{ $_exportLabel }}</span>
+@endif
                 </button>
                 <div class="mad-dg-export-menu" x-show="exportOpen" x-cloak @click.outside="exportOpen=false">
                     <button type="button" class="mad-dg-export-item"@if($_exportDeny !== '') aria-disabled="true" data-mad-deny title="{{ $_exportDeny }}"@else @click="exportOpen=false; handleExport('CSV')"@endif>

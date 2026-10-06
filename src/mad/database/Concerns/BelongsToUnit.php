@@ -4,6 +4,7 @@ namespace Mad\Database\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Mad\Database\AdminScope;
 use Mad\Database\UnitContext;
 
 /**
@@ -19,6 +20,11 @@ use Mad\Database\UnitContext;
  *     preservando o escopo original no update;
  *   - conferência: unit_id explícito que muda para uma unidade fora das do
  *     usuário ({@see UnitContext::allowedIds()}) lança UnitScopeViolation.
+ *
+ * Visão do administrador do dono (mad.tenant.admin_scope = 'all',
+ * {@see AdminScope}): a LEITURA dele não filtra unidade (readIds() = null); o
+ * carimbo continua na ativa, e um registro de unidade que não é dele não muda
+ * de unidade (UnitScopeViolation).
  *
  * FLAG POR MODEL (opcional): um model pode ter a SUA flag sobrescrevendo
  * unitScopeFlagKey() (ex.: GED → 'mad.ged.multiunit'). A flag específica vence
@@ -67,7 +73,17 @@ trait BelongsToUnit
      */
     public static function madUnitScopeId(): ?int
     {
-        return static::unitScopeEnabled() ? UnitContext::id() : null;
+        return (static::unitScopeEnabled() && ! AdminScope::readsAll()) ? UnitContext::id() : null;
+    }
+
+    /**
+     * O escopo por unidade está ligado para esta tabela (independe de quem lê)?
+     * O verificador de unique/exists usa na visão do administrador, quando
+     * madUnitScopeIds() é null mas o índice físico continua (unit_id, coluna).
+     */
+    public static function madUnitScoped(): bool
+    {
+        return static::unitScopeEnabled();
     }
 
     /**
@@ -129,6 +145,16 @@ trait BelongsToUnit
             // console, API com override) não há como conferir.
             if ($model->exists && ! $model->isDirty('unit_id')) {
                 return;
+            }
+            // Visão do administrador: registro de uma unidade que não é dele
+            // (outra empresa, outra filial) é lido e editado, mas não muda de
+            // unidade — só a leitura amplia.
+            if ($model->exists && AdminScope::readsAll()) {
+                $original = $model->getRawOriginal('unit_id');
+                $own = UnitContext::allowedIds() ?? array_values(array_filter([UnitContext::id()], static fn ($v) => $v !== null));
+                if ($original !== null && $original !== '' && ! in_array((int) $original, $own, true)) {
+                    throw new \Mad\Database\UnitScopeViolation(is_int($value) ? $value : (string) $value);
+                }
             }
             $allowed = UnitContext::allowedIds();
             if ($allowed === null || ! is_numeric($value)) {

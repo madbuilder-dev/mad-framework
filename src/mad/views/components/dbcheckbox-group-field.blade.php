@@ -114,15 +114,27 @@
         \Mad\Database\QuerySource::applyArrayFilters($query, $filters);
     }
 
+    // Falha ao carregar: o campo continua vazio para o usuário final, o motivo
+    // vai para o log e, com APP_DEBUG, aparece no próprio campo (fórum #41).
+    $__optError   = null;
+    $__optMissing = [];
+    $__optCtx     = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy,
+    ];
     // Carrega options do banco — :query (Builder) tem prioridade sobre model puro
     $options = [];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc'
+                $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
             );
         } catch (\Throwable $e) {
             $options = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbcheckbox-group-field', $__optCtx);
         }
     } elseif ($model) {
         try {
@@ -130,12 +142,14 @@
                 $model,
                 $keyField,
                 $display,
-                $orderBy ?: null, $orderDir ?: 'asc'
+                $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
             );
         } catch (\Exception $e) {
             $options = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbcheckbox-group-field', $__optCtx);
         }
     }
+    $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbcheckbox-group-field', $__optCtx);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
@@ -167,5 +181,6 @@
             @endif
         @endforeach
     </div>
+    @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

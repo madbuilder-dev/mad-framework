@@ -63,26 +63,40 @@
         \Mad\Database\QuerySource::applyArrayFilters($query, $filters);
     }
 
+    // Falha ao carregar: o campo continua vazio para o usuário final, o motivo
+    // vai para o log e, com APP_DEBUG, aparece no próprio campo (fórum #41).
+    $__optError   = null;
+    $__optMissing = [];
+    $__optCtx     = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy,
+    ];
     // Carrega items do banco — :query (Builder) tem prioridade sobre model
     $items = [];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $items = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc'
+                $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
             );
         } catch (\Throwable $e) {
             $items = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbsort-list-field', $__optCtx);
         }
     } elseif ($model) {
         try {
             $items = \Mad\Form\ModelOptionsLoader::items(
                 $model, $keyField, $display,
-                $orderBy ?: null, $orderDir ?: 'asc'
+                $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
             );
         } catch (\Exception $e) {
             $items = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbsort-list-field', $__optCtx);
         }
     }
+    $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbsort-list-field', $__optCtx);
 
     // Reorder items: selected first (in order), then remaining
     $orderedItems = [];
@@ -123,5 +137,6 @@
             </div>
         @endforeach
     </div>
+    @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

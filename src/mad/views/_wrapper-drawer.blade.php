@@ -3,10 +3,14 @@
     $title   = $title   ?? '';
     $size    = $size    ?? 'lg';
     $side    = $side    ?? 'right';
+    // Tela inteira na gaveta = formulário: o clique fora NÃO fecha (perdia o
+    // que foi digitado). X, Esc, Voltar e Salvar continuam fechando. Opt-in
+    // por tela: protected static bool $closeOnBackdrop = true.
+    $closeOnBackdrop = (bool) ($closeOnBackdrop ?? false);
     $wrapId  = 'madwrap-' . preg_replace('/[^a-z0-9]/', '-', strtolower($id));
 @endphp
 <div id="{{ $wrapId }}" data-mad-wrapper="drawer">
-    <mad-drawer :name="$id" :title="$title" :size="$size" :side="$side">
+    <mad-drawer :name="$id" :title="$title" :size="$size" :side="$side" :close-on-backdrop="$closeOnBackdrop">
         {!! $content !!}
     </mad-drawer>
 </div>

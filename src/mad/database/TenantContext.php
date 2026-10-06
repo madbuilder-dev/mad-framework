@@ -9,6 +9,9 @@ namespace Mad\Database;
  * ApplicationAuthenticationService::loadSessionVars). Override explícito p/ jobs/
  * console/testes via set(). null = sem tenant (scope não filtra).
  *
+ * id() = tenant ATIVO (carimbo, MCP, PDV); readId() = o que a leitura filtra
+ * (null na visão de todas as empresas do administrador — AdminScope).
+ *
  * Pool ≠ bridge: aqui NÃO se repointa conexão (todos os tenants no MESMO DB); a
  * isolação é por LINHA (tenant_id) via trait BelongsToTenant, ligada pela flag
  * mad.tenant.row_scope_enabled.
@@ -45,6 +48,23 @@ class TenantContext
         }
         $sid = function_exists('session') ? session('tenant_id') : null;
         return ($sid === null || $sid === '') ? null : (int) $sid;
+    }
+
+    /**
+     * Tenant que a LEITURA filtra agora — o do global scope `mad_tenant`. É o
+     * id() de sempre, exceto na visão de todas as empresas do administrador do
+     * dono ({@see AdminScope::readsAll()}): aí null (sem filtro). A gravação
+     * (carimbo) e os caminhos estritos (MCP, PDV, filtros salvos) usam id().
+     */
+    public static function readId(): ?int
+    {
+        return AdminScope::readsAll() ? null : self::id();
+    }
+
+    /** Contexto fixado por set() (job, console, API REST, teste)? */
+    public static function overridden(): bool
+    {
+        return self::$hasOverride;
     }
 
     /** Nome do tenant atual; '' sem tenant, sem sessão ou sem DB (nunca lança). */

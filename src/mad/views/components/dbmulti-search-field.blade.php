@@ -124,6 +124,19 @@
     $query = $query ?? null;
     $querySql = '';
     $queryBindings = [];
+    // Falha ao montar a busca (model que não resolve, filtro inválido) ou ao
+    // pré-carregar o rótulo do valor salvo: o campo segue como antes para o
+    // usuário final, o motivo vai para o log e, com APP_DEBUG, aparece no
+    // próprio campo (fórum #41) — ver \Mad\Form\OptionsLoadError.
+    $__optError   = null;
+    $__optMissing = [];
+    $__optCtx     = [
+        'field'    => $name,
+        'model'    => \Mad\Form\OptionsLoadError::sourceOf($query, (string) $model),
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy ?? '',
+    ];
     if (\Mad\Database\QuerySource::isQuery($query)) {
         [$querySql, $queryBindings] = \Mad\Database\QuerySource::compileSql($query);
         $database = \Mad\Database\QuerySource::connectionName($query) ?: $database;
@@ -138,6 +151,7 @@
         } catch (\Throwable $e) {
             $querySql = '';
             $queryBindings = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbmulti-search-field', $__optCtx);
         }
     }
 
@@ -201,12 +215,14 @@
         try {
             $__pm = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             $preloadOptions = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display
+                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display, null, 'asc', $__optMissing
             );
         } catch (\Exception $e) {
             $preloadOptions = [];
+            $__optError ??= \Mad\Form\OptionsLoadError::handle($e, 'mad-dbmulti-search-field', $__optCtx);
         }
     }
+    $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbmulti-search-field', $__optCtx);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
 <div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
@@ -239,5 +255,6 @@
             </option>
         @endforeach
     </select>
+    @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

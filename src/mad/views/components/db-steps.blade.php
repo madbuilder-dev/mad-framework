@@ -35,6 +35,15 @@
     // Load steps from DB — builder-first via Query Builder (:filters DSL aplicado no builder)
     $steps   = [];
     $current = 0;
+    // Falha ao carregar: sem etapas para o usuário final, motivo no log e, com
+    // APP_DEBUG, logo abaixo das etapas (fórum #41) — ver \Mad\Form\OptionsLoadError.
+    $__optError = null;
+    $__optCtx   = [
+        'model'    => (string) $model,
+        'database' => $database,
+        'display'  => $display,
+        'order_by' => $orderBy,
+    ];
 
     if ($model) {
         try {
@@ -44,6 +53,12 @@
                 \Mad\Database\QuerySource::applyArrayFilters($__qb, $filters);
             }
             $records = \Mad\Database\QuerySource::recordsFromQuery($__qb, $orderBy);
+            if ($records) {
+                $__optError = \Mad\Form\OptionsLoadError::handleMissing(
+                    \Mad\Form\ModelOptionsLoader::missingDisplayColumns(reset($records), $display),
+                    'mad-db-steps', $__optCtx
+                );
+            }
 
             $index = 1;
             foreach ($records as $rec) {
@@ -68,6 +83,7 @@
             }
         } catch (\Throwable $e) {
             $steps = [];
+            $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-db-steps', $__optCtx);
         }
     }
 @endphp
@@ -81,3 +97,4 @@
     'class'    => $class,
     'madClick' => $madClick,
 ])
+@include('components.partials.options-error', ['optionsError' => $__optError])

@@ -208,6 +208,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected string $exportSubtitle = '';
 
     /**
+     * Texto ao lado do ícone do botão Exportar. '' = só o ícone (padrão, com
+     * "Exportar" na dica). No Blade: `<mad-grid export-label="Exportar">`, ou
+     * `export-label` nu para o texto traduzido — o atributo vence esta prop.
+     */
+    protected string $exportLabel = '';
+
+    /**
      * Metadados do relatório que o AJAX de export precisa: título, nome do
      * arquivo, subtítulo, período e filtros já RESOLVIDOS em texto, e as
      * opções de quebra/linha descritiva.
@@ -454,6 +461,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         if (is_array($this->_inlineConfig)) return $this->_inlineConfig;
         return (property_exists($this, 'gridConfig') && is_array($this->gridConfig)) ? $this->gridConfig : [];
+    }
+
+    /**
+     * Texto do botão Exportar ('' = só o ícone). O `export-label` do Blade
+     * vence a prop PHP: `true` (atributo nu) = texto traduzido; false/null/''
+     * = só o ícone. Lido do config do render (inline) ou do gridConfig, que
+     * viaja no estado — o AJAX que redesenha o grid mantém o texto.
+     */
+    protected function _exportLabelText(): string
+    {
+        $cfg   = $this->_bladeGridConfig();
+        $label = array_key_exists('exportLabel', $cfg) ? $cfg['exportLabel'] : $this->exportLabel;
+        if ($label === true) {
+            return (string) __('grid.export');
+        }
+
+        return is_string($label) ? trim($label) : '';
     }
 
     /**
@@ -937,9 +961,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *
      * Só a navegação que traz o parâmetro restaura: abrir a listagem pelo menu
      * continua começando do zero (diferente do $rememberFilters, que vale pra
-     * toda abertura). `?_mad_return=` sem valor = volta sem destaque.
+     * toda abertura). `?_mad_return=` sem valor = volta sem destaque — é o que
+     * o botão "Voltar" de um formulário leva (`:params="['_mad_return' => '']"`).
      */
     public const RETURN_PARAM = '_mad_return';
+
+    /**
+     * Voltar/avançar do NAVEGADOR: o mad.js refaz o pedido da entrada do
+     * histórico (popstate → Mad.load) com este header. Vale como uma volta sem
+     * destaque — sair do formulário de página inteira pelo "voltar" do
+     * navegador reabre a listagem como o usuário a deixou, e não na página 1.
+     * O menu, o F5 e os botões não mandam o header.
+     */
+    public const HISTORY_HEADER = 'X-Mad-History';
 
     /**
      * O que a volta restaura: o estado de NAVEGAÇÃO do usuário. Config que vem
@@ -970,10 +1004,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         parent::show($params);
     }
 
-    /** Lê `?_mad_return=`: presença = volta; valor não vazio = linha a destacar. */
+    /**
+     * Lê `?_mad_return=`: presença = volta; valor não vazio = linha a destacar.
+     * Sem o parâmetro, a navegação pelo histórico do navegador (HISTORY_HEADER)
+     * também é volta, sem destaque.
+     */
     protected function _captureReturn(array $request): void
     {
-        if (!array_key_exists(self::RETURN_PARAM, $request)) return;
+        if (!array_key_exists(self::RETURN_PARAM, $request)) {
+            if (!static::_requestIsHistoryNavigation()) return;
+            $request[self::RETURN_PARAM] = '';
+        }
 
         $this->_returnPending = true;
         $id = $request[self::RETURN_PARAM];
@@ -982,10 +1023,25 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
     }
 
-    /** Estado de navegação da última carga — vale pra toda listagem, sem opt-in. */
+    /** O request atual veio do voltar/avançar do navegador (header do mad.js)? */
+    protected static function _requestIsHistoryNavigation(): bool
+    {
+        if (function_exists('request') && request()->headers->get(self::HISTORY_HEADER) === '1') {
+            return true;
+        }
+        return ($_SERVER['HTTP_X_MAD_HISTORY'] ?? '') === '1';
+    }
+
+    /**
+     * Estado de navegação da última carga — vale pra toda listagem, sem opt-in.
+     *
+     * Enquanto a volta não foi aplicada, nada é gravado: o mount() de um grid
+     * que chama parent::mount() carrega a página 1 ANTES do render aplicar o
+     * snapshot, e gravar ali apagava justamente o estado a restaurar.
+     */
     protected function _saveReturnSnapshot(): void
     {
-        if ($this->_returnSnapshotSuspended) return;
+        if ($this->_returnSnapshotSuspended || $this->_returnPending) return;
 
         $grid = [];
         foreach (self::_RETURN_PROPS as $name) {
@@ -2607,6 +2663,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'searchable'   => $this->searchable,
             'searchValue'  => $this->search,
             'exportable'   => $this->exportable,
+            'exportLabel'  => $this->_exportLabelText(),
             'permExport'   => $this->_permExportMode(),
             'refreshable'  => $this->refreshable,
             'deferred'     => $this->_isDeferred(),
@@ -2838,6 +2895,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'searchable'   => $this->searchable,
             'searchValue'  => $this->search,
             'exportable'    => $this->exportable,
+            'exportLabel'   => $this->_exportLabelText(),
             'permExport'    => $this->_permExportMode(),
             'refreshable'   => $this->refreshable,
             'deferred'      => $this->_isDeferred(),
@@ -5649,6 +5707,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                         $col->editOrderBy ?: null
                     );
                 } catch (\Throwable $e) {
+                    // Combo da edição na linha vazio, como antes — com o motivo no log.
+                    \Mad\Form\OptionsLoadError::report($e, 'edição na grade (dbcombo)', [
+                        'field'    => (string) $col->field,
+                        'model'    => (string) $col->editModel,
+                        'display'  => (string) $col->editDisplay,
+                        'order_by' => (string) $col->editOrderBy,
+                    ]);
                     $editComboOptions[$col->field] = [];
                 }
                 continue;
@@ -5694,6 +5759,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                         $editSearchPreloaded[$col->field] = [];
                     }
                 } catch (\Throwable $e) {
+                    \Mad\Form\OptionsLoadError::report($e, 'edição na grade (dbunique-search)', [
+                        'field'   => (string) $col->field,
+                        'model'   => (string) $col->editModel,
+                        'display' => (string) $col->editDisplay,
+                    ]);
                     $editSearchToken[$col->field]     = '';
                     $editSearchPreloaded[$col->field] = [];
                 }
