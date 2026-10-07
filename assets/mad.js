@@ -1489,6 +1489,10 @@ const Mad = {
                     this._madApplyReadonly(op.name, !!op.readonly);
                     break;
 
+                case 'focus':
+                    this._madFocusField(op.name, scope);
+                    break;
+
                 case 'mad_disabled': {
                     const safe = CSS.escape ? CSS.escape(op.name) : String(op.name).replace(/"/g, '\\"');
                     document.querySelectorAll(`[data-mad-btn="${safe}"]`).forEach(el => {
@@ -2272,14 +2276,18 @@ const Mad = {
      * botão homônimo da listagem por trás.
      */
     _opTargets(sel, scope = null) {
-        if (scope && scope.querySelector && scope.isConnected !== false) {
-            const nodes = (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.componentNodes === 'function')
-                ? MadWire.componentNodes(scope, sel)
-                : [...scope.querySelectorAll(sel)];
-            if (scope.matches && scope.matches(sel) && !nodes.includes(scope)) nodes.unshift(scope);
-            if (nodes.length) return nodes;
-        }
-        return [...document.querySelectorAll(sel)];
+        const nodes = this._scopeNodes(sel, scope);
+        return nodes.length ? nodes : [...document.querySelectorAll(sel)];
+    },
+
+    /** Só os alvos de DENTRO do componente (o próprio incluído); sem escopo vivo, nenhum. */
+    _scopeNodes(sel, scope = null) {
+        if (!scope || !scope.querySelector || scope.isConnected === false) return [];
+        const nodes = (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.componentNodes === 'function')
+            ? MadWire.componentNodes(scope, sel)
+            : [...scope.querySelectorAll(sel)];
+        if (scope.matches && scope.matches(sel) && !nodes.includes(scope)) nodes.unshift(scope);
+        return nodes;
     },
 
     /**
@@ -2447,6 +2455,74 @@ const Mad = {
             if (on) wrap.classList.add('mad-readonly');
             else    wrap.classList.remove('mad-readonly');
         }
+    },
+
+    /**
+     * Op `focus` — `MadResponse::focus()` / `$this->form->focus()`.
+     *
+     * Na abertura da tela o op chega antes de o campo poder receber o cursor:
+     * a cortina ainda está aparecendo, o select ainda não virou MAD Select.
+     * Tenta de novo por ~2s; campo que não aparece (aba fechada, escondido)
+     * fica sem foco, sem erro.
+     *
+     * No MAD Select o `<select>` nativo é invisível — foco nele não aparece
+     * para ninguém. O combo abre e o cursor vai para a busca dele, como num
+     * clique. Não pelo `onControlClick()`: o foco dele sai num `$nextTick`, e
+     * com a tela abrindo outro componente libera a fila do Alpine antes de a
+     * busca ficar visível (o foco se perdia). Aqui a busca entra na mesma
+     * espera dos outros campos.
+     */
+    _madFocusField(name, scope = null) {
+        let tries = 0;
+        const attempt = () => {
+            let el = this._madFocusTarget(name, scope);
+            if (el && el._madSelect) {
+                el._madSelect.openDropdown();
+                el = el._madSelect.control_input;
+            }
+            // Select que ainda vai virar MAD Select: espera, senão o foco fica no nativo.
+            const ready = el && el.getClientRects().length > 0
+                && !(typeof _MAD_SEL_SELECTOR === 'string' && el.matches(_MAD_SEL_SELECTOR));
+            if (!ready && tries++ < 40) { setTimeout(attempt, 50); return; }
+            if (el) el.focus();
+        };
+        attempt();
+    },
+
+    /**
+     * Controle que recebe o cursor para o campo `name`, ou null se ainda não há.
+     *
+     * Dentro do componente primeiro: numa cortina, o filtro homônimo da
+     * listagem por trás não rouba o foco. Fora dele (ou sem escopo) vale o
+     * ÚLTIMO da página — a camada de cima entra por último no DOM.
+     */
+    _madFocusTarget(name, scope = null) {
+        const safe = CSS.escape ? CSS.escape(name) : String(name).replace(/"/g, '\\"');
+        const named = `[name="${safe}"], [name="${safe}[]"]`;
+        const sel = `${named}, [data-mad-field="${safe}"]`;
+        const inside = this._scopeNodes(sel, scope);
+        const pool = inside.length ? inside : [...document.querySelectorAll(sel)].reverse();
+        // O controle que tem o `name` antes do invólucro do campo.
+        pool.sort((a, b) => b.matches(named) - a.matches(named));
+        for (const node of pool) {
+            const el = this._madFocusable(node);
+            if (el) return el;
+        }
+        return null;
+    },
+
+    /**
+     * O nó do campo, se ele mesmo recebe cursor; senão o controle visível do
+     * mesmo campo — em moeda, data e afins o `name` fica num input hidden.
+     */
+    _madFocusable(node) {
+        const ok = (el) => !el.disabled && el.type !== 'hidden' && el.getClientRects().length > 0;
+        if (node.matches('input, select, textarea') && ok(node)) return node;
+        const box = node.closest('[data-mad-field], .mad-field');
+        if (!box) return null;
+        const pick = (q) => [...box.querySelectorAll(q)].find(ok) || null;
+        return pick('input, select, textarea, [contenteditable="true"]')
+            || pick('button, [tabindex]:not([tabindex="-1"])');
     },
 
     // ── Reinicialização após injeção de HTML ──────────────────────────────────

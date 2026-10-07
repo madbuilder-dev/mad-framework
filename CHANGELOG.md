@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.125.0] — 2026-10-07
+
+### Novidades
+
+- **Formulários:** escolha em qual campo o cursor começa ao abrir a tela com `$this->form->focus('nome')` no código — um campo ao criar e outro ao editar, inclusive em cortina lateral e janela. Republique o projeto para usar.
+
 ## [5.124.0] — 2026-10-07
 
 ### Novidades

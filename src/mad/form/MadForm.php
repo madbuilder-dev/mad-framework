@@ -103,6 +103,12 @@ class MadForm
      */
     private array $_pendingFlOps = [];
 
+    /**
+     * Campo que deve receber o cursor (`focus()`). Vale para UMA resposta: não
+     * entra no estado serializado, senão o foco voltaria a cada ação.
+     */
+    private ?string $_pendingFocus = null;
+
     /** Cache do resultado de getData() — invalidado ao alterar fields. */
     private ?object $_dataCache = null;
 
@@ -1686,6 +1692,44 @@ class MadForm
     }
 
     /**
+     * Põe o cursor num campo, pelo `name`. Funciona na abertura da tela
+     * (mount()/onEdit()) e dentro de uma ação.
+     *
+     *   public function mount(array $params = []): void
+     *   {
+     *       $this->form = new MadForm('form');
+     *       $this->form->focus('nome');           // tela nova
+     *       if (! empty($params['id'])) {
+     *           $this->onEdit($params['id']);
+     *       }
+     *   }
+     *
+     *   public function onEdit(int|string $id): void
+     *   {
+     *       // ...
+     *       $this->form->focus('cpf');            // edição
+     *   }
+     *
+     * Só um campo tem o cursor: vale a última chamada.
+     */
+    public function focus(string $name): void
+    {
+        $this->_pendingFocus = $name;
+    }
+
+    /**
+     * Retira o foco pendente (null = nenhum). Usado pelo MadComponent na
+     * abertura da tela, onde não há resposta de ação para carregar o op.
+     */
+    public function pullPendingFocus(): ?string
+    {
+        $name = $this->_pendingFocus;
+        $this->_pendingFocus = null;
+
+        return $name;
+    }
+
+    /**
      * Retorna referência a um detail-form registrado no MadFormRegistry.
      *
      * O detail-form se auto-registra ao renderizar (via detail-form.blade.php).
@@ -2277,7 +2321,12 @@ class MadForm
      */
     public function getPendingFlOps(): array
     {
-        return $this->_pendingFlOps;
+        if ($this->_pendingFocus === null) {
+            return $this->_pendingFlOps;
+        }
+
+        // Por último: o foco vem depois de valores/linhas que a ação mexeu.
+        return [...$this->_pendingFlOps, ['op' => 'focus', 'name' => $this->_pendingFocus]];
     }
 
     // ── Escopo do editor de <mad-detail-form> (mad:change no sub-form) ────────

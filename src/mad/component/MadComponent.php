@@ -384,17 +384,39 @@ abstract class MadComponent
                     // Depois do método (create-action pode ser onNovo, não show):
                     // prefill não pode ser atropelado pelo que o método montou.
                     $this->_applyComboOriginPrefill($cleanParams);
-                    echo $this->_renderWrapped();
+                    $this->_echoRendered();
                 }
                 return;
             }
 
             $this->_applyComboOriginPrefill($cleanParams);
-            echo $this->_renderWrapped();
+            $this->_echoRendered();
 
         } catch (\Throwable $e) {
             $this->_renderError($e);
         }
+    }
+
+    /**
+     * Saída da abertura da tela.
+     *
+     * O foco pedido com `$this->form->focus()` no mount()/onEdit() não tem
+     * resposta de ação que o carregue. Sai como um `MadResponse::emit()`,
+     * ANTES do HTML: é ali que o Mad.emitOps acha o componente, cortina e
+     * janela incluídas. O render vem primeiro porque o view() também pode
+     * pedir foco.
+     */
+    private function _echoRendered(): void
+    {
+        $html = $this->_renderWrapped();
+
+        foreach (get_object_vars($this) as $prop) {
+            if ($prop instanceof MadForm && ($field = $prop->pullPendingFocus()) !== null) {
+                (new MadResponse())->focus($field)->emit();
+            }
+        }
+
+        echo $html;
     }
 
     // ── Origem "Sem resultados → Cadastrar novo" ──────────────────────────────

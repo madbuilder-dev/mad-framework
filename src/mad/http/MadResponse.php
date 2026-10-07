@@ -431,6 +431,23 @@ class MadResponse
         return $this;
     }
 
+    /**
+     * Põe o cursor num campo do formulário, pelo `name`.
+     *
+     *   return (new MadResponse())->focus('cpf');
+     *
+     * O campo é procurado dentro da tela que respondeu — numa cortina ou
+     * janela, não acerta o campo homônimo da listagem por trás — e o cliente
+     * espera ele existir e estar visível (tela ainda abrindo). Na ABERTURA da
+     * tela (mount()/onEdit(), que não devolvem resposta) use
+     * `$this->form->focus('cpf')`.
+     */
+    public function focus(string $field): static
+    {
+        $this->ops[] = ['op' => 'focus', 'name' => $field];
+        return $this;
+    }
+
     // ── Erros de campo ────────────────────────────────────────────────────────
 
     /**
