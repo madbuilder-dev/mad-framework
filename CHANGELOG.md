@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.126.0] — 2026-10-07
+
+### Novidades
+
+- **Formulários:** o campo ganhou `autofocus`: o cursor começa nele quando a tela abre, sem escrever código (`<mad-input-field name="nome" autofocus />`). Vale um campo por tela, e um `$this->form->focus()` no código tem prioridade. Republique o projeto para usar.
+
 ## [5.125.0] — 2026-10-07
 
 ### Novidades

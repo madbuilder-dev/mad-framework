@@ -128,6 +128,18 @@ class MadRenderContext
     }
 
     /**
+     * Campo marcado com `autofocus` no Blade: pede o cursor ao MadForm atual.
+     * Chamado pelo código compilado da tag (MadBlade::autofocusExpr). Devolve
+     * true para a prop continuar valendo como booleana.
+     */
+    public static function autofocus(string $name): bool
+    {
+        self::getForm()?->autofocus($name);
+
+        return true;
+    }
+
+    /**
      * Retorna o primeiro MadForm público do componente atual.
      * Usado pelos Blade templates para acessar hooks e sourceRecord.
      */

@@ -436,6 +436,37 @@ class MadBladeCompiler extends BladeCompiler
     }
 
     /**
+     * `<mad-input-field name="nome" autofocus />` — o cursor começa neste campo
+     * quando a tela abre.
+     *
+     * Não vira atributo do `<input>`: o `autofocus` do HTML não vale para tela
+     * injetada (cortina, janela, navegação sem recarregar). No render o campo
+     * pede o foco ao MadForm, e ele sai pelo op `focus`: só na abertura da tela
+     * e perdendo para `$this->form->focus()` chamado no código.
+     *
+     * null = tag que não é campo, ou `name` que não é literal (não dá para
+     * saber o nome na compilação): `autofocus` segue como prop comum.
+     *
+     * @param string $on 'true', 'false' ou a expressão PHP de `:autofocus="…"`
+     */
+    private static function autofocusExpr(string $tag, string $params, string $on): ?string
+    {
+        if (! str_ends_with($tag, '-field')
+            || ! preg_match('/(?<![\w:.-])name\s*=\s*(["\'])((?:(?!\1).)*)\1/s', $params, $nm)
+            || trim($nm[2]) === '' || preg_match('/\{\{|\{!!/', $nm[2])) {
+            return null;
+        }
+        $call = '\\Mad\\Component\\MadRenderContext::autofocus("'
+            . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $nm[2]) . '")';
+
+        return match ($on) {
+            'true'  => $call,
+            'false' => 'false',
+            default => '((' . $on . ') ? ' . $call . ' : false)',
+        };
+    }
+
+    /**
      * Tags cujo botão passa pelo gate de permissão por ação. Restrito de
      * propósito: emitir `permClass`/`permAction` em toda tag MAD mudaria a
      * compilação de ~100 componentes para nada — só o `<mad-btn>` consome.
@@ -510,6 +541,16 @@ class MadBladeCompiler extends BladeCompiler
                             . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
                     }
                     continue;
+                }
+
+                // autofocus="…" / :autofocus="$expr" num campo — ver autofocusExpr().
+                if ($key === 'autofocus') {
+                    $on = $m[1] === ':' ? $val
+                        : (in_array(strtolower(trim($val)), ['false', '0', 'no'], true) ? 'false' : 'true');
+                    if (($focus = self::autofocusExpr($tag, $params, $on)) !== null) {
+                        $compiled[] = '"autofocus"=>' . $focus;
+                        continue;
+                    }
                 }
 
                 // target="Class" ou navigate="Class" → delega ao MadAction (auto-detect wrapper + forward params)
@@ -664,6 +705,12 @@ class MadBladeCompiler extends BladeCompiler
                 if (preg_match('/^(open|close)-(drawer|modal)$/', $key, $om)) {
                     $shortcut = self::overlayShortcutAttr($om[1], $om[2]);
                     if ($shortcut !== null) $extraAttrs[] = $shortcut;
+                    continue;
+                }
+
+                // `autofocus` nu num campo — ver autofocusExpr().
+                if ($key === 'autofocus' && ($focus = self::autofocusExpr($tag, $params, 'true')) !== null) {
+                    $compiled[] = '"autofocus"=>' . $focus;
                     continue;
                 }
 

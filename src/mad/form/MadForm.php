@@ -109,6 +109,13 @@ class MadForm
      */
     private ?string $_pendingFocus = null;
 
+    /**
+     * Campo marcado com `autofocus` no Blade. Só a ABERTURA da tela o usa, e
+     * só quando o código não chamou `focus()`: num redesenho depois de uma
+     * ação ele não rouba o cursor de onde o usuário está.
+     */
+    private ?string $_autofocus = null;
+
     /** Cache do resultado de getData() — invalidado ao alterar fields. */
     private ?object $_dataCache = null;
 
@@ -1718,13 +1725,23 @@ class MadForm
     }
 
     /**
-     * Retira o foco pendente (null = nenhum). Usado pelo MadComponent na
-     * abertura da tela, onde não há resposta de ação para carregar o op.
+     * Registra o campo marcado com `autofocus` no Blade (chamado no render,
+     * pelo próprio campo). Com mais de um campo marcado vale o primeiro.
+     */
+    public function autofocus(string $name): void
+    {
+        $this->_autofocus ??= $name;
+    }
+
+    /**
+     * Retira o foco da abertura da tela (null = nenhum): o `focus()` do código
+     * ou, na falta dele, o campo com `autofocus` no Blade. Usado pelo
+     * MadComponent, onde não há resposta de ação para carregar o op.
      */
     public function pullPendingFocus(): ?string
     {
-        $name = $this->_pendingFocus;
-        $this->_pendingFocus = null;
+        $name = $this->_pendingFocus ?? $this->_autofocus;
+        $this->_pendingFocus = $this->_autofocus = null;
 
         return $name;
     }
