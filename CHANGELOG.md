@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.124.0] — 2026-10-07
+
+### Novidades
+
+- **App gerado:** o app passa a usar o fuso horário escolhido nas Configurações do projeto, tanto nas datas e horas que grava e mostra quanto no banco de dados (PostgreSQL e MySQL). Sem fuso configurado, continua em UTC. Republique o projeto para aplicar.
+
 ## [5.123.0] — 2026-10-06
 
 ### Novidades
