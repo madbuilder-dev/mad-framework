@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => ''])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => ''])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -131,6 +131,9 @@
     $sizeClass    = $size    ? " mad-btn-{$size}"  : '';
     $blockClass   = $block   ? ' mad-btn-block'    : '';
     $hiddenClass  = $_isHidden ? ' mad-hidden'     : '';
+    // position="left|center|right" — lado do botão dentro do <mad-form-actions>
+    // (o CSS da barra ordena pelos grupos). Fora da allowlist não sai classe.
+    $posClass     = in_array($position, ['left', 'center', 'right'], true) ? " mad-pos-{$position}" : '';
     $iconSz = $size === 'sm' ? '12px' : '14px';
 
     // color="#a78bfa" — cor do ícone. O valor entra num atributo style, então
@@ -187,7 +190,7 @@
 @if($_permMode !== 'hide')
 @if($href)
 <a href="{{ $href }}"
-   class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }} {{ $class }}"
+   class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }}{{ $posClass }} {{ $class }}"
    @if($name) data-mad-btn="{{ $name }}" @endif
    @if($disabled) aria-disabled="true" tabindex="-1" @endif
    @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
@@ -201,7 +204,7 @@
 </a>
 @else
 <button type="{{ $type }}"
-        class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }} {{ $class }}"
+        class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }}{{ $posClass }} {{ $class }}"
         @if($name) data-mad-btn="{{ $name }}" @endif
         @if($disabled) disabled @endif
         @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.123.0] — 2026-10-06
+
+### Novidades
+
+- **Formulários:** cada botão da barra de ações pode ficar à esquerda, no centro ou à direita, com `position="left"`, `"center"` ou `"right"` no `<mad-btn>`, no `<mad-btn-group>` e no `<mad-dropdown>`. Botão sem posição segue o alinhamento da barra. Republique o projeto para aplicar.
+
 ## [5.122.1] — 2026-10-06
 
 ### Correções

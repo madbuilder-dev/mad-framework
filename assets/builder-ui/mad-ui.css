@@ -2233,6 +2233,26 @@ textarea.mad-textarea:read-only:focus {
 .mad-form-actions              { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
 .mad-form-actions-right        { justify-content: flex-end; }
 .mad-form-actions-center       { justify-content: center; }
+/* Posição por item — <mad-btn|mad-btn-group|mad-dropdown position="left|center|right">.
+   O `order` agrupa esquerda (1) / centro (3) / direita (5) em qualquer ordem do
+   código; item sem posição segue o `align` da barra. Barra sem item posicionado
+   fica igual (mesmo `order` em todos). As duas fronteiras são margens `auto`:
+   centro|direita = ::after de largura zero; esquerda|centro = o PRIMEIRO item
+   do grupo do centro (mesmo `order` ⇒ o primeiro no código é o primeiro na
+   tela). O ::before fica livre (o editor desenha o rótulo da barra nele). */
+.mad-form-actions > *                { order: 1; }
+.mad-form-actions-center > *         { order: 3; }
+.mad-form-actions-right > *          { order: 5; }
+.mad-form-actions > .mad-pos-left    { order: 1; }
+.mad-form-actions > .mad-pos-center  { order: 3; }
+.mad-form-actions > .mad-pos-right   { order: 5; }
+/* Linha que quebra em tela estreita só tem os itens do fim: encosta à direita. */
+.mad-form-actions:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right) { justify-content: flex-end; }
+.mad-form-actions:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right)::after { content: ''; order: 4; margin-left: auto; }
+.mad-form-actions:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right) > .mad-pos-center { margin-left: auto; }
+.mad-form-actions:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right) > .mad-pos-center ~ .mad-pos-center { margin-left: 0; }
+.mad-form-actions-center:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right) > :not(.mad-pos-left):not(.mad-pos-right) { margin-left: auto; }
+.mad-form-actions-center:has(> .mad-pos-left, > .mad-pos-center, > .mad-pos-right) > :not(.mad-pos-left):not(.mad-pos-right) ~ :not(.mad-pos-left):not(.mad-pos-right) { margin-left: 0; }
 
 
 /* ═══════════════════════════════════════════════════════════════════
