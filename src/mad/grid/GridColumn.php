@@ -852,8 +852,13 @@ class GridColumn
             return htmlspecialchars(\Mad\Support\ValueFormatter::apply($value, $this->builtinFormat), ENT_QUOTES);
         }
 
+        // Coluna `html`: o VALOR DO BANCO vai para a tela como HTML. Sai limpo
+        // (sem `<script>`, atributo de evento ou URL `javascript:`) — o que
+        // está gravado pode ter entrado sem passar pelo formulário, ou antes de
+        // a limpeza do Editor HTML valer sempre. O HTML que um transformador
+        // monta (acima) é código do desenvolvedor e passa como está.
         if ($this->isHtml) {
-            return (string)$value;
+            return \Mad\Util\MadHtmlSanitizer::sanitize((string) $value);
         }
 
         // Rede de protecao: coluna que guarda o ARQUIVO na propria celula

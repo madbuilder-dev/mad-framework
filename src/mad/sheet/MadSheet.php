@@ -83,6 +83,17 @@ class MadSheet extends MadComponent
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
+    /**
+     * `shCfgKey` aponta para a config desta planilha guardada na sessão e viaja no
+     * estado cifrado: só o servidor a escreve. Como prop pública, ela também
+     * aceitava valor mandado pelo navegador junto dos campos — e a requisição
+     * seguinte montava esta tela com a config de OUTRA aberta na mesma sessão.
+     */
+    protected function _lockedStateProps(): array
+    {
+        return array_merge(parent::_lockedStateProps(), ['shCfgKey']);
+    }
+
     public function hydrate(): void
     {
         // O state do wire só carrega props públicas — a config declarativa

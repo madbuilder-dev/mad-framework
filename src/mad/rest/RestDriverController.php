@@ -17,16 +17,24 @@ use Throwable;
  * ASSINADA com o segredo da chave p/ o builder verificar autenticidade.
  *
  * Ações: ping · introspect · run · update · plan. A conexão base e o modo
- * read-only vêm da entrada da chave (keystore), nunca do request. O request
- * PODE apontar um `database` alvo, mas SÓ um banco DO PRÓPRIO app (mesmo
- * prefixo `app_{uuid}_*` — adicionais/tenants), validado por RestTargetDatabase
+ * read-only vêm da entrada da chave (keystore). O request PODE apontar um
+ * `database` alvo, mas SÓ um banco DO PRÓPRIO app (mesmo prefixo
+ * `app_{uuid}_*` — adicionais/tenants), validado por RestTargetDatabase
  * (fail-closed) + backstop de CONNECT cross-tenant no Postgres. Um app nunca
  * alcança o banco de outro app.
+ *
+ * Somente leitura: a CHAVE manda; o corpo assinado pode trazer
+ * `read_only: true` só para RESTRINGIR uma chave de escrita (nunca libera). Em
+ * somente leitura o SQL do usuário (run/plan) roda numa conexão PRÓPRIA, aberta
+ * com as opções do modo e descartada no fim — ver RestDriverReadOnlySession.
  */
 class RestDriverController
 {
     /** Conexão efêmera usada quando o request aponta um database irmão. */
     private const TARGET_CONNECTION = '__mad_rest_target';
+
+    /** Conexão efêmera do SQL do usuário em modo somente leitura. */
+    private const READONLY_CONNECTION = '__mad_rest_readonly';
 
     public function __construct(
         private readonly SchemaIntrospector $introspector = new SchemaIntrospector,
@@ -62,40 +70,62 @@ class RestDriverController
     public function run(Request $request): JsonResponse
     {
         $sql = (string) $request->json('sql', '');
-        $key = $this->key($request);
+        $readOnly = $this->readOnly($request);
 
-        return $this->handle($request, fn ($pdo) => $this->runner->run($pdo, $sql, (bool) ($key['read_only'] ?? false)));
+        return $this->handle($request, fn ($pdo) => $this->runner->run($pdo, $sql, $readOnly), $readOnly);
     }
 
     public function plan(Request $request): JsonResponse
     {
         $sql = (string) $request->json('sql', '');
-        $key = $this->key($request);
+        $readOnly = $this->readOnly($request);
 
-        return $this->handle($request, fn ($pdo) => $this->runner->explain($pdo, $sql, (bool) ($key['read_only'] ?? false)));
+        return $this->handle($request, fn ($pdo) => $this->runner->explain($pdo, $sql, $readOnly), $readOnly);
     }
 
     public function update(Request $request): JsonResponse
     {
-        $key = $this->key($request);
         $table = (string) $request->json('table', '');
         $edits = (array) $request->json('edits', []);
+        $readOnly = $this->readOnly($request);
 
-        return $this->handle($request, fn ($pdo) => $this->runner->updateRows($pdo, $table, $edits, (bool) ($key['read_only'] ?? false)));
+        return $this->handle($request, fn ($pdo) => $this->runner->updateRows($pdo, $table, $edits, $readOnly));
     }
 
-    /** Resolve PDO da conexão da chave, executa $fn, e devolve resposta ASSINADA. */
-    private function handle(Request $request, callable $fn): JsonResponse
+    /**
+     * Modo somente leitura do request: o da CHAVE, ou a restrição pedida no
+     * corpo ASSINADO (`read_only: true`) — é como a conexão marcada Somente
+     * leitura no Studio passa a ser garantida pelo banco mesmo com uma chave de
+     * escrita. O corpo só restringe: `read_only: false` não libera nada.
+     */
+    private function readOnly(Request $request): bool
+    {
+        return (bool) ($this->key($request)['read_only'] ?? false)
+            || filter_var($request->json('read_only'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Resolve PDO da conexão da chave, executa $fn, e devolve resposta ASSINADA.
+     *
+     * @param  bool  $readOnlySql  $fn executa SQL do usuário em modo somente leitura:
+     *                             recebe a conexão PRÓPRIA do modo, descartada no fim
+     */
+    private function handle(Request $request, callable $fn, bool $readOnlySql = false): JsonResponse
     {
         $key = $this->key($request);
 
         try {
-            $pdo = $this->targetPdo($request, $key);
+            $pdo = $this->targetPdo($request, $key, $readOnlySql);
             $payload = $fn($pdo);
 
             return $this->signed($request, $key, $payload, 200);
         } catch (Throwable $e) {
             return $this->signed($request, $key, ['error' => $e->getMessage()], 422);
+        } finally {
+            if ($readOnlySql) {
+                // Fecha a conexão: nada da sessão do usuário sobrevive ao request.
+                DB::purge(self::READONLY_CONNECTION);
+            }
         }
     }
 
@@ -108,13 +138,17 @@ class RestDriverController
      *
      * @param  array<string,mixed>  $key
      */
-    private function targetPdo(Request $request, array $key): PDO
+    private function targetPdo(Request $request, array $key, bool $readOnlySql = false): PDO
     {
         $base = $this->baseConnection($request, $key);
         $ownDatabase = (string) config("database.connections.{$base}.database", '');
 
         $requested = $request->json('database');
         $target = RestTargetDatabase::resolve($ownDatabase, is_string($requested) ? $requested : null);
+
+        if ($readOnlySql) {
+            return $this->readOnlyPdo($base, $target);
+        }
 
         if ($target === null) {
             return DB::connection($base)->getPdo();
@@ -135,12 +169,44 @@ class RestDriverController
     }
 
     /**
+     * Conexão PRÓPRIA do SQL do usuário em modo somente leitura: mesmo
+     * servidor/credenciais da conexão base (ou do database irmão), aberta com as
+     * opções que só valem na abertura (MySQL sem vários comandos por envio,
+     * arquivo SQLite só para leitura). A conexão do app nunca recebe SQL de uma
+     * chave somente leitura — a exceção é o SQLite em memória, que só existe
+     * nela (a trava do engine fica com o PRAGMA query_only).
+     */
+    private function readOnlyPdo(string $base, ?string $target): PDO
+    {
+        $cfg = config("database.connections.{$base}");
+        if (! is_array($cfg)) {
+            throw new RuntimeException('Conexão base do Driver REST ausente.');
+        }
+        if ($target !== null) {
+            $cfg['database'] = $target;
+        }
+
+        $cfg = RestDriverReadOnlySession::connectionConfig($cfg);
+        if ($cfg === null) {
+            return DB::connection($base)->getPdo();
+        }
+
+        // Sobrescreve a config efêmera A CADA request (sem estado velho sob
+        // Octane/FrankenPHP) e reconecta antes de usar.
+        config(['database.connections.'.self::READONLY_CONNECTION => $cfg]);
+        DB::purge(self::READONLY_CONNECTION);
+
+        return DB::connection(self::READONLY_CONNECTION)->getPdo();
+    }
+
+    /**
      * Conexão Laravel base do request. O request PODE apontar uma `connection`
      * (no corpo ASSINADO) — seletor de banco do Database Manager —, validada
      * fail-closed:
      *   - chave com conexão pinada no keystore → só a pinada;
      *   - a conexão pedida tem que EXISTIR no config do app (allowlist);
-     *   - a conexão efêmera interna (__mad_rest_target) nunca é endereçável.
+     *   - as conexões efêmeras internas (__mad_rest_target, __mad_rest_readonly)
+     *     nunca são endereçáveis.
      * Sem `connection` no request → conexão da chave, senão a default.
      */
     private function baseConnection(Request $request, array $key): string
@@ -158,7 +224,7 @@ class RestDriverController
             throw new RuntimeException('Conexão fora do escopo desta chave.');
         }
 
-        if ($requested === self::TARGET_CONNECTION
+        if (in_array($requested, [self::TARGET_CONNECTION, self::READONLY_CONNECTION], true)
             || ! is_array(config("database.connections.{$requested}"))) {
             throw new RuntimeException('Conexão desconhecida.');
         }

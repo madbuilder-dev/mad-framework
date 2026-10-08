@@ -67,13 +67,37 @@ class MadQuickRegisterService extends MadComponent
             );
             $fields  = [];
             $rawFields = $param['field'] ?? ($_POST['field'] ?? []);
+            // Sem quick-fields (modo simples) NENHUM campo extra é aceito: o
+            // navegador só manda o termo. Lista vazia valia "aceita tudo", e o
+            // método gerado atribui cada campo direto no Model — bastava
+            // acrescentar `field[coluna]` à requisição para gravar qualquer
+            // coluna do registro criado, inclusive as que o `$fillable` barra.
+            $refused = [];
             if (is_array($rawFields)) {
                 foreach ($rawFields as $k => $v) {
                     $k = self::unwrapColumn((string) $k);
-                    if (empty($allowed) || in_array($k, $allowed, true)) {
+                    if (in_array($k, $allowed, true)) {
                         $fields[$k] = is_array($v) ? $v : (string) $v;
+                    } elseif ($k !== '') {
+                        $refused[] = $k;
                     }
                 }
+            }
+            if ($refused) {
+                sort($refused);
+                $quem = null;
+                try {
+                    $quem = function_exists('session') ? session('userid') : null;
+                } catch (\Throwable) {
+                    // sem sessão: o aviso sai sem o usuário
+                }
+                $msg = sprintf(
+                    '[MadQuickRegisterService] cadastro rápido de %s recebeu campos que o combo não tem (%s) — ignorados (usuário %s)',
+                    (string) ($cfg['class'] ?? '') . '::' . (string) ($cfg['method'] ?? ''),
+                    substr((string) preg_replace('/[\x00-\x1F\x7F]+/', ' ', implode(', ', $refused)), 0, 300),
+                    is_scalar($quem) && $quem !== '' ? (string) $quem : '-',
+                );
+                function_exists('logger') ? logger()->warning($msg) : error_log($msg);
             }
 
             // Se nao e modo multi-campo, exige term preenchido (compatibilidade).

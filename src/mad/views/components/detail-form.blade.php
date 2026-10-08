@@ -47,6 +47,7 @@
     $_dfRenderFields = \Mad\Grid\GridRenderHelpers::detectRenderFields($columns);
 
     // ── Auto-load: se model+fk declarados e rows vazias, carrega do banco ─
+    $_dfGivenRows = !empty($rows);
     if ($model && $foreignKey && empty($rows)) {
         $_form = \Mad\Component\MadRenderContext::getForm();
         if ($_form) {
@@ -57,6 +58,14 @@
 
     // ── Normalizar rows (garantir __id) ─────────────────────────────────────
     $normalizedRows = \Mad\Form\FieldListColumn::normalizeRows($rows);
+
+    // Linhas entregues pelo código da tela (não pelo auto-load) num detail que
+    // grava sozinho: o formulário anota que as mostrou — o Salvar só apaga a
+    // linha que a tela mostrou e o usuário removeu.
+    if ($_dfGivenRows && $model && $foreignKey && ($_form = \Mad\Component\MadRenderContext::getForm())) {
+        $_form->noteDetailRows($name, $model, $foreignKey, $normalizedRows);
+    }
+    unset($_form, $_dfGivenRows);
 
     // ── Colunas calculadas (`evaluate`) nas linhas que já existem (#84) ─────
     // A linha adicionada no navegador é calculada pelo gêmeo JS
@@ -150,13 +159,22 @@
     // Snapshot do registry antes/depois: campos file/image que o sub-form
     // registrar são colunas de arquivo deste detail (auto-save por-linha).
     $_dfFieldsBefore = array_keys(\Mad\Form\MadFormRegistry::getFields());
-    $formHtml = \Mad\View\MadBlade::renderString($fieldSlot, get_defined_vars());
+    // Os campos desenhados daqui até o fim do editor são colunas da LINHA: o
+    // formulário da tela não os toma por campos do registro principal.
+    \Mad\Form\MadFormRegistry::beginDetailEditor($name);
+    try {
+        $formHtml = \Mad\View\MadBlade::renderString($fieldSlot, get_defined_vars());
+    } finally {
+        \Mad\Form\MadFormRegistry::endDetailEditor($formHtml ?? '');
+    }
     $_dfFileCols = [];
     $_dfColMeta  = [];
+    $_dfEditor   = [];   // campos do editor: colunas da LINHA, não do registro principal
     foreach (\Mad\Form\MadFormRegistry::getFields() as $_dfFn => $_dfFp) {
         if (in_array($_dfFn, $_dfFieldsBefore, true)) {
             continue;
         }
+        $_dfEditor[] = (string) $_dfFn;
         // strip-mask do campo do editor vale para a coluna da linha: sem isto
         // o auto-save gravava '123.456.789-01' mesmo com strip-mask declarado.
         if (!empty($_dfFp['stripMask']) && !empty($_dfFp['mask'])) {
@@ -173,12 +191,25 @@
             ];
         }
     }
-    if ($_dfFileCols) {
-        \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_dfFileCols);
-    }
+    // Sempre, mesmo sem campo de arquivo no editor: o formulário da tela anota
+    // como o detalhe trata os arquivos das linhas, e o Salvar só aceita essa
+    // descrição.
+    \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_dfFileCols);
     if ($_dfColMeta) {
         \Mad\Form\MadFormRegistry::registerDetailColMeta($name, $_dfColMeta);
     }
+    \Mad\Form\MadFormRegistry::registerDetailEditorFields($name, $_dfEditor);
+
+    // Colunas da linha que este detail não mostra: o formulário anota como
+    // estavam no banco — o Salvar não regrava a que ninguém mexeu. No detail
+    // gravado à mão (sem model na tag) a base vem do loadDetailRows() da tela.
+    if ($_form = \Mad\Component\MadRenderContext::getForm()) {
+        $_form->noteDetailColumns($name, (string) $model, (string) $foreignKey, $normalizedRows);
+    }
+    // As linhas como vão para o navegador: o que voltar diferente nas colunas
+    // que o detalhe não tem não é aceito (MadForm::takeRowsFromBrowser).
+    \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $normalizedRows);
+    unset($_form, $_dfEditor);
 
     $hasTotals = !empty(array_filter($columns, fn($c) => $c->totalFunc));
 @endphp

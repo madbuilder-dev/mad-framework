@@ -37,6 +37,14 @@
     // atropelava o conteúdo default escrito na tag.
     $initVal = \Mad\Support\MadFieldValue::resolve((string) $name, $value);
 
+    // O editor monta este conteúdo como HTML dentro da página. O que está no
+    // banco pode ter sido gravado antes de a limpeza valer sempre (ou por
+    // fora do formulário: importação, API, edição na célula): sai limpo daqui
+    // — sem `<script>`, sem atributo de evento, sem URL `javascript:`.
+    if (is_string($initVal) && $initVal !== '') {
+        $initVal = \Mad\Util\MadHtmlSanitizer::sanitize($initVal);
+    }
+
     // Presets padrao (dev pode sobrescrever via prop)
     $defaultPlugins = 'advlist autolink lists link image charmap preview anchor '
                     . 'searchreplace visualblocks visualchars code fullscreen '

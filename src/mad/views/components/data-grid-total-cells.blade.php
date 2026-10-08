@@ -12,6 +12,10 @@
     $summaryLabelKeys = array_map(fn($index) => $summaryColumns[$index]->fieldKey, $summaryLabelIndexes);
     $summaryLabelKeysJs = json_encode($summaryLabelKeys);
     $summaryPreviousKeys = [];
+    // Só o total GERAL (rodapé da grade) é atualizável no lugar e avisa
+    // quando a coluna soma a página; os subtotais de grupo não mudam.
+    $summaryGrand    = (bool) ($summaryGrand ?? false);
+    $summaryPageOnly = is_array($summaryPageOnly ?? null) ? $summaryPageOnly : [];
 @endphp
 @foreach($summaryColumns as $summaryIndex => $summaryColumn)
     @if(in_array($summaryIndex, $summaryLabelIndexes, true))
@@ -35,7 +39,7 @@
                 <span class="mad-dg-total-caption">{{ $summaryCaption }}</span>
                 @if($summaryContext !== '')<span class="mad-dg-total-context">{{ $summaryContext }}</span>@endif
             </span>
-            @if(isset($summaryTotals[$summaryColumn->field])){!! $summaryTotals[$summaryColumn->field] !!}@endif
+            @if(isset($summaryTotals[$summaryColumn->field]))@if($summaryGrand)<span class="mad-dg-total-value" data-mad-total="{{ $summaryColumn->fieldKey }}">{!! \Mad\Grid\MadDataGrid::totalCellHtml($summaryTotals[$summaryColumn->field], !empty($summaryPageOnly[$summaryColumn->field])) !!}</span>@else{!! $summaryTotals[$summaryColumn->field] !!}@endif @endif
         </td>
     @endif
     @php $summaryPreviousKeys[] = $summaryColumn->fieldKey; @endphp

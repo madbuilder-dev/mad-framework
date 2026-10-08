@@ -138,11 +138,55 @@ class MadGrid extends MadDataGrid
         return array_filter($acts);
     }
 
+    /**
+     * `<mad-action-group>` de um `<mad-grid model=…>`: o compilador gravava os
+     * grupos em `actGroupConfigs` e só a listagem `<mad-grid self>` os lia —
+     * aqui o menu "…" inteiro sumia, sem aviso.
+     */
+    protected function actionGroups(): array
+    {
+        $grupos = [];
+        foreach ((array) ($this->gridConfig['actGroupConfigs'] ?? []) as $g) {
+            if (!is_array($g)) continue;
+            $grp = GridActionGroup::make((string) ($g['label'] ?? ''));
+            if (!empty($g['icon'])) $grp->icon($g['icon']);
+            foreach ((array) ($g['actions'] ?? []) as $a) {
+                $act = is_array($a) ? static::_actFromConfig($a) : null;
+                if ($act) $grp->add($act);
+            }
+            $grupos[] = $grp;
+        }
+
+        return $grupos;
+    }
+
+    /** Ações declaradas dentro dos grupos (config crua), para o __call. */
+    private function _groupActConfigs(): array
+    {
+        $acts = [];
+        foreach ((array) ($this->gridConfig['actGroupConfigs'] ?? []) as $g) {
+            foreach ((array) ($g['actions'] ?? []) as $a) {
+                if (is_array($a)) $acts[] = $a;
+            }
+        }
+
+        return $acts;
+    }
+
     // ── Delete embutido ───────────────────────────────────────────────────
 
     /**
      * Action embutida de exclusão — chamada quando configurado via ->del().
      * Não requer handler externo.
+     *
+     * O id vem do navegador. A busca é pela consulta da própria listagem
+     * (_visibleRecord): só se exclui linha que ela mostra — com `find()`, uma
+     * requisição com o id de outra pessoa passava por cima do `:filters`.
+     *
+     * E a resposta diz o que aconteceu. "Excluído com sucesso" só quando o
+     * registro saiu do banco: linha que não está mais na listagem (outra
+     * pessoa excluiu, mudou de dono) e exclusão que o Model recusou no evento
+     * `deleting` avisam isso, e a listagem recarregada mostra o que ficou.
      */
     public function onMadGridDelete(int|string $id): mixed
     {
@@ -150,14 +194,27 @@ class MadGrid extends MadDataGrid
         if (empty($model) || !class_exists($model)) {
             return MadToast::danger('Model não configurado corretamente.');
         }
+        // Chamado sem o hydrate() (uso direto): o gridConfig é a fonte.
+        if (empty($this->model)) {
+            $this->model = $model;
+        }
 
-        $db = $this->_db();
+        $db      = $this->_db();
+        $found   = false;
+        $deleted = false;
         try {
-            \Illuminate\Support\Facades\DB::connection($db)->transaction(function () use ($model, $id) {
-                $record = $model::find($id);
-                if ($record) {
-                    $record->delete();
+            \Illuminate\Support\Facades\DB::connection($db)->transaction(function () use ($id, &$found, &$deleted) {
+                $record = $this->_visibleRecord($id);
+                if (!$record) {
+                    return;
                 }
+                $found = true;
+                // delete() devolve false quando um `deleting` cancela. O estado
+                // do registro confirma (um delete() sobrescrito pode não devolver
+                // nada): sumiu do banco, ou foi para a lixeira (SoftDeletes).
+                $result  = $record->delete();
+                $deleted = $result !== false
+                    && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
             });
         } catch (\Throwable $e) {
             // Erro técnico (ex.: registro em uso — violação de FK) não vai cru
@@ -168,6 +225,13 @@ class MadGrid extends MadDataGrid
         }
 
         $this->loadData();
+        if (!$found) {
+            return MadToast::warning(mad_t('mad.error.delete_gone'));
+        }
+        if (!$deleted) {
+            return MadToast::warning(mad_t('mad.error.delete_refused'));
+        }
+
         return MadToast::success('Registro excluído com sucesso.');
     }
 
@@ -252,7 +316,8 @@ class MadGrid extends MadDataGrid
     {
         // Ações de linha E ações em lote (<mad-bulk-action method>) delegam ao
         // handler — o método do lote recebe a seleção ([id => id]).
-        $actConfigs   = array_merge($this->gridConfig['actConfigs'] ?? [], $this->gridConfig['bulkActions'] ?? []);
+        // As de dentro de um <mad-action-group> também são ações declaradas.
+        $actConfigs   = array_merge($this->gridConfig['actConfigs'] ?? [], $this->_groupActConfigs(), $this->gridConfig['bulkActions'] ?? []);
         $matchingActs = array_filter($actConfigs, fn($a) => ($a['method'] ?? '') === $name);
 
         if (!empty($matchingActs) && !empty($this->gridConfig['handler'])) {

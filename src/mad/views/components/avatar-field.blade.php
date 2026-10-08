@@ -33,6 +33,11 @@
         $ctxVal = array_key_exists($name, $_ctx) ? (string)$_ctx[$name] : $value;
         $value  = $ctxVal;
     }
+    // storage="disk": o arquivo que este campo está MOSTRANDO — o Salvar só
+    // remove o que consta aqui (ver MadForm::fileShown).
+    if ($storage === 'disk' && $name) {
+        \Mad\Component\MadRenderContext::fileRendered($name, $value);
+    }
 
     // Com storage: valor é path de arquivo, converter para URL acessível
     $previewUrl = '';

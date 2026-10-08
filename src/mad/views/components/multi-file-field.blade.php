@@ -36,30 +36,62 @@
         }
     }
 
+    // mode=comma (disk): o que este campo está MOSTRANDO é a base do Salvar —
+    // ele só tira da coluna (e do disco) o arquivo que consta aqui e que o
+    // usuário removeu. O arquivo que outra aba anexou depois, e que esta tela
+    // nunca mostrou, fica (ver MadForm::columnFilesShown).
+    if ($mode !== 'table' && $storage === 'disk' && $name) {
+        \Mad\Component\MadRenderContext::columnFilesRendered($name, array_column($existingFiles, 'path'));
+    }
+
     // mode=table (disk): carrega os arquivos já gravados na tabela filha para
     // exibir/manter/remover na edição (chaveado por path, igual ao mode=comma).
     if ($mode === 'table' && $storage === 'disk' && empty($existingFiles)
         && $model && $foreignKey && $pathColumn) {
         $_form = \Mad\Component\MadRenderContext::getForm();
         $_src  = $_form ? $_form->getSourceRecord() : null;
+        $_pid  = null;
         if ($_src) {
             $_pk  = method_exists($_src, 'getKeyName') ? $_src->getKeyName() : 'id';
             $_pid = $_src->$_pk ?? null;
-            if ($_pid) {
-                try {
-                    foreach ($model::where($foreignKey, $_pid)->get() as $_row) {
-                        $p = (string) ($_row->$pathColumn ?? '');
-                        if ($p === '') { continue; }
-                        $nm = $nameColumn ? (string) ($_row->$nameColumn ?? '') : '';
-                        if ($nm === '') {
-                            $bn = basename($p);
-                            $nm = preg_match('/^[a-f0-9]{13,16}_(.+)$/i', $bn, $m) ? $m[1] : $bn;
-                        }
-                        $existingFiles[] = ['name' => $nm, 'path' => $p, 'url' => mad_download_url($p, $nm)];
+        } elseif ($_form) {
+            // REDESENHO (render depois de uma ação): o formulário veio do estado,
+            // sem o registro. O campo saía VAZIO — e, se o HTML fosse entregue
+            // (ação que redesenha a tela inteira), o Salvar seguinte apagava
+            // todos os anexos como "removidos pelo usuário". O registro é o que
+            // o formulário guardou quando entregou os anexos deste campo.
+            $_pid = $_form->knownParent($name);
+        }
+        if ($_pid) {
+            try {
+                foreach ($model::where($foreignKey, $_pid)->get() as $_row) {
+                    $p = (string) ($_row->$pathColumn ?? '');
+                    if ($p === '') { continue; }
+                    $nm = $nameColumn ? (string) ($_row->$nameColumn ?? '') : '';
+                    if ($nm === '') {
+                        $bn = basename($p);
+                        $nm = preg_match('/^[a-f0-9]{13,16}_(.+)$/i', $bn, $m) ? $m[1] : $bn;
                     }
-                } catch (\Throwable $e) {
-                    // tabela ausente / sem conexão no render: ignora silenciosamente
+                    $existingFiles[] = ['name' => $nm, 'path' => $p, 'url' => mad_download_url($p, $nm)];
                 }
+                // O que este campo está MOSTRANDO: o Salvar só apaga o anexo
+                // que consta aqui e que o usuário removeu. No redesenho só vale
+                // se o HTML for entregue (o render de uma resposta parcial é
+                // descartado, e o campo continua mostrando o que mostrava).
+                $_src
+                    ? $_form->rememberUploadFiles($name, $_pid, array_column($existingFiles, 'path'))
+                    : $_form->noteUploadFiles($name, $_pid, array_column($existingFiles, 'path'));
+            } catch (\Throwable $e) {
+                // Tabela ausente / sem conexão no render: o campo abre SEM os
+                // anexos. Não é inofensivo — "nenhum anexo mantido" no Salvar
+                // seguinte apagaria todas as linhas e os arquivos do registro.
+                // O formulário esquece o que tinha deste campo, e o Salvar
+                // não apaga o que ele não mostrou.
+                $existingFiles = [];
+                $_src ? $_form->forgetChildRows($name) : $_form->noteUploadFiles($name, $_pid, null);
+                error_log('[mad-multi-file-field] falha ao carregar os anexos de "' . $name
+                    . '" (model=' . $model . ', fk=' . $foreignKey . ', parent=' . $_pid
+                    . ') — o campo abre vazio e o Salvar NAO vai apagar anexos: ' . $e->getMessage());
             }
         }
     }
@@ -69,6 +101,9 @@
         'fieldName'       => $name,
         'existingFiles'   => $existingFiles,
         'madChangeAction' => $madChangeAction,
+        'accept'          => (string) $accept,
+        'serverMax'       => \Mad\Form\MadUploadRules::serverFileBytes(),
+        'stored'          => $storage !== '',
     ]);
     \Mad\Form\MadFormRegistry::register($name, 'multi-file', [
         'label'      => strip_tags($label),
@@ -81,6 +116,11 @@
         'pathColumn' => $pathColumn,
         'nameColumn' => $nameColumn,
         'fileName'   => $fileName ?? 'prefix',
+        // Limites: o servidor os confere no Salvar (MadUploadRules::check).
+        // `max-size` é em KB; `*` (o padrão) aceita qualquer tipo.
+        'accept'     => trim((string) $accept) === '*' ? '' : (string) $accept,
+        'maxBytes'   => $maxSize > 0 ? $maxSize * 1024 : '',
+        'maxFiles'   => $maxFiles > 0 ? $maxFiles : '',
         // Metadados do upload (mode="table"): mapeamento explícito. Sem estes,
         // MadForm preenche por CONVENÇÃO as colunas que existirem na tabela
         // filha (original_name / size / mime_type / disk).
@@ -98,6 +138,7 @@
     <div
         class="mad-multi-file-wrap"
         x-data="madMultiFile({{ $fileCfg }})"
+        data-mad-upload="{{ $name }}"
         @dragover.prevent="dragOver = true"
         @dragleave.prevent="dragOver = false"
         @drop.prevent="onDrop($event)"
@@ -117,6 +158,13 @@
         {{-- Hidden para sinalizar paths de arquivos existentes mantidos/removidos --}}
         <template x-for="(ef, ei) in existingFiles" :key="'ex_'+ei">
             <input type="hidden" :name="'__mad_existing_files[{{ $name }}][]'" :value="ef.path">
+        </template>
+        {{-- Identificador de cada arquivo NOVO, na ordem em que eles vão no POST.
+             A resposta do Salvar devolve, por identificador, onde o arquivo foi
+             gravado (op files_saved), e o campo deixa de tratá-lo como novo:
+             sem isto ele era enviado — e regravado — a cada Salvar. --}}
+        <template x-for="nf in newFiles" :key="'nw_'+nf.uid">
+            <input type="hidden" :name="'__mad_new_files[{{ $name }}][]'" :value="nf.uid">
         </template>
         {{-- Dropzone --}}
         <div class="mad-file-body" @click="$refs.fileInput.click()" style="cursor:pointer;">

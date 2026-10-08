@@ -215,12 +215,23 @@ use Mad\View\MadBlade;
  * │  O método recebe o ID do registro como parâmetro.                           │
  * │  Retorna MadResponse ou MadToast.                                           │
  * │                                                                              │
- * │  method="onAprovar"       Método PHP a chamar (obrigatório)                 │
+ * │  method="onAprovar"       Método PHP a chamar                               │
  * │  mad:click="onAprovar"    Alias equivalente a method= (mesmo efeito)        │
+ * │  navigate="Form::onEdit({id})"  SEM method: a ação navega, igual ao         │
+ * │                           <mad-nav> (aceita drawer, row e :params)          │
  * │  icon="check"             Ícone Lucide                                      │
  * │  label="Aprovar"          Texto do botão                                    │
+ * │  title="Aprovar a OS"     Dica do botão (padrão: o label)                   │
  * │  primary / danger         Estilo visual                                     │
- * │  confirm="Confirmar?"     Confirmação antes de executar                     │
+ * │  color="#7c3aed"          Cor livre, no lugar da variante                   │
+ * │  confirm="Confirmar?"     Confirmação antes de executar (diálogo)           │
+ * │  confirm-popover="…"      Confirmação em popover, ao lado do botão          │
+ * │  id-field="cliente_id"    Coluna enviada como id (padrão: a chave)          │
+ * │  params="{a: x, b: {campo}}"  Valores extras: chegam ao método depois do id │
+ * │                           — metodo($id, array $extras), na ordem declarada, │
+ * │                           com {campo} trocado pelo valor da linha           │
+ * │                           (:params="[...]" aceita expressão PHP)            │
+ * │  Sem method nem navigate a ação não é desenhada — e o compilador avisa.     │
  * │  display-condition="Cls::metodo"  Exibição condicional ($row => bool)       │
  * │  when-field="status"      Condição por campo do registro                    │
  * │  when-value="P"           Exibe se campo = valor                            │
@@ -241,10 +252,16 @@ use Mad\View\MadBlade;
  * │      <mad-act method="onAprovar" icon="check" label="Aprovar" />            │
  * │      <mad-act method="onCancelar" icon="ban" label="Cancelar" danger />     │
  * │  </mad-action-group>                                                        │
+ * │  Aceita <mad-act />, <mad-nav /> e <mad-del />; outra tag é ignorada, com   │
+ * │  aviso. Vale no <mad-grid self> e no <mad-grid model="…">.                  │
  * │                                                                              │
- * │  <mad-del> — Atalho para exclusão                                           │
+ * │  <mad-del> — Atalho para exclusão (a embutida do <mad-grid model="…">)      │
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  <mad-del confirm="Excluir este registro?" />                               │
+ * │  Aceita as mesmas condições do <mad-act>: display-condition, when-* e       │
+ * │  disabled-*. Numa listagem <mad-grid self> a exclusão é um método da tela:  │
+ * │  use <mad-act method="onDelete" … danger /> (ali o <mad-del> não tem o      │
+ * │  método embutido e o clique é recusado).                                    │
  * │                                                                              │
  * │  Diferença mad-nav vs mad-act:                                              │
  * │  ┌────────────┬──────────────────────┬──────────────────────┐               │
@@ -264,6 +281,17 @@ class MadGridCompiler
 {
     /** Registra HTML dos filter popovers customizados durante a compilação. */
     protected static array $_filterPopovers = [];
+
+    /**
+     * Avisos das AÇÕES do `<mad-grid>` em compilação (ação sem método nem
+     * navigate, tag que o grupo de ações não aceita, atributo que não vale ali).
+     * As funções `build*Config` só devolvem o array da ação; o aviso fica aqui e
+     * o {@see compileBlock()} o põe na tela, antes da grade. Antes a ação
+     * simplesmente não aparecia, sem linha no log.
+     *
+     * @var list<string>
+     */
+    protected static array $_actionNotes = [];
 
     /**
      * Registra as expressões PHP de `<mad-col-filter :opts / :filters>`.
@@ -656,6 +684,7 @@ class MadGridCompiler
 
         $gridAttrs  = static::parseAttrs($attrStr);
         $configParts = static::buildGridConfig($gridAttrs);
+        static::$_actionNotes = [];
 
         // Strip outer '>' and '</mad-grid>' to get children
         $inner = preg_replace('/^\s*>|<\/mad-grid>\s*$/s', '', $body);
@@ -808,14 +837,30 @@ class MadGridCompiler
                 $icon  = static::qs(static::str($grpAttrs, 'icon', 'more-horizontal'));
                 $label = static::textPhp($grpAttrs, 'label') ?? static::qs('');
 
+                // `del` também: o regex daqui era mais estreito que o do nível
+                // raiz e o do @if, e o <mad-del> dentro do grupo sumia calado.
+                // `(?![\w-])` — sem ele `<mad-action-…>`/`<mad-navigate…>` casavam.
                 $actParts = [];
-                preg_match_all('/<mad-(act(?:ion)?|nav)([\s\S]*?)\s*\/>/s', $grpBody, $am, PREG_SET_ORDER);
+                $childRe  = '/<mad-(act(?:ion)?|nav|del)(?![\w-])(' . self::ATTR_RUN_SC . ')\s*\/>/s';
+                preg_match_all($childRe, $grpBody, $am, PREG_SET_ORDER);
                 foreach ($am as $am2) {
                     $tagType   = $am2[1];
                     $tagAttrs  = static::parseAttrs($am2[2] ?? '');
-                    $actParts[] = ($tagType === 'nav')
-                        ? static::buildNavConfig($tagAttrs)
-                        : static::buildActConfig($tagAttrs);
+                    $actParts[] = match ($tagType) {
+                        'nav'   => static::buildNavConfig($tagAttrs),
+                        'del'   => static::buildDelConfig($tagAttrs),
+                        default => static::buildActConfig($tagAttrs),
+                    };
+                }
+                $grpName = trim(static::str($grpAttrs, 'label')) !== '' ? ' label="' . static::str($grpAttrs, 'label') . '"' : '';
+                // O que sobrou no corpo e é tag do kit não vira item do menu.
+                if (preg_match_all('/<(mad-[\w-]+)/', (string) preg_replace($childRe, '', $grpBody), $rest)) {
+                    static::$_actionNotes[] = '<mad-action-group' . $grpName . '> ignorou <' . implode('>, <', array_unique($rest[1])) . '>:'
+                        . ' o grupo só aceita <mad-act />, <mad-nav /> e <mad-del /> (tags fechadas em si mesmas).';
+                }
+                $actParts = array_values(array_filter($actParts, fn ($p) => $p !== ''));
+                if (empty($actParts)) {
+                    static::$_actionNotes[] = '<mad-action-group' . $grpName . '> sem ações: o menu não é desenhado.';
                 }
                 $actsStr  = empty($actParts) ? '[]' : "[\n            " . implode(",\n            ", $actParts) . "\n        ]";
                 $grpConfigs[] = "['icon' => {$icon}, 'label' => {$label}, 'actions' => {$actsStr}]";
@@ -873,6 +918,7 @@ class MadGridCompiler
                             default   => static::buildActConfig($tagAttrs),
                         };
                     }
+                    $actParts = array_values(array_filter($actParts, fn ($p) => $p !== ''));
                     if (empty($actParts)) continue;
 
                     // Condicao real: @if/@elseif usam a propria, @else usa !prev1 && !prev2 ...
@@ -911,6 +957,8 @@ class MadGridCompiler
                 case 'action': $actConfigs[] = static::buildActConfig($childAttrs);  break;
             }
         }
+        // Ação sem método nem navigate: não entra (e o aviso já foi anotado).
+        $actConfigs = array_values(array_filter($actConfigs, fn ($p) => $p !== ''));
 
         if (!empty($colConfigs)) {
             $configParts[] = "'colConfigs' => [\n        " . implode(",\n        ", $colConfigs) . "\n    ]";
@@ -955,12 +1003,20 @@ class MadGridCompiler
 
         $configStr = "[\n    " . implode(",\n    ", $configParts) . "\n]";
 
+        // Avisos das ações: no log sempre; na tela (antes da grade) com o
+        // APP_DEBUG ligado — ver warn().
+        $diag = '';
+        foreach (array_unique(static::$_actionNotes) as $note) {
+            $diag .= static::warn($note);
+        }
+        static::$_actionNotes = [];
+
         // <mad-grid self> — delega para $__component->_renderInlineGrid() (subclasse MadDataGrid)
         if (static::has($gridAttrs, 'self')) {
-            return "<?php echo \$__component->_renderInlineGrid({$configStr}); ?>";
+            return $diag . "<?php echo \$__component->_renderInlineGrid({$configStr}); ?>";
         }
 
-        return "<?php echo \\Mad\\Grid\\MadGrid::_renderFromConfig({$configStr}); ?>";
+        return $diag . "<?php echo \\Mad\\Grid\\MadGrid::_renderFromConfig({$configStr}); ?>";
     }
 
     // ── Seek block compiler ────────────────────────────────────────────────────
@@ -2284,7 +2340,7 @@ class MadGridCompiler
         // nome da classe e o método virava 'show'.
         if (preg_match('/^(\w+)(?:::(\w+))?\s*(?:\((.*)\))?$/', $nav, $nm)) {
             $c[] = static::kv('navClass', static::qs($nm[1]));
-            $c[] = static::kv('navMethod', static::qs(!empty($nm[2]) ? $nm[2] : static::str($a, 'method', 'show')));
+            $c[] = static::kv('navMethod', static::qs(!empty($nm[2]) ? $nm[2] : (static::str($a, 'method') ?: 'show')));
 
             // Params inline: navigate="Form::onEdit({id}, {tipo})"
             if (!empty($nm[3])) {
@@ -2298,7 +2354,7 @@ class MadGridCompiler
             }
         } else {
             $c[] = static::kv('navClass', static::qs($nav));
-            $c[] = static::kv('navMethod', static::qs(static::str($a, 'method', 'show')));
+            $c[] = static::kv('navMethod', static::qs(static::str($a, 'method') ?: 'show'));
         }
 
         // :params="{'id': '{id}', 'modo': 'edit'}" — tem prioridade sobre inline
@@ -2313,64 +2369,54 @@ class MadGridCompiler
         if (isset($a['confirm']))           $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
         if (isset($a['confirm-popover']))   $c[] = static::kv('confirmPopover', static::strExpr($a, 'confirm-popover'));
         array_push($c, ...static::actVariantFlags($a));
-        if (isset($a['display-condition'])) $c[] = static::kv('when', static::qs(static::str($a, 'display-condition')));
+        array_push($c, ...static::actLookParts($a));
+        array_push($c, ...static::actConditionParts($a));
         if (isset($a['transform']))         $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
         return '[' . implode(', ', $c) . ']';
     }
 
     /**
-     * Variante visual de uma ação de linha (`<mad-act>`/`<mad-nav>`) → flags do
-     * GridAction. Aceita a flag booleana (`danger`, `primary`) E `variant="…"` —
-     * o gerador de listagens da plataforma emite `variant="danger"` no botão de
-     * excluir, e só a flag era lida: o ícone saía neutro em vez de vermelho.
-     *
-     * O GridAction só pinta `danger` e `primary`; os demais valores (`success`,
-     * `info`, `warning`, `default`…) continuam no botão neutro, como antes.
-     * Ordem primary→danger preservada (é a ordem histórica das duas flags).
-     *
-     * @return list<string> pares `'chave' => true` prontos para o array config
+     * Rótulo curto de uma ação para os avisos: `<mad-act label="Imprimir">`.
      */
-    protected static function actVariantFlags(array $a): array
+    protected static function actName(string $tag, array $a): string
     {
-        $variant = strtolower(trim(static::str($a, 'variant')));
-        $flags   = [];
-        if (static::has($a, 'primary') || $variant === 'primary') $flags[] = "'primary' => true";
-        if (static::has($a, 'danger')  || $variant === 'danger')  $flags[] = "'danger' => true";
-        return $flags;
-    }
-
-    protected static function buildDelConfig(array $a): string
-    {
-        return '[' . implode(', ', [
-            "'method'  => 'onMadGridDelete'",
-            "'danger'  => true",
-            static::kv('confirm', static::strExpr($a, 'confirm', static::qs('Excluir este registro?'))),
-            static::kv('icon',    static::strExpr($a, 'icon',    static::qs('trash-2'))),
-            static::kv('label',   static::strExpr($a, 'label',   static::qs('Excluir'))),
-        ]) . ']';
-    }
-
-    protected static function buildActConfig(array $a): string
-    {
-        $c = [];
-
-        // method="X" OU mad:click="X" (alias). parseAttrs pode partir
-        // "mad:click" em "mad" (bool) + "click" (php), entao checamos ambas formas.
-        $method = static::str($a, 'method');
-        if ($method === '') {
-            if (isset($a['mad:click'])) {
-                $method = (string) $a['mad:click']['value'];
-            } elseif (isset($a['click']) && static::has($a, 'mad')) {
-                $method = (string) $a['click']['value'];
+        foreach (['label', 'method', 'navigate', 'icon'] as $k) {
+            $v = trim(static::str($a, $k));
+            if ($v !== '') {
+                return '<' . $tag . ' ' . $k . '="' . $v . '">';
             }
         }
-        $c[] = static::kv('method', static::qs($method));
-        if (isset($a['icon']))     $c[] = static::kv('icon',    static::strExpr($a, 'icon'));
-        if (isset($a['label']))    $c[] = static::kv('label',   static::strExpr($a, 'label'));
-        if (isset($a['confirm']))         $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
-        if (isset($a['confirm-popover'])) $c[] = static::kv('confirmPopover', static::strExpr($a, 'confirm-popover'));
-        array_push($c, ...static::actVariantFlags($a));
-        if (isset($a['transform']))     $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
+
+        return '<' . $tag . '>';
+    }
+
+    /**
+     * Aparência que o painel de Ação Grid oferece e o compilador não lia:
+     * `title` (a dica do botão; sem ela vale o rótulo) e `color` (cor livre no
+     * lugar da variante).
+     *
+     * @return list<string>
+     */
+    protected static function actLookParts(array $a): array
+    {
+        $c = [];
+        if (isset($a['title']) && static::str($a, 'title') !== '') $c[] = static::kv('title', static::strExpr($a, 'title'));
+        if (isset($a['color']) && static::str($a, 'color') !== '') $c[] = static::kv('color', static::strExpr($a, 'color'));
+
+        return $c;
+    }
+
+    /**
+     * Condições de uma ação de linha — iguais em `<mad-act>`, `<mad-nav>` e
+     * `<mad-del>`: `display-condition="Classe::metodo"`, `when-field` +
+     * `when-value`/`when-in`/`when-nin`/`when-op` (exibir) e `disabled-field` +
+     * `disabled-value`/`disabled-in`/`disabled-nin`/`disabled-op` (desabilitar).
+     *
+     * @return list<string>
+     */
+    protected static function actConditionParts(array $a): array
+    {
+        $c = [];
 
         // Display condition como string callable 'Classe::metodo'
         if (isset($a['display-condition'])) {
@@ -2416,6 +2462,121 @@ class MadGridCompiler
                      . ", 'value' => " . static::qs($disVal) . "]";
             }
         }
+
+        return $c;
+    }
+
+    /**
+     * Variante visual de uma ação de linha (`<mad-act>`/`<mad-nav>`) → flags do
+     * GridAction. Aceita a flag booleana (`danger`, `primary`) E `variant="…"` —
+     * o gerador de listagens da plataforma emite `variant="danger"` no botão de
+     * excluir, e só a flag era lida: o ícone saía neutro em vez de vermelho.
+     *
+     * O GridAction só pinta `danger` e `primary`; os demais valores (`success`,
+     * `info`, `warning`, `default`…) continuam no botão neutro, como antes.
+     * Ordem primary→danger preservada (é a ordem histórica das duas flags).
+     *
+     * @return list<string> pares `'chave' => true` prontos para o array config
+     */
+    protected static function actVariantFlags(array $a): array
+    {
+        $variant = strtolower(trim(static::str($a, 'variant')));
+        $flags   = [];
+        if (static::has($a, 'primary') || $variant === 'primary') $flags[] = "'primary' => true";
+        if (static::has($a, 'danger')  || $variant === 'danger')  $flags[] = "'danger' => true";
+        return $flags;
+    }
+
+    protected static function buildDelConfig(array $a): string
+    {
+        $c = [
+            "'method'  => 'onMadGridDelete'",
+            "'danger'  => true",
+            static::kv('confirm', static::strExpr($a, 'confirm', static::qs('Excluir este registro?'))),
+            static::kv('icon',    static::strExpr($a, 'icon',    static::qs('trash-2'))),
+            static::kv('label',   static::strExpr($a, 'label',   static::qs('Excluir'))),
+        ];
+        // Pergunta em popover (ao lado do botão) no lugar do diálogo.
+        if (isset($a['confirm-popover']) && static::str($a, 'confirm-popover') !== '') {
+            $c[] = static::kv('confirmPopover', static::strExpr($a, 'confirm-popover'));
+        }
+        // O schema anuncia `display-condition` no <mad-del>, e o compilador não
+        // lia nenhuma condição: o Excluir aparecia em toda linha.
+        array_push($c, ...static::actLookParts($a));
+        array_push($c, ...static::actConditionParts($a));
+
+        return '[' . implode(', ', $c) . ']';
+    }
+
+    protected static function buildActConfig(array $a): string
+    {
+        $c = [];
+
+        // method="X" OU mad:click="X" (alias). parseAttrs pode partir
+        // "mad:click" em "mad" (bool) + "click" (php), entao checamos ambas formas.
+        $method = static::str($a, 'method');
+        if ($method === '') {
+            if (isset($a['mad:click'])) {
+                $method = (string) $a['mad:click']['value'];
+            } elseif (isset($a['click']) && static::has($a, 'mad')) {
+                $method = (string) $a['click']['value'];
+            }
+        }
+
+        // `<mad-act navigate="OsForm::onEdit({id})">`: o painel de Ação Grid
+        // oferece Navigate (e Abrir em). É a mesma navegação do <mad-nav> —
+        // antes virava uma ação sem método, descartada sem aviso.
+        $navigate = trim(static::str($a, 'navigate'));
+        if ($method === '' && $navigate !== '') {
+            return static::buildNavConfig($a);
+        }
+        if ($method === '') {
+            static::$_actionNotes[] = static::actName('mad-act', $a) . ' sem method (On Click) nem navigate: a ação não tem o que executar e não é desenhada.';
+
+            return '';
+        }
+        if ($navigate !== '') {
+            static::$_actionNotes[] = static::actName('mad-act', $a) . ' tem method e navigate: vale o method ("' . $method . '") e o navigate é ignorado.'
+                . ' Para abrir outra tela, deixe só o navigate.';
+        }
+        foreach (['drawer', 'row'] as $flag) {
+            if ($navigate === '' && static::has($a, $flag)) {
+                static::$_actionNotes[] = static::actName('mad-act', $a) . ': ' . $flag . ' só vale junto de navigate (é como a tela de destino abre) e foi ignorado.';
+            }
+        }
+
+        $c[] = static::kv('method', static::qs($method));
+        if (isset($a['icon']))     $c[] = static::kv('icon',    static::strExpr($a, 'icon'));
+        if (isset($a['label']))    $c[] = static::kv('label',   static::strExpr($a, 'label'));
+        if (isset($a['confirm']))         $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
+        if (isset($a['confirm-popover'])) $c[] = static::kv('confirmPopover', static::strExpr($a, 'confirm-popover'));
+        array_push($c, ...static::actVariantFlags($a));
+        array_push($c, ...static::actLookParts($a));
+        if (isset($a['transform']))     $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
+
+        // Campo ID: a coluna que vai como identificador da linha (padrão: a chave).
+        $idField = trim(static::str($a, 'id-field'), "{} \t");
+        if ($idField !== '') {
+            $c[] = static::kv('idField', static::qs($idField));
+        }
+        // Parâmetros: `:params="[...]"` (PHP) ou `params="{a: x, b: {campo}}"`
+        // (o formato do painel). Vão ao método depois do id, com `{campo}`
+        // trocado pelo valor da linha (GridAction::rowParams).
+        if (isset($a['params'])) {
+            if ($a['params']['type'] === 'php') {
+                $c[] = "'params' => " . static::emit($a['params']);
+            } else {
+                $arrayCode = static::parseInlineParamsToPhp((string) $a['params']['value']);
+                if ($arrayCode === null) {
+                    static::$_actionNotes[] = static::actName('mad-act', $a) . ': params em formato não reconhecido ("' . static::str($a, 'params') . '") — ignorado.'
+                        . ' Use {chave: valor, outra: {campo}}.';
+                } elseif ($arrayCode !== '[]') {
+                    $c[] = "'params' => " . $arrayCode;
+                }
+            }
+        }
+
+        array_push($c, ...static::actConditionParts($a));
 
         return '[' . implode(', ', $c) . ']';
     }

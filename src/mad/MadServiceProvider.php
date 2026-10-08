@@ -87,8 +87,47 @@ class MadServiceProvider extends ServiceProvider
         }
     }
 
+    /**
+     * Envio acima do `post_max_size` do PHP: o Laravel recusa a requisição
+     * (413, ValidatePostSize) antes de ela chegar à tela, com a página de erro
+     * dele. Nas chamadas feitas pela tela a resposta passa a ser o aviso em
+     * JSON — o tamanho enviado, o limite e "nada foi salvo" —, que o
+     * mad-livewire.js mostra como aviso (MadComponentHandler::oversizedPostPayload).
+     */
+    private function bootOversizedPostNotice(): void
+    {
+        try {
+            $handler = $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class);
+        } catch (\Throwable) {
+            return;
+        }
+        if (!method_exists($handler, 'renderable')) {
+            return;
+        }
+
+        $handler->renderable(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
+            if (!$request->ajax() && !$request->expectsJson()) {
+                return null;
+            }
+            $payload = \Mad\Component\MadComponentHandler::oversizedPostPayload();
+            if ($payload === null) {
+                return null;
+            }
+            $status = (int) $payload['status'];
+            unset($payload['status']);
+
+            return new \Illuminate\Http\JsonResponse(
+                $payload,
+                $status,
+                ['Cache-Control' => 'no-store, private'],
+                \Illuminate\Http\JsonResponse::DEFAULT_ENCODING_OPTIONS | JSON_UNESCAPED_UNICODE
+            );
+        });
+    }
+
     public function boot(): void
     {
+        $this->bootOversizedPostNotice();
         $this->bootPaths();
         $this->bootBlade();
         $this->bootDatabase();

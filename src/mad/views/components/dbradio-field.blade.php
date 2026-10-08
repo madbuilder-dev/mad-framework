@@ -40,7 +40,19 @@
     $orderDir      = $order         ?? '';
     $filters       = $filters       ?? [];
     $query         = $query         ?? null;   // Eloquent/Query Builder (novo padrão)
-    $selected      = $selected      ?? (isset($$name) ? (string)$$name : '');
+    // Valor atual do campo: o do formulário (MadForm/MadComponent), como no
+    // dbcombo-field. Lia só uma variável da view com o nome do campo, que a
+    // tag não recebe: o registro abria sem nenhuma opção marcada.
+    $selected      = $selected      ?? null;
+    if ($selected === null && $name) {
+        $_ctx = \Mad\Component\MadRenderContext::current();
+        if (is_array($_ctx) && array_key_exists($name, $_ctx)) {
+            $selected = $_ctx[$name];
+        } elseif (isset($$name)) {
+            $selected = $$name;
+        }
+    }
+    $selected      = is_scalar($selected) ? (string) $selected : '';
     $inline        = !empty($inline);
     $hint          = $hint          ?? '';
     $error         = $error         ?? '';
@@ -52,9 +64,11 @@
     $width         = $width         ?? '';
     $maxWidth      = $maxWidth      ?? '';
     $attrs         = $attrs         ?? '';
-    if ($name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false) {
-        $attrs = 'mad:model="' . $name . '" ' . $attrs;
-    }
+    // Quem liga o campo ao formulário é o GRUPO (como no radio-field): o valor
+    // enviado é o do rádio marcado, ou vazio. Com o `mad:model` em cada rádio o
+    // MadWire percorria todos e ficava com o valor do ÚLTIMO, marcado ou não —
+    // todo Salvar gravava a última opção da lista.
+    $__groupModel  = $name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false;
         $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError      = !empty($error);
     $reqStar       = $required ? ' <span class="mad-required">*</span>' : '';
@@ -124,6 +138,13 @@
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbradio-field', $__optCtx);
 
+    // Valor que o campo já tem e a lista não mostra (cadastro de outra unidade
+    // ou empresa, usuário que a pessoa não enxerga, filtro do campo, registro
+    // inativo ou excluído, lista que não carregou): ele fica no campo, num
+    // rádio próprio, marcado e com um rótulo neutro. Sem ele nenhuma opção
+    // abria marcada e o Salvar trocava o valor — ver \Mad\Form\OutsideOption.
+    $__outside = \Mad\Form\OutsideOption::applies($selected, $options);
+
     $wrapStyle = $inline
         ? 'display:flex;flex-direction:row;flex-wrap:wrap;gap:16px;'
         : 'display:flex;flex-direction:column;gap:8px;';
@@ -144,7 +165,8 @@
     @if($label)
         <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
     @endif
-    <div style="{{ $wrapStyle }}">
+    <div style="{{ $wrapStyle }}"
+        @if($__groupModel) data-mad-radio-group="{{ $name }}" data-mad-model="{{ $name }}" @endif>
         @foreach($options as $optKey => $optLabel)
             @php
                 $oId = $name . '_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $optKey);
@@ -164,6 +186,23 @@
                 <span class="mad-radio-label">{{ $optLabel }}</span>
             </label>
         @endforeach
+        @if($__outside)
+            <label class="mad-radio-wrap" for="{{ $name }}__outside">
+                <input
+                    type="radio"
+                    id="{{ $name }}__outside"
+                    name="{{ $name }}"
+                    value="{{ $selected }}"
+                    class="mad-radio"
+                    checked
+                    {!! \Mad\Form\OutsideOption::ATTRS !!}
+                    @if($disabled) disabled @endif
+                    {!! $attrs !!}
+                >
+                <span class="mad-radio-circle"></span>
+                <span class="mad-radio-label">{{ \Mad\Form\OutsideOption::label() }}</span>
+            </label>
+        @endif
     </div>
     @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>

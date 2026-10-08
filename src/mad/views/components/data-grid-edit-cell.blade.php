@@ -112,7 +112,7 @@
            step="{{ $col->editStep ?? ($col->editDecimals > 0 ? '0.'.str_repeat('0', max($col->editDecimals - 1, 0)).'1' : '1') }}"
            @if($col->editMin !== null) min="{{ $col->editMin }}" @endif
            @if($col->editMax !== null) max="{{ $col->editMax }}" @endif
-           @keydown.enter="commitEdit()" @keydown.escape="cancelEdit()" @blur="commitEdit()">
+           @keydown.enter="$event.target.reportValidity() && commitEdit()" @keydown.escape="cancelEdit()" @blur="commitEdit()">
 @elseif($col->editType === 'numeric')
     <div style="display:flex;align-items:center;gap:4px;">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif

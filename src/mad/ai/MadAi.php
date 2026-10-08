@@ -3,6 +3,7 @@
 namespace Mad\Ai;
 
 use Laravel\Ai\AiManager;
+use Mad\Security\StoredSecret;
 
 /**
  * MadAi — configuração do laravel/ai a partir do config MAD.
@@ -106,6 +107,15 @@ final class MadAi
 
             return $v !== '' ? $v : null;
         };
+        // As chaves de API ficam CIFRADAS nas preferências (StoredSecret). Texto
+        // puro de antes da cifragem segue valendo; chave que não dá para ler
+        // (APP_KEY trocada) conta como não gravada e cai no config/env — o log
+        // diz o motivo. O valor nunca é logado.
+        $secret = static function (string $key, string $label) use ($pref): ?string {
+            $v = trim(StoredSecret::open($pref($key), $label));
+
+            return $v !== '' ? $v : null;
+        };
 
         $provider = strtolower($pref('ai_provider') ?? (string) ($ai['provider'] ?? 'anthropic'));
         if (! in_array($provider, ['anthropic', 'openrouter'], true)) {
@@ -115,11 +125,11 @@ final class MadAi
         $maxTokens = (int) ($pref('ai_max_tokens') ?? $ai['max_tokens'] ?? 0); // 0 = default do provider
 
         $anthropicModel = $pref('ai_anthropic_model') ?? (string) ($ai['anthropic_model'] ?? $ai['model'] ?? 'claude-haiku-4-5');
-        $anthropicKey   = $pref('ai_anthropic_api_key') ?? (string) ($ai['anthropic_api_key'] ?? $ai['api_key'] ?? (getenv('ANTHROPIC_API_KEY') ?: ''));
+        $anthropicKey   = $secret('ai_anthropic_api_key', 'Preferências › IA › API key (Anthropic)') ?? (string) ($ai['anthropic_api_key'] ?? $ai['api_key'] ?? (getenv('ANTHROPIC_API_KEY') ?: ''));
         $anthropicUrl   = (string) ($ai['anthropic_base_url'] ?? $ai['base_url'] ?? (getenv('ANTHROPIC_URL') ?: 'https://api.anthropic.com/v1'));
 
         $openrouterModel = $pref('ai_openrouter_model') ?? (string) ($ai['openrouter_model'] ?? 'anthropic/claude-haiku-4.5');
-        $openrouterKey   = $pref('ai_openrouter_api_key') ?? (string) ($ai['openrouter_api_key'] ?? (getenv('OPENROUTER_API_KEY') ?: ''));
+        $openrouterKey   = $secret('ai_openrouter_api_key', 'Preferências › IA › API key (OpenRouter)') ?? (string) ($ai['openrouter_api_key'] ?? (getenv('OPENROUTER_API_KEY') ?: ''));
         $openrouterUrl   = (string) ($ai['openrouter_base_url'] ?? (getenv('OPENROUTER_URL') ?: ''));
 
         $openrouter = [

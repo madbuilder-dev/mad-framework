@@ -51,15 +51,27 @@
             $selected = $_ctx[$name];
         }
     }
-    // Auto-load selected from pivot table (mode=table)
+    // Auto-load selected from pivot table (mode=table). O `name` vai junto: o
+    // formulário guarda o que este campo entregou marcado, e o Salvar só
+    // desmarca o que consta lá (ver MadForm::pivotLoaded / pivotShown).
+    $__pivotNotice = null;
     if ($mode === 'table' && empty($selected) && $pivotModel && $itemKey) {
-        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database);
+        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
+        $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
     }
-    // Normalize selected to array of strings
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode($separator, $selected) : [];
+    // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
+    // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, $separator);
+    // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
+    if ($mode === 'table' && $pivotModel && $itemKey) {
+        \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys((array) $options), $pivotModel, $foreignKey, $itemKey);
     }
-    $selected = array_map('strval', (array)$selected);
+    // Gravação na própria coluna (por vírgula): o que vai MARCADO para o
+    // navegador é a base do Salvar — o item da coluna que a lista não mostra
+    // não sai dela (ver MadForm::selectionShown).
+    if ($mode !== 'table' && $mode !== 'manual') {
+        \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_keys((array) $options), $separator);
+    }
 
     \Mad\Form\MadFormRegistry::register($name, 'checkbox-group', [
         'label'      => strip_tags($label),
@@ -69,6 +81,8 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // Só quando não é a vírgula: o Salvar lê a coluna com o mesmo separador.
+        'separator'  => $separator === ',' ? '' : $separator,
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
@@ -101,5 +115,6 @@
             @endif
         @endforeach
     </div>
+    @include('components.partials.options-error', ['optionsError' => $__pivotNotice])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

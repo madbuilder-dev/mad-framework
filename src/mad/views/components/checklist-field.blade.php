@@ -36,14 +36,17 @@
             $selected = $_ctx[$name];
         }
     }
-    // Auto-load selected from pivot table (mode=table)
+    // Auto-load selected from pivot table (mode=table). O `name` vai junto: o
+    // formulário guarda o que este campo entregou marcado, e o Salvar só
+    // desmarca o que consta lá (ver MadForm::pivotLoaded / pivotShown).
+    $__pivotNotice = null;
     if ($mode === 'table' && empty($selected) && $pivotModel && $itemKey) {
-        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database);
+        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
+        $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
     }
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode(',', $selected) : [];
-    }
-    $selected = array_map('strval', (array)$selected);
+    // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
+    // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
 
     $normalizedItems = [];
     foreach ($items as $item) {
@@ -132,6 +135,17 @@
     }
     unset($_col);
 
+    // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
+    if ($mode === 'table' && $pivotModel && $itemKey) {
+        \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_column($normalizedItems, $idCol), $pivotModel, $foreignKey, $itemKey);
+    }
+    // Gravação na própria coluna (por vírgula): o que vai MARCADO para o
+    // navegador é a base do Salvar — o item da coluna que a lista não mostra
+    // não sai dela (ver MadForm::selectionShown).
+    if ($mode !== 'table' && $mode !== 'manual') {
+        \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_column($normalizedItems, $idCol));
+    }
+
     $itemsJson    = json_encode($normalizedItems, JSON_UNESCAPED_UNICODE);
     $selectedJson = json_encode($selected);
     $colsJson     = json_encode($columns, JSON_UNESCAPED_UNICODE);
@@ -144,6 +158,9 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // Checklist sobre tabela (`<mad-dbchecklist-field>`): o Model e a chave das
+        // opções, para o Salvar conferir a marca nova (só vai para o estado da tela).
+        'optionsSource' => ($mode !== 'manual' && is_array($optionsSource ?? null)) ? $optionsSource : '',
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
@@ -196,8 +213,15 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <template x-for="item in filteredItems" :key="item[idCol]">
-                        <tr :class="{ 'mad-checklist-checked': isChecked(item[idCol]) }">
+                    {{-- A lista INTEIRA fica no DOM: a busca e o filtro "somente
+                         selecionados" ESCONDEM a linha (x-show), não a tiram da
+                         tela. Com `x-for` sobre o resultado da busca, a linha
+                         escondida deixava de existir — e com ela a marca e os
+                         campos das colunas (transform / slot) que só vivem no
+                         DOM: o Salvar gravava só o que a busca mostrava. --}}
+                    <template x-for="item in items" :key="item[idCol]">
+                        <tr x-show="isShown(item)"
+                            :class="{ 'mad-checklist-checked': isChecked(item[idCol]), 'mad-checklist-out': !isShown(item) }">
                             {{-- Checkbox do grupo --}}
                             <td style="cursor:pointer" @click.stop="if (!{{ $disabled ? 'true' : 'false' }}) toggle(item[idCol])">
                                 <label class="mad-checkbox-wrap" style="margin:0;" @click.prevent>
@@ -253,6 +277,6 @@
         </div>
     </div>
     {{-- Só o <mad-dbchecklist-field> repassa (falha ao carregar do banco, com APP_DEBUG). --}}
-    @include('components.partials.options-error', ['optionsError' => $optionsError ?? null])
+    @include('components.partials.options-error', ['optionsError' => ($optionsError ?? null) ?? $__pivotNotice])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

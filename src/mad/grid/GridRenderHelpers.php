@@ -958,13 +958,21 @@ class GridRenderHelpers
         return $totals;
     }
 
-    /** Texto do total como a grid mostra: `total-mask` ou o render da coluna. */
+    /**
+     * Texto do total como a grid mostra: `total-mask` ou o render da coluna.
+     *
+     * O número passa antes por um arredondamento de 10 casas — só o ruído do
+     * ponto flutuante. O rodapé da tela soma no banco e a exportação soma em
+     * PHP: as duas contas dão o mesmo valor a menos de 0,0000000000001, e sem
+     * isto uma média que cai exatamente em meio centavo (179,315) saía 179,31
+     * num lugar e 179,32 no outro.
+     */
     public static function renderTotal(GridColumn $col, int|float $result): string
     {
         if (!empty($col->totalMask)) {
             return str_replace('{value}', (string)$result, $col->totalMask);
         }
-        return $col->renderValue($result, []);
+        return $col->renderValue(is_float($result) ? round($result, 10) : $result, []);
     }
 
     /**

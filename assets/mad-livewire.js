@@ -917,12 +917,25 @@ const MadWire = (() => {
 
             // Checklist: coleta IDs dos checkboxes marcados como JSON array
             // + coleta outros inputs nomeados dentro do checklist (ex: slot columns)
+            //
+            // As marcas vêm do ESTADO do componente (madChecklist.selection():
+            // a lista inteira), não das caixas desenhadas: com a busca
+            // preenchida ou o filtro "somente selecionados" ligado, o que está
+            // à mostra é só um pedaço da lista, e mandar só ele fazia o Salvar
+            // desmarcar tudo o que a busca escondia. As caixas do DOM ficam de
+            // reserva para a tela sem Alpine.
             if (el.classList.contains('mad-checklist')) {
-                const checked = [];
+                let state = null;
+                try {
+                    const ad = (window.Alpine && typeof Alpine.$data === 'function') ? Alpine.$data(el) : null;
+                    if (ad && typeof ad.selection === 'function') state = ad.selection();
+                } catch (e) { /* nó sem escopo Alpine */ }
+                const fromDom = !Array.isArray(state);
+                const checked = fromDom ? [] : state.map(String);
                 const expectedName = prop + '[]';
                 el.querySelectorAll('input[type="checkbox"][name]').forEach(cb => {
                     if (cb.name === expectedName) {
-                        if (cb.checked) checked.push(cb.value);
+                        if (fromDom && cb.checked) checked.push(cb.value);
                     } else if (cb.checked) {
                         // Slot inputs: agrupa por name para envio direto no POST
                         const n = cb.name.replace(/\[\]$/, '');
@@ -1259,7 +1272,7 @@ const MadWire = (() => {
 
         if (!endpoint) {
             console.error('[MadWire] mad-endpoint não encontrado no wrapper', wrapper);
-            return;
+            return { ok: false, reason: 'config' };
         }
 
         _setLoading(wrapper, true, sourceForm);
@@ -1382,8 +1395,16 @@ const MadWire = (() => {
         const _embedTp = wrapper.closest ? wrapper.closest('.mad-transporter') : null;
         if (_embedTp) _headers['X-Mad-Embed'] = _embedTp.getAttribute('data-mad-embed-header') || 'compact';
 
+        // Desfecho da chamada, devolvido a quem chamou (MadWire.call): `ok` =
+        // o servidor respondeu e a resposta foi aplicada; senão `reason` diz
+        // por quê — 'network' (sem resposta), 'server' (página de erro, já
+        // mostrada), 'error' (recusa, já avisada), 'client' (a resposta chegou
+        // e falhou ao ser aplicada). Quem grava em silêncio (edição na célula
+        // da listagem) usa isto para avisar quando o valor NÃO foi gravado.
+        let _answered = false;
         try {
             const res  = await fetch(endpoint, { method: 'POST', body, headers: _headers });
+            _answered = true;
 
             // Container do Teste Online em repouso: o nginx de fallback devolve a
             // pagina "em repouso" INTEIRA (200 + header X-Mad-Offline:1) para
@@ -1393,7 +1414,7 @@ const MadWire = (() => {
             // o host adormecido devolve a tela de repouso como documento.
             if (res.headers.get('X-Mad-Offline') === '1') {
                 window.location.reload();
-                return;
+                return { ok: false, reason: 'offline' };
             }
 
             const text = await res.text();
@@ -1404,6 +1425,22 @@ const MadWire = (() => {
                 data = JSON.parse(text);
             } catch (_) {
                 _setLoading(wrapper, false, sourceForm);
+                // 413: o envio passou do limite do servidor (do PHP ou do
+                // servidor web, antes de chegar ao app). Aviso ao usuário, não a
+                // página de erro crua.
+                // O app responde em JSON com o tamanho enviado e o limite; com
+                // `display_errors` ligado o PHP escreve um aviso dele ANTES do
+                // JSON — por isso a resposta é procurada no fim do corpo.
+                if (res.status === 413) {
+                    let notice = null;
+                    const at = text.lastIndexOf('{"error"');
+                    if (at !== -1) { try { notice = JSON.parse(text.slice(at)); } catch (_) {} }
+                    const tooBig = (notice && notice.error)
+                        || 'O envio passou do limite que o servidor aceita de uma vez. Nada foi salvo: envie arquivos menores ou em menos arquivos por vez.';
+                    if (typeof __mad_warning === 'function') __mad_warning((notice && notice.title) || 'Envio acima do limite', tooBig);
+                    else alert(tooBig);
+                    return { ok: false, reason: 'error' };
+                }
                 const errCtx = _errContext(wrapper, action, params, models);
                 // Página de erro do Laravel/PHP (500 com HTML) — antes os scripts
                 // rodavam e NADA aparecia: o dev só via no DevTools. Agora abre o
@@ -1412,13 +1449,13 @@ const MadWire = (() => {
                 // pode vir com status 200 (ver _isErrorPage).
                 if ((!res.ok || _madErrorPage(text)) && window.MadErrorModal) {
                     window.MadErrorModal.showResponse(res, text, errCtx);
-                    return;
+                    return { ok: false, reason: 'server' };
                 }
                 // Legado: HTML com <script> (ex.: __mad_error(...) de código antigo)
                 // — os scripts são a resposta, rodam como sempre.
                 if (/<script\b/i.test(text)) {
                     _execHtmlScripts(text);
-                    return;
+                    return { ok: false, reason: 'server' };
                 }
                 // Nem JSON, nem script (ex.: ação que ecoou uma página e encerrou,
                 // corpo vazio): antes isto era descartado e a ação "sumia" — o
@@ -1432,7 +1469,7 @@ const MadWire = (() => {
                 } else {
                     alert('Resposta inesperada do servidor.');
                 }
-                return;
+                return { ok: false, reason: 'server' };
             }
 
             // Envia dados de debug para o console (se ativo)
@@ -1455,7 +1492,7 @@ const MadWire = (() => {
                         exception:  data._exception,
                         context:    _errContext(wrapper, action, params, models),
                     });
-                    return;
+                    return { ok: false, reason: 'error' };
                 }
                 // Sessão expirada / acesso negado no modo web: o servidor pode
                 // mandar uma URL de redirect (ex.: login). Navega em vez de
@@ -1463,19 +1500,23 @@ const MadWire = (() => {
                 if (data.redirect) {
                     window.location.href = (typeof window.MadWebRoute === 'function')
                         ? window.MadWebRoute(data.redirect) : data.redirect;
-                    return;
+                    return { ok: false, reason: 'error' };
                 }
                 // Recusa por permissão (403) é regra do perfil, não pane: aviso
                 // com o título que o servidor manda ("Sem permissão"). Antes
                 // saía um diálogo de ERRO intitulado "Exceção".
-                if ((res.status === 403 || data.forbidden) && typeof __mad_warning === 'function') {
+                // Idem para a recusa que é aviso ao usuário (`warning`): o envio
+                // acima do limite do servidor diz o tamanho e o limite.
+                if (data.warning && typeof __mad_warning === 'function') {
+                    __mad_warning(data.title || 'Aviso', data.error);
+                } else if ((res.status === 403 || data.forbidden) && typeof __mad_warning === 'function') {
                     __mad_warning(data.title || 'Sem permissão', data.error);
                 } else if (typeof __mad_error === 'function') {
                     __mad_error('Exceção', data.error);
                 } else {
                     alert('Erro: ' + data.error);
                 }
-                return;
+                return { ok: false, reason: 'error' };
             }
 
             if (data.partial) {
@@ -1484,7 +1525,7 @@ const MadWire = (() => {
                 // Aplica ops — 'bind' é scoped ao wrapper; outros vão via Mad.applyOps
                 _applyWireOps(data.ops || [], wrapper, data.id);
                 _setLoading(wrapper, false, sourceForm);
-                return;
+                return { ok: true };
             }
 
             const fresh = _morph(wrapper, data.html) || wrapper;
@@ -1495,9 +1536,11 @@ const MadWire = (() => {
             if (Array.isArray(data.ops) && data.ops.length && typeof Mad !== 'undefined' && Mad.applyOps) {
                 try { await Mad.applyOps(data.ops, fresh); } catch (e) { console.error('[MadWire] ops error:', e); }
             }
+            return { ok: true };
         } catch (err) {
             console.error('[MadWire] Erro de rede:', err);
             _setLoading(wrapper, false, sourceForm);
+            return { ok: false, reason: _answered ? 'client' : 'network' };
         }
     }
 
@@ -1725,13 +1768,43 @@ const MadWire = (() => {
          * Chama a ação do componente. `models` ({nome: valor}) vai junto dos
          * campos da tela em `mad_model` e vence o de mesmo nome — é por onde
          * os campos do diálogo (MadConfirm::field) chegam ao MadForm da ação.
+         *
+         * Resolve com o desfecho da chamada (`{ ok, reason }`, ver _requestNow)
+         * depois que a resposta foi aplicada; `undefined` sem componente.
          */
         async call(idOrEl, action = '', params = [], models = {}) {
             const wrapper = typeof idOrEl === 'string'
                 ? document.querySelector(`[mad-id="${idOrEl}"]`)
                 : (_getWrapper(idOrEl) || idOrEl);
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
-            if (wrapper) await _request(wrapper, action, params, extra);
+            if (wrapper) return await _request(wrapper, action, params, extra);
+        },
+
+        /**
+         * Põe `job(wrapper)` na fila do componente — a MESMA do call() / set()
+         * / refresh(). Para quem fala com o wire por conta própria (eventos e
+         * cascata do <mad-field-list>, em mad-ui.js): sem a fila, dois pedidos
+         * corriam em paralelo e valia a resposta que chegasse por último, não
+         * a do último pedido. `job` roda quando os pedidos anteriores do
+         * componente terminaram, recebe o wrapper atual (o morph pode ter
+         * trocado o nó) e devolve uma promise; o seguinte espera ela.
+         */
+        enqueue(idOrEl, job) {
+            const wrapper = typeof idOrEl === 'string'
+                ? document.querySelector(`[mad-id="${idOrEl}"]`)
+                : idOrEl;
+            if (!wrapper || typeof job !== 'function') return Promise.resolve();
+            const madId = wrapper.getAttribute ? wrapper.getAttribute('mad-id') : null;
+            const prev  = _inflightByWrapper.get(wrapper) || Promise.resolve();
+            const run   = prev.then(() => {
+                let target = wrapper;
+                if (target.isConnected === false && madId) {
+                    target = document.querySelector(`[mad-id="${madId}"]`) || target;
+                }
+                return job(target);
+            });
+            _inflightByWrapper.set(wrapper, run.then(() => {}, () => {}));
+            return run;
         },
 
         /**

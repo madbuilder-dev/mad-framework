@@ -21,11 +21,17 @@
         $attrs = preg_replace('/\s*(?:mad:change|data-mad-change)\s*=\s*"[^"]*"/', '', $attrs);
     }
 
+    // Tamanho máximo ("10MB", "500KB", "2,5 MB") em bytes — 0 = sem limite.
+    // Vai no formulário junto com `accept`: é o servidor quem confere os dois
+    // no Salvar (MadUploadRules::check); o navegador avisa antes de enviar.
+    $maxBytes = \Mad\Form\MadUploadRules::bytes($maxSize ?? '');
+
     \Mad\Form\MadFormRegistry::register($name, 'file', [
         'label'      => strip_tags($label),
         'required'   => $required,
         'multiple'   => $multiple,
         'accept'     => $accept,
+        'maxBytes'   => $maxBytes ?: '',
         'storage'    => $storage,
         'folder'     => $folder,
         'nameColumn' => $nameColumn,
@@ -50,6 +56,12 @@
     }
     if ($nameColumn && array_key_exists($nameColumn, $_ctx) && !empty($_ctx[$nameColumn])) {
         $existingName = (string) $_ctx[$nameColumn];
+    }
+    // storage="disk": o arquivo que este campo está MOSTRANDO. O Salvar só
+    // remove o que consta aqui, e não regrava na coluna o caminho de quando a
+    // tela abriu (ver MadForm::fileShown).
+    if ($storage === 'disk' && $name) {
+        \Mad\Component\MadRenderContext::fileRendered($name, $existingPath);
     }
 
     // Auto-extração: se storage="db" e o valor não é um file path, é base64 bruto do banco
@@ -80,10 +92,14 @@
         'fieldName'       => $name,
         'madChangeAction' => $madChangeAction,
         'autoFillName'    => $autoFillName ?? '',
+        'accept'          => (string) $accept,
+        'maxBytes'        => $maxBytes,
+        'serverMax'       => \Mad\Form\MadUploadRules::serverFileBytes(),
+        'stored'          => $storage !== '',
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
-<div class="mad-field" x-data="madFileField({{ $fileCfg }})"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+<div class="mad-field" x-data="madFileField({{ $fileCfg }})" data-mad-upload="{{ $name }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
     @endif
@@ -105,6 +121,11 @@
             {!! $attrs !!}
         >
         <input type="hidden" name="__mad_file_removed[{{ $name }}]" :value="removed ? '1' : ''">
+        {{-- Identificador do arquivo NOVO. A resposta do Salvar o devolve quando
+             o arquivo é gravado (op files_saved), e o campo passa a tratá-lo
+             como o arquivo existente: sem isto ele era enviado de novo a cada
+             Salvar, e o Remover não chegava ao registro. --}}
+        <input type="hidden" name="__mad_new_files[{{ $name }}]" :value="(file && !file.existing && file.uid) ? file.uid : ''">
         {{-- Dropzone (sem arquivo) --}}
         <div class="mad-file-body" x-show="!file" @click="$refs.fileInput.click()" style="cursor:pointer;">
             <i data-lucide="upload-cloud" style="width:24px;height:24px;color:var(--mad-text-subtle);"></i>

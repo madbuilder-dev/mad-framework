@@ -222,7 +222,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
      *
      * Props de config (model, startField, etc) sao protected — nao serializam
      * no mad_state. Sem essa restauracao, actions como onEventUpdate enxergam
-     * defaults vazios e abortam com "Drag handler nao configurado".
+     * defaults vazios e respondem que o arrastar nao esta habilitado.
      */
     public function hydrate(): void
     {
@@ -513,38 +513,54 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
 
     /**
      * Drag ou resize do evento. Default: grava no banco se autoUpdate=true.
+     *
+     * O id vem do navegador. A busca é pela consulta da própria agenda
+     * (_visibleRecord): só se move evento que ela mostra a quem está logado —
+     * com `find()`, uma requisição com a chave de um evento de outro dono, de
+     * outra unidade, passava por cima do `<mad-calendar-filter>` e do
+     * `onSearch()`. Evento de fora: nada é gravado, os ganchos
+     * (beforeEventUpdate/afterEventUpdate) não são chamados e a resposta não
+     * leva nada dele.
      */
     public function onEventUpdate(string $id, string $start, string $end): MadResponse
     {
         if (!$this->autoUpdate || $this->model === '') {
-            return MadToast::info("Drag handler nao configurado.");
+            return MadToast::info(mad_t('mad.calendar_drag_off'));
         }
-        // PK de texto (UUID/ULID/codigo) tem que chegar inteira no find():
+        // PK de texto (UUID/ULID/codigo) tem que chegar inteira na busca:
         // `(int) '0198f1e2-...'` virava 0 e o drag salvava no registro errado
         // (ou em nenhum). Inteiro continua inteiro — caminho de sempre.
         $recKey = ctype_digit($id) ? (int) $id : $id;
+
+        try {
+            $rec = $this->_visibleRecord($recKey);
+        } catch (\Throwable $e) {
+            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
+        }
+        if (!$rec) {
+            return $this->_eventUpdateRefused('mad.calendar_event_gone');
+        }
         if (!$this->beforeEventUpdate($recKey, $start, $end)) {
-            return MadToast::warning('Operacao nao autorizada.');
+            return $this->_eventUpdateRefused('mad.calendar_update_refused');
         }
 
-        $db = $this->database !== '' ? $this->database : $this->_filtersDb();
         try {
-            $oldStart = '';
-            $oldEnd   = '';
             $endCol   = $this->_endColumn();
-            DB::connection($db)->transaction(function () use ($recKey, $start, $end, $endCol, &$oldStart, &$oldEnd) {
-                $cls = $this->_resolveModelClass($this->model);
-                $rec = $cls::find($recKey);
-                if (!$rec) {
-                    throw new \Exception("Registro {$recKey} nao encontrado em {$this->model}");
-                }
-                $oldStart = (string) ($rec->{$this->startField} ?? '');
-                $oldEnd   = $endCol !== '' ? (string) ($rec->{$endCol} ?? '') : '';
-
-                if ($this->startField !== '') $rec->{$this->startField} = $start;
-                if ($endCol           !== '') $rec->{$endCol}           = $end;
-                $rec->save();
-            });
+            $oldStart = (string) ($rec->{$this->startField} ?? '');
+            $oldEnd   = $endCol !== '' ? (string) ($rec->{$endCol} ?? '') : '';
+            $saved    = true;
+            // Transação na conexão REAL do model (a do `database` pode ser outra).
+            $conn = method_exists($rec, 'getConnectionName') ? $rec->getConnectionName() : null;
+            DB::connection($conn ?: ($this->database !== '' ? $this->database : $this->_filtersDb()))
+                ->transaction(function () use ($rec, $start, $end, $endCol, &$saved) {
+                    if ($this->startField !== '') $rec->{$this->startField} = $start;
+                    if ($endCol           !== '') $rec->{$endCol}           = $end;
+                    // save() devolve false quando o Model recusa (evento `saving`).
+                    $saved = $rec->save() !== false;
+                });
+            if (!$saved) {
+                return $this->_eventUpdateRefused('mad.calendar_update_refused');
+            }
 
             $this->afterEventUpdate($recKey, $oldStart, $oldEnd, $start, $end);
 
@@ -552,6 +568,142 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         } catch (\Throwable $e) {
             return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
         }
+    }
+
+    /**
+     * Arrastar que não valeu: avisa e redesenha a agenda, para o evento voltar
+     * ao lugar (o navegador já o tinha movido na tela) ou sumir, se não é dela.
+     */
+    private function _eventUpdateRefused(string $key): MadResponse
+    {
+        $response = MadToast::warning(mad_t($key));
+        if ($this->calendarId !== '') {
+            return $response->refetchCalendar($this->calendarId);
+        }
+        $this->forceFullRender();
+
+        return $response;
+    }
+
+    /**
+     * O evento `$id`, se for um que ESTA agenda mostra a quem está logado.
+     *
+     * O que restringe a agenda a um dono, a uma situação, a uma unidade é a
+     * CONSULTA dela: os `<mad-calendar-filter>` do Blade, o `onSearch()`, o
+     * filtro por unidade, os recortes do Model. A busca aqui é essa mesma
+     * consulta (`buildQuery()`), mais a chave — e sem a janela visível
+     * (`start`/`end` do FullCalendar), que diz o que está na tela agora, não o
+     * que é da agenda.
+     *
+     * Duas passadas, como na listagem: com os filtros que o usuário tem na
+     * tela e, se não achar, sem eles. Período e filtros da tela só ESTREITAM a
+     * consulta — um filtro digitado e ainda não aplicado viaja em toda
+     * requisição e esconderia um evento que continua na tela. O recorte fixo
+     * vale nas duas; o que é contexto da tela e não filtro do usuário vai em
+     * `$notFilterProps` e também fica.
+     */
+    protected function _visibleRecord(int|string $id): ?object
+    {
+        if ($this->model === '') {
+            return null;
+        }
+
+        return $this->_eventByKey($id)
+            ?? $this->_withoutUserFilters(fn () => $this->_eventByKey($id));
+    }
+
+    /** A consulta dos eventos (a mesma do feed), sem a janela visível, restrita a uma chave. */
+    private function _eventByKey(int|string $id): ?object
+    {
+        $get = $_GET;
+        unset($_GET['start'], $_GET['end']);
+        try {
+            $q = $this->buildQuery();
+        } finally {
+            $_GET = $get;
+        }
+        // A chave que o navegador tem é a do `id-field` (o `id` do evento).
+        $key = preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $this->idField) === 1
+            ? $this->idField
+            : $q->getModel()->getKeyName();
+
+        return $q->where($q->getModel()->qualifyColumn($key), '=', $id)->first();
+    }
+
+    /**
+     * Roda `$fn` com os filtros do USUÁRIO em branco — período e filtros da
+     * tela (props e campos do bloco de filtros) — e devolve tudo como estava.
+     * O que a tela fixa (`<mad-calendar-filter>`, `onSearch()`, unidade,
+     * contexto em `$notFilterProps`) fica.
+     */
+    private function _withoutUserFilters(callable $fn): mixed
+    {
+        $saved = [];
+        foreach (array_merge(['mes', 'ano', 'dtIni', 'dtFim', 'preset'], $this->discoverFilterProps()) as $name) {
+            $saved[$name] = $this->$name;
+            $this->$name  = is_array($this->$name) ? [] : '';
+        }
+        $form   = (isset($this->form) && $this->form instanceof \Mad\Form\MadForm) ? $this->form : null;
+        $fields = $form?->fields;
+        if ($form !== null) {
+            // As chaves ficam (o onSearch lê `$data->campo`); só os valores saem.
+            // O fill([]) não muda campo nenhum: só descarta o getData() em cache.
+            $form->fields = array_map(fn ($v) => is_array($v) ? [] : '', $fields);
+            $form->fill([]);
+        }
+
+        try {
+            return $fn();
+        } finally {
+            foreach ($saved as $name => $value) {
+                $this->$name = $value;
+            }
+            if ($form !== null) {
+                $form->fields = $fields;
+                $form->fill([]);
+            }
+        }
+    }
+
+    /**
+     * O evento `$id` que ESTA agenda mostra a quem está logado, ou null. É a
+     * pergunta que o formulário dos eventos (outra classe) faz antes de abrir,
+     * salvar ou excluir com uma chave que veio do navegador:
+     *
+     *     $evento = AgendaCalendar::visibleEvent($id);
+     *     if (! $evento) { ... registro não encontrado ... }
+     *
+     * Vale o recorte fixo da agenda (`<mad-calendar-filter>`, `onSearch()`,
+     * unidade, recortes do Model), sem os filtros que o usuário escolhe na
+     * tela. A config do `<mad-calendar>` vem de quando a agenda foi desenhada
+     * nesta sessão; se ainda não foi (formulário aberto pelo endereço), ela é
+     * desenhada uma vez, sem mostrar, só para conhecê-la.
+     */
+    public static function visibleEvent(int|string $id): ?object
+    {
+        $tela = new static();
+        $tela->_restoreConfigFromSession();
+        if ($tela->model === '') {
+            ob_start();
+            try {
+                $draft = new static();
+                $draft->boot();
+                $draft->mount([]);
+                $draft->render();
+            } catch (\Throwable) {
+                // sem a agenda não há o que mostrar
+            } finally {
+                ob_end_clean();
+            }
+            $tela->_restoreConfigFromSession();
+        }
+        if ($tela->model === '') {
+            return null;
+        }
+        $tela->_initFiltersForm();
+        $tela->syncFormFields();
+
+        return $tela->_visibleRecord($id);
     }
 
     /**
@@ -775,12 +927,44 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     protected function _persistConfigToSession(array $config): void
     {
         session([static::class . '_cal_cfg' => $config]);
-        // Fallback cross-sessão: getEvents() roda numa instância nova e, em
-        // cenários onde o write da sessão do render não chega ao feed (sessão
-        // regenerada, workers), ficava sem config e devolvia [] silencioso.
-        // A config vem do Blade — estável por classe — então cache
-        // compartilhado é seguro.
-        try { cache()->put('mad_cal_cfg:' . static::class, $config, 3600); } catch (\Throwable $e) { /* opcional */ }
+        // Segunda cópia: getEvents() roda numa instância nova e, quando a
+        // gravação da sessão do render não chega ao feed (outra requisição da
+        // mesma sessão terminou depois e gravou por cima, workers), ficava sem
+        // config e devolvia [] silencioso.
+        //
+        // A config NÃO é estável por classe: os atributos `:x="..."` e os
+        // `<mad-calendar-filter :value="session('userid')">` chegam aqui já
+        // avaliados para quem desenhou a agenda. Por isso a cópia é de UMA
+        // sessão e de UM usuário/unidade/tenant (_configCopyKey) — com a chave
+        // só da classe, a sessão que não tinha a config recebia a agenda
+        // filtrada para outro usuário.
+        $key = $this->_configCopyKey();
+        if ($key !== null) {
+            try { cache()->put($key, $config, 3600); } catch (\Throwable $e) { /* opcional */ }
+        }
+    }
+
+    /**
+     * Chave da cópia da config no cache: classe + sessão + quem está logado
+     * (usuário, unidade, tenant). null sem sessão — sem dono, não há cópia.
+     */
+    private function _configCopyKey(): ?string
+    {
+        try {
+            $sid = (string) session()->getId();
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if ($sid === '') {
+            return null;
+        }
+        $who = [];
+        foreach (['userid', 'userunitid', 'tenant_id'] as $k) {
+            $v = session($k);
+            $who[] = is_scalar($v) ? (string) $v : '';
+        }
+
+        return 'mad_cal_cfg:' . sha1(static::class . '|' . $sid . '|' . implode('|', $who));
     }
 
     /**
@@ -810,7 +994,11 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     {
         $cfg = session(static::class . '_cal_cfg');
         if (!is_array($cfg)) {
-            try { $cfg = cache()->get('mad_cal_cfg:' . static::class); } catch (\Throwable $e) { $cfg = null; }
+            // A cópia desta sessão e deste usuário — nunca a de outro (ver
+            // _persistConfigToSession). Sem ela a agenda fica sem config:
+            // eventos vazios e ações recusadas, em vez do recorte alheio.
+            $key = $this->_configCopyKey();
+            try { $cfg = $key !== null ? cache()->get($key) : null; } catch (\Throwable $e) { $cfg = null; }
         }
         if (is_array($cfg)) {
             $this->_applyInlineConfig($cfg);

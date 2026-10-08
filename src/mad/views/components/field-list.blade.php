@@ -29,6 +29,7 @@
     $_flRenderFields = \Mad\Grid\GridRenderHelpers::detectRenderFields($columns);
 
     // ── Auto-load: se model+fk declarados e rows vazias, carrega do banco ─
+    $_flGivenRows = !empty($rows);
     if ($model && $foreignKey && empty($rows)) {
         $_form = \Mad\Component\MadRenderContext::getForm();
         if ($_form) {
@@ -84,6 +85,14 @@
     // ── Normaliza rows e monta JSON de config para o Alpine ──────────────────
     $initialRows = \Mad\Form\FieldListColumn::normalizeRows($rows);
 
+    // Linhas entregues pelo código da tela (não pelo auto-load) num detail que
+    // grava sozinho: o formulário anota que as mostrou — o Salvar só apaga a
+    // linha que a tela mostrou e o usuário removeu.
+    if ($_flGivenRows && $model && $foreignKey && ($_form = \Mad\Component\MadRenderContext::getForm())) {
+        $_form->noteDetailRows($name, $model, $foreignKey, $initialRows);
+    }
+    unset($_form, $_flGivenRows);
+
     // Registra os campos do field-list para getFieldList() no MadForm.
     // colMeta leva o que o SAVE precisa saber da coluna (force-case/strip-mask):
     // no request de save as colunas não são re-renderizadas, então o metadado
@@ -103,6 +112,26 @@
         ];
     }
     \Mad\Form\MadFormRegistry::registerFieldList($name, array_map(fn($c) => $c->field, $columns), $model, $foreignKey, $database, $_flColMeta);
+
+    // Colunas da linha que a grade não mostra: o formulário anota como estavam
+    // no banco — o Salvar não regrava a que ninguém mexeu. Na lista gravada à
+    // mão (sem model na tag) a base vem do loadDetailRows() da tela.
+    if ($_form = \Mad\Component\MadRenderContext::getForm()) {
+        $_form->noteDetailColumns($name, (string) $model, (string) $foreignKey, $initialRows);
+        // Colunas em que o usuário DIGITA (fora as só de leitura, desabilitadas,
+        // calculadas e ocultas): a que não for coluna da tabela e tiver valor é
+        // avisada no Salvar, em vez de descartada em silêncio.
+        $_flTyped = [];
+        foreach ($columns as $_tc) {
+            if ($_tc->type !== 'hidden' && !$_tc->readonly && !$_tc->disabled
+                && $_tc->compute === '' && $_tc->readonlyWhen === '' && $_tc->disabledWhen === '') {
+                $_flTyped[(string) $_tc->field] = (string) $_tc->label;
+            }
+        }
+        $_form->detailTypedColumns($name, $_flTyped, (string) $label);
+        unset($_flTyped, $_tc);
+    }
+    unset($_form);
 
     // Colunas de arquivo (file/multifile/files) → auto-save por-linha via $form->save()
     $_flFileCols = [];
@@ -130,9 +159,9 @@
             ];
         }
     }
-    if ($_flFileCols) {
-        \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_flFileCols);
-    }
+    // Sempre, mesmo sem coluna de arquivo: o formulário da tela anota como a
+    // lista trata os arquivos das linhas, e o Salvar só aceita essa descrição.
+    \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_flFileCols);
 
     // type='files': injeta os netos já gravados em cada linha (edição) p/ o modal exibir.
     // Chave '__flfiles_<campo>' (prefixo __ → ignorada no save do item).
@@ -141,8 +170,30 @@
         fn ($c) => $c->type === 'files' && $c->model && $c->foreignKey && $c->pathColumn
     ));
     if ($_filesCols && !empty($initialRows)) {
+        // O formulário guarda, por célula, os arquivos que ela está mostrando:
+        // o Salvar só apaga o arquivo que consta lá e que o usuário tirou
+        // (ver MadForm::noteCellFiles / _persistGrandchildFiles).
+        $_flForm = \Mad\Component\MadRenderContext::getForm();
+        // Chave da LINHA: a do Model do detalhe — nem toda tabela se chama `id`,
+        // e com a chave errada a célula abria sempre vazia.
+        $_flRowPk = 'id';
+        if ($model) {
+            try {
+                $_flRowCls = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
+                $_flRowPk  = (new $_flRowCls())->getKeyName() ?: 'id';
+            } catch (\Throwable $e) {
+                // model que não resolve: fica o `id` de sempre
+            }
+        }
         foreach ($initialRows as $_ri => $_r) {
-            $_rid = $_r['id'] ?? null;
+            $_rid = $_r[$_flRowPk] ?? null;
+            // Linha nova que este formulário já gravou: a tela ainda a mostra sem
+            // a chave (o navegador não fica sabendo a que o banco deu), e num
+            // redesenho completo a célula abria vazia — o Salvar seguinte apagava
+            // os arquivos dela como "removidos". A chave vem do formulário.
+            if (!$_rid && $_flForm) {
+                $_rid = $_flForm->knownRowKey($name, (string) ($_r['__id'] ?? ''));
+            }
             foreach ($_filesCols as $_fc) {
                 $_attr = '__flfiles_' . $_fc->field;
                 $list  = [];
@@ -150,7 +201,13 @@
                 if ($_rid) {
                     try {
                         $_q = ($_fc->model)::where($_fc->foreignKey, $_rid);
-                        $_q->where('storage', $_fc->storage ?: 'disk');
+                        // Mesma regra do Salvar: a coluna `storage` só discrimina
+                        // quando o Model do neto a tem. Filtrar sempre fazia a
+                        // leitura FALHAR em toda tabela neta sem essa coluna.
+                        $_gcModel = $_fc->model;
+                        if (in_array('storage', (new $_gcModel())->getFillable(), true)) {
+                            $_q->where('storage', $_fc->storage ?: 'disk');
+                        }
                         foreach ($_q->get() as $_gf) {
                             $_p  = (string) ($_gf->{$_fc->pathColumn} ?? '');
                             $_nm = $_fc->nameColumn ? (string) ($_gf->{$_fc->nameColumn} ?? '') : '';
@@ -166,13 +223,24 @@
                                     : mad_download_url($_p, $_nm),
                             ];
                         }
+                        $_flForm?->noteCellFiles($name, $_fc->field, $_rid, array_column($list, 'key'));
                     } catch (\Throwable $e) {
-                        // tabela neto ausente / sem conexão: ignora
+                        // Tabela neta ausente / sem conexão: a célula abre SEM os
+                        // arquivos. Não é inofensivo — "nenhum arquivo mantido" no
+                        // Salvar seguinte apagava todos os arquivos da linha, da
+                        // tabela e do disco. O formulário anota que esta célula não
+                        // mostrou nada, e o Salvar não apaga o que ela não mostrou.
+                        $list = [];
+                        $_flForm?->noteCellFiles($name, $_fc->field, $_rid, null);
+                        error_log('[mad-field-list] falha ao carregar os arquivos de "' . $name . '.' . $_fc->field
+                            . '" (model=' . $_fc->model . ', fk=' . $_fc->foreignKey . ', linha=' . $_rid
+                            . ') — a célula abre vazia e o Salvar NAO vai apagar arquivos: ' . $e->getMessage());
                     }
                 }
                 $initialRows[$_ri][$_attr] = $list;
             }
         }
+        unset($_flForm, $_flRowPk, $_flRowCls, $_gcModel);
     }
 
     // Registra variáveis de autocomplete no VarRegistry para auto-bind
@@ -181,6 +249,10 @@
             \Mad\Registry\MadVarRegistry::register($_m[1], 'completion');
         }
     }
+
+    // As linhas como vão para o navegador: o que voltar diferente nas colunas
+    // que a lista não tem não é aceito (MadForm::takeRowsFromBrowser).
+    \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $initialRows);
 
     $cfgJson = json_encode([
         'columns'    => array_map(fn($c) => $c->toArray(), $columns),
@@ -586,7 +658,7 @@
                             $fStorage  = $col->storage ?: 'disk';
                             $fExisting = '__flfiles_' . $col->field;
                         @endphp
-                            <div class="mad-fl-files-cell"
+                            <div class="mad-fl-files-cell" :data-mad-upload="keyFor()"
                                  x-data="madFlFileModal({ field: '{{ $fld }}', row: row, flName: '{{ $name }}', storage: '{{ $fStorage }}', accept: '{{ $fAccept }}', maxSize: {{ $fMaxSize }}, existingKey: '{{ $fExisting }}' })">
 
                                 {{-- Botão (abre modal) com contagem --}}
@@ -602,6 +674,13 @@
                                 {{-- Hidden: chaves dos netos MANTIDOS (reconcile no save) --}}
                                 <template x-for="(ef, i) in existing" :key="'k'+i">
                                     <input type="hidden" :name="'__mad_existing_files[' + keyFor() + '][]'" :value="ef.key">
+                                </template>
+                                {{-- Hidden: identificador de cada arquivo NOVO, na ordem em
+                                     que eles vão no POST. A resposta do Salvar devolve, por
+                                     identificador, a chave com que o arquivo foi gravado (op
+                                     files_saved), e a célula deixa de tratá-lo como novo. --}}
+                                <template x-for="(nf, i) in files" :key="'u'+nf.uid">
+                                    <input type="hidden" :name="'__mad_new_files[' + keyFor() + '][]'" :value="nf.uid">
                                 </template>
 
                                 {{-- Modal de upload --}}

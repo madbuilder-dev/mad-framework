@@ -248,6 +248,14 @@
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbcombo-field', $__optCtx);
 
+    // Valor que o campo já tem e a lista não mostra (cadastro de outra unidade
+    // ou empresa, usuário que a pessoa não enxerga, filtro do campo, registro
+    // inativo ou excluído, lista que não carregou): a opção dele fica no
+    // campo, selecionada, com um rótulo neutro. Sem ela o campo abria em
+    // "Selecione...", ia vazio na requisição e o Salvar apagava o valor sem
+    // ninguém ter mexido nele — ver \Mad\Form\OutsideOption.
+    $__outside = \Mad\Form\OutsideOption::applies($selected, $options);
+
     // Para depends-on, criptografa toda a config da query num token assinado.
     // O cliente nao ve nem manipula model/database/display/column — so o token
     // opaco. O servidor decripta, valida e executa a query com a config segura.
@@ -368,6 +376,9 @@
                 {{ $optLabel }}
             </option>
         @endforeach
+        @if($__outside)
+            <option value="{{ $selected }}" selected {!! \Mad\Form\OutsideOption::ATTRS !!}>{{ \Mad\Form\OutsideOption::label() }}</option>
+        @endif
     </select>
     @if($_createBtn !== '')</div>{!! $_createBtn !!}</div>@endif
     @include('components.partials.options-error', ['optionsError' => $__optError])

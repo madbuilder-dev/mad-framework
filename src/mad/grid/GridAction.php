@@ -20,6 +20,10 @@ class GridAction
     public         $transformFn = null; // callable ($row) => array de overrides
     public array   $params    = [];
     public string  $idField   = 'id';
+    /** Dica do botão (o "Tooltip" do painel); vazio = o rótulo. */
+    public string  $title     = '';
+    /** Cor livre do botão (o "Cor custom" do painel), no lugar da variante. */
+    public string  $color     = '';
 
     // Navegação (nav action — sem AJAX no grid)
     public bool    $isNav      = false;
@@ -119,6 +123,7 @@ class GridAction
         if (array_key_exists('label',   $override)) $clone->label    = (string)$override['label'];
         if (array_key_exists('icon',    $override)) $clone->icon     = (string)$override['icon'];
         if (array_key_exists('confirm', $override)) $clone->confirm  = (string)$override['confirm'];
+        if (array_key_exists('title',   $override)) $clone->title    = (string)$override['title'];
         if (array_key_exists('danger',  $override)) $clone->isDanger  = (bool)$override['danger'];
         if (array_key_exists('primary', $override)) $clone->isPrimary = (bool)$override['primary'];
         return $clone;
@@ -128,6 +133,63 @@ class GridAction
     {
         $this->params = $extra;
         return $this;
+    }
+
+    /**
+     * Os parâmetros extras PARA UMA LINHA, na ordem em que foram declarados:
+     * `{campo}` vira o valor da coluna naquela linha; o resto vai como está.
+     * É o que segue para o método depois do id — `metodo($id, array $extras)`.
+     * Campo que a linha não tem fica como foi escrito.
+     *
+     * @return list<mixed>
+     */
+    public function rowParams(array $row): array
+    {
+        $out = [];
+        foreach ($this->params as $val) {
+            if (is_string($val) && str_contains($val, '{')) {
+                $val = preg_replace_callback(
+                    '/\{(\w+)\}/',
+                    fn ($m) => array_key_exists($m[1], $row) && (is_scalar($row[$m[1]]) || $row[$m[1]] === null)
+                        ? (string) $row[$m[1]]
+                        : $m[0],
+                    $val
+                );
+            }
+            $out[] = $val;
+        }
+
+        return $out;
+    }
+
+    /** Dica do botão quando o rótulo não basta (painel: Tooltip). */
+    public function title(string $title): self
+    {
+        $this->title = $title;
+        return $this;
+    }
+
+    /**
+     * Cor livre do botão, no lugar da variante. Só o que é uma cor de CSS
+     * (hex, nome, rgb()/hsl(), var(--x)) — o valor vai para um `style`.
+     */
+    public function color(string $color): self
+    {
+        $color = trim($color);
+        $this->color = preg_match(
+            '/^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,24}|(?:rgb|hsl)a?\([0-9.,%\s\/]+\)|var\(--[\w-]+\))$/',
+            $color
+        ) ? $color : '';
+        return $this;
+    }
+
+    /**
+     * O `title` do botão da linha: o motivo da recusa do perfil, senão a dica
+     * declarada, senão o rótulo (o histórico).
+     */
+    public function tooltip(): string
+    {
+        return $this->denyTitle() ?: ($this->title !== '' ? $this->title : $this->label);
     }
 
     public function idField(string $field): self
@@ -318,8 +380,14 @@ class GridAction
         if ($this->permDecision()['mode'] === 'disable') {
             return 'aria-disabled="true" data-mad-deny';
         }
+        if ($this->isDisabled($row)) {
+            return 'disabled';
+        }
 
-        return $this->isDisabled($row) ? 'disabled' : '';
+        // Cor livre (color()): só no botão ativo — o cinza do desabilitado é do
+        // tema. Vai aqui porque este é o único trecho que TODO desenho de ação
+        // (linha, menu do grupo, cartão) já emite cru na tag.
+        return $this->color !== '' ? 'style="color:' . $this->color . '"' : '';
     }
 
     /**

@@ -16,8 +16,12 @@
     // converte `-` -> camel). A leitura aceita as duas formas; sem isto o valor
     // escrito na tag era descartado em silencio e valia sempre o default.
     $aspect_ratio     = $aspectRatio ?? $aspect_ratio ?? '';
-    $max_size         = $maxSize ?? $max_size ?? '5MB';
-    $accept           = $accept ?? 'image/png,image/jpeg,image/gif';
+    // O que foi escrito na tag (painel: Tamanho máximo / Tipos aceitos) também
+    // vale no servidor; o padrão do campo continua sendo só do navegador.
+    $_maxDeclared     = (string) ($maxSize ?? $max_size ?? '');
+    $_acceptDeclared  = trim((string) ($accept ?? ''));
+    $max_size         = $_maxDeclared !== '' ? $_maxDeclared : '5MB';
+    $accept           = $_acceptDeclared !== '' ? $_acceptDeclared : 'image/png,image/jpeg,image/gif,image/webp';
     $output           = $output ?? 'base64';
     $placeholder_icon = $placeholderIcon ?? $placeholder_icon ?? 'image-plus';
     $fileNameMode     = $fileName ?? 'prefix';
@@ -38,6 +42,11 @@
         $ctxVal = array_key_exists($name, $_ctx) ? (string)$_ctx[$name] : $value;
         $value  = $ctxVal;
     }
+    // storage="disk": o arquivo que este campo está MOSTRANDO — o Salvar só
+    // remove o que consta aqui (ver MadForm::fileShown).
+    if ($storage === 'disk' && $name) {
+        \Mad\Component\MadRenderContext::fileRendered($name, $value);
+    }
 
     // Com storage: valor é path de arquivo, converter para URL acessível para preview
     // (mad_upload_is_file cobre local E disco de uploads configurado — S3 etc)
@@ -48,18 +57,19 @@
     $hasError = !empty($error);
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
-    // Parse max-size to bytes
-    $maxBytes = 5 * 1024 * 1024;
-    if (preg_match('/^(\d+)\s*(MB|KB|GB)$/i', $max_size, $_sm)) {
-        $_n = (int)$_sm[1];
-        $_u = strtoupper($_sm[2]);
-        if ($_u === 'KB')      $maxBytes = $_n * 1024;
-        elseif ($_u === 'MB')  $maxBytes = $_n * 1024 * 1024;
-        elseif ($_u === 'GB')  $maxBytes = $_n * 1024 * 1024 * 1024;
+    // Tamanho máximo em bytes ("2MB", "500KB", "2,5 MB"). Texto que não é um
+    // tamanho cai no padrão de 5 MB — e a dica mostra o que vale de fato.
+    $_declaredBytes = \Mad\Form\MadUploadRules::bytes($_maxDeclared);
+    $maxBytes       = $_declaredBytes ?: \Mad\Form\MadUploadRules::bytes($max_size) ?: 5 * 1024 * 1024;
+    if ($_declaredBytes === 0 && \Mad\Form\MadUploadRules::bytes($max_size) === 0) {
+        $max_size = '5MB';
     }
 
-    // Format accept for display
-    $acceptDisplay = str_replace(['image/', ','], ['', ', '], strtoupper($accept));
+    // Format accept for display ("PNG, JPEG" · "Imagens" para `image/*`)
+    $acceptDisplay = implode(', ', array_map(
+        static fn ($t) => trim($t) === 'image/*' ? 'Imagens' : strtoupper(ltrim(str_replace('image/', '', trim($t)), '.')),
+        array_filter(explode(',', $accept), static fn ($t) => trim($t) !== ''),
+    ));
 
     \Mad\Form\MadFormRegistry::register($name, 'image', [
         'label'      => strip_tags($label),
@@ -68,6 +78,9 @@
         'storage'    => $storage,
         'folder'     => $folder,
         'nameColumn' => $nameColumn,
+        // Só o que a tag declarou: o servidor confere no Salvar (MadUploadRules::check).
+        'accept'     => $_acceptDeclared,
+        'maxBytes'   => $_declaredBytes ?: '',
     ]);
 
     $_disabledJs = $disabled ? 'true' : 'false';
@@ -75,6 +88,7 @@
     $_jsonConfig = json_encode([
         'name'            => $name,
         'value'           => $value,
+        'serverMax'       => $storage !== '' ? \Mad\Form\MadUploadRules::serverFileBytes() : 0,
         'maxBytes'        => $maxBytes,
         'maxSizeLabel'    => $max_size,
         'accept'          => $accept,

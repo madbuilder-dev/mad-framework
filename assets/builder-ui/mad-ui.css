@@ -6348,10 +6348,21 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-checklist-table th.center, .mad-checklist-table td.center { text-align: center; }
 .mad-checklist-table th.right,  .mad-checklist-table td.right  { text-align: right; }
 .mad-checklist-table tbody tr { transition: background .1s; }
-.mad-checklist-table tbody tr:nth-child(even) { background: var(--mad-bg-subtle); }
+/* Listras contadas só entre as linhas À MOSTRA: a busca esconde a linha
+   (.mad-checklist-out), não a tira do DOM — pela posição no DOM as listras
+   saíam fora de ordem na lista filtrada. A 1ª linha visível é listrada, como
+   sempre foi (o <template> do x-for é o 1º filho do tbody). `:where()` mantém
+   o peso do seletor: o hover e a linha marcada continuam por cima. */
+.mad-checklist-table tbody tr:nth-child(odd of :where(tr:not(.mad-checklist-out))) { background: var(--mad-bg-subtle); }
+@supports not selector(:nth-child(1 of a)) {
+  .mad-checklist-table tbody tr:nth-child(even) { background: var(--mad-bg-subtle); }
+}
 .mad-checklist-table tbody tr:hover { background: rgba(59, 130, 246, 0.04); }
 .mad-checklist-table tbody tr.mad-checklist-checked { background: rgba(59, 130, 246, 0.06); }
-.mad-checklist-table tbody tr.mad-checklist-checked:nth-child(even) { background: rgba(59, 130, 246, 0.09); }
+.mad-checklist-table tbody tr.mad-checklist-checked:nth-child(odd of :where(tr:not(.mad-checklist-out))) { background: rgba(59, 130, 246, 0.09); }
+@supports not selector(:nth-child(1 of a)) {
+  .mad-checklist-table tbody tr.mad-checklist-checked:nth-child(even) { background: rgba(59, 130, 246, 0.09); }
+}
 .mad-checklist-table tbody tr:last-child td { border-bottom: none; }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -8550,6 +8561,19 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   padding: 2px 6px;
   height: 28px;
 }
+
+/* Edição na célula recusada pelo servidor (manage_row com cellError): contorno
+   na célula e o motivo logo abaixo do valor que voltou do banco. */
+.mad-dg-cell.mad-dg-cell-invalid {
+  box-shadow: inset 0 0 0 1px var(--mad-danger);
+}
+.mad-dg-cell-error {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--mad-danger);
+  white-space: normal;
+}
 [x-show].mad-dg-cell-display:hover {
   text-decoration: underline dotted;
   cursor: text;
@@ -8641,6 +8665,17 @@ textarea.mad-dg-inline-input {
 }
 .mad-dg-total-cell {
   font-weight: 600;
+}
+/* Total que soma só a página exibida: o aviso fica embaixo do número. */
+.mad-dg-total-scope {
+  display: block;
+  margin-top: 2px;
+  color: var(--mad-text-muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 /* ── Footer ──────────────────────────────────────────────────────── */
@@ -14378,4 +14413,15 @@ textarea.mad-dg-inline-input {
   .mad-ctl-col { width: 100%; display: block; }
   .mad-ctl-diff tr { display: grid; }
   .mad-ctl-count { margin-left: 0; }
+}
+
+/* Edição na célula da listagem: a célula que ainda está sendo gravada
+   (madDataGrid._saveCell). Só aparece se o servidor demorar — gravação rápida
+   não pisca. Some quando a linha é redesenhada ou a resposta chega. */
+.mad-dg-cell.mad-dg-cell-saving {
+    animation: mad-dg-cell-saving 1.1s ease-in-out .3s infinite alternate;
+}
+@keyframes mad-dg-cell-saving {
+    from { opacity: 1; }
+    to   { opacity: .45; }
 }

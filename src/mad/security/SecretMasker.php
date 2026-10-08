@@ -19,8 +19,8 @@ namespace Mad\Security;
  * (`two_factor_code`, `google_code`, `email_code`), troca/redefinição de senha
  * (`new_password`, `new_password2`, `password1`, `password2`, `repassword`,
  * `password_confirmation`, `token`), link público de documento
- * (`link_password`), configurações (`smtp_pass`, `google_recaptcha_secret_key`,
- * `ai_openrouter_api_key`), cobrança (BillingSettings::SECRET_KEYS:
+ * (`link_password`), instalador (`adm_pass`, `adm_pass2`), configurações
+ * (`smtp_pass`, `google_recaptcha_secret_key`, `ai_openrouter_api_key`), cobrança (BillingSettings::SECRET_KEYS:
  * `billing_mp_access_token`, `billing_*_secret`, `billing_inter_cert`,
  * `billing_inter_key`), CSRF (`_token`, X-CSRF-TOKEN/X-XSRF-TOKEN), sessão
  * (cookie `*_session`), cartão (o token do provedor chega como argumento
@@ -89,7 +89,9 @@ final class SecretMasker
             }
         }
         foreach (preg_split('/[^a-z0-9]+/', $norm) ?: [] as $part) {
-            if (in_array($part, self::PARTS, true)) {
+            // `adm_pass2`, `pwd1`: a confirmação da senha leva um número no fim
+            // e é tão segredo quanto a senha (a parte sozinha não casava).
+            if (in_array($part, self::PARTS, true) || in_array(rtrim($part, '0123456789'), self::PARTS, true)) {
                 return true;
             }
         }

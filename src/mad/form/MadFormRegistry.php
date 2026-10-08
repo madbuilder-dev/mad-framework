@@ -186,13 +186,214 @@ class MadFormRegistry
         if (!$name) {
             return;
         }
+        // De onde saem as opções de uma seleção múltipla sobre tabela (Model e
+        // coluna-chave): é da TELA, vai só para o estado cifrado — nunca para o
+        // formulário `__mad_form`, que o navegador devolve (ver mais abaixo).
+        $optionsSource = is_array($props['optionsSource'] ?? null) ? $props['optionsSource'] : [];
+        unset($props['optionsSource']);
+
         // Remove props sem valor para manter o token enxuto
         $props = array_filter($props, fn($v) => $v !== '' && $v !== null && $v !== false);
 
         self::$fields[$name] = array_merge(['type' => $type], $props);
 
+        // O formulário da tela fica sabendo que TEM este campo: é o que ele
+        // aceita do navegador (MadForm::takesFromBrowser). O tipo vai junto: o
+        // conteúdo de um Editor HTML é limpo pelo que a tela declarou, sem
+        // depender do token (MadForm::cleanFromBrowser).
+        // E fica sabendo ONDE o campo grava fora da coluna do registro (tabela
+        // e chave estrangeira do Upload em outra tabela, tabela de ligação,
+        // pasta): o formulário `__mad_form` é o navegador quem devolve, e o
+        // Salvar só grava o campo descrito como a tela o desenhou
+        // (MadForm::declareWrites).
+        // E de que Model saem as opções de uma seleção múltipla sobre tabela: a
+        // marca nova é conferida nessa consulta (MadForm::declareOptionsSource).
+        foreach (self::screenForms() as $form) {
+            $form->declareField($name, $type);
+            $form->declareWrites($name, self::$fields[$name]);
+            $form->declareOptionsSource($name, $optionsSource, (string) (self::$fields[$name]['separator'] ?? ''));
+        }
+
         // Registra no VarRegistry para auto-bind de escalares
         MadVarRegistry::register($name, 'val');
+    }
+
+    // ── A tela que está declarando ────────────────────────────────────────────
+
+    /** Tela cuja ação está rodando nesta requisição do wire (fora do render não há MadRenderContext). */
+    private static ?\WeakReference $acting = null;
+
+    /**
+     * A tela desta requisição do wire. O campo `<mad-*>`, a lista e o diálogo
+     * que a AÇÃO desenha (um trecho devolvido por `->html()`, um MadConfirm
+     * com campos) são declarados no formulário dela — fora do render o
+     * MadRenderContext está vazio.
+     *
+     * Referência fraca: não segura a tela viva depois da requisição (worker de
+     * longa duração).
+     *
+     * @internal chamado por MadComponentHandler::process()
+     */
+    public static function actingComponent(?object $component): void
+    {
+        self::$acting = $component !== null ? \WeakReference::create($component) : null;
+    }
+
+    /**
+     * Formulários da tela que está desenhando — ou, fora de um render, da
+     * tela cuja ação está rodando.
+     *
+     * @return list<MadForm>
+     */
+    private static function screenForms(): array
+    {
+        $component = \Mad\Component\MadRenderContext::getComponent() ?? self::$acting?->get();
+        if (!is_object($component)) {
+            return [];
+        }
+
+        $forms = [];
+        // Fora do escopo da classe: só as propriedades públicas já inicializadas.
+        foreach (get_object_vars($component) as $value) {
+            if ($value instanceof MadForm) {
+                $forms[] = $value;
+            }
+        }
+
+        return $forms;
+    }
+
+    /**
+     * A tela que está desenhando — ou, fora de um render, a tela cuja ação
+     * está rodando nesta requisição. Null fora de uma requisição de tela.
+     *
+     * @internal
+     */
+    public static function actingScreen(): ?object
+    {
+        $component = \Mad\Component\MadRenderContext::getComponent() ?? self::$acting?->get();
+
+        return is_object($component) ? $component : null;
+    }
+
+    /**
+     * A tag do campo `$name` traz a âncora do gerador (`data-mad-entity-id`):
+     * a plataforma o criou para uma coluna da tabela `$entity`. É por ela que
+     * o Salvar recusa o campo gerado cujo nome deixou de ser coluna, em vez de
+     * descartar o valor — ver MadForm::_fieldsWithoutColumn().
+     *
+     * Devolve true para poder ser usado como valor de prop no Blade compilado.
+     *
+     * @internal chamado pelo Blade compilado (MadBladeCompiler::parseParams)
+     */
+    public static function anchored(string $name, int $entity): bool
+    {
+        foreach (self::screenForms() as $form) {
+            $form->declareColumnField($name, $entity);
+        }
+
+        return true;
+    }
+
+    /**
+     * Campos SÓ DE TELA, pelo que o Blade diz: o atributo `screen-only` da tag
+     * e os campos que uma condição `*-when` usa. O valor deles não é do
+     * registro — ver MadForm::screenOnly().
+     *
+     * @internal chamado pelo Blade compilado (MadBladeCompiler::parseParams)
+     *
+     * @param string|list<string> $names
+     */
+    public static function screenOnly(string|array $names): bool
+    {
+        $names = array_values(array_filter(array_map('strval', (array) $names), static fn ($n) => $n !== ''));
+        if ($names) {
+            foreach (self::screenForms() as $form) {
+                $form->screenOnly(...$names);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Um campo que o CÓDIGO da tela está oferecendo ao navegador fora de uma
+     * tag `<mad-*>` — o campo de um diálogo (MadConfirm::field).
+     *
+     * @internal
+     */
+    public static function declareScreenField(string $name): void
+    {
+        foreach (self::screenForms() as $form) {
+            $form->declareField($name);
+        }
+    }
+
+    /**
+     * O `<mad-detail-fields>` de `$name` começa a ser desenhado: os campos
+     * registrados até o fim dele são colunas da LINHA — o formulário da tela
+     * não os toma por campos do registro principal.
+     *
+     * @internal chamado pelo Blade do detail-form
+     */
+    public static function beginDetailEditor(string $name): void
+    {
+        foreach (self::screenForms() as $form) {
+            $form->beginDetailEditor($name);
+        }
+    }
+
+    /** @internal fim do `<mad-detail-fields>` — `$html` é o que ele desenhou */
+    public static function endDetailEditor(string $html): void
+    {
+        foreach (self::screenForms() as $form) {
+            $form->endDetailEditor($html);
+        }
+    }
+
+    /**
+     * Colunas que `$name` (Lista de itens ou Detail Form) tem na tela, pelo
+     * que foi registrado neste render — a grade e, quando já registrado, o
+     * editor.
+     *
+     * @return list<string>
+     */
+    private static function detailColumnNames(string $name): array
+    {
+        if (isset(self::$fieldLists[$name])) {
+            return array_values(array_filter(self::getFieldListFields($name), 'is_string'));
+        }
+
+        $names = [];
+        foreach ((array) (self::$detailForms[$name]['columns'] ?? []) as $column) {
+            $field = is_array($column) ? (string) ($column['field'] ?? '') : '';
+            if ($field !== '') {
+                $names[] = $field;
+                $names[] = \Mad\Grid\GridRenderHelpers::rowDataKey($field);
+            }
+        }
+        foreach ((array) (self::$detailForms[$name]['editor'] ?? []) as $field) {
+            $names[] = (string) $field;
+        }
+
+        return $names;
+    }
+
+    /** Avisa o formulário da tela das colunas que `$name` tem (MadForm::declareDetail). */
+    private static function declareDetail(string $name): void
+    {
+        $entry = self::$fieldLists[$name] ?? self::$detailForms[$name] ?? null;
+        if (!$name || !is_array($entry)) {
+            return;
+        }
+        foreach (self::screenForms() as $form) {
+            $form->declareDetail(
+                $name,
+                self::detailColumnNames($name),
+                (string) ($entry['model'] ?? ''),
+                (string) ($entry['foreignKey'] ?? ''),
+            );
+        }
     }
 
     /**
@@ -457,6 +658,7 @@ class MadFormRegistry
             'foreignKey' => $foreignKey,
             'database'   => $database,
         ];
+        self::declareDetail($name);
     }
 
     /**
@@ -474,6 +676,84 @@ class MadFormRegistry
             return;
         }
         self::$detailForms[$name]['colMeta'] = $colMeta;
+    }
+
+    /**
+     * Campos do editor (`<mad-detail-fields>`) de um detail-form — os que o
+     * sub-form registrou e que o formulário principal ainda não tinha.
+     *
+     * Eles entram no schema do formulário junto com os campos da tela, mas são
+     * colunas da LINHA: um campo do editor chamado `status` não faz da coluna
+     * `status` do registro principal um campo da tela. Vai no token, para o
+     * Salvar (que não renderiza de novo) saber separar os dois — ver
+     * MadForm::fillRecord().
+     *
+     * @param list<string> $fields
+     */
+    public static function registerDetailEditorFields(string $name, array $fields): void
+    {
+        if (!$name || !isset(self::$detailForms[$name])) {
+            return;
+        }
+        self::$detailForms[$name]['editor'] = array_values(array_map('strval', $fields));
+        self::declareDetail($name);
+    }
+
+    /**
+     * Nomes que estão no schema só por serem campo do editor de algum
+     * detail-form (nome => true). Token antigo, sem a lista: vazio.
+     *
+     * @return array<string,true>
+     */
+    public static function detailEditorFields(): array
+    {
+        $names = [];
+        foreach (self::$detailForms as $entry) {
+            foreach ((array) ($entry['editor'] ?? []) as $field) {
+                $names[(string) $field] = true;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Colunas da linha que um detail (Lista de itens ou Detail Form) TEM na
+     * tela (nome => true): as colunas da grade e, no Detail Form, os campos do
+     * editor. Null quando não dá para saber (detail não registrado, ou
+     * detail-form de um token antigo, sem a lista do editor) — aí o Salvar
+     * grava a linha inteira, como sempre gravou.
+     *
+     * @return array<string,true>|null
+     */
+    public static function detailShownFields(string $name): ?array
+    {
+        if (isset(self::$fieldLists[$name])) {
+            $shown = [];
+            foreach (self::getFieldListFields($name) as $field) {
+                if (is_string($field) && $field !== '') {
+                    $shown[$field] = true;
+                }
+            }
+
+            return $shown;
+        }
+
+        $entry = self::$detailForms[$name] ?? null;
+        if (!is_array($entry) || !is_array($entry['editor'] ?? null)) {
+            return null;
+        }
+
+        $shown = array_fill_keys(array_map('strval', $entry['editor']), true);
+        foreach ((array) ($entry['columns'] ?? []) as $column) {
+            $field = is_array($column) ? (string) ($column['field'] ?? '') : '';
+            if ($field !== '') {
+                $shown[$field] = true;
+                $shown[\Mad\Grid\GridRenderHelpers::rowDataKey($field)] = true;
+            }
+        }
+
+        return $shown;
     }
 
     /**
@@ -611,6 +891,7 @@ class MadFormRegistry
         if ($colMeta) {
             self::$fieldLists[$name]['colMeta'] = $colMeta;
         }
+        self::declareDetail($name);
     }
 
     /**
@@ -621,15 +902,30 @@ class MadFormRegistry
      * $_FILES['mad_fl_files'][<detailName>__<rowId>__<field>] e persiste cada
      * arquivo no model filho (disco → path na coluna; db → BLOB base64).
      *
+     * As views chamam SEMPRE, uma vez por render, com todas as colunas de
+     * arquivo que o detail tem — inclusive nenhuma: o que estava registrado
+     * antes (o que o `fromRequest()` restaurou do formulário recebido) é
+     * trocado, e o formulário da tela anota como ESTE render as desenhou
+     * (MadForm::declareDetailFiles). É por essa anotação, no estado cifrado,
+     * que o Salvar não aceita as colunas de arquivo do formulário de outra
+     * tela — nem a falta delas.
+     *
      * @param string $name Nome do detail
      * @param array  $cols ['field' => ['storage'=>,'folder'=>,'fileName'=>,'nameColumn'=>,'multi'=>bool]]
      */
     public static function registerDetailFileColumns(string $name, array $cols): void
     {
-        if (!$name || empty($cols)) {
+        if (!$name) {
             return;
         }
-        self::$detailFileColumns[$name] = array_merge(self::$detailFileColumns[$name] ?? [], $cols);
+        if (empty($cols)) {
+            unset(self::$detailFileColumns[$name]);
+        } else {
+            self::$detailFileColumns[$name] = $cols;
+        }
+        foreach (self::screenForms() as $form) {
+            $form->declareDetailFiles($name, $cols);
+        }
     }
 
     /**

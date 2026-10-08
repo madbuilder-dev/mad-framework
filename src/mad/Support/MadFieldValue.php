@@ -70,6 +70,13 @@ final class MadFieldValue
             return $explicit ? '1' : '';
         }
 
+        // O campo vai para a tela com o valor padrão da tag: o navegador o
+        // devolve sem ninguém ter digitado — o formulário anota, para não
+        // tomá-lo por digitação (MadForm::_fieldsWithoutColumn).
+        if ($name !== '' && (string) $explicit !== '') {
+            MadRenderContext::getForm()?->noteFieldDefault($name, (string) $explicit);
+        }
+
         return (string) $explicit;
     }
 

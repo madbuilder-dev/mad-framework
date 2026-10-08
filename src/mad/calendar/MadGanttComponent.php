@@ -592,18 +592,28 @@ abstract class MadGanttComponent extends MadComponent
      * Handler default do drag (payload do wire: task_id/start/end/mode).
      * $task_id casa com a chave do payload — o antigo `$id` nunca resolvia e o
      * _resolveAndCall caía no fallback de array (TypeError em toda persistência).
+     *
+     * O id vem do navegador. A busca é pela consulta do próprio Gantt
+     * (_visibleRecord → buildQuery): só se reagenda tarefa que ele mostra —
+     * com `find()`, a chave de uma tarefa que o `buildQuery()` da tela deixa de
+     * fora era reagendada do mesmo jeito.
      */
     public function onTaskUpdate(string $task_id, string $start, string $end, $progress = null): MadResponse
     {
         try {
-            $rec = $this->_modelQuery($this->model)->find($task_id);
+            $rec = $this->model !== '' ? $this->_visibleRecord($task_id) : null;
             if (!$rec) {
-                throw new \RuntimeException("Registro {$task_id} nao encontrado em {$this->model}.");
+                // Nada foi gravado. O Gantt é redesenhado para a barra voltar ao
+                // lugar (ou sumir, se a tarefa não é dele).
+                $this->forceFullRender();
+
+                return MadToast::warning(mad_t('mad.gantt_task_gone'));
             }
+            $saved = true;
             // Transaction na conexão REAL do model — usar $this->database aqui
             // deixava o save() fora da transação quando as conexões divergiam.
             $conn = $rec->getConnectionName() ?: ($this->database ?: 'business');
-            DB::connection($conn)->transaction(function () use ($rec, $start, $end, $progress) {
+            DB::connection($conn)->transaction(function () use ($rec, $start, $end, $progress, &$saved) {
                 // Zoom hora manda 'Y-m-d H:i:s' — só trunca quando é date-only.
                 $norm = static fn (string $v): string => strlen($v) > 10 && !preg_match('/\d{2}:\d{2}/', $v)
                     ? substr($v, 0, 10)
@@ -613,14 +623,37 @@ abstract class MadGanttComponent extends MadComponent
                 if ($progress !== null && $progress !== '' && $this->progressField) {
                     $rec->{$this->progressField} = (float) $progress;
                 }
-                $rec->save();
+                // save() devolve false quando o Model recusa (evento `saving`).
+                $saved = $rec->save() !== false;
             });
+            if (!$saved) {
+                $this->forceFullRender();
+
+                return MadToast::warning(mad_t('mad.gantt_update_refused'));
+            }
+
             return MadToast::success("Atualizado");
         } catch (\Throwable $e) {
             return MadToast::danger(\Mad\Ui\MadUserError::isTechnical($e)
                 ? \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onTaskUpdate')
                 : "Erro: " . $e->getMessage());
         }
+    }
+
+    /**
+     * A tarefa `$id`, se for uma que ESTE Gantt mostra a quem está logado: a
+     * consulta das tarefas (`buildQuery()` — recortes do Model, `:filters`,
+     * `<mad-gantt-filter>` e o que a tela acrescenta) restrita à chave do
+     * `id-field`, que é o id que a barra leva ao navegador.
+     */
+    protected function _visibleRecord(int|string $id): ?object
+    {
+        $q   = $this->buildQuery();
+        $key = preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $this->idField) === 1
+            ? $this->idField
+            : $q->getModel()->getKeyName();
+
+        return $q->where($q->getModel()->qualifyColumn($key), '=', $id)->first();
     }
 
     public function onReload(string $startDate, string $endDate): void

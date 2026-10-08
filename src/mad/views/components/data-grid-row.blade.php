@@ -38,22 +38,22 @@
     <td class="mad-dg-cell mad-dg-actions-cell">
         <div class="mad-dg-actions">
             @foreach(array_filter($actions, fn($a)=>$a->isVisible($row)) as $act)
-            @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode(array_values($act->params)):''; $act=$act->getTransformed($row); @endphp
+            @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); @endphp
             @if($act->isNav)
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     {!! $act->getNavAttr($aId, $row) !!}>
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
             </button>
             @elseif($act->confirm || $act->confirmPopover)
             @php $_cMsg = $act->confirmPopover ?: $act->confirm; $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     @click="confirmAction({{ json_encode($_cMsg) }}, () => $dispatch('mad-dg-call',{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]}), $event, {{ $_cType }})">
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
             </button>
             @else
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     mad:click="{{ $act->method }}({{ $aIdJs }}{{ $ep }})">
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
@@ -71,7 +71,7 @@
                 </button>
                 <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                     @foreach($_grpActs as $act)
-                    @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode(array_values($act->params)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                    @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
                     @if($act->isNav)
                     <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                             @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
@@ -117,7 +117,7 @@
             if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
         }
     @endphp
-    <td class="mad-dg-cell" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
+    <td class="mad-dg-cell"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
         @if($col->editable)
         @php
             $editInitVal = $cellVal;
@@ -182,22 +182,22 @@
     <td class="mad-dg-cell mad-dg-actions-cell">
         <div class="mad-dg-actions">
             @foreach(array_filter($actions, fn($a)=>$a->isVisible($row)) as $act)
-            @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode(array_values($act->params)):''; $act=$act->getTransformed($row); @endphp
+            @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); @endphp
             @if($act->isNav)
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     {!! $act->getNavAttr($aId, $row) !!}>
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
             </button>
             @elseif($act->confirm || $act->confirmPopover)
             @php $_cMsg = $act->confirmPopover ?: $act->confirm; $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     @click="confirmAction({{ json_encode($_cMsg) }}, () => $dispatch('mad-dg-call',{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]}), $event, {{ $_cType }})">
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
             </button>
             @else
-            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->denyTitle() ?: $act->label }}"
+            <button type="button" class="{{ $act->btnClass() }}" {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                     mad:click="{{ $act->method }}({{ $aIdJs }}{{ $ep }})">
                 @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                 @if($act->label&&!$act->icon){{ $act->label }}@endif
@@ -215,7 +215,7 @@
                 </button>
                 <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                     @foreach($_grpActs as $act)
-                    @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode(array_values($act->params)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                    @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
                     @if($act->isNav)
                     <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                             @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>

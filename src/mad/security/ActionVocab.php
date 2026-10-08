@@ -99,6 +99,9 @@ final class ActionVocab
         'onShow', 'onEventClick', 'onDayClick', 'onSlotClick', 'onLoadMore',
         'onLoadChildren', 'onValidateBatch', 'onProductLookup', 'onSelect',
         'onToggleWidget', 'onWizardNext', 'onWizardBack', 'onWizardGoto',
+        // Só o rodapé de totais da listagem, pedido pelo navegador depois que
+        // uma linha mudou (MadDataGrid::onMadGridTotals): é consulta.
+        'onMadGridTotals',
     ];
 
     /** Prefixo dos combos dependentes (`onChangeCidade`, `onChangeEstadoId`…). */

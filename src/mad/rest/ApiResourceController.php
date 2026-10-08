@@ -219,10 +219,12 @@ abstract class ApiResourceController
             // Validação (master + cada detalhe) antes de qualquer escrita.
             $this->validateData($this->model, $payload, $id);
             foreach ($detailPayload as $relation => $rows) {
-                $detailClass = get_class($this->relation($master, $relation)->getRelated());
+                $hasMany     = $this->relation($master, $relation);
+                $detailClass = get_class($hasMany->getRelated());
+                $detailPk    = $this->keyOf($detailClass);
                 foreach ($rows as $row) {
                     $row = (array) $row;
-                    $this->validateData($detailClass, $row, $row[$this->keyOf($detailClass)] ?? null);
+                    $this->validateData($detailClass, $row, $this->detailRowKey($master, $hasMany, $row[$detailPk] ?? null));
                 }
             }
 
@@ -239,6 +241,28 @@ abstract class ApiResourceController
 
             return $master;
         });
+    }
+
+    /**
+     * A chave com que uma linha de detalhe é VALIDADA: a que o corpo traz, só
+     * quando é mesmo uma linha deste master — a mesma pergunta que o
+     * syncDetails() faz para decidir entre atualizar e criar. Linha de outro
+     * registro (ou que não existe) é linha nova: `null`.
+     *
+     * As regras do Model usam a chave para dispensar o que o registro JÁ TEM
+     * (`unique` ignora a própria linha; a chave para outro cadastro só é
+     * conferida quando muda). Com a chave do corpo sem conferir, bastava a
+     * linha nova dizer que era uma linha de OUTRO registro que já apontava
+     * para um cadastro de outra unidade para a conferência ser dispensada — e
+     * a linha nascia apontando para ele.
+     */
+    protected function detailRowKey(Model $master, HasMany $hasMany, mixed $key): mixed
+    {
+        if ($key === null || $key === '' || !is_scalar($key) || !$master->exists) {
+            return null;
+        }
+
+        return (clone $hasMany)->whereKey($key)->exists() ? $key : null;
     }
 
     /**

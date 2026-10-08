@@ -217,6 +217,14 @@ trait MadFiltersTrait
     /**
      * Auto-discovery: TODAS public props que sao filtros (state purposes).
      * Inclui props em $skipAutoFilter — fazem parte do state mesmo se nao auto-aplicam.
+     *
+     * Só entra o que a TELA declarou. Propriedade do framework (ver
+     * _frameworkOwnedProps) nunca é filtro: a grade guarda em props públicas o
+     * filtro fixo (`baseFilters`), as colunas (`exportColConfigs`), as colunas
+     * da busca, a config do <mad-grid> — públicas só para viajarem no estado
+     * cifrado. Tratadas como filtro, o "Limpar" as zerava (a listagem perdia o
+     * filtro fixo), a query string da abertura as preenchia e o snapshot da
+     * sessão as devolvia por cima do Blade.
      */
     protected function discoverFilterProps(): array
     {
@@ -226,12 +234,14 @@ trait MadFiltersTrait
             return $cache[$class];
         }
         $props = [];
+        $framework = self::_frameworkOwnedProps($class);
         $ref = new \ReflectionClass($class);
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $p) {
             $name = $p->getName();
             if ($p->isStatic()) continue;
             if ($name !== '' && $name[0] === '_') continue;
             if (in_array($name, self::$_MAD_FILTERS_RESERVED, true)) continue;
+            if (isset($framework[$name])) continue;
             // Opt-out do host: public prop que NAO e filtro (nao hidrata via
             // request, nao reseta no onLimpar, nao entra em snapshot/contagem).
             if (in_array($name, $this->notFilterProps ?? [], true)) continue;
@@ -243,6 +253,99 @@ trait MadFiltersTrait
             $props[] = $name;
         }
         return $cache[$class] = $props;
+    }
+
+    /**
+     * Propriedades que pertencem ao FRAMEWORK: declaradas, com qualquer
+     * visibilidade, por uma classe `Mad\` em algum ponto da herança (as da
+     * própria trait entram pela classe que a usa). São estado e configuração do
+     * componente — modelo, conexão, filtro fixo, colunas, ordenação padrão,
+     * filtro por unidade — e não mudam de natureza quando a tela as redeclara
+     * (`public array $baseFilters = [...]` continua sendo o filtro fixo).
+     *
+     * Mesmo critério do MadComponent::_isProtectedArrayProp(). Classe anônima
+     * herda o nome do pai (`Mad\...\MadDataGrid@anonymous`): é a tela.
+     *
+     * @return array<string,true>
+     */
+    private static function _frameworkOwnedProps(string $class): array
+    {
+        static $cache = [];
+        if (isset($cache[$class])) {
+            return $cache[$class];
+        }
+        $own = [];
+        for ($c = $class; $c !== false; $c = get_parent_class($c)) {
+            if (str_contains($c, '@anonymous') || !str_starts_with($c, 'Mad\\')) {
+                continue;
+            }
+            foreach ((new \ReflectionClass($c))->getProperties() as $p) {
+                $own[$p->getName()] = true;
+            }
+        }
+
+        return $cache[$class] = $own;
+    }
+
+    /**
+     * O navegador pode escrever nesta propriedade pelas ações de filtro
+     * (setProp / clearFilter)?
+     *
+     * Só o período da trait e os filtros que a TELA declarou
+     * (discoverFilterProps) — menos o que ela mesma trava para o navegador
+     * (_lockedStateProps, o gancho do MadComponent para estado da tela).
+     * As duas ações são públicas, logo despacháveis pelo MadWire com o nome
+     * que o cliente quiser; `property_exists` vale para propriedade protegida
+     * e privada, e sem esta lista uma requisição trocava o modelo da listagem,
+     * esvaziava o filtro fixo ou desligava o filtro por unidade.
+     *
+     * Nome que não é propriedade nenhuma (filtro que vive só no MadForm)
+     * continua ignorado em silêncio. Propriedade que EXISTE e não é filtro é
+     * requisição adulterada — ou tela antiga que usava setProp numa
+     * propriedade qualquer —, e vai para o log.
+     */
+    private function _acceptsClientFilter(string $prop, string $action): bool
+    {
+        if (in_array($prop, ['mes', 'ano', 'dtIni', 'dtFim', 'preset'], true)) {
+            return true;
+        }
+        if (in_array($prop, $this->discoverFilterProps(), true)
+            && !(method_exists($this, '_lockedStateProps') && in_array($prop, $this->_lockedStateProps(), true))) {
+            return true;
+        }
+        if ($prop !== '' && property_exists($this, $prop)) {
+            $this->_warnRefusedFilterWrite($prop, $action);
+        }
+
+        return false;
+    }
+
+    /** Tela, usuário e nome da propriedade — nunca o valor. */
+    private function _warnRefusedFilterWrite(string $prop, string $action): void
+    {
+        // Quem tentou: sem sessão (tela pública, CLI) fica "-".
+        $quem = null;
+        try {
+            $quem = function_exists('session') ? session('userid') : null;
+        } catch (\Throwable) {
+            // sessão indisponível — o aviso sai sem o usuário
+        }
+
+        $msg = sprintf(
+            '[MadFilters] %s tentou alterar a propriedade "%s" de %s (usuário %s), que não é filtro da tela — ignorado',
+            $action,
+            // O nome vem do cliente: só identificador vai para o log.
+            (string) preg_replace('/[^A-Za-z0-9_]/', '?', substr($prop, 0, 64)),
+            // Classe anônima traz um byte nulo + caminho no nome: fora do log.
+            (string) preg_replace('/@anonymous.*$/s', '@anonymous', static::class),
+            is_scalar($quem) && $quem !== '' ? (string) $quem : '-',
+        );
+
+        try {
+            \Illuminate\Support\Facades\Log::warning($msg);
+        } catch (\Throwable $e) {
+            error_log($msg);
+        }
     }
 
     /** Subset de discoverFilterProps() — exclui props em $skipAutoFilter. */
@@ -482,10 +585,15 @@ trait MadFiltersTrait
         $this->applyFiltersChanged();
     }
 
-    /** Seta uma prop publica generica + persist + apply. */
+    /**
+     * Seta UM filtro da tela (ou o período) + persist + apply.
+     *
+     * Só filtro: ver _acceptsClientFilter(). Outra propriedade pública da tela
+     * se escreve com `mad:model` no campo ou com uma ação própria.
+     */
     public function setProp(string $prop, string $value = ''): void
     {
-        if (!property_exists($this, $prop)) return;
+        if (!$this->_acceptsClientFilter($prop, 'setProp')) return;
         // Prop array (multi-select): string vira lista de 1 (vazio limpa) —
         // atribuicao direta fatalaria com TypeError.
         $this->$prop = is_array($this->$prop)
@@ -505,7 +613,7 @@ trait MadFiltersTrait
             if ($one === '_period') {
                 $this->mes = '';
                 $this->ano = '';
-            } elseif ($one !== '' && property_exists($this, $one)) {
+            } elseif ($this->_acceptsClientFilter($one, 'clearFilter')) {
                 $current = $this->$one;
                 $this->$one = is_array($current) ? [] : '';
             }

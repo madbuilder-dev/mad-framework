@@ -4,7 +4,6 @@ namespace Mad\Rest;
 
 use Mad\Database\SchemaIntrospector;
 use PDO;
-use PDOException;
 use RuntimeException;
 
 /**
@@ -12,18 +11,26 @@ use RuntimeException;
  * normalização de resultado do builder (columns/rows/rowCount/execMs) p/
  * paridade com os transportes direto/SSH.
  *
- * `read_only` NÃO é mais decidido por allowlist de keyword (era furado:
- * data-modifying CTE `WITH … DELETE RETURNING`, `EXPLAIN ANALYZE <write>` e
- * stacked `SELECT 1; DELETE …` passavam pelo 1º-keyword). Agora a leitura é
- * imposta em DOIS níveis:
+ * `read_only` (chave do pareamento, ou restrição pedida no corpo assinado) vale
+ * em DUAS camadas, e a que garante é a 2ª:
  *
- *   1. NO BANCO (defesa primária) — a operação roda dentro de uma sessão
- *      realmente somente-leitura (`withReadOnlySession`): `SET TRANSACTION
- *      READ ONLY` (pg/mysql) ou `PRAGMA query_only` (sqlite). O próprio engine
- *      recusa qualquer escrita, inclusive disfarçada.
- *   2. SHAPE GUARDS (defesa em profundidade, erro cedo/claro) — `;` fora de
- *      literal (stacked) e `EXPLAIN ANALYZE` (execução disfarçada) são barrados
- *      antes de tocar o banco.
+ *   1. FILTRO ({@see RestDriverReadOnlyGuard}) — lê o texto e recusa cedo, com
+ *      mensagem clara, o que não é UMA instrução de leitura.
+ *   2. NO BANCO ({@see RestDriverReadOnlySession}) — o SQL do usuário (run e
+ *      plan) roda numa transação que o próprio engine trata como somente
+ *      leitura e não consegue reabrir. Era só `START TRANSACTION READ ONLY` no
+ *      MySQL/MariaDB: todo DDL faz commit implícito antes de executar, então
+ *      TRUNCATE, DROP, ALTER e CREATE gravavam com a chave somente leitura. No
+ *      PostgreSQL com prepare emulado (app hospedado) passava
+ *      `SELECT 'a\'; COMMIT; DELETE ...; --'`.
+ *
+ * O PDO do modo somente leitura é uma conexão PRÓPRIA, aberta pelo controller
+ * com {@see RestDriverReadOnlySession::connectionConfig()} — a do app aceita
+ * vários comandos por envio no MySQL e é recusada pela trava.
+ *
+ * Com a chave de ESCRITA sobra a trava de "uma instrução por envio"
+ * ({@see RestDriverSqlScanner}), que entende corpo de rotina: `CREATE TRIGGER|
+ * PROCEDURE|FUNCTION ... BEGIN a; b; END` é uma instrução só.
  */
 class RestDriverRunner
 {
@@ -31,20 +38,23 @@ class RestDriverRunner
 
     public function run(PDO $pdo, string $sql, bool $readOnly): array
     {
-        $this->assertSingleStatement($sql);
+        $driver = $this->driver($pdo);
 
         if ($readOnly) {
-            $this->assertNoExplainAnalyze($sql);
-            return $this->withReadOnlySession($pdo, fn () => $this->doRun($pdo, $sql));
+            RestDriverReadOnlyGuard::assertReadable($sql, $driver);
+
+            return RestDriverReadOnlySession::run($pdo, fn () => $this->doRun($pdo, $sql, true));
         }
 
-        return $this->doRun($pdo, $sql);
+        RestDriverSqlScanner::assertSingleStatement($sql, $driver);
+
+        return $this->doRun($pdo, $sql, false);
     }
 
-    private function doRun(PDO $pdo, string $sql): array
+    private function doRun(PDO $pdo, string $sql, bool $readOnly): array
     {
         $start = microtime(true);
-        $stmt = $pdo->prepare($sql);
+        $stmt = $readOnly ? RestDriverReadOnlySession::prepare($pdo, $sql) : $pdo->prepare($sql);
         $stmt->execute();
 
         $columns = [];
@@ -66,25 +76,29 @@ class RestDriverRunner
     }
 
     /**
-     * Plano de execução. Respeita `read_only`: o ANALYZE (que EXECUTA a query no
-     * Postgres) é recusado, e o EXPLAIN roda dentro da sessão read-only — então
-     * `plan` nunca vira vetor de escrita.
+     * Plano de execução. Respeita `read_only`: passa pelas MESMAS travas do
+     * run() — `$sql` é do usuário, e `ANALYZE DELETE ...` aqui vira
+     * `EXPLAIN ANALYZE DELETE ...`, que executa.
      */
     public function explain(PDO $pdo, string $sql, bool $readOnly = false): array
     {
         $driver = $this->driver($pdo);
-        $prefixed = $driver === 'sqlite' ? 'EXPLAIN QUERY PLAN ' . $sql : 'EXPLAIN ' . $sql;
-
-        $this->assertSingleStatement($prefixed);
-
-        $run = fn () => ['driver' => $driver, 'rows' => $pdo->query($prefixed)->fetchAll(PDO::FETCH_ASSOC)];
+        $prefixed = RestDriverReadOnlyGuard::explainStatement($sql, $driver);
 
         if ($readOnly) {
-            $this->assertNoExplainAnalyze($prefixed);
-            return $this->withReadOnlySession($pdo, $run);
+            RestDriverReadOnlyGuard::assertReadable($prefixed, $driver);
+
+            return RestDriverReadOnlySession::run($pdo, function () use ($pdo, $prefixed, $driver) {
+                $stmt = RestDriverReadOnlySession::prepare($pdo, $prefixed);
+                $stmt->execute();
+
+                return ['driver' => $driver, 'rows' => $stmt->fetchAll(PDO::FETCH_ASSOC)];
+            });
         }
 
-        return $run();
+        RestDriverSqlScanner::assertSingleStatement($prefixed, $driver);
+
+        return ['driver' => $driver, 'rows' => $pdo->query($prefixed)->fetchAll(PDO::FETCH_ASSOC)];
     }
 
     /**
@@ -156,184 +170,6 @@ class RestDriverRunner
             // alguns drivers não expõem
         }
         return ['ok' => true, 'engine' => $this->driver($pdo), 'version' => $version];
-    }
-
-    // ── Read-only no nível do banco ──────────────────────────────────────────
-
-    /**
-     * Executa $fn numa sessão REALMENTE somente-leitura — a defesa que a
-     * allowlist de keyword não dava: data-modifying CTE, EXPLAIN ANALYZE e
-     * stacked queries são barrados pelo PRÓPRIO engine, não por parsing.
-     *
-     *   pgsql  → BEGIN; SET TRANSACTION READ ONLY; … ; ROLLBACK
-     *   mysql  → START TRANSACTION READ ONLY; … ; ROLLBACK
-     *   sqlite → PRAGMA query_only=ON; … ; PRAGMA query_only=OFF
-     *
-     * Engine desconhecido → fail-closed (recusa). Violação read-only do engine
-     * vira mensagem amigável ('somente-leitura').
-     */
-    private function withReadOnlySession(PDO $pdo, callable $fn)
-    {
-        $driver = $this->driver($pdo);
-
-        [$enter, $leave] = match ($driver) {
-            'pgsql' => [['BEGIN', 'SET TRANSACTION READ ONLY'], ['ROLLBACK']],
-            'mysql' => [['START TRANSACTION READ ONLY'], ['ROLLBACK']],
-            'sqlite' => [['PRAGMA query_only = 1'], ['PRAGMA query_only = 0']],
-            default => throw new RuntimeException("Modo somente-leitura não suportado para o driver '{$driver}'."),
-        };
-
-        foreach ($enter as $stmt) {
-            $pdo->exec($stmt);
-        }
-
-        try {
-            return $fn();
-        } catch (PDOException $e) {
-            if ($this->isReadOnlyViolation($e, $driver)) {
-                throw new RuntimeException('Conexão em modo somente-leitura: operação de escrita bloqueada.', 0, $e);
-            }
-            throw $e;
-        } finally {
-            foreach ($leave as $stmt) {
-                try {
-                    $pdo->exec($stmt);
-                } catch (\Throwable $e) {
-                    // best-effort: limpeza da sessão não pode mascarar o erro real
-                }
-            }
-        }
-    }
-
-    /** Erro do engine é uma violação de transação somente-leitura? */
-    private function isReadOnlyViolation(PDOException $e, string $driver): bool
-    {
-        $sqlState = $e->errorInfo[0] ?? (string) $e->getCode();
-        if ($sqlState === '25006') {           // SQL-standard: read-only sql transaction (pg + mysql)
-            return true;
-        }
-        if ($driver === 'sqlite' && (int) ($e->errorInfo[1] ?? 0) === 8) {  // SQLITE_READONLY
-            return true;
-        }
-        $msg = strtolower($e->getMessage());
-        return str_contains($msg, 'read-only') || str_contains($msg, 'readonly') || str_contains($msg, 'read only');
-    }
-
-    // ── Shape guards (defesa em profundidade) ────────────────────────────────
-
-    /**
-     * Garante UMA única instrução. Bloqueia "stacked queries" (ex.:
-     * `SELECT 1; DELETE …`) — o vetor que furava a allowlist. Um `;` final
-     * (só espaço/comentário depois) é tolerado; qualquer código após o `;` →
-     * erro. Pula literais ('…', "…", `…`, $tag$…$tag$) e comentários (-- , /* *​/)
-     * p/ não confundir `;` de DADOS com separador.
-     */
-    private function assertSingleStatement(string $sql): void
-    {
-        $len = strlen($sql);
-        $terminated = false;
-
-        for ($i = 0; $i < $len; $i++) {
-            $ch = $sql[$i];
-
-            // Comentários — permitidos mesmo após o terminador (trailing).
-            if ($ch === '-' && ($sql[$i + 1] ?? '') === '-') {
-                $nl = strpos($sql, "\n", $i);
-                $i = $nl === false ? $len : $nl;          // loop ++ avança 1
-                continue;
-            }
-            if ($ch === '/' && ($sql[$i + 1] ?? '') === '*') {
-                $end = strpos($sql, '*/', $i + 2);
-                $i = $end === false ? $len : $end + 1;     // +1; loop ++ → após */
-                continue;
-            }
-
-            // Espaço — sempre ok.
-            if (ctype_space($ch)) {
-                continue;
-            }
-
-            // Separador de instrução.
-            if ($ch === ';') {
-                $terminated = true;
-                continue;
-            }
-
-            // Conteúdo real após um `;` ⇒ múltiplas instruções.
-            if ($terminated) {
-                throw new RuntimeException('Múltiplas instruções SQL não são permitidas.');
-            }
-
-            // Literais — pula o conteúdo (onde `;` é dado, não separador).
-            if ($ch === "'" || $ch === '"' || $ch === '`') {
-                $i = $this->skipQuoted($sql, $i, $ch);
-                continue;
-            }
-            if ($ch === '$') {
-                $skip = $this->skipDollarQuoted($sql, $i);
-                if ($skip !== null) {
-                    $i = $skip;
-                }
-            }
-        }
-    }
-
-    /** Retorna o índice da aspa de fechamento (loop ++ passa adiante). */
-    private function skipQuoted(string $sql, int $i, string $q): int
-    {
-        $len = strlen($sql);
-        $allowBackslash = $q !== '`';                      // backtick (ident mysql) não usa \ escape
-
-        for ($j = $i + 1; $j < $len; $j++) {
-            $c = $sql[$j];
-            if ($allowBackslash && $c === '\\') {          // pula char escapado (mysql)
-                $j++;
-                continue;
-            }
-            if ($c === $q) {
-                if (($sql[$j + 1] ?? '') === $q) {         // '' "" `` doblado = escape
-                    $j++;
-                    continue;
-                }
-                return $j;
-            }
-        }
-
-        return $len;                                       // não fechou → consome o resto
-    }
-
-    /** $tag$…$tag$ (Postgres). Retorna índice do último char do fechamento, ou null. */
-    private function skipDollarQuoted(string $sql, int $i): ?int
-    {
-        if (! preg_match('/\$([A-Za-z0-9_]*)\$/A', $sql, $m, 0, $i)) {
-            return null;
-        }
-        $tag = $m[0];
-        $bodyStart = $i + strlen($tag);
-        $close = strpos($sql, $tag, $bodyStart);
-
-        return $close === false ? strlen($sql) : $close + strlen($tag) - 1;
-    }
-
-    /**
-     * Recusa EXPLAIN ANALYZE (e `EXPLAIN (ANALYZE …)`). No Postgres o ANALYZE
-     * EXECUTA a instrução — então `EXPLAIN ANALYZE DELETE …` é escrita
-     * disfarçada. A sessão read-only já barra no banco; isto dá erro claro/cedo.
-     */
-    private function assertNoExplainAnalyze(string $sql): void
-    {
-        $hasAnalyze = preg_match(
-            '/^\s*EXPLAIN\b(.*?)\b(SELECT|INSERT|UPDATE|DELETE|MERGE|WITH|TABLE|VALUES|CREATE|ALTER|DROP)\b/is',
-            $sql,
-            $m
-        ) && preg_match('/\bANALYZE\b/i', $m[1]);
-
-        // EXPLAIN ANALYZE sem verbo reconhecível à frente.
-        $bareAnalyze = preg_match('/^\s*EXPLAIN\s+(\([^)]*\)\s*)?ANALYZE\b/is', $sql);
-
-        if ($hasAnalyze || $bareAnalyze) {
-            throw new RuntimeException('EXPLAIN ANALYZE não é permitido em modo somente-leitura.');
-        }
     }
 
     private function driver(PDO $pdo): string

@@ -100,6 +100,17 @@ class MadReconcile extends MadComponent
         }
     }
 
+    /**
+     * `rcCfgKey` aponta para a config desta conciliação guardada na sessão e viaja no
+     * estado cifrado: só o servidor a escreve. Como prop pública, ela também
+     * aceitava valor mandado pelo navegador junto dos campos — e a requisição
+     * seguinte montava esta tela com a config de OUTRA aberta na mesma sessão.
+     */
+    protected function _lockedStateProps(): array
+    {
+        return array_merge(parent::_lockedStateProps(), ['rcCfgKey']);
+    }
+
     public function hydrate(): void
     {
         $cfg = $this->rcCfgKey !== ''

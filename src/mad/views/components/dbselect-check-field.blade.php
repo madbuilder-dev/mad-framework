@@ -85,14 +85,17 @@
             $selected = $_ctx[$name];
         }
     }
-    // Auto-load selected do pivot (mode=table)
+    // Auto-load selected from pivot table (mode=table). O `name` vai junto: o
+    // formulário guarda o que este campo entregou marcado, e o Salvar só
+    // desmarca o que consta lá (ver MadForm::pivotLoaded / pivotShown).
+    $__pivotNotice = null;
     if ($mode === 'table' && empty($selected) && $pivotModel && $itemKey) {
-        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database);
+        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
+        $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
     }
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode(',', $selected) : [];
-    }
-    $selected = array_map('strval', (array)$selected);
+    // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
+    // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
 
     \Mad\Form\MadFormRegistry::register($name, 'multi-search', [
         'label'      => strip_tags($label),
@@ -102,6 +105,11 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
+        // deste Model (só vai para o estado da tela). Com `:query` própria quem
+        // decide a lista é o código da tela, e não há o que conferir.
+        'optionsSource' => ($model && $mode !== 'manual' && !\Mad\Database\QuerySource::isQuery($query))
+            ? ['model' => $model, 'key' => $keyField] : '',
     ]);
 
     // :filters (array DSL) → Query Builder interno → caminho :query.
@@ -164,6 +172,17 @@
         }
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbselect-check-field', $__optCtx);
+    $__optError ??= $__pivotNotice;
+    // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
+    if ($mode === 'table' && $pivotModel && $itemKey) {
+        \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys($options), $pivotModel, $foreignKey, $itemKey);
+    }
+    // Gravação na própria coluna (por vírgula): o que vai MARCADO para o
+    // navegador é a base do Salvar — o item da coluna que a lista não mostra
+    // não sai dela (ver MadForm::selectionShown).
+    if ($mode !== 'table' && $mode !== 'manual') {
+        \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_keys($options));
+    }
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>

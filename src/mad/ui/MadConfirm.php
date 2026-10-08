@@ -106,6 +106,11 @@ class MadConfirm
         }
         $this->fields[] = $field;
 
+        // O valor volta em `mad_model`: o formulário da tela precisa saber que
+        // foi o CÓDIGO que ofereceu este campo, senão o recusa como chave que
+        // a tela não tem (MadForm::takesFromBrowser).
+        \Mad\Form\MadFormRegistry::declareScreenField($name);
+
         return $this;
     }
 

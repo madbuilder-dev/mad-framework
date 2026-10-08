@@ -15,7 +15,10 @@ class MadErrorRenderer
     public static function render(\Throwable $e, string $componentClass = ''): string
     {
         $type    = (new \ReflectionClass($e))->getShortName();
-        $message = htmlspecialchars($e->getMessage(), ENT_QUOTES);
+        // Tela do DESENVOLVEDOR (só com APP_DEBUG): o detalhe técnico aparece,
+        // os segredos não — a mensagem de um erro de banco traz o SQL com os
+        // valores (o hash da senha, num INSERT de usuário).
+        $message = htmlspecialchars(MadErrorRedactor::message($e), ENT_QUOTES);
         $file    = $e->getFile();
         $line    = $e->getLine();
 
@@ -204,7 +207,7 @@ class MadErrorRenderer
 
         $md  = "## Erro no componente `{$comp}`\n\n";
         $md .= "**Tipo:** `" . get_class($e) . "`\n\n";
-        $md .= "**Mensagem:**\n```\n{$e->getMessage()}\n```\n\n";
+        $md .= "**Mensagem:**\n```\n" . MadErrorRedactor::message($e) . "\n```\n\n";
         $md .= "**Arquivo:** `{$shortFile}:{$e->getLine()}`\n\n";
 
         // ── Código fonte ──────────────────────────────────────────

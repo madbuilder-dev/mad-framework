@@ -36,6 +36,12 @@ return [
 
         // Calendário com `event-form` apontando para uma classe que não existe.
         'calendar_form_missing' => 'The form ":form" was not found. Link another form to the calendar.',
+        // Arrastar/redimensionar do calendário e do Gantt (ação padrão do framework).
+        'calendar_drag_off' => 'Dragging events is not enabled on this calendar.',
+        'calendar_update_refused' => 'Operation not allowed.',
+        'calendar_event_gone' => 'Nothing was changed: the event is no longer on this calendar. It may have been deleted or changed by someone else.',
+        'gantt_task_gone' => 'Nothing was changed: the task is no longer on this Gantt. It may have been deleted or changed by someone else.',
+        'gantt_update_refused' => 'The task was not rescheduled: the change was refused.',
         'dashf' => [
             'filters'           => 'Filters',
             'filters_with_count'=> 'Filters (:n)',
@@ -253,6 +259,73 @@ return [
             'load_failed'   => 'Could not load the data. Try again or contact the administrator.',
             'duplicate'     => 'A record with this data already exists.',
             'unit_not_allowed' => 'You do not have access to the selected unit.',
+            // Listing: refused in-cell edit and delete (MadDataGrid::onInlineSave, MadGrid::onMadGridDelete).
+            'row_gone'       => 'This record is no longer in the list: it may have been deleted or changed by someone else. Refresh the page.',
+            'delete_gone'    => 'Nothing was deleted: the record is no longer in the list. It may have been deleted by someone else.',
+            'delete_refused' => 'The record was not deleted: the deletion was refused.',
+            'cell_not_saved' => 'The change was not saved.',
+            'cell_invalid'   => 'Invalid value.',
+            'cell_number'    => 'Enter a number.',
+            'cell_min'       => 'The minimum value is :min.',
+            'cell_max'       => 'The maximum value is :max.',
+            'cell_option'    => 'Choose one of the options in the list.',
+            'cell_date'      => 'Invalid date.',
+            // Edição na célula: aviso da própria grade (madDataGrid._cellNotice, via cfg.editText).
+            'cell_no_answer'    => 'The change was not saved: the server did not respond. Check your connection and try again.',
+            'cell_edit_dropped' => 'What you were typing was not saved: the list was refreshed before you confirmed.',
+            // Ação da listagem chamada com argumento de tipo errado (requisição alterada): MadDataGrid::_resolveAndCall.
+            'bad_request'    => 'Invalid request. Refresh the screen and try again.',
+        ],
+
+        // Screen field (or list column) that is not a table column: Save refuses the
+        // platform-generated field and tells what was not saved.
+        'form' => [
+            'field_without_column'   => 'The field :field is not bound to any column of table :table: the value you typed would not be saved. Tell the system administrator (field `:name`).',
+            'not_stored_title'       => 'Value not saved',
+            'not_stored_field_one'   => 'What was typed in :fields was not saved: the field is not bound to any column of table :table.',
+            'not_stored_field_many'  => 'What was typed in :fields was not saved: the fields are not bound to any column of table :table.',
+            'not_stored_column_one'  => 'In the list :list, what was typed in :columns was not saved: the column does not exist in table :table.',
+            'not_stored_column_many' => 'In the list :list, what was typed in :columns was not saved: the columns do not exist in table :table.',
+            'not_stored_tail'        => 'Everything else was saved. Tell the system administrator.',
+            // List row (or checklist mark) holding the key of a record the person saving cannot see: Save is refused.
+            'row_invalid'            => 'In the list :list, row :row: :message',
+            'row_invalid_unnamed'    => 'Row :row: :message',
+            'selection_invalid'      => 'One of the checked items cannot be saved: it is not in your list or no longer exists.',
+        ],
+
+        // Save from a stale screen: rows (field list / detail form) and attachments
+        // (multi-file in table mode) that another tab or another person had already
+        // removed are NOT written again — the user is told.
+        'detail' => [
+            'gone_title'      => 'Items already removed',
+            'gone_rows_one'   => 'Row :rows of the list had already been removed in another tab or by someone else and was not saved again.',
+            'gone_rows_many'  => 'Rows :rows of the list had already been removed in another tab or by someone else and were not saved again.',
+            'gone_files_one'  => 'The attachment :files had already been removed in another tab or by someone else.',
+            'gone_files_many' => 'The attachments :files had already been removed in another tab or by someone else.',
+            // Multiple selection stored in another table (checkbox, multi search, checklist in mode=table).
+            'gone_options_one'  => 'In :field, one option this screen still showed as selected had already been cleared in another tab or by someone else and was not selected again.',
+            'gone_options_many' => 'In :field, :count options this screen still showed as selected had already been cleared in another tab or by someone else and were not selected again.',
+            'gone_tail'       => 'Everything else was saved. Reload the screen to see the current state.',
+            'and'             => 'and',
+        ],
+
+        // Checklist saved by the screen's own code (loadChecklist / saveChecklist):
+        // what another tab or another person checked or unchecked while the screen
+        // was open is not undone by Save — whoever saves is told.
+        'checklist' => [
+            'changed_title'      => 'Changed in another tab or by someone else',
+            'marked_elsewhere'   => 'Another tab or someone else checked :items while this screen was open. That was kept.',
+            'unmarked_elsewhere' => 'Another tab or someone else unchecked :items while this screen was open. That was kept.',
+            'changed_tail'       => 'Refresh the screen to see the current state.',
+            'items_one'          => '1 item',
+            'items_many'         => ':count items',
+            'more'               => ':count more',
+        ],
+
+        // Table-backed field (DB Combo, DB Select, DB Radio, DB Unique Search): the
+        // option for the value the field already holds and the editor's list does not show.
+        'field' => [
+            'outside_option' => 'Current record (not in your list)',
         ],
 
         'grid' => [

@@ -89,6 +89,21 @@ function _madApplyWireOps(ops, wrapper) {
     }
 }
 
+// POST direto ao wire em FILA com as demais chamadas do componente — a mesma
+// fila do MadWire.call (MadWire.enqueue, em mad-livewire.js). Sem ela, dois
+// pedidos da Lista de itens (on-change de coluna, cascata, on-add / on-remove /
+// on-totalize) corriam em paralelo e valia a resposta que chegasse POR ÚLTIMO,
+// não a do último pedido: trocar o produto duas vezes seguidas podia deixar na
+// linha o preço do PRIMEIRO, e o estado do componente voltava ao de uma
+// resposta velha — sem aviso (framework#175). `job(wrapper)` monta o pedido na
+// hora de ENVIAR (estado e campos daquele momento) e devolve a promise do fetch.
+function _madWireQueued(wrapper, job) {
+    if (typeof MadWire !== 'undefined' && MadWire && typeof MadWire.enqueue === 'function') {
+        return MadWire.enqueue(wrapper, job);
+    }
+    return Promise.resolve().then(function () { return job(wrapper); });
+}
+
 // [mad-component] dono de `el`, atravessando teleport: um <mad-field-list> ou
 // <mad-detail-form> dentro de um <mad-drawer>/<mad-modal> da tela vive num
 // clone no <body>, onde o closest() puro não acha o componente — e o evento
@@ -946,6 +961,10 @@ document.addEventListener('change', function(e) {
     var endpoint = wrapper.getAttribute('mad-endpoint');
     if (!endpoint) return;
 
+    // Em fila com os outros pedidos do componente (ver _madWireQueued): o
+    // pedido é montado na hora de enviar, com o estado que a resposta anterior
+    // deixou e a linha como está na tela.
+    _madWireQueued(wrapper, function(wrapper) {
     var body = new FormData();
     body.append('mad_state',  wrapper.getAttribute('mad-state'));
     body.append('mad_id',     wrapper.getAttribute('mad-id'));
@@ -975,7 +994,7 @@ document.addEventListener('change', function(e) {
 
     // CSRF: o entry point do wire valida o X-CSRF-TOKEN (ver _madWireHeaders).
     // Sem ele a requisição volta 403 e o onChange do field-list não dispara.
-    fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
+    return fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
         .then(function(r) { return _madWireJson(r, { source: 'mad-fl-change', method: 'POST' }); })
         .then(function(data) {
             if (!data) return;   // erro do servidor já exibido (MadErrorModal)
@@ -1003,6 +1022,7 @@ document.addEventListener('change', function(e) {
         .catch(function(err) {
             console.error('[mad-fl-change] Erro de rede:', err);
         });
+    });
 });
 
 /**
@@ -1134,6 +1154,8 @@ document.addEventListener('change', function(e) {
             return;
         }
 
+        // Em fila (ver _madWireQueued), com o estado da hora do envio.
+        _madWireQueued(wrapper, function(wrapper) {
         var body = new FormData();
         body.append('mad_state',  wrapper.getAttribute('mad-state'));
         body.append('mad_id',     wrapper.getAttribute('mad-id'));
@@ -1147,7 +1169,7 @@ document.addEventListener('change', function(e) {
             value:  parentValue
         }));
 
-        fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
+        return fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
             .then(function(r) { return _madWireJson(r, { source: 'mad-fl-depends', method: 'POST' }); })
             .then(function(data) {
                 if (!data) return;   // erro do servidor já exibido (MadErrorModal)
@@ -1159,6 +1181,10 @@ document.addEventListener('change', function(e) {
                     return;
                 }
                 _madSyncWireState(wrapper, data);
+                // O pai mudou de novo enquanto esta resposta vinha (ou foi
+                // limpo, o que não gera pedido): as opções são de um valor
+                // que já não está na tela.
+                if (String(el.value === undefined || el.value === null ? '' : el.value) !== String(parentValue)) return;
 
                 // Separa fl_combo (escopo row) dos demais ops (regras do wire, ver _madApplyWireOps).
                 // Sem esse split, alert/script/toast/dump_modal/reload_combo etc. eram
@@ -1183,6 +1209,7 @@ document.addEventListener('change', function(e) {
                     MadDialog.show({ type: 'error', title: 'Erro de rede', message: String(err && err.message || err) });
                 }
             });
+        });
     });
 });
 
@@ -3167,6 +3194,135 @@ madToast.info    = (message, title = '') => madToast({ message, type: 'info',   
    FORM FIELDS — Alpine components para campos de formulário
    ═══════════════════════════════════════════════════════════════════ */
 
+// Identificador de um arquivo NOVO de um campo de upload (Upload Múltiplo,
+// célula Arquivos da Lista de itens). Viaja com o arquivo
+// (`__mad_new_files[campo][]`) e volta na resposta do Salvar (op `files_saved`)
+// com o lugar onde ele foi gravado: é por ele que o campo sabe QUAL arquivo
+// deixou de ser novo — a lista pode ter mudado enquanto o Salvar corria.
+var _madUploadSeq = 0;
+function _madUploadUid() {
+    return 'u' + Date.now().toString(36) + (++_madUploadSeq).toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// ── Limites dos campos de upload (tamanho, tipo, quantidade) ───────────────
+// O navegador avisa ANTES de enviar; quem faz a regra valer é o servidor, no
+// Salvar (Mad\Form\MadUploadRules) — as duas leituras têm de ser a mesma.
+
+// Extensões que nenhum upload grava. Espelha MadUploadRules::BLOCKED_EXTENSIONS.
+var _MAD_UPLOAD_BLOCKED = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps', 'pht', 'phar', 'phpt', 'inc',
+    'htaccess', 'htpasswd', 'cgi', 'pl', 'py', 'sh', 'rb', 'asp', 'aspx', 'jsp', 'jspx',
+    'exe', 'bat', 'cmd', 'msi', 'com', 'scr', 'svg', 'svgz', 'html', 'htm', 'xhtml', 'xml', 'mathml', 'vtt'];
+
+// Tipo pelo NOME do arquivo. Espelha MadUploadRules::EXTENSION_TYPES.
+var _MAD_UPLOAD_TYPES = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg', pjpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', svgz: 'image/svg+xml',
+    avif: 'image/avif', heic: 'image/heic', heif: 'image/heif', tif: 'image/tiff', tiff: 'image/tiff',
+    ico: 'image/x-icon',
+    pdf: 'application/pdf', zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
+    json: 'application/json', xml: 'application/xml', rtf: 'application/rtf',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    odt: 'application/vnd.oasis.opendocument.text', ods: 'application/vnd.oasis.opendocument.spreadsheet',
+    txt: 'text/plain', csv: 'text/csv', html: 'text/html', htm: 'text/html', md: 'text/markdown',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4',
+    aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm', opus: 'audio/opus',
+    mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', avi: 'video/x-msvideo',
+    mkv: 'video/x-matroska', mpeg: 'video/mpeg', mpg: 'video/mpeg', ogv: 'video/ogg', '3gp': 'video/3gpp',
+};
+var _MAD_UPLOAD_ALIASES = {
+    'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg', 'image/x-png': 'image/png',
+    'audio/mp3': 'audio/mpeg', 'audio/x-wav': 'audio/wav', 'application/x-pdf': 'application/pdf',
+    'application/x-zip-compressed': 'application/zip',
+};
+
+function _madUploadExt(name) {
+    var m = /\.([^./\\]+)$/.exec(String(name || ''));
+    return m ? m[1].toLowerCase() : '';
+}
+
+// "850 KB", "2,5 MB". Com `ceil`, arredonda para cima: o arquivo de 2,004 MB
+// sai "2,01 MB", não "2 MB" igual ao limite.
+function _madUploadSize(bytes, ceil) {
+    bytes = Number(bytes) || 0;
+    if (bytes < 1024) return bytes + ' B';
+    var value = bytes / 1024, unit = 'KB';
+    ['MB', 'GB'].forEach(function(next) { if (value >= 1024) { value /= 1024; unit = next; } });
+    value = ceil ? Math.ceil(value * 100) / 100 : Math.round(value * 100) / 100;
+    return String(value).replace('.', ',') + ' ' + unit;
+}
+
+// O arquivo é de um tipo que `accept` aceita? Extensões (`.pdf`), tipos
+// (`application/pdf`) e famílias (`image/*`), separados por vírgula; vazio e
+// `*` aceitam tudo. O tipo sai do NOME do arquivo; só quando a extensão não é
+// conhecida vale o que o navegador informa.
+function _madUploadAccepts(accept, file) {
+    var tokens = String(accept || '').toLowerCase().split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    if (!tokens.length) return true;
+    var ext  = _madUploadExt(file && file.name);
+    var type = _MAD_UPLOAD_TYPES[ext] || String((file && file.type) || '').toLowerCase();
+    type = _MAD_UPLOAD_ALIASES[type] || type;
+    return tokens.some(function(token) {
+        if (token === '*' || token === '*/*') return true;
+        if (token.indexOf('/') === -1) {
+            // Extensões do mesmo tipo se equivalem (`.jpg` aceita `foto.jpeg`).
+            var wanted = token.replace(/^\./, '');
+            return ext !== '' && (wanted === ext || (!!_MAD_UPLOAD_TYPES[wanted] && _MAD_UPLOAD_TYPES[wanted] === _MAD_UPLOAD_TYPES[ext]));
+        }
+        token = _MAD_UPLOAD_ALIASES[token] || token;
+        if (!type) return false;
+        return /\/\*$/.test(token) ? type.indexOf(token.slice(0, -1)) === 0 : type === token;
+    });
+}
+
+// `accept` para a mensagem: "PDF, imagens, DOCX".
+function _madUploadAcceptLabel(accept) {
+    var families = { 'image/*': 'imagens', 'audio/*': 'áudio', 'video/*': 'vídeo' };
+    var labels = [];
+    String(accept || '').toLowerCase().split(',').map(function(t) { return t.trim(); }).filter(Boolean).forEach(function(token) {
+        var label = families[token];
+        if (!label) {
+            if (token.indexOf('/') === -1) {
+                label = token.replace(/^\./, '').toUpperCase();
+            } else {
+                var wanted = _MAD_UPLOAD_ALIASES[token] || token;
+                var ext = Object.keys(_MAD_UPLOAD_TYPES).filter(function(k) { return _MAD_UPLOAD_TYPES[k] === wanted; })[0];
+                label = (ext || token.slice(token.indexOf('/') + 1)).toUpperCase();
+            }
+        }
+        if (labels.indexOf(label) === -1) labels.push(label);
+    });
+    return labels.join(', ');
+}
+
+// Por que este arquivo não entra no campo — ou '' quando entra.
+// rules: { accept, maxBytes, serverMax, stored } (stored = o campo grava o
+// arquivo no servidor: as extensões bloqueadas valem).
+function _madUploadProblem(file, rules) {
+    rules = rules || {};
+    var name = (file && file.name) || 'arquivo';
+    var ext  = _madUploadExt(name);
+    if (rules.stored && ext && _MAD_UPLOAD_BLOCKED.indexOf(ext) !== -1) {
+        return 'O arquivo "' + name + '" não pode ser enviado: arquivos .' + ext + ' não são aceitos por segurança.';
+    }
+    if (rules.accept && !_madUploadAccepts(rules.accept, file)) {
+        return 'O arquivo "' + name + '" não é de um tipo aceito neste campo (' + _madUploadAcceptLabel(rules.accept) + ').';
+    }
+    var size = Number(file && file.size) || 0;
+    if (rules.maxBytes > 0 && size > rules.maxBytes) {
+        return 'O arquivo "' + name + '" tem ' + _madUploadSize(size, true) + '; o limite deste campo é ' + _madUploadSize(rules.maxBytes) + '.';
+    }
+    if (rules.serverMax > 0 && size > rules.serverMax) {
+        return 'O arquivo "' + name + '" tem ' + _madUploadSize(size, true) + '; o servidor aceita até ' + _madUploadSize(rules.serverMax) + ' por arquivo.';
+    }
+    return '';
+}
+
+function _madUploadWarn(message) {
+    if (message && typeof madToast === 'function') madToast(message, 'warning');
+}
+
 document.addEventListener('alpine:init', () => {
 
     /* madSpinnerField — TSpinner */
@@ -3503,16 +3659,30 @@ document.addEventListener('alpine:init', () => {
         idCol: cfg.idCol || 'id',
         cols:  cfg.cols  || [],
 
-        get filteredItems() {
-            let list = this.items;
-            if (this.showCheckedOnly) {
-                list = list.filter(item => this.checkedIds.includes(String(item[this.idCol])));
-            }
-            if (!this.query) return list;
+        // A linha deste item aparece com a busca e o filtro "somente
+        // selecionados" de agora? A view desenha a lista INTEIRA e esconde
+        // (x-show) o que não passa aqui: a linha escondida continua no DOM,
+        // com a marca e os campos das colunas de transform / slot.
+        isShown(item) {
+            if (this.showCheckedOnly && !this.checkedIds.includes(String(item[this.idCol]))) return false;
+            if (!this.query) return true;
             const q = this.query.toLowerCase();
-            return list.filter(item =>
-                Object.values(item).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q))
-            );
+            return Object.values(item).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q));
+        },
+
+        // Só o que está à mostra: contador de vazio, "marcar todos" e o estado
+        // da caixa do cabeçalho agem sobre isto.
+        get filteredItems() {
+            return this.items.filter(item => this.isShown(item));
+        },
+
+        // O que o campo ENVIA no Salvar: as marcas da lista inteira, na ordem
+        // da lista — nunca só as da busca. Lido pelo MadWire
+        // (_collectModelValues); a marca de um item que não está mais na lista
+        // (items trocados por reload_checklist) fica de fora, como sempre ficou.
+        selection() {
+            const checked = new Set(this.checkedIds);
+            return this.items.map(item => String(item[this.idCol])).filter(id => checked.has(id));
         },
 
         get checkedCount() { return this.checkedIds.length; },
@@ -3621,7 +3791,8 @@ document.addEventListener('alpine:init', () => {
         },
         onSelect(e) {
             var f = e.target.files[0];
-            this.file    = f ? _madFileInfo(f) : null;
+            if (f && this._refuse(f, e.target)) return;
+            this.file    = f ? this._newFile(f) : null;
             this.removed = false;
             if (f) { this._autoFillName(f); this._fireMadChange(); }
         },
@@ -3629,12 +3800,61 @@ document.addEventListener('alpine:init', () => {
             this.dragOver = false;
             var dt = e.dataTransfer;
             if (dt && dt.files && dt.files.length) {
+                // Arrastar e soltar não passa pelo `accept` do <input>: confere aqui.
+                if (this._refuse(dt.files[0], null)) return;
                 input.files = dt.files;
-                this.file    = _madFileInfo(dt.files[0]);
+                this.file    = this._newFile(dt.files[0]);
                 this.removed = false;
                 this._autoFillName(dt.files[0]);
                 this._fireMadChange();
             }
+        },
+        // Tamanho máximo e Tipos aceitos do campo (e o limite do servidor): o
+        // arquivo que não passa não entra, e o campo fica como estava. `input`
+        // é o <input type="file"> que já recebeu o arquivo recusado (escolha
+        // pela janela): volta a ter o arquivo novo anterior, ou nenhum.
+        _refuse(f, input) {
+            var problem = _madUploadProblem(f, { accept: cfg.accept, maxBytes: cfg.maxBytes, serverMax: cfg.serverMax, stored: cfg.stored });
+            if (!problem) return false;
+            _madUploadWarn(problem);
+            if (input) {
+                input.value = '';
+                var previous = this.file && !this.file.existing ? this.file.raw : null;
+                if (previous && typeof DataTransfer !== 'undefined') {
+                    try { var dt = new DataTransfer(); dt.items.add(previous); input.files = dt.files; } catch (_) {}
+                }
+            }
+            return true;
+        },
+        // Arquivo escolhido agora: leva um identificador (vai no POST em
+        // `__mad_new_files[campo]`), que a resposta do Salvar devolve quando o
+        // arquivo é gravado — ver markSaved().
+        _newFile(f) {
+            var info = _madFileInfo(f);
+            info.uid = _madUploadUid();
+            return info;
+        },
+        // O servidor gravou o arquivo que este campo mandou (op `files_saved`):
+        // ele passa a ser o arquivo EXISTENTE do campo. A tela não é
+        // redesenhada depois do Salvar — sem isto o campo seguia com o arquivo
+        // como "novo": mandava-o de novo a cada Salvar, e o Remover só
+        // esvaziava o campo (o registro continuava com o arquivo). Casado pelo
+        // identificador: o arquivo que o usuário escolheu enquanto o Salvar
+        // corria continua novo.
+        markSaved(saved) {
+            var s = (saved || [])[0];
+            var f = this.file;
+            if (!s || !s.uid || !f || f.existing || f.uid !== s.uid) return;
+            // Sem endereço de download: a prévia continua saindo do arquivo
+            // que o navegador ainda tem.
+            var local = (!s.url && f.raw && typeof URL !== 'undefined' && URL.createObjectURL) ? URL.createObjectURL(f.raw) : '';
+            f.raw         = null;
+            f.existing    = true;
+            f.existingUrl = s.url || local;
+            f.name        = s.name || f.name;
+            f.sizeText    = 'Arquivo existente';
+            var input = this.$refs ? this.$refs.fileInput : null;
+            if (input) input.value = '';   // já gravado: não vai de novo no próximo Salvar
         },
         // auto-fill-name="campo": preenche o input de texto irmão com o nome do
         // arquivo (sem extensão) quando ele ainda está vazio — o usuário segue
@@ -3721,24 +3941,71 @@ document.addEventListener('alpine:init', () => {
         },
         addFiles(list) {
             var added = false;
+            var left  = [];   // o que ficou de fora, com o motivo
+            var over  = 0;    // quantos passaram do Máximo de arquivos
+            var rules = { accept: cfg.accept, maxBytes: this.maxSize > 0 ? this.maxSize * 1024 : 0, serverMax: cfg.serverMax, stored: cfg.stored };
             Array.from(list).forEach(f => {
-                if (this.maxFiles > 0 && this.files.length >= this.maxFiles) return;
-                if (this.maxSize  > 0 && f.size > this.maxSize * 1024)       return;
-                this.files.push(_madFileInfo(f));
+                var problem = _madUploadProblem(f, rules);
+                if (problem) { left.push(problem); return; }
+                if (this.maxFiles > 0 && this.files.length >= this.maxFiles) { over++; return; }
+                var info = _madFileInfo(f);
+                info.uid = _madUploadUid();
+                this.files.push(info);
                 added = true;
             });
+            if (over > 0) {
+                left.push((over === 1 ? '1 arquivo não foi incluído' : over + ' arquivos não foram incluídos')
+                    + ': o campo aceita no máximo ' + this.maxFiles + (this.maxFiles === 1 ? ' arquivo.' : ' arquivos.'));
+            }
+            // Um aviso só, com tudo o que não entrou (antes saíam da lista calados).
+            if (left.length) _madUploadWarn(left.join(' '));
+            // O <input> sempre volta a ter só os arquivos aceitos — inclusive
+            // quando nenhum entrou (a janela de escolha já tinha posto os recusados lá).
+            this.syncInput();
             if (added) {
-                this.syncInput();
                 this._fireMadChange();
             }
+        },
+        // Os arquivos NOVOS (ainda não gravados), na ordem em que vão no POST: o
+        // <input type="file"> (syncInput) e os identificadores
+        // (`__mad_new_files[campo][]`, no Blade) saem os dois daqui.
+        get newFiles() {
+            return this.files.filter(function(f) { return f && f.raw && !f.existing; });
         },
         syncInput() {
             if (typeof DataTransfer === 'undefined' || !this.$refs.fileInput) return;
             var dt = new DataTransfer();
-            this.files.forEach(function(f) {
-                if (f && f.raw && !f.existing) dt.items.add(f.raw);
-            });
+            this.newFiles.forEach(function(f) { dt.items.add(f.raw); });
             this.$refs.fileInput.files = dt.files;
+        },
+        // O servidor gravou estes arquivos (op `files_saved` da resposta do
+        // Salvar): deixam de ser "novos". Sem isto o campo continuava com o
+        // arquivo no <input> e o mandava de novo a cada Salvar — o servidor
+        // apagava a linha do envio anterior e criava outra, com outra chave.
+        //
+        // Casado pelo identificador, não pela posição: o arquivo que o usuário
+        // tirou da lista enquanto o Salvar corria não volta (o próximo Salvar o
+        // remove do servidor, porque não vai entre os mantidos), e o que ele
+        // acrescentou nesse meio tempo continua novo.
+        markSaved(saved) {
+            var self = this, changed = false;
+            (saved || []).forEach(function(s) {
+                if (!s || !s.uid || !s.key) return;
+                var f = self.files.find(function(x) { return x && x.uid === s.uid && !x.existing; });
+                if (!f) return;
+                // Sem endereço de download (arquivo gravado no banco): a prévia
+                // continua saindo do arquivo que o navegador ainda tem.
+                var local = (!s.url && f.raw && typeof URL !== 'undefined' && URL.createObjectURL) ? URL.createObjectURL(f.raw) : '';
+                f.raw          = null;
+                f.existing     = true;
+                f.existingPath = s.key;
+                f.existingUrl  = s.url || local;
+                f.name         = s.name || f.name;
+                f.sizeText     = 'Arquivo existente';
+                self.existingFiles.push({ path: s.key });
+                changed = true;
+            });
+            if (changed) this.syncInput();
         },
         _fireMadChange() {
             var action = cfg.madChangeAction;
@@ -5139,6 +5406,18 @@ window.madConfirmPopover = function (btn, message, options) {
    via x-data="madDataGrid()".
 
    ─────────────────────────────────────────────────────────────── */
+// Edição inline da listagem (edit-mode="inline"): o campo ainda mostra o valor
+// que o servidor desenhou? `defaultValue` é o atributo `value` do HTML (ou o
+// texto do <textarea>). Campo sem esse atributo (cor, MAD Select) nunca conta
+// como intocado — grava como sempre.
+function _inlineUntouched(el) {
+    if (!el || typeof el.value !== 'string') return false;
+    const tag = String(el.tagName || '').toUpperCase();
+    if (tag === 'TEXTAREA') return el.defaultValue === el.value;
+    if (tag !== 'INPUT' || typeof el.hasAttribute !== 'function' || !el.hasAttribute('value')) return false;
+    return el.defaultValue === el.value;
+}
+
 document.addEventListener('alpine:init', () => {
     Alpine.data('madDataGrid', (cfg = {}) => {
         // ── Inicializa colVisibility ANTES de retornar os dados ───────
@@ -5179,6 +5458,37 @@ document.addEventListener('alpine:init', () => {
             _narrowQ[n].forEach(f => { _colNarrow[f] = on; });
         });
 
+        // ── Edição na célula × respostas do servidor (framework#175) ──
+        // A resposta chega depois do usuário: ele confirma uma célula e já
+        // reabre o editor (ou digita na vizinha) antes de o servidor
+        // responder. Três coisas davam errado, sem aviso:
+        //   1. o editor reaberto partia do valor ANTIGO que a linha ainda
+        //      mostrava, e confirmar regravava o valor antigo;
+        //   2. a resposta trocava a <tr> com o editor aberto: o navegador
+        //      dispara `blur` no campo arrancado do documento, e o blur
+        //      gravava o que estivesse lá (o valor antigo, ou meia digitação);
+        //   3. o salvamento que não chegava ao servidor não avisava ninguém.
+        // Fora do objeto reativo de propósito (não entram no render):
+        //   _saves     célula → { n, value }: salvamentos sem resposta e o
+        //              último valor confirmado (o editor reaberto parte dele);
+        //   _rowSaves  linha (data-row-id) → salvamentos em andamento;
+        //   _held      linha → op manage_row que chegou com um editor aberto
+        //              nela; espera o editor fechar (holdRowOp/_releaseIdle);
+        //   _edit      o editor aberto: linha, valor de partida e o campo.
+        const _saves    = {};
+        const _rowSaves = {};
+        const _held     = {};
+        const _edit     = { rowKey: null, from: null, input: null, moved: false };
+        let   _root     = null;
+        let   _onFocusOut = null;
+        const _fieldKey = f => String(f).replace(/[^a-zA-Z0-9_]/g, '_');
+        const _cellKey  = (rowId, field) => String(rowId) + '\u0001' + String(field);
+        const _cssId    = v => (typeof window._madCssId === 'function')
+            ? window._madCssId(v)
+            : String(v).replace(/["\\\]]/g, '\\$&');
+        const _str      = v => (v === null || v === undefined) ? '' : String(v);
+        const _sameVal  = (a, b) => _str(a) === _str(b);
+
         return {
         // ── Inline editing ───────────────────────────────────────────
         editingCell:    null,
@@ -5210,7 +5520,15 @@ document.addEventListener('alpine:init', () => {
 
         // ── Init ─────────────────────────────────────────────────────
         init(el) {
+            _root = el || this.$el;
             this._wrapper = (el || this.$el).closest('[mad-component]');
+
+            // edit-mode="inline": o foco saiu de uma linha que tinha resposta
+            // guardada (ver holdRowOp) — agora ela pode ser redesenhada.
+            if (_root && typeof _root.addEventListener === 'function') {
+                _onFocusOut = () => { if (Object.keys(_held).length) setTimeout(() => this._releaseIdle(), 0); };
+                _root.addEventListener('focusout', _onFocusOut);
+            }
 
             if (this._cfg.sticky) {
                 this.$nextTick(() => this._initStickyGroups(el || this.$el));
@@ -5239,6 +5557,11 @@ document.addEventListener('alpine:init', () => {
 
         destroy() {
             if (this._narrowOff) this._narrowOff();
+            if (_root && _onFocusOut && typeof _root.removeEventListener === 'function') {
+                _root.removeEventListener('focusout', _onFocusOut);
+            }
+            // A grade saiu da tela: resposta guardada não tem mais onde entrar.
+            Object.keys(_held).forEach(k => { delete _held[k]; });
         },
 
         // Um listener por limiar: só CRUZAR o limiar dispara (girar o celular,
@@ -5695,23 +6018,59 @@ document.addEventListener('alpine:init', () => {
         },
 
         // ── Inline editing ───────────────────────────────────────────
-        startEdit(rowId, field, currentVal) {
+        // `rowKey` (data-row-id) e `keep` só vêm do restoreEdit; o Blade chama
+        // com os três primeiros e a linha é a do elemento clicado.
+        startEdit(rowId, field, currentVal, rowKey, keep) {
+            const host = (!rowKey && this.$el && typeof this.$el.closest === 'function')
+                ? this.$el.closest('tr[data-row-id]') : null;
+            let key = rowKey || ((host && _root && host.closest('.mad-dg-wrap') === _root)
+                ? host.getAttribute('data-row-id') : null);
+            if (key === null || key === undefined) key = this._findRowKey(rowId);
+            const prevKey = this.editingCell ? _edit.rowKey : null;
+
+            // Reaberto antes de o salvamento anterior responder: a linha na
+            // tela ainda é a de antes. O editor parte do que o usuário
+            // confirmou por último, não do valor antigo que ela mostra.
+            if (!keep) {
+                const pend = _saves[_cellKey(rowId, field)];
+                if (pend && pend.n > 0) currentVal = pend.value;
+            }
+
             this.editingCell = { rowId, field };
             this.editValue   = currentVal;
+            _edit.rowKey = key;
+            _edit.from   = keep ? keep.from : currentVal;
+            _edit.input  = null;
+            _edit.moved  = false;
+            // Outro editor ficou aberto em outra linha (sem foco não há blur):
+            // ele foi abandonado e a linha dele pode ser redesenhada.
+            if (prevKey !== null && prevKey !== key) setTimeout(() => this._releaseIdle(), 0);
+
             this.$nextTick(() => {
+                const root = _root || this.$el;
                 // Re-init MAD Select/Pickr no editor recem-revelado (selects com data-mad-dg-edit)
-                this._initInlineEditors(this.$el);
-                // Localiza input ESPECIFICO da row + field — fallback pro generico (legado)
+                this._initInlineEditors(root);
+                // O campo DESTA célula. Antes a busca caía no primeiro editor da
+                // grade (o da 1ª linha, escondido) e o editor abria sem cursor.
                 const sel = `.mad-dg-cell-input[data-edit-row-id="${rowId}"][data-edit-field="${field}"]`;
-                const inp = this.$el.querySelector(sel) || this.$el.querySelector('.mad-dg-cell-input');
+                const inp = this._cellInput(key, field)
+                    || root.querySelector(sel)
+                    || (key === null ? root.querySelector('.mad-dg-cell-input') : null);
+                if (!this.isEditing(rowId, field)) return;
+                _edit.input = inp || null;
                 if (inp) {
                     // Se for campo money, exibe valor formatado pt-BR
-                    if (inp.dataset.editMoney !== undefined) {
+                    if (inp.dataset && inp.dataset.editMoney !== undefined) {
                         inp.value = madNumFmt(currentVal, parseInt(inp.dataset.editDecimals || 2));
                     }
+                    if (keep && keep.focus === false) return;
                     // Pode ser selects com MAD Select (sem .focus tradicional)
                     if (typeof inp.focus === 'function') inp.focus();
-                    if (typeof inp.select === 'function') {
+                    if (keep && keep.sel) {
+                        // Editor devolvido depois de um redesenho: o cursor
+                        // volta para onde estava, sem selecionar o texto.
+                        try { inp.setSelectionRange(keep.sel[0], keep.sel[1]); } catch (e) {}
+                    } else if (typeof inp.select === 'function') {
                         try { inp.select(); } catch (e) {}
                     }
                 }
@@ -5719,8 +6078,8 @@ document.addEventListener('alpine:init', () => {
         },
 
         cancelEdit() {
-            this.editingCell = null;
-            this.editValue   = '';
+            this._closeEditor();
+            this.editValue = '';
         },
 
         isEditing(rowId, field) {
@@ -5732,16 +6091,236 @@ document.addEventListener('alpine:init', () => {
         commitEdit() {
             if (!this.editingCell) return;
             const { rowId, field } = this.editingCell;
-            const value = this.editValue;
-            this.editingCell = null;
-            const w = this._wrapper || this.$el.closest('[mad-component]');
-            if (w) MadWire.call(w, 'onInlineSave', [rowId, field, value]);
+            const rowKey = _edit.rowKey;
+            const input  = _edit.input || this._cellInput(rowKey, field);
+            const run = () => {
+                // Entre o blur e aqui o editor pode ter sido fechado (Esc) ou
+                // trocado por outro.
+                if (!this.isEditing(rowId, field)) return;
+                // O campo saiu do documento: quem disparou este blur foi a
+                // troca do DOM (linha ou grade redesenhada), não o usuário.
+                // Gravar aqui salvava o valor antigo ou meia digitação.
+                if (input && input.isConnected === false) {
+                    this._editorDropped();
+                    return;
+                }
+                const value = this.editValue;
+                const from  = _edit.from;
+                this._closeEditor();
+                // Confirmar sem mudar nada só fecha o editor.
+                if (_sameVal(value, from)) return;
+                this._saveCell(rowId, field, value, rowKey);
+            };
+            // O navegador dispara `blur` no campo que está sendo ARRANCADO do
+            // documento, e nessa hora ele ainda consta como ligado. Só depois
+            // que a troca termina (um microtask) dá para saber quem fechou.
+            if (input && typeof input.isConnected === 'boolean') Promise.resolve().then(run);
+            else run();
         },
 
         // Modo inline: salva direto sem estado editingCell (campo sempre visível)
         commitInline(rowId, field, value) {
-            const w = this._wrapper || this.$el.closest('[mad-component]');
-            if (w) MadWire.call(w, 'onInlineSave', [rowId, field, value]);
+            // Chamado do próprio campo (`@blur`/`@change`): `$el` é ele.
+            const el = (this.$el && this.$el !== _root) ? this.$el : null;
+            const tr = (el && typeof el.closest === 'function') ? el.closest('tr[data-row-id]') : null;
+            const rowKey = (tr && _root && tr.closest('.mad-dg-wrap') === _root) ? tr.getAttribute('data-row-id') : null;
+            const run = () => {
+                // Campo arrancado do documento (linha ou grade redesenhada):
+                // o blur não é do usuário — ver commitEdit.
+                if (el && el.isConnected === false) return;
+                // Passar pelo campo (Tab) sem mudar nada não grava: o valor é
+                // o mesmo que o servidor desenhou.
+                if (el && _inlineUntouched(el)) {
+                    setTimeout(() => this._releaseIdle(), 0);
+                    return;
+                }
+                this._saveCell(rowId, field, value, rowKey);
+            };
+            if (el && typeof el.isConnected === 'boolean') Promise.resolve().then(run);
+            else run();
+        },
+
+        // ── Edição na célula × respostas do servidor (framework#175) ──
+        // <tr> DESTA grade pela chave (data-row-id).
+        _rowEl(rowKey) {
+            if (!_root || rowKey === null || rowKey === undefined || typeof _root.querySelector !== 'function') return null;
+            const tr = _root.querySelector('tr[data-row-id="' + _cssId(rowKey) + '"]');
+            // Grade dentro de grade: cada uma responde só pelas próprias linhas.
+            return (tr && (typeof tr.closest !== 'function' || tr.closest('.mad-dg-wrap') === _root)) ? tr : null;
+        },
+
+        _cellEl(rowKey, field) {
+            const tr = this._rowEl(rowKey);
+            return tr ? tr.querySelector('td[data-col="' + _cssId(_fieldKey(field)) + '"]') : null;
+        },
+
+        _cellInput(rowKey, field) {
+            const td = this._cellEl(rowKey, field);
+            return td ? td.querySelector('.mad-dg-cell-input') : null;
+        },
+
+        // startEdit chamado sem elemento (por código): acha a linha pelo fim
+        // da chave — `Classe_<id>`.
+        _findRowKey(rowId) {
+            if (!_root || typeof _root.querySelectorAll !== 'function') return null;
+            const id = String(rowId);
+            for (const tr of _root.querySelectorAll('tr[data-row-id]')) {
+                const k = tr.getAttribute('data-row-id') || '';
+                if ((k === id || k.endsWith('_' + id)) && (typeof tr.closest !== 'function' || tr.closest('.mad-dg-wrap') === _root)) return k;
+            }
+            return null;
+        },
+
+        // Há um editor aberto nesta linha? Clique/duplo clique: o editor do
+        // editingCell. Inline (campo sempre visível): o que está com o foco.
+        _rowBusy(rowKey) {
+            if (this.editingCell && _edit.rowKey !== null && _edit.rowKey === rowKey) return true;
+            const a = (typeof document !== 'undefined') ? document.activeElement : null;
+            if (a && typeof a.closest === 'function' && a.closest('.mad-dg-edit-inline')) {
+                const tr = a.closest('tr[data-row-id]');
+                if (tr && tr.getAttribute('data-row-id') === rowKey && tr.closest('.mad-dg-wrap') === _root) return true;
+            }
+            return false;
+        },
+
+        // mad.js pergunta antes de trocar uma <tr> desta grade (manage_row).
+        // true = a linha tem um editor aberto: a op fica guardada (a mais nova
+        // vence) e entra quando o editor fechar. Trocar a linha ali apagava o
+        // que o usuário está digitando.
+        holdRowOp(rowKey, op) {
+            if (!this._rowBusy(rowKey)) {
+                delete _held[rowKey];   // a que vai entrar agora é mais nova
+                return false;
+            }
+            _held[rowKey] = op;
+            return true;
+        },
+
+        // A linha saiu da grade (remove_row): nada a guardar nem a gravar nela.
+        rowGone(rowKey) {
+            delete _held[rowKey];
+            if (this.editingCell && _edit.rowKey === rowKey) this._closeEditor();
+        },
+
+        // Solta as linhas guardadas que não têm mais editor aberto nem
+        // salvamento a caminho (a resposta dele traz a linha mais nova).
+        _releaseIdle() {
+            const keys = Object.keys(_held);
+            if (!keys.length) return;
+            if (!_root || _root.isConnected === false) {
+                keys.forEach(k => { delete _held[k]; });
+                return;
+            }
+            keys.forEach(key => {
+                if (this._rowBusy(key) || _rowSaves[key] > 0) return;
+                const op = _held[key];
+                delete _held[key];
+                if (typeof Mad !== 'undefined' && Mad && typeof Mad.applyOps === 'function') {
+                    Mad.applyOps([Object.assign({}, op, { _released: true })]);
+                }
+            });
+        },
+
+        _closeEditor() {
+            this.editingCell = null;
+            _edit.rowKey = null;
+            _edit.from   = null;
+            _edit.input  = null;
+            _edit.moved  = false;
+            // Fora do handler do próprio campo: soltar a linha guardada troca
+            // a <tr> em que ele está.
+            setTimeout(() => this._releaseIdle(), 0);
+        },
+
+        // O editor sumiu junto com a linha (redesenho): nada é gravado. Se
+        // havia digitação e o editor não foi devolvido à tela nova
+        // (captureEdit → restoreEdit), o usuário fica sabendo.
+        _editorDropped() {
+            const field = this.editingCell ? this.editingCell.field : '';
+            const lost  = !_edit.moved && !_sameVal(this.editValue, _edit.from);
+            this._closeEditor();
+            if (lost) this._cellNotice(field, 'dropped', 'warning');
+        },
+
+        // Grava UMA célula. `rowKey` = data-row-id da linha (pode faltar).
+        _saveCell(rowId, field, value, rowKey) {
+            const w = this._wrapper || (_root && typeof _root.closest === 'function' ? _root.closest('[mad-component]') : null);
+            // `MadWire` é const global do mad-livewire.js (não vira window.MadWire).
+            if (!w || typeof MadWire === 'undefined') return;
+            const ck = _cellKey(rowId, field);
+            const s  = _saves[ck] || (_saves[ck] = { n: 0, value: value });
+            s.n++;
+            s.value = value;
+            if (rowKey !== null && rowKey !== undefined) _rowSaves[rowKey] = (_rowSaves[rowKey] || 0) + 1;
+            const mark = on => {
+                const td = this._cellEl(rowKey, field);
+                if (td && td.classList) td.classList.toggle('mad-dg-cell-saving', on);
+            };
+            mark(true);
+            const done = res => {
+                s.n--;
+                if (s.n <= 0 && _saves[ck] === s) delete _saves[ck];
+                if (rowKey !== null && rowKey !== undefined && --_rowSaves[rowKey] <= 0) delete _rowSaves[rowKey];
+                // A linha redesenhada já veio sem a marca; se não foi
+                // redesenhada (resposta guardada, falha), tira aqui.
+                if (s.n <= 0) mark(false);
+                // Sem resposta do servidor nada foi gravado — e nada avisava.
+                if (res && res.ok === false && res.reason === 'network') this._cellNotice(field, 'lost', 'danger');
+                this._releaseIdle();
+            };
+            let call;
+            try { call = MadWire.call(w, 'onInlineSave', [rowId, field, value]); }
+            catch (e) { call = Promise.reject(e); }
+            Promise.resolve(call).then(done, () => done({ ok: false, reason: 'network' }));
+        },
+
+        // Aviso da própria grade (texto traduzido vem do Blade em cfg.editText).
+        _cellNotice(field, kind, type) {
+            const t = this._cfg.editText || {};
+            const text = kind === 'lost'
+                ? (t.lost || 'A alteração não foi gravada: o servidor não respondeu. Confira a conexão e tente de novo.')
+                : (t.dropped || 'O que você estava digitando não foi gravado: a listagem foi atualizada antes da confirmação.');
+            const fk  = _fieldKey(field);
+            const col = (this.cols || []).find(c => c.field === fk);
+            const label = col && col.label ? String(col.label).replace(/<[^>]*>/g, '').trim() : '';
+            if (typeof window.madToast === 'function') {
+                window.madToast({ message: (label ? label + ': ' : '') + text, type: type || 'warning' });
+            }
+        },
+
+        // Redesenho completo da tela (paginar, buscar, ordenar, ação que
+        // devolve a tela): o Alpine renasce e o editor aberto sumia — com o
+        // blur gravando o que estivesse digitado. O mad.js fotografa aqui
+        // ANTES da troca (Mad.captureUiState) e devolve à grade nova
+        // (restoreEdit). null = nada a levar.
+        captureEdit() {
+            const saves = Object.keys(_saves).length ? _saves : null;
+            if (!this.editingCell) return saves ? { saves } : null;
+            const { rowId, field } = this.editingCell;
+            const input = _edit.input || this._cellInput(_edit.rowKey, field);
+            const focused = !!(input && typeof document !== 'undefined' && document.activeElement === input);
+            let sel = null;
+            if (focused) {
+                try { if (input.selectionStart !== null && input.selectionStart !== undefined) sel = [input.selectionStart, input.selectionEnd]; } catch (e) {}
+            }
+            _edit.moved = true;
+            return { rowId, field, rowKey: _edit.rowKey, value: this.editValue, from: _edit.from, focused, sel, saves };
+        },
+
+        restoreEdit(snap) {
+            if (!snap) return;
+            // Salvamentos que ainda vão responder: o editor reaberto na grade
+            // nova continua partindo do último valor confirmado.
+            if (snap.saves) Object.keys(snap.saves).forEach(k => { _saves[k] = snap.saves[k]; });
+            if (snap.rowId === undefined || snap.field === undefined) return;
+            // A linha (ou a coluna editável) não está na tela nova: a
+            // digitação não tem onde continuar — e não é gravada.
+            if (!this._cellInput(snap.rowKey, snap.field)) {
+                if (!_sameVal(snap.value, snap.from)) this._cellNotice(snap.field, 'dropped', 'warning');
+                return;
+            }
+            this.startEdit(snap.rowId, snap.field, snap.value, snap.rowKey,
+                { from: snap.from, focus: snap.focused, sel: snap.sel });
         },
 
         // ── Seleção de linhas ────────────────────────────────────────
@@ -6995,6 +7574,9 @@ document.addEventListener('alpine:init', () => {
                 const endpoint = wrapper.getAttribute('mad-endpoint');
                 if (!endpoint) return;
 
+                // Em fila com os outros pedidos do componente (ver
+                // _madWireQueued): estado e linhas da hora do envio.
+                _madWireQueued(wrapper, (wrapper) => {
                 const body = new FormData();
                 body.append('mad_state',  wrapper.getAttribute('mad-state'));
                 body.append('mad_id',     wrapper.getAttribute('mad-id'));
@@ -7014,7 +7596,7 @@ document.addEventListener('alpine:init', () => {
                     _madCollectFieldLists(wrapper, body);
                 }
 
-                fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
+                return fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
                     .then(r => _madWireJson(r, { source: 'mad-fl-event', method: 'POST' }))
                     .then(data => {
                         if (!data) return;   // erro do servidor já exibido (MadErrorModal)
@@ -7023,6 +7605,7 @@ document.addEventListener('alpine:init', () => {
                         _madApplyWireOps(data.ops || [], wrapper);
                     })
                     .catch(err => console.error('[mad-fl-event] Erro de rede:', err));
+                });
             },
 
             // ── Adicionar linha ─────────────────────────────────────────────
@@ -7959,11 +8542,24 @@ document.addEventListener('alpine:init', () => {
             if (sz < 1048576) return (sz / 1024).toFixed(1) + ' KB';
             return (sz / 1048576).toFixed(1) + ' MB';
         }
+        // Arquivo escolhido → item da lista de novos. O identificador fica no
+        // próprio File: é ele que está em window.__madFlFiles, e uma célula
+        // recriada reencontra o arquivo com o mesmo identificador.
+        function _novo(raw) {
+            var m = _meta(raw.name);
+            if (!raw.__madUid) { try { raw.__madUid = _madUploadUid(); } catch (e) {} }
+            return {
+                uid: raw.__madUid || _madUploadUid(),
+                raw: raw, name: raw.name, ext: m.ext, isImage: m.isImage, icon: m.icon,
+                thumb: m.isImage ? URL.createObjectURL(raw) : null,
+                sizeText: _human(raw.size),
+            };
+        }
 
         return {
             open: false,
             storage: cfg.storage || 'disk',
-            files: [],       // novos: { raw(File), name, ext, isImage, thumb, icon, sizeText }
+            files: [],       // novos: { uid, raw(File), name, ext, isImage, thumb, icon, sizeText }
             existing: [],    // já gravados: { id, name, key, url, ext, isImage, thumb, icon }
 
             init: function() {
@@ -7977,6 +8573,15 @@ document.addEventListener('alpine:init', () => {
                         thumb: (m.isImage && e.url) ? e.url : null,
                     };
                 });
+                // Célula RECRIADA (a tela foi redesenhada inteira): os arquivos
+                // novos desta linha continuam em window.__madFlFiles e vão no
+                // próximo Salvar — a célula volta a mostrá-los, com o mesmo
+                // identificador. Sem isto ela abria sem eles e o envio era
+                // invisível (e o files_saved não tinha de quem tirar o arquivo).
+                var pend = (window.__madFlFiles || {})[this.keyFor()];
+                if (Array.isArray(pend) && pend.length) {
+                    this.files = pend.map(function(raw) { return _novo(raw); });
+                }
                 this._syncDisplay();
             },
 
@@ -7999,12 +8604,7 @@ document.addEventListener('alpine:init', () => {
                         }
                         continue;
                     }
-                    var m = _meta(f.name);
-                    this.files.push({
-                        raw: f, name: f.name, ext: m.ext, isImage: m.isImage, icon: m.icon,
-                        thumb: m.isImage ? URL.createObjectURL(f) : null,
-                        sizeText: _human(f.size),
-                    });
+                    this.files.push(_novo(f));
                 }
                 e.target.value = '';
                 this._sync();
@@ -8018,6 +8618,38 @@ document.addEventListener('alpine:init', () => {
                 this._sync();
             },
             removeExisting: function(i) { this.existing.splice(i, 1); this._syncDisplay(); },
+
+            // O servidor gravou estes arquivos (op `files_saved` da resposta do
+            // Salvar): saem dos "novos" e entram nos já gravados, com a chave
+            // que o servidor deu. Sem isto a célula os mandava de novo a cada
+            // Salvar — o servidor apagava a linha do envio anterior e criava
+            // outra, com outra chave.
+            //
+            // Casado pelo identificador: o arquivo que o usuário tirou da célula
+            // enquanto o Salvar corria não volta — o próximo Salvar o remove do
+            // servidor, porque não vai entre os mantidos — e o que ele
+            // acrescentou nesse meio tempo continua novo.
+            markSaved: function(saved) {
+                var self = this, changed = false;
+                (saved || []).forEach(function(s) {
+                    if (!s || !s.uid || !s.key) return;
+                    var i = self.files.findIndex(function(f) { return f && f.uid === s.uid; });
+                    if (i === -1) return;
+                    self.files.splice(i, 1);
+                    changed = true;
+                    // Célula redesenhada: o servidor já a entregou com o arquivo gravado.
+                    if (self.existing.some(function(e) { return e.key === s.key; })) return;
+                    var m = _meta(s.name);
+                    self.existing.push({
+                        id: s.id, name: s.name, key: s.key, url: s.url || '',
+                        ext: m.ext, isImage: m.isImage, icon: m.icon,
+                        thumb: (m.isImage && s.url) ? s.url : null,
+                    });
+                });
+                if (!changed) return;
+                this._sync();
+                this.$nextTick(function() { if (typeof _madLucide === 'function') _madLucide(); });
+            },
 
             _sync: function() {
                 window.__madFlFiles = window.__madFlFiles || {};
@@ -9751,8 +10383,10 @@ document.addEventListener('alpine:init', () => {
         _name: cfg.name || '',
         _crop: cfg.crop || false,
         _aspectRatio: cfg.aspectRatio || null,
-        _maxSize: cfg.maxSize || 5 * 1024 * 1024,
-        _accept: cfg.accept || 'image/png,image/jpeg,image/gif',
+        // O Blade entrega o Tamanho máximo em `maxBytes` (antes só `maxSize` era
+        // lido, e o limite ficava sempre em 5 MB).
+        _maxSize: cfg.maxBytes || cfg.maxSize || 5 * 1024 * 1024,
+        _accept: cfg.accept || 'image/png,image/jpeg,image/gif,image/webp',
         _output: cfg.output || 'base64',
         _originalSrc: '',
 
@@ -9765,8 +10399,14 @@ document.addEventListener('alpine:init', () => {
 
         onFileSelect(e) {
             const file = e.target.files?.[0];
-            if (file) this._processFile(file);
-            if (!cfg.storage) e.target.value = '';
+            const taken = file ? this._processFile(file) : false;
+            if (!cfg.storage) { e.target.value = ''; return; }
+            // Com storage o <input> é o que vai no Salvar: o arquivo recusado
+            // não pode ficar nele. Volta a imagem que o campo já tinha, se era nova.
+            if (file && !taken) {
+                e.target.value = '';
+                if (this.imageData && this.imageData.indexOf('data:') === 0) this._injectFile();
+            }
         },
 
         onDrop(e) {
@@ -9776,15 +10416,12 @@ document.addEventListener('alpine:init', () => {
         },
 
         _processFile(file) {
-            const accepted = this._accept.split(',').map(s => s.trim());
-            if (!accepted.includes(file.type)) {
-                if (typeof madToast === 'function') madToast('Formato não aceito', 'danger');
-                return;
-            }
-            if (file.size > this._maxSize) {
-                const maxMB = Math.round(this._maxSize / (1024 * 1024));
-                if (typeof madToast === 'function') madToast('Arquivo muito grande (máx ' + maxMB + 'MB)', 'danger');
-                return;
+            // Tipos aceitos (`image/*`, `image/png`, `.png`) e Tamanho máximo do
+            // campo; com storage, também o limite do servidor.
+            const problem = _madUploadProblem(file, { accept: this._accept, maxBytes: this._maxSize, serverMax: cfg.serverMax, stored: !!cfg.storage });
+            if (problem) {
+                _madUploadWarn(problem);
+                return false;
             }
             const reader = new FileReader();
             reader.onload = (ev) => {
@@ -9796,6 +10433,26 @@ document.addEventListener('alpine:init', () => {
                 this._syncHidden();
             };
             reader.readAsDataURL(file);
+            return true;
+        },
+
+        // Imagem que o próprio campo produz (câmera, recorte, giro): sai num
+        // tipo que o campo aceita e, se passar do Tamanho máximo, com a
+        // qualidade reduzida até caber. Devolve '' quando nem assim cabe.
+        _exportCanvas(canvas) {
+            const fits = (url) => Math.floor((url.length - url.indexOf(',') - 1) * 3 / 4) <= this._maxSize;
+            const type = ['image/jpeg', 'image/png', 'image/webp'].find(t => _madUploadAccepts(this._accept, { name: 'imagem.' + t.slice(6), type: t })) || 'image/jpeg';
+            let quality = 0.9;
+            let url = canvas.toDataURL(type, quality);
+            while (!fits(url) && type !== 'image/png' && quality > 0.5) {
+                quality -= 0.1;
+                url = canvas.toDataURL(type, quality);
+            }
+            if (!fits(url)) {
+                _madUploadWarn('A imagem editada passa do limite deste campo (' + _madUploadSize(this._maxSize) + ') e não foi alterada.');
+                return '';
+            }
+            return url;
         },
 
         // Camera
@@ -9827,7 +10484,8 @@ document.addEventListener('alpine:init', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            const dataUrl = this._exportCanvas(canvas);
+            if (!dataUrl) { this.closeCamera(); return; }
             this.previewSrc = dataUrl;
             this._originalSrc = dataUrl;
             this.imageData = dataUrl;
@@ -9874,11 +10532,13 @@ document.addEventListener('alpine:init', () => {
             if (!this._cropper) return;
             var canvas = this._cropper.getCroppedCanvas();
             if (canvas) {
-                var dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                this.previewSrc = dataUrl;
-                this._originalSrc = dataUrl;
-                this.imageData = dataUrl;
-                this._syncHidden();
+                var dataUrl = this._exportCanvas(canvas);
+                if (dataUrl) {
+                    this.previewSrc = dataUrl;
+                    this._originalSrc = dataUrl;
+                    this.imageData = dataUrl;
+                    this._syncHidden();
+                }
             }
             this._destroyCropper();
             this.cropping = false;
@@ -9917,7 +10577,8 @@ document.addEventListener('alpine:init', () => {
                 ctx.translate(canvas.width / 2, canvas.height / 2);
                 ctx.rotate((degrees * Math.PI) / 180);
                 ctx.drawImage(img, -img.width / 2, -img.height / 2);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                const dataUrl = this._exportCanvas(canvas);
+                if (!dataUrl) return;
                 this.previewSrc = dataUrl;
                 this._originalSrc = dataUrl;
                 this.imageData = dataUrl;
@@ -11427,14 +12088,10 @@ document.addEventListener('alpine:init', () => {
             },
 
             _processUploadFile: function(file) {
-                var accepted = _accept.split(',').map(function(s) { return s.trim(); });
-                if (accepted.indexOf(file.type) === -1) {
-                    if (typeof madToast === 'function') madToast('Formato não aceito', 'danger');
-                    return;
-                }
-                if (file.size > _maxSize) {
-                    var maxMB = Math.round(_maxSize / (1024 * 1024));
-                    if (typeof madToast === 'function') madToast('Arquivo muito grande (máx ' + maxMB + 'MB)', 'danger');
+                // Tipos aceitos (`image/*`, `image/png`, `.png`) e tamanho, como no campo Imagem.
+                var problem = _madUploadProblem(file, { accept: _accept, maxBytes: _maxSize });
+                if (problem) {
+                    _madUploadWarn(problem);
                     return;
                 }
                 var self = this;

@@ -58,11 +58,15 @@ class MadErrorPage
     {
         try {
             if (function_exists('logger')) {
-                logger()->error('[mad-error ' . $errorId . '] ' . get_class($e) . ': ' . $e->getMessage(), $context + [
+                // Sem segredo (MadErrorRedactor): a mensagem de um erro de banco
+                // traz o SQL com os valores — o hash da senha, num INSERT de
+                // usuário — e `getTraceAsString()` escreve os argumentos de
+                // cada chamada.
+                logger()->error('[mad-error ' . $errorId . '] ' . MadErrorRedactor::describe($e), $context + [
                     'error_id' => $errorId,
                     'file'     => $e->getFile(),
                     'line'     => $e->getLine(),
-                    'trace'    => $e->getTraceAsString(),
+                    'trace'    => MadErrorRedactor::trace($e),
                 ]);
 
                 return;

@@ -31,6 +31,12 @@ return [
 
         // Calendário com `event-form` apontando para uma classe que não existe.
         'calendar_form_missing' => 'O formulário ":form" não foi encontrado. Vincule outro formulário ao calendário.',
+        // Arrastar/redimensionar do calendário e do Gantt (ação padrão do framework).
+        'calendar_drag_off' => 'Arrastar eventos não está habilitado neste calendário.',
+        'calendar_update_refused' => 'Operação não autorizada.',
+        'calendar_event_gone' => 'Nada foi alterado: o evento não está mais neste calendário. Ele pode ter sido excluído ou alterado por outra pessoa.',
+        'gantt_task_gone' => 'Nada foi alterado: a tarefa não está mais neste Gantt. Ela pode ter sido excluída ou alterada por outra pessoa.',
+        'gantt_update_refused' => 'A tarefa não foi reagendada: a alteração foi recusada.',
         'dashf' => [
             'filters'           => 'Filtros',
             'filters_with_count'=> 'Filtros (:n)',
@@ -246,6 +252,73 @@ return [
             'load_failed'   => 'Não foi possível carregar os dados. Tente de novo ou avise o administrador.',
             'duplicate'     => 'Já existe um registro com estes dados.',
             'unit_not_allowed' => 'Você não tem acesso à unidade escolhida.',
+            // Listagem: edição na célula e exclusão recusadas (MadDataGrid::onInlineSave, MadGrid::onMadGridDelete).
+            'row_gone'       => 'Este registro não está mais na listagem: pode ter sido excluído ou alterado por outra pessoa. Atualize a tela.',
+            'delete_gone'    => 'Nada foi excluído: o registro não está mais na listagem. Ele pode ter sido excluído por outra pessoa.',
+            'delete_refused' => 'O registro não foi excluído: a exclusão foi recusada.',
+            'cell_not_saved' => 'A alteração não foi gravada.',
+            'cell_invalid'   => 'Valor inválido.',
+            'cell_number'    => 'Informe um número.',
+            'cell_min'       => 'O valor mínimo é :min.',
+            'cell_max'       => 'O valor máximo é :max.',
+            'cell_option'    => 'Escolha uma das opções da lista.',
+            'cell_date'      => 'Data inválida.',
+            // Edição na célula: aviso da própria grade (madDataGrid._cellNotice, via cfg.editText).
+            'cell_no_answer'    => 'A alteração não foi gravada: o servidor não respondeu. Confira a conexão e tente de novo.',
+            'cell_edit_dropped' => 'O que você estava digitando não foi gravado: a listagem foi atualizada antes da confirmação.',
+            // Ação da listagem chamada com argumento de tipo errado (requisição alterada): MadDataGrid::_resolveAndCall.
+            'bad_request'    => 'Requisição inválida. Atualize a tela e tente de novo.',
+        ],
+
+        // Campo da tela (ou coluna de uma lista) que não é coluna da tabela: o Salvar
+        // recusa o campo gerado pela plataforma e avisa do que não foi gravado.
+        'form' => [
+            'field_without_column'   => 'O campo :field não está ligado a nenhuma coluna da tabela :table: o valor digitado não seria gravado. Avise o administrador do sistema (campo `:name`).',
+            'not_stored_title'       => 'Valor não gravado',
+            'not_stored_field_one'   => 'O que foi digitado em :fields não foi gravado: o campo não está ligado a nenhuma coluna da tabela :table.',
+            'not_stored_field_many'  => 'O que foi digitado em :fields não foi gravado: os campos não estão ligados a nenhuma coluna da tabela :table.',
+            'not_stored_column_one'  => 'Na lista :list, o que foi digitado em :columns não foi gravado: a coluna não existe na tabela :table.',
+            'not_stored_column_many' => 'Na lista :list, o que foi digitado em :columns não foi gravado: as colunas não existem na tabela :table.',
+            'not_stored_tail'        => 'O restante foi salvo. Avise o administrador do sistema.',
+            // Linha de uma lista (ou marca de um checklist) com a chave de um cadastro que quem salva não enxerga: o Salvar é recusado.
+            'row_invalid'            => 'Na lista :list, linha :row: :message',
+            'row_invalid_unnamed'    => 'Linha :row: :message',
+            'selection_invalid'      => 'Um dos itens marcados não pode ser gravado: ele não está na sua lista ou não existe mais.',
+        ],
+
+        // Salvar de uma tela desatualizada: linhas (Lista de itens / Detail Form)
+        // e anexos (Upload em modo tabela) que outra aba ou outra pessoa já tinha
+        // removido NÃO são gravados de novo — o usuário é avisado.
+        'detail' => [
+            'gone_title'      => 'Itens já removidos',
+            'gone_rows_one'   => 'A linha :rows da lista já tinha sido removida em outra aba ou por outra pessoa e não foi gravada de novo.',
+            'gone_rows_many'  => 'As linhas :rows da lista já tinham sido removidas em outra aba ou por outra pessoa e não foram gravadas de novo.',
+            'gone_files_one'  => 'O anexo :files já tinha sido removido em outra aba ou por outra pessoa.',
+            'gone_files_many' => 'Os anexos :files já tinham sido removidos em outra aba ou por outra pessoa.',
+            // Seleção múltipla em outra tabela (checkbox, multi busca, checklist em mode=table).
+            'gone_options_one'  => 'Em :field, uma opção que esta tela ainda mostrava marcada já tinha sido desmarcada em outra aba ou por outra pessoa e não foi marcada de novo.',
+            'gone_options_many' => 'Em :field, :count opções que esta tela ainda mostrava marcadas já tinham sido desmarcadas em outra aba ou por outra pessoa e não foram marcadas de novo.',
+            'gone_tail'       => 'O restante foi salvo. Atualize a tela para ver a situação atual.',
+            'and'             => 'e',
+        ],
+
+        // Checklist gravado pelo código da tela (loadChecklist / saveChecklist):
+        // o que outra aba ou outra pessoa marcou ou desmarcou enquanto a tela
+        // estava aberta não é desfeito pelo Salvar — quem salva é avisado.
+        'checklist' => [
+            'changed_title'      => 'Alterado em outra aba ou por outra pessoa',
+            'marked_elsewhere'   => 'Outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'unmarked_elsewhere' => 'Outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'changed_tail'       => 'Atualize a tela para ver a situação atual.',
+            'items_one'          => '1 item',
+            'items_many'         => ':count itens',
+            'more'               => 'mais :count',
+        ],
+
+        // Campo de tabela (DB Combo, DB Select, DB Radio, DB Unique Search): a
+        // opção do valor que o campo já tem e a lista de quem edita não mostra.
+        'field' => [
+            'outside_option' => 'Registro atual (fora da sua lista)',
         ],
 
         'grid' => [

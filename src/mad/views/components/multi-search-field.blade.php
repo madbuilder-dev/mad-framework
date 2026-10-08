@@ -16,11 +16,9 @@
             $selected = $_ctx[$name];
         }
     }
-    // Normalize selected to array of strings
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode(',', $selected) : [];
-    }
-    $selected = array_map('strval', (array)$selected);
+    // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
+    // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
     if ($name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false) {
         $attrs = 'mad:model="' . $name . '" ' . $attrs;
     }
@@ -29,9 +27,23 @@
     $foreignKey  = $foreignKey  ?? '';
     $itemKey     = $itemKey     ?? '';
     $database    = $database    ?? (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
-    // Auto-load selected from pivot table (mode=table)
+    // Auto-load selected from pivot table (mode=table). O `name` vai junto: o
+    // formulário guarda o que este campo entregou marcado, e o Salvar só
+    // desmarca o que consta lá (ver MadForm::pivotLoaded / pivotShown).
+    $__pivotNotice = null;
     if ($mode === 'table' && empty($selected) && $pivotModel && $itemKey) {
-        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database);
+        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
+        $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
+    }
+    // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
+    if ($mode === 'table' && $pivotModel && $itemKey) {
+        \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys((array) $options), $pivotModel, $foreignKey, $itemKey);
+    }
+    // Gravação na própria coluna (por vírgula): o que vai MARCADO para o
+    // navegador é a base do Salvar — o item da coluna que a lista não mostra
+    // não sai dela (ver MadForm::selectionShown).
+    if ($mode !== 'table' && $mode !== 'manual') {
+        \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_keys((array) $options));
     }
 
     \Mad\Form\MadFormRegistry::register($name, 'multi-search', [
@@ -84,5 +96,6 @@
             </option>
         @endforeach
     </select>
+    @include('components.partials.options-error', ['optionsError' => $__pivotNotice])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

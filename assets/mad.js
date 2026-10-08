@@ -127,6 +127,24 @@ function _madRevealRow(el) {
     }
 }
 
+// manage_row com `cellError` ({ col, message }): a edição na célula foi recusada
+// pelo servidor (mínimo, máximo, opção, regra do Model). A linha já voltou do
+// banco; a célula ganha o contorno e o motivo, que somem no próximo redesenho
+// da linha. O texto entra por textContent — vem de mensagem de validação.
+// (tests/js/grid-cell-error.test.mjs)
+window._madMarkCellError = function (row, err) {
+    if (!row || !err || !err.col || !err.message) return false;
+    const cell = row.querySelector('td[data-col="' + _madCssId(String(err.col)) + '"]');
+    if (!cell) return false;
+    cell.classList.add('mad-dg-cell-invalid');
+    const note = document.createElement('div');
+    note.className = 'mad-dg-cell-error';
+    note.setAttribute('role', 'alert');
+    note.textContent = String(err.message);
+    cell.appendChild(note);
+    return true;
+};
+
 // <mad-grid row-detail>: a 2a <tr> descritiva de um registro. Ela e irma da
 // linha, entao remove_row/manage_row precisam apaga-la explicitamente — senao
 // a descricao antiga sobrevive a exclusao ou duplica na edicao.
@@ -238,6 +256,71 @@ window._madGridFooterAfterRemove = function (wrap) {
     if (act.page) {
         wrap.dispatchEvent(new CustomEvent('mad-dg-page', { detail: { page: act.page } }));
     }
+};
+
+// Rodapé de TOTAIS da grid (`<tfoot class="mad-dg-foot">`). O servidor manda a
+// op `grid_totals` ({ gridKey, totals: { chaveDaColuna: html } }) quando o
+// total muda sem a grade ser redesenhada: troca só o conteúdo dos
+// [data-mad-total] DESTA grade. O html é o mesmo que o Blade escreve no render.
+// (tests/js/grid-totals-refresh.test.mjs)
+window._madApplyGridTotals = function (wrap, totals) {
+    if (!wrap || !totals) return 0;
+    let n = 0;
+    wrap.querySelectorAll('tfoot.mad-dg-foot [data-mad-total]').forEach(function (el) {
+        const key = el.getAttribute('data-mad-total');
+        if (Object.prototype.hasOwnProperty.call(totals, key)) {
+            el.innerHTML = String(totals[key]);
+            n++;
+        }
+    });
+    return n;
+};
+
+// Uma linha mudou sem a grade recarregar (manage_row / remove_row) e a
+// resposta não trouxe o total novo: o rodapé ficaria com a soma de antes. Pede
+// só o rodapé à própria grade (ação onMadGridTotals), uma vez por rajada de ops.
+// Grade sem rodapé de totais não pede nada.
+window._madGridTotalsStale = function (wrap, ops) {
+    if (!wrap || !wrap.querySelector('tfoot.mad-dg-foot [data-mad-total]')) return false;
+    const key = wrap.getAttribute('data-grid-key') || '';
+    const answered = Array.isArray(ops) && ops.some(function (o) {
+        return o && o.op === 'grid_totals' && (!o.gridKey || o.gridKey === key);
+    });
+    if (answered) return false;
+    clearTimeout(wrap._madTotalsTimer);
+    wrap._madTotalsTimer = setTimeout(function () {
+        if (wrap.isConnected === false) return;
+        wrap.dispatchEvent(new CustomEvent('mad-dg-call', { detail: { method: 'onMadGridTotals', params: [] } }));
+    }, 80);
+    return true;
+};
+
+// Edição na célula × redesenho da linha (framework#175). A resposta de um
+// salvamento (ou de outra ação) pode chegar com o usuário JÁ digitando de novo
+// na mesma linha. Trocar a <tr> ali apagava a digitação — e o `blur` do campo
+// arrancado do documento gravava o que estivesse nele. Quem sabe se há editor
+// aberto é a própria grade (madDataGrid, em mad-ui.js):
+//   _madGridHoldRow(tr, op)  true = a grade guardou a op e aplica quando o
+//                            editor fechar (volta por Mad.applyOps, `_released`);
+//   _madGridRowGone(tr)      a linha vai sair (remove_row): a grade larga o
+//                            editor e a op guardada dela, sem gravar.
+// (tests/js/grid-cell-edit-race.test.mjs)
+window._madGridData = function (wrap) {
+    if (!wrap || !window.Alpine || typeof window.Alpine.$data !== 'function') return null;
+    try { return window.Alpine.$data(wrap) || null; } catch (e) { return null; }
+};
+
+window._madGridHoldRow = function (row, op) {
+    if (!row || !op || op._released || typeof row.closest !== 'function') return false;
+    const data = _madGridData(row.closest('.mad-dg-wrap'));
+    return !!(data && typeof data.holdRowOp === 'function'
+        && data.holdRowOp(row.getAttribute('data-row-id'), op));
+};
+
+window._madGridRowGone = function (row) {
+    if (!row || typeof row.closest !== 'function') return;
+    const data = _madGridData(row.closest('.mad-dg-wrap'));
+    if (data && typeof data.rowGone === 'function') data.rowGone(row.getAttribute('data-row-id'));
 };
 
 // A detail carrega `:colspan="visibleColCount()"` (Alpine). Sem o initTree ela
@@ -1526,6 +1609,30 @@ const Mad = {
                     break;
                 }
 
+                case 'files_saved': {
+                    // Upload Múltiplo / célula Arquivos da Lista de itens: o servidor
+                    // gravou os arquivos que o campo mandou como NOVOS (ver
+                    // MadForm::_announceSavedFiles). O campo é o `[data-mad-upload]`
+                    // de nome `op.field` DESTE componente; é ele quem troca os
+                    // novos por gravados (markSaved) — senão os mandaria de novo, e
+                    // cada Salvar regravaria o anexo com outra chave.
+                    if (!window.Alpine || typeof Alpine.$data !== 'function') break;
+                    const live  = scope && scope.isConnected !== false ? scope : null;
+                    // ownedNodes: inclui o campo que mora num painel teleportado
+                    // (cortina / modal dentro da tela) e a célula dentro da lista.
+                    const nodes = (live && typeof MadWire !== 'undefined' && MadWire && typeof MadWire.ownedNodes === 'function')
+                        ? MadWire.ownedNodes(live, '[data-mad-upload]')
+                        : Array.from((live || document).querySelectorAll('[data-mad-upload]'));
+                    nodes.forEach((node) => {
+                        if (node.getAttribute('data-mad-upload') !== op.field) return;
+                        try {
+                            const ad = Alpine.$data(node);
+                            if (ad && typeof ad.markSaved === 'function') ad.markSaved(op.files || []);
+                        } catch (e) { console.error('Mad files_saved:', e); }
+                    });
+                    break;
+                }
+
                 case 'fl_rows':
                 case 'df_add':
                 case 'df_delete':
@@ -1818,6 +1925,9 @@ const Mad = {
                     const row = document.querySelector(`tr[data-row-id="${_madCssId(op.rowId)}"]`);
                     // Grid DESTA linha — o rodapé dela é acertado no fim do case.
                     const rowWrap = row ? row.closest('.mad-dg-wrap') : null;
+                    // Editor da célula aberto nesta linha: é largado ANTES de
+                    // ela sair — o blur do campo removido não grava nada.
+                    if (row) _madGridRowGone(row);
                     if (row) row.remove();
                     // row-detail: a 2a linha descritiva do registro. Sem isto
                     // ela sobrevivia sozinha a exclusao da linha.
@@ -1839,6 +1949,20 @@ const Mad = {
                     }
                     // "1–1 de 1" com a lista vazia: o rodapé acompanha a remoção.
                     if (rowWrap) _madGridFooterAfterRemove(rowWrap);
+                    // E o total do rodapé deixa de contar a linha que saiu.
+                    if (rowWrap) _madGridTotalsStale(rowWrap, ops);
+                    break;
+                }
+
+                case 'grid_totals': {
+                    const totalsWrap = op.gridKey
+                        ? document.querySelector('.mad-dg-wrap[data-grid-key="' + _madCssId(op.gridKey) + '"]')
+                        : document.querySelector('.mad-dg-wrap');
+                    _madApplyGridTotals(totalsWrap, op.totals);
+                    // O total chegou: o pedido de rodapé que um manage_row da
+                    // MESMA resposta agendou (as ops de uma resposta parcial
+                    // entram uma a uma) não precisa mais sair.
+                    if (totalsWrap) clearTimeout(totalsWrap._madTotalsTimer);
                     break;
                 }
 
@@ -1922,6 +2046,14 @@ const Mad = {
                             console.warn('[mad] manage_row sem HTML para', op.rowId, '- linha mantida');
                             break;
                         }
+                        // Editor da célula aberto NESTA linha (o usuário já
+                        // está digitando de novo): a grade guarda a op e a
+                        // devolve quando o editor fechar. O rodapé de totais
+                        // não depende da linha e segue agora.
+                        if (_madGridHoldRow(existing, op)) {
+                            _madGridTotalsStale(existing.closest('.mad-dg-wrap'), ops);
+                            break;
+                        }
                         // A detail antiga e irma da <tr>: o outerHTML abaixo nao
                         // a alcanca, e o html novo ja traz a sua — sem remover,
                         // a descricao velha ficava duplicada logo abaixo.
@@ -1935,6 +2067,7 @@ const Mad = {
                             _madInitRowDetail(op.rowId);
                             setTimeout(() => updated.classList.remove('mad-dg-row-highlight'), 2500);
                             _madRevealRow(updated);
+                            if (op.cellError) _madMarkCellError(updated, op.cellError);
                         }
                     } else {
                         const tbody = _madGridEl(op.gridKey, '.mad-dg-body');
@@ -1987,6 +2120,13 @@ const Mad = {
                                 }
                             }
                         }
+                    }
+                    // A linha mudou de valor (ou entrou): o total do rodapé
+                    // acompanha, a menos que a resposta já o traga. A op que a
+                    // grade guardou e devolveu já passou por aqui.
+                    if (!op._released) {
+                        const changed = document.querySelector(`tr[data-row-id="${_madCssId(op.rowId)}"]`);
+                        _madGridTotalsStale(changed ? changed.closest('.mad-dg-wrap') : null, ops);
                     }
                     break;
                 }
@@ -2679,8 +2819,18 @@ const Mad = {
     _uiPendingTabs: [],
 
     captureUiState(root) {
-        const snap = { tabs: [], scroll: [], height: 0 };
+        const snap = { tabs: [], scroll: [], height: 0, gridEdits: [] };
         if (!root || !root.querySelectorAll) return snap;
+        // Edição na célula aberta numa listagem: o redesenho arrancava o campo
+        // (e o blur gravava a digitação pela metade). A grade nova a recebe de
+        // volta — madDataGrid.captureEdit / restoreEdit, em mad-ui.js.
+        this._gridWraps(root).forEach((w) => {
+            const data = _madGridData(w);
+            if (!data || typeof data.captureEdit !== 'function') return;
+            let edit = null;
+            try { edit = data.captureEdit(); } catch (e) { edit = null; }
+            if (edit) snap.gridEdits.push({ key: w.getAttribute('data-grid-key') || '', edit });
+        });
         this._tabsBlocks(root).forEach((t) => {
             const active = this._tabsActive(t);
             if (active) snap.tabs.push({ key: this._tabsKey(t), active, def: t.getAttribute('data-mad-tabs-default') });
@@ -2704,6 +2854,16 @@ const Mad = {
             .filter((p) => p.exp > now && !fresh.some((f) => f.key === p.key))
             .concat(fresh);
         this._applyPendingTabs(root);
+
+        if (snap.gridEdits && snap.gridEdits.length) {
+            const wraps = this._gridWraps(root);
+            snap.gridEdits.forEach((g) => {
+                const w = wraps.find((x) => (x.getAttribute('data-grid-key') || '') === g.key);
+                const data = w ? _madGridData(w) : null;
+                if (!data || typeof data.restoreEdit !== 'function') return;
+                try { data.restoreEdit(g.edit); } catch (e) { console.error('[mad] grid edit:', e); }
+            });
+        }
 
         if (!snap.scroll || !snap.scroll.length) return;
         // As telas embutidas voltam como "Carregando..." (mais baixas que o
@@ -2729,6 +2889,15 @@ const Mad = {
                 s.el.scrollLeft = s.left;
             } catch (e) { /* elemento sem rolagem — ignora */ }
         });
+    },
+
+    /** Listagens (`.mad-dg-wrap`) sob `root` (inclusive), na ordem do documento. */
+    _gridWraps(root) {
+        const out = [];
+        if (!root || !root.querySelectorAll) return out;
+        if (root.matches && root.matches('.mad-dg-wrap')) out.push(root);
+        root.querySelectorAll('.mad-dg-wrap').forEach((w) => out.push(w));
+        return out;
     },
 
     _hasVisibleLoading(root) {

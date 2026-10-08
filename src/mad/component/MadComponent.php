@@ -187,6 +187,13 @@ abstract class MadComponent
     /** Indica que boot()+mount() já foram executados (evita dupla chamada). */
     private bool $_mounted = false;
 
+    /**
+     * A exceção que o show() capturou e trocou pelo cartão de erro. O status da
+     * resposta continua 200, então é por aqui que quem despacha a tela fica
+     * sabendo que ela não montou ({@see renderFailure()}).
+     */
+    private ?\Throwable $_renderFailure = null;
+
     // ── Getters estáticos públicos (usados por MadComponentWrapper) ───────────
 
     public static function getWrapper(): string { return static::$wrapper; }
@@ -371,6 +378,11 @@ abstract class MadComponent
             // voltar.
             $this->_captureComboOrigin($cleanParams);
 
+            // O que o mount() ou o método de abertura oferecer ao navegador
+            // fora do render (um MadConfirm com campos) é declarado no
+            // formulário desta tela.
+            \Mad\Form\MadFormRegistry::actingComponent($this);
+
             if (!$this->_mounted) {
                 $this->boot();
                 $this->_resolveAndCall('mount', $cleanParams);
@@ -393,8 +405,24 @@ abstract class MadComponent
             $this->_echoRendered();
 
         } catch (\Throwable $e) {
+            $this->_renderFailure = $e;
             $this->_renderError($e);
         }
+    }
+
+    /**
+     * A exceção que fez o show() mostrar o cartão de erro no lugar da tela, ou
+     * null quando ela montou.
+     *
+     * O cartão sai com status 200 (o usuário vê o erro dentro do app). Quem
+     * precisa saber por fora que a tela quebrou — o `MadAppController`, para o
+     * sinal do teste de tela ({@see \Mad\Ui\MadRenderSignal}) — pergunta aqui.
+     *
+     * @internal
+     */
+    public function renderFailure(): ?\Throwable
+    {
+        return $this->_renderFailure;
     }
 
     /**
@@ -736,12 +764,17 @@ abstract class MadComponent
         $context     = MadRenderContext::push($propsForCtx, $this);
         $mad         = MadRenderContext::madHelper($context);
 
-        $html = MadBlade::render(
-            $viewName,
-            array_merge($props, $viewData, $context, ['_component' => $this, '__component' => $this, 'that' => $this, 'mad' => $mad])
-        );
-
-        MadRenderContext::pop();
+        // O contexto sai da pilha mesmo quando a view lança: num worker de longa
+        // duração a tela que falhou ficaria no topo, e a próxima requisição
+        // declararia nela (e não na tela da vez) os campos que a ação oferece.
+        try {
+            $html = MadBlade::render(
+                $viewName,
+                array_merge($props, $viewData, $context, ['_component' => $this, '__component' => $this, 'that' => $this, 'mad' => $mad])
+            );
+        } finally {
+            MadRenderContext::pop();
+        }
 
         $this->rendered($html);
 
@@ -885,7 +918,12 @@ abstract class MadComponent
     {
         $lower = strtolower($propName);
         if (in_array($lower, self::_MODEL_STRUCTURAL_BLOCKED, true)
-            || in_array($lower, self::_MODEL_BLOCKED_PROPS, true)) {
+            || in_array($lower, self::_MODEL_BLOCKED_PROPS, true)
+            // Estado da tela em lista (`wizardSectionIds`: seção => id do
+            // registro): `mad_model[<seção>]=<id>` caía aqui dentro. O estado
+            // próprio da tela (`_lockedStateProps`) também, caso seja array.
+            || in_array($propName, self::_MODEL_STATE_LOCKED, true)
+            || in_array($propName, $this->_lockedStateProps(), true)) {
             return true;
         }
 
@@ -912,11 +950,108 @@ abstract class MadComponent
         foreach ($this->_getPublicPropNames() as $name) {
             if (!$this->_isInitialized($name)) continue;
             if ($this->$name instanceof MadForm) {
+                // O formulário confere o que chega: só listas que a tela tem,
+                // e de cada linha só as colunas que a lista tem (antes ia tudo
+                // para `$fields`, até um escalar com o nome de um campo).
                 foreach ($flData as $flName => $rows) {
-                    $this->$name->fields[$flName] = $rows;
+                    $this->$name->takeRowsFromBrowser((string) $flName, $rows);
                 }
+                $this->_warnRefusedByForms();
                 return;
             }
+        }
+    }
+
+    /** @return list<MadForm> formulários públicos (já inicializados) desta tela */
+    private function _forms(): array
+    {
+        $forms = [];
+        foreach ($this->_getPublicPropNames() as $name) {
+            if ($this->_isInitialized($name) && $this->$name instanceof MadForm) {
+                $forms[] = $this->$name;
+            }
+        }
+
+        return $forms;
+    }
+
+    /**
+     * O servidor desenhou `$html` para esta tela: o formulário anota o campo
+     * escrito à mão que está ligado a ele (`mad:model`, `mad:click="$set()"`) —
+     * é o que ele passa a aceitar do navegador, além das tags `<mad-*>`.
+     *
+     * Numa tela EMBUTIDA em outra, o formulário da tela de fora fica sabendo
+     * que este trecho não é dele.
+     *
+     * @internal chamado por _wrapRenderedHtml() e, depois do render de uma ação, pelo MadComponentHandler
+     */
+    public function _declareFromHtml(string $html): void
+    {
+        foreach ($this->_forms() as $form) {
+            $form->declareFromHtml($html);
+        }
+        $this->_htmlDeclared = true;
+
+        $outer = MadRenderContext::getComponent();
+        if ($outer instanceof self && $outer !== $this) {
+            foreach ($outer->_forms() as $form) {
+                $form->skipInScan($html);
+            }
+        }
+    }
+
+    /** O HTML do render em curso já foi lido por _declareFromHtml()? (o redesenho completo embrulha o mesmo HTML) */
+    private bool $_htmlDeclared = false;
+
+    /**
+     * O que a resposta de uma ação leva para o navegador além do render: o
+     * trecho de HTML de um `->html()` (os campos ligados nele passam a ser da
+     * tela) e as linhas de `setRows()` / `df_add` (passam a ser o que o
+     * servidor entregou para a lista).
+     *
+     * @internal chamado pelo MadComponentHandler antes de cifrar o estado da resposta
+     *
+     * @param list<array<string,mixed>> $ops
+     */
+    public function _noteResponseOps(array $ops): void
+    {
+        $forms = $this->_forms();
+        if (!$forms) {
+            return;
+        }
+
+        foreach ($ops as $op) {
+            if (!is_array($op)) {
+                continue;
+            }
+            $kind   = (string) ($op['op'] ?? '');
+            $target = is_string($op['target'] ?? null) ? $op['target'] : '';
+
+            // As linhas vão para o primeiro formulário — o mesmo que recebe as
+            // que voltam (_setFieldListData).
+            if ($kind === 'fl_rows' && is_array($op['rows'] ?? null)) {
+                $forms[0]->rowsSent($target, $op['rows'], true);
+                continue;
+            }
+            if ($kind === 'df_add' && is_array($op['row'] ?? null)) {
+                $forms[0]->rowsSent($target, [$op['row']], false);
+                continue;
+            }
+            // `reloadChecklist()`: as marcas que o código da tela leu nesta
+            // ação (loadChecklist) chegam ao navegador sem redesenho.
+            if ($kind === 'reload_checklist') {
+                $forms[0]->marksDelivered();
+            }
+
+            array_walk_recursive($op, static function (mixed $value) use ($forms): void {
+                // Trecho com OUTRA tela dentro (`teleport`): os campos são do
+                // formulário dela, que já os declarou ao ser desenhada.
+                if (is_string($value) && str_contains($value, 'data-mad-') && ! str_contains($value, 'mad-component="')) {
+                    foreach ($forms as $form) {
+                        $form->declareFromHtml($value, false);
+                    }
+                }
+            });
         }
     }
 
@@ -938,6 +1073,22 @@ abstract class MadComponent
     public function _wrapRenderedHtml(string $html): string
     {
         $this->dehydrate();
+
+        // Este HTML vai para o navegador (quem embrulha é quem entrega: a
+        // abertura da tela, o redesenho completo, a tela embutida). O que os
+        // campos desenharam neste render passa a ser o que o formulário
+        // entregou — a resposta parcial de uma ação não passa por aqui, e o
+        // render dela não muda o que a tela está mostrando.
+        if (!$this->_htmlDeclared) {
+            $this->_declareFromHtml($html);
+        }
+        $this->_htmlDeclared = false;
+
+        foreach ($this->_getPublicPropNames() as $name) {
+            if ($this->_isInitialized($name) && $this->$name instanceof MadForm) {
+                $this->$name->renderDelivered();
+            }
+        }
 
         $state = $this->_encryptState();
         $id    = $this->_id ?: ('mc_' . bin2hex(random_bytes(6)));
@@ -1024,6 +1175,9 @@ abstract class MadComponent
                 || $current instanceof MadForm;
             if ($isFormProp && is_array($value)) {
                 $this->$key = MadForm::fromArray($value);
+                // Estado de uma tela aberta antes de o formulário anotar o que
+                // declara: segue aceitando do navegador como antes.
+                $this->$key->hydratedFromState();
                 continue;
             }
 
@@ -1298,6 +1452,62 @@ abstract class MadComponent
     ];
 
     /**
+     * Props públicas que guardam o ESTADO DA TELA — qual registro está aberto,
+     * em que passo o wizard está — e que só o servidor escreve (`onEdit`,
+     * `onSave`, a navegação do wizard). Viajam no estado criptografado
+     * (mad_state); nenhum campo de tela é ligado a elas.
+     *
+     * Sem este bloqueio o navegador escolhia o registro: repetir o POST do
+     * Salvar com `mad_model[recordId]=<outro id>` fazia o
+     * `Model::findOrNew($this->recordId)` do `onSave` gerado gravar no registro
+     * escolhido — pulando a trava escrita no `onEdit`, levando junto o
+     * reconcile das linhas filhas e enganando a permissão por ação, que lê o
+     * mesmo valor em `_recordId()` para separar "incluir" de "editar".
+     *
+     * São os nomes que o gerador da plataforma e as telas do esqueleto usam:
+     *   - `recordId`   — form, form-view e wizard gerados;
+     *   - `registroId` — telas escritas à mão (padrão do esqueleto e do agente);
+     *   - `editingId`  — formulário do Gantt gerado (tem Salvar e Excluir);
+     *   - `wizardStep` / `maxStepReached` / `wizardSectionIds` — wizard gerado
+     *     (passo atual, maior passo validado, ids das seções vinculadas).
+     *
+     * Comparação EXATA (prop do PHP é case-sensitive): uma coluna `recordid`
+     * que vira filtro de listagem (`public string $recordid`) segue ligável.
+     * `id`, o terceiro degrau de `_recordId()`, fica de fora de propósito: é
+     * nome de filtro de listagem e de campo de formulário — tela que guarda o
+     * registro aberto em `$id` deve sobrescrever `_isModelAssignable()`.
+     */
+    private const _MODEL_STATE_LOCKED = [
+        'recordId', 'registroId', 'editingId',
+        'wizardStep', 'maxStepReached', 'wizardSectionIds',
+    ];
+
+    /**
+     * Estado/config PRÓPRIO da tela que o cliente também não escreve — o degrau
+     * declarativo acima do `_MODEL_STATE_LOCKED` (que só conhece os nomes do
+     * gerador). A tela devolve os nomes das suas props públicas de estado em vez
+     * de sobrescrever `_isModelAssignable()` nome a nome:
+     *
+     *     protected function _lockedStateProps(): array
+     *     {
+     *         return ['pedidoId', 'etapaAtual'];
+     *     }
+     *
+     * Vale para o que o SERVIDOR escreve e o Blade NÃO liga a `mad:model`:
+     * qual registro está aberto sob outro nome (`$pedidoId`), o andamento de um
+     * fluxo entre modais (as props `pending*` do login) ou a config da própria
+     * tela que decide uma trava (`requireTerms`, `multiunit`...). A comparação é
+     * EXATA (prop do PHP é case-sensitive), igual à do `_MODEL_STATE_LOCKED`:
+     * uma coluna homônima que vira filtro de listagem segue ligável.
+     *
+     * @return string[]
+     */
+    protected function _lockedStateProps(): array
+    {
+        return [];
+    }
+
+    /**
      * Decide se uma chave de mad_model pode ser aplicada ao componente.
      *
      * Camadas de defesa (override em subclasse para customizar):
@@ -1312,12 +1522,23 @@ abstract class MadComponent
      *   3) Para PROPS PUBLICAS: nao deixa sobrescrever objetos (ex: MadForm)
      *      com escalar do cliente.
      *
+     *   3b) Para PROPS PUBLICAS: recusa o estado da tela que so o servidor
+     *      escreve (_MODEL_STATE_LOCKED — `recordId`, `registroId`,
+     *      `editingId`, passo do wizard). Tela com estado proprio do mesmo
+     *      tipo (`$pedidoId`) estende a regra aqui:
+     *
+     *          protected function _isModelAssignable(string $prop): bool
+     *          {
+     *              return $prop !== 'pedidoId' && parent::_isModelAssignable($prop);
+     *          }
+     *
      *   4) Para CHAVES NAO-PUBLICAS (form fields que vao parar em
-     *      $this->form->fields via _setInArrayProp): SEMPRE permitido.
-     *      A defesa nesse fluxo fica em camada inferior — o model deve usar
-     *      addAttribute() para whitelist de colunas em models sensiveis.
-     *      Sem essa permissao o login/forms quebram (ex: `password`,
-     *      `senha`, `login` sao nomes legitimos de campo).
+     *      $this->form->fields via _setInArrayProp): passam AQUI — `password`,
+     *      `senha`, `login` sao nomes legitimos de campo, e a lista de nomes
+     *      acima quebraria o login e os formularios. Quem confere a chave que
+     *      vai para um MadForm e o proprio formulario, em _applyModelValues():
+     *      ele so aceita do navegador o campo que a tela declarou
+     *      (MadForm::takesFromBrowser).
      */
     protected function _isModelAssignable(string $prop): bool
     {
@@ -1342,6 +1563,15 @@ abstract class MadComponent
             if (in_array(strtolower($prop), self::_MODEL_BLOCKED_PROPS, true)) {
                 return false;
             }
+            // Estado da tela (registro aberto, passo do wizard): só o servidor
+            // escreve — o valor de verdade já veio no mad_state. O
+            // `_lockedStateProps()` estende a lista com o estado/config PRÓPRIO
+            // da tela (ex.: as props `pending*` do login) sem redeclarar este
+            // método nome a nome.
+            if (in_array($prop, self::_MODEL_STATE_LOCKED, true)
+                || in_array($prop, $this->_lockedStateProps(), true)) {
+                return false;
+            }
             if ($this->_isInitialized($prop) && is_object($this->$prop)) {
                 return false;
             }
@@ -1349,8 +1579,8 @@ abstract class MadComponent
         }
 
         // Caso 2: nao eh prop publica — vai para MadForm->fields via
-        // _setInArrayProp. Permitido (defesa de mass-assignment ocorre no
-        // nivel de fillRecord/adição de atributo no record legado).
+        // _setInArrayProp. Passa aqui; o formulario confere se a tela declarou
+        // o campo (_applyModelValues → MadForm::takesFromBrowser).
         return true;
     }
 
@@ -1365,11 +1595,29 @@ abstract class MadComponent
         // Filtra props nao-assignaveis (mass-assignment defense).
         $filtered = [];
         foreach ($values as $prop => $newValue) {
-            if ($this->_isModelAssignable((string) $prop)) {
-                $filtered[$prop] = $newValue;
+            if (! $this->_isModelAssignable((string) $prop)) {
+                $this->_warnLockedStateWrite((string) $prop, $newValue);
+                continue;
             }
+            // Chave que vai parar num MadForm: o formulário só aceita do
+            // navegador o campo que a tela declarou. Sem isto quem tinha a
+            // tela gravava qualquer coluna do registro (`mad_model[status]`,
+            // `mad_model[saldo]`) — o valor caía em `$form->fields` e o Salvar
+            // o levava para o Model.
+            [$form, $field] = $this->_formFieldFor((string) $prop);
+            if ($form !== null && ! $form->takesFromBrowser($field, $newValue)) {
+                continue;
+            }
+            // Campo de Editor HTML: o conteúdo é limpo ao entrar, pelo que a
+            // tela declarou (estado cifrado) — não pelo token `__mad_form`,
+            // que é o navegador quem devolve.
+            if ($form !== null) {
+                $newValue = $form->cleanFromBrowser($field, $newValue);
+            }
+            $filtered[$prop] = $newValue;
         }
         $values = $filtered;
+        $this->_warnRefusedByForms();
 
         // ── Fase 1: hooks updating (antes de alterar) ─────────────────────────
         foreach ($values as $prop => $newValue) {
@@ -1401,6 +1649,216 @@ abstract class MadComponent
                 $this->$specific($current);
             }
         }
+    }
+
+    /**
+     * Avisa no log quando o POST tenta trocar uma prop de estado da tela
+     * (_MODEL_STATE_LOCKED). O cliente do framework nunca manda essas chaves:
+     * valor DIFERENTE do que está no estado é POST adulterado — ou uma tela
+     * antiga que ligava um campo à prop, e aí o aviso é a pista de por que o
+     * valor deixou de chegar. Valor igual (campo espelhado) passa calado.
+     */
+    private function _warnLockedStateWrite(string $prop, mixed $value): void
+    {
+        $locked = in_array($prop, self::_MODEL_STATE_LOCKED, true)
+            || in_array($prop, $this->_lockedStateProps(), true);
+        if (!$locked || !$this->_isPublicProp($prop)) {
+            return;
+        }
+
+        $atual = $this->_isInitialized($prop) ? $this->$prop : null;
+        if (is_scalar($value) && ($atual === null || is_scalar($atual)) && (string) $value === (string) $atual) {
+            return;
+        }
+
+        // Quem tentou: sem sessão (tela pública, CLI) fica "-".
+        $quem = null;
+        try {
+            $quem = function_exists('session') ? session('userid') : null;
+        } catch (\Throwable) {
+            // sessão indisponível — o aviso sai sem o usuário
+        }
+
+        $msg = sprintf(
+            '[MadComponent] mad_model tentou alterar a prop de estado "%s" de %s (usuário %s) — ignorado',
+            $prop,
+            // Classe anônima traz um byte nulo + caminho no nome: fora do log.
+            (string) preg_replace('/@anonymous.*$/s', '@anonymous', static::class),
+            is_scalar($quem) && $quem !== '' ? (string) $quem : '-',
+        );
+
+        if (function_exists('logger')) {
+            logger()->warning($msg);
+            return;
+        }
+
+        error_log($msg);
+    }
+
+    /**
+     * O MadForm que receberia `$key` de `mad_model`, e o nome do campo nele —
+     * [null, ''] quando a chave é prop pública da tela, cai numa lista da tela
+     * ou não há formulário. Mesma busca do `fill()` / `_setInArrayProp()`.
+     *
+     * @return array{0: ?MadForm, 1: string}
+     */
+    private function _formFieldFor(string $key): array
+    {
+        if (str_contains($key, '.')) {
+            [$formName, $field] = explode('.', $key, 2);
+            if ($this->_isPublicProp($formName) && $this->_isInitialized($formName) && $this->$formName instanceof MadForm) {
+                return [$this->$formName, $field];
+            }
+        }
+        if ($this->_isPublicProp($key)) {
+            return [null, ''];
+        }
+
+        $first = null;
+        foreach ($this->_getPublicPropNames() as $propName) {
+            if ($propName === '_fields' || ! $this->_isInitialized($propName)) {
+                continue;
+            }
+            $value = $this->$propName;
+            if ($value instanceof MadForm) {
+                $first ??= $value;
+                if (array_key_exists($key, $value->fields)) {
+                    return [$value, $key];
+                }
+                continue;
+            }
+            if (is_array($value) && array_key_exists($key, $value) && ! $this->_isProtectedArrayProp($propName)) {
+                return [null, ''];
+            }
+        }
+
+        return [$first, $key];
+    }
+
+    /**
+     * Avisa no log do que chegou do navegador e os formulários da tela não
+     * aceitaram (campo que a tela não declara, coluna de linha que a lista não
+     * tem, coluna de controle). Nome do campo, tela e usuário — nunca o valor.
+     *
+     * O cliente do framework só manda o que a tela desenhou: o resto é
+     * requisição adulterada, ou um campo que a tela cria por JavaScript e não
+     * declarou — e aí o aviso é a pista de por que o valor deixou de chegar.
+     *
+     * @internal também chamado pelo MadComponentHandler depois da ação (o Salvar recusa colunas de controle)
+     */
+    public function _warnRefusedByForms(): void
+    {
+        foreach ($this->_forms() as $form) {
+            foreach ($form->pullRefused() as $name => $why) {
+                $name = (string) $name;
+                $list = $name !== '' && $name[0] === '[';
+                $tela = (string) preg_replace('/@anonymous.*$/s', '@anonymous', static::class);
+
+                // Chave, coluna de controle, empresa: não adianta declarar.
+                if ($name !== '' && $name[0] === '!') {
+                    self::_log(sprintf(
+                        '[MadForm] campo "%s" veio do navegador para %s (usuário %s) e foi ignorado: é %s, que o formulário não grava'
+                        . ' a partir da tela, nem declarada como campo. Para gravá-la pelo código, atribua no registro ou nos extras de save($registro, [...]).',
+                        substr($name, 1),
+                        $tela,
+                        self::_logUser(),
+                        $why,
+                    ));
+                    continue;
+                }
+
+                $this->_refusedNow[$name] = true;
+                self::_log($list
+                    ? sprintf(
+                        '[MadForm] lista "%s" de %s (usuário %s): %s.',
+                        trim($name, '[]'),
+                        $tela,
+                        self::_logUser(),
+                        $why,
+                    )
+                    : sprintf(
+                        '[MadForm] campo "%s" veio do navegador para %s (usuário %s) e foi ignorado: %s.'
+                        . ' Se a tela tem este campo fora das tags <mad-*> (criado por JavaScript, enviado por MadWire.call/MadWire.set),'
+                        . " declare-o no mount(): \$this->form->accept('%s').",
+                        $name,
+                        $tela,
+                        self::_logUser(),
+                        $why,
+                        $name,
+                    ));
+            }
+        }
+    }
+
+    /** @var array<string,true> o que foi recusado do navegador nesta requisição (ver _explainRefused) */
+    private array $_refusedNow = [];
+
+    /**
+     * Segundo aviso, para o campo recusado que PARECE ser da tela: o HTML que
+     * ela desenha tem um campo com esse `name`, mas ele não está ligado ao
+     * formulário — é o caso da tela legítima que monta o envio por JavaScript.
+     *
+     * @internal chamado pelo MadComponentHandler com o HTML do render da tela
+     */
+    public function _explainRefused(string $html): void
+    {
+        foreach (array_keys($this->_refusedNow) as $name) {
+            $name = (string) $name;
+            if ($name === '' || $name[0] === '[') {
+                continue;
+            }
+            // O campo de mesmo nome é de um detalhe ou de uma tela embutida: o
+            // primeiro aviso já disse onde ele está.
+            foreach ($this->_forms() as $form) {
+                if ($form->drawnElsewhere($name) !== null) {
+                    continue 2;
+                }
+            }
+            if (preg_match('/\\sname\\s*=\\s*["\\\']' . preg_quote($name, '/') . '(?:\\[\\])?["\\\']/', $html) === 1) {
+                self::_log(sprintf(
+                    '[MadForm] campo "%s" em %s: a tela desenha um campo com name="%s", mas ele não está ligado ao formulário'
+                    . ' (falta mad:model="%s" ou uma tag <mad-*-field>) — por isso o valor que chegou do navegador foi ignorado.'
+                    . " Ligue o campo com mad:model ou declare-o no mount(): \$this->form->accept('%s').",
+                    $name,
+                    (string) preg_replace('/@anonymous.*$/s', '@anonymous', static::class),
+                    $name,
+                    $name,
+                    $name,
+                ));
+            }
+        }
+        $this->_refusedNow = [];
+    }
+
+    /** Usuário da sessão para os avisos de segurança ("-" sem sessão: tela pública, CLI). */
+    private static function _logUser(): string
+    {
+        $quem = null;
+        try {
+            $quem = function_exists('session') ? session('userid') : null;
+        } catch (\Throwable) {
+            // sessão indisponível — o aviso sai sem o usuário
+        }
+
+        return is_scalar($quem) && $quem !== '' ? (string) $quem : '-';
+    }
+
+    private static function _log(string $message): void
+    {
+        // O nome do campo (e o da coluna de uma linha) vem do navegador: sem
+        // quebra de linha nem caractere de controle no log, e sem tamanho livre.
+        $message = (string) preg_replace('/[\x00-\x1F\x7F]+/', ' ', $message);
+        if (strlen($message) > 1200) {
+            $message = substr($message, 0, 1200) . '…';
+        }
+
+        if (function_exists('logger')) {
+            logger()->warning($message);
+
+            return;
+        }
+
+        error_log($message);
     }
 
     public function _setId(string $id): void       { $this->_id = $id; }

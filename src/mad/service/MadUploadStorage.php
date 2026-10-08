@@ -194,6 +194,40 @@ final class MadUploadStorage
         self::disk()->delete($relPath);
     }
 
+    /**
+     * Troca o arquivo de `$toPath` pelo de `$fromPath` (que deixa de existir).
+     * É o segundo tempo de uma gravação em dois tempos: o conteúdo novo espera
+     * num caminho provisório e só ocupa o lugar do antigo quando quem gravou
+     * confirma (ver MadForm::_storeFile). Lança em falha.
+     */
+    public static function replace(string $fromPath, string $toPath): void
+    {
+        if ($fromPath === '' || $toPath === '' || $fromPath === $toPath) {
+            return;
+        }
+
+        $disk = self::disk();
+        $stream = $disk->readStream($fromPath);
+        if (!is_resource($stream)) {
+            throw new \RuntimeException("Não foi possível ler '{$fromPath}' no disco de uploads '" . self::diskName() . "'.");
+        }
+
+        try {
+            $ok = $disk->writeStream($toPath, $stream);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+        if ($ok === false) {
+            throw new \RuntimeException(
+                "Falha ao gravar '{$toPath}' no disco de uploads '" . self::diskName() . "' — verifique credenciais/bucket."
+            );
+        }
+
+        $disk->delete($fromPath);
+    }
+
     /** Remove um diretório/prefixo inteiro (prune/trash do GED). */
     public static function deleteDirectory(string $relDir): void
     {

@@ -9,6 +9,22 @@
 return [
     'mad' => [
 
+        // Campo do ecrã (ou coluna de uma lista) que não é coluna da tabela: o Guardar
+        // recusa o campo gerado pela plataforma e avisa do que não foi gravado.
+        'form' => [
+            'field_without_column'   => 'O campo :field não está ligado a nenhuma coluna da tabela :table: o valor introduzido não seria gravado. Avise o administrador do sistema (campo `:name`).',
+            'not_stored_title'       => 'Valor não gravado',
+            'not_stored_field_one'   => 'O que foi introduzido em :fields não foi gravado: o campo não está ligado a nenhuma coluna da tabela :table.',
+            'not_stored_field_many'  => 'O que foi introduzido em :fields não foi gravado: os campos não estão ligados a nenhuma coluna da tabela :table.',
+            'not_stored_column_one'  => 'Na lista :list, o que foi introduzido em :columns não foi gravado: a coluna não existe na tabela :table.',
+            'not_stored_column_many' => 'Na lista :list, o que foi introduzido em :columns não foi gravado: as colunas não existem na tabela :table.',
+            'not_stored_tail'        => 'O restante foi guardado. Avise o administrador do sistema.',
+            // Linha de uma lista (ou marca de uma checklist) com a chave de um registo que quem guarda não vê: o Guardar é recusado.
+            'row_invalid'            => 'Na lista :list, linha :row: :message',
+            'row_invalid_unnamed'    => 'Linha :row: :message',
+            'selection_invalid'      => 'Um dos itens assinalados não pode ser gravado: não está na sua lista ou já não existe.',
+        ],
+
         'btn' => [
             'refresh'   => 'Atualizar',
             'clear'     => 'Limpar',
@@ -31,6 +47,12 @@ return [
 
         // Calendário com `event-form` apontando para uma classe que não existe.
         'calendar_form_missing' => 'O formulário ":form" não foi encontrado. Associe outro formulário ao calendário.',
+        // Arrastar/redimensionar do calendário e do Gantt (ação padrão do framework).
+        'calendar_drag_off' => 'Arrastar eventos não está ativado neste calendário.',
+        'calendar_update_refused' => 'Operação não autorizada.',
+        'calendar_event_gone' => 'Nada foi alterado: o evento já não está neste calendário. Pode ter sido eliminado ou alterado por outra pessoa.',
+        'gantt_task_gone' => 'Nada foi alterado: a tarefa já não está neste Gantt. Pode ter sido eliminada ou alterada por outra pessoa.',
+        'gantt_update_refused' => 'A tarefa não foi reagendada: a alteração foi recusada.',
         'dashf' => [
             'filters'           => 'Filtros',
             'filters_with_count'=> 'Filtros (:n)',
@@ -201,6 +223,25 @@ return [
                 'next_7_days'  => 'Próximos 7 dias',
                 'next_30_days' => 'Próximos 30 dias',
             ],
+        ],
+
+        // Checklist gravado pelo código do ecrã (loadChecklist / saveChecklist):
+        // o que outro separador ou outra pessoa marcou ou desmarcou com o ecrã
+        // aberto não é desfeito pelo Guardar — quem guarda é avisado.
+        'checklist' => [
+            'changed_title'      => 'Alterado noutro separador ou por outra pessoa',
+            'marked_elsewhere'   => 'Outro separador ou outra pessoa marcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'unmarked_elsewhere' => 'Outro separador ou outra pessoa desmarcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'changed_tail'       => 'Atualize o ecrã para ver a situação atual.',
+            'items_one'          => '1 item',
+            'items_many'         => ':count itens',
+            'more'               => 'mais :count',
+        ],
+
+        // Campo de tabela (DB Combo, DB Select, DB Radio, DB Unique Search): a
+        // opção do valor que o campo já tem e a lista de quem edita não mostra.
+        'field' => [
+            'outside_option' => 'Registo atual (fora da sua lista)',
         ],
 
         'grid' => [

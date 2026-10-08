@@ -54,6 +54,12 @@
         $order = $display;
     }
 
+    // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
+    // deste Model. Com `:query` própria quem decide a lista é o código da tela,
+    // e não há o que conferir (visto ANTES de `:filters` virar consulta).
+    $__optionsSource = ($model && !\Mad\Database\QuerySource::isQuery($query))
+        ? ['model' => $model, 'key' => $keyField] : '';
+
     // :filters (array DSL) → Query Builder interno → caminho :query.
     if (!\Mad\Database\QuerySource::isQuery($query) && !empty($filters) && $model) {
         $__m   = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
@@ -162,5 +168,6 @@
     'itemKey'     => $itemKey,
     'database'    => $database,
     'optionsError' => $__optError,
+    'optionsSource' => $__optionsSource,
 ]); ?>
 <?php echo $__env->renderComponent(); ?>

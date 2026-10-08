@@ -244,6 +244,13 @@
         }
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbunique-search-field', $__optCtx);
+
+    // Valor gravado que a busca não acha para quem está logado (cadastro de
+    // outra unidade ou empresa, usuário que a pessoa não enxerga, registro
+    // excluído): a opção dele fica no campo, com um rótulo neutro. Sem ela o
+    // campo abria vazio e o Salvar apagava o valor sem ninguém ter mexido
+    // nele — ver \Mad\Form\OutsideOption.
+    $__outside = \Mad\Form\OutsideOption::applies($selected, $preloadOptions);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
 <div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
@@ -276,6 +283,9 @@
         @foreach($preloadOptions as $optKey => $optLabel)
             <option value="{{ $optKey }}" selected>{{ $optLabel }}</option>
         @endforeach
+        @if($__outside)
+            <option value="{{ $selected }}" selected {!! \Mad\Form\OutsideOption::ATTRS !!}>{{ \Mad\Form\OutsideOption::label() }}</option>
+        @endif
     </select>
     @if($_createBtn !== '')</div>{!! $_createBtn !!}</div>@endif
     @include('components.partials.options-error', ['optionsError' => $__optError])

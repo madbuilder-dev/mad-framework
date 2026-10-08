@@ -114,9 +114,14 @@ class MadComponentHandler
             return ['error' => 'Erro interno no servidor. Consulte o log da aplicação.'];
         }
 
+        // Tela do DESENVOLVEDOR: o detalhe técnico aparece, os segredos não. A
+        // mensagem de um erro de banco traz o SQL com os valores (o hash da
+        // senha, num INSERT de usuário) — sai pelo MadErrorRedactor.
+        $message = \Mad\Ui\MadErrorRedactor::message($e);
+
         $exception = [
             'type'      => get_class($e),
-            'message'   => $e->getMessage(),
+            'message'   => $message,
             'code'      => $e->getCode(),
             'file'      => self::_relPath($e->getFile()),
             'line'      => $e->getLine(),
@@ -133,12 +138,12 @@ class MadComponentHandler
 
         $prev = $e->getPrevious();
         if ($prev instanceof \Throwable) {
-            $exception['previous'] = get_class($prev) . ': ' . $prev->getMessage()
+            $exception['previous'] = get_class($prev) . ': ' . \Mad\Ui\MadErrorRedactor::message($prev)
                 . ' (' . self::_relPath($prev->getFile()) . ':' . $prev->getLine() . ')';
         }
 
         return [
-            'error'      => get_class($e) . ': ' . $e->getMessage(),
+            'error'      => get_class($e) . ': ' . $message,
             '_exception' => $exception,
         ];
     }
@@ -188,12 +193,20 @@ class MadComponentHandler
     /**
      * Stack trace em linhas, com caminhos relativos e limite de frames.
      *
+     * SEM os argumentos de cada chamada: `getTraceAsString()` escreve o começo
+     * de cada texto passado como argumento — a senha digitada no login, o
+     * valor de um `set('password', …)`.
+     *
      * @return string[]
      */
     private static function _traceLines(\Throwable $e, int $max = 40): array
     {
         $base  = function_exists('base_path') ? base_path() : '';
         $lines = explode("\n", $e->getTraceAsString());
+        $lines = array_map(
+            static fn ($l) => preg_replace('/^(#\d+ (?:.*?\(\d+\)|\[internal function\]): (?:\{[^}]*\}|[^({])*)\(.*\)$/s', '$1()', $l) ?? $l,
+            $lines,
+        );
 
         if ($base !== '') {
             $lines = array_map(static fn ($l) => str_replace($base . DIRECTORY_SEPARATOR, '', $l), $lines);
@@ -386,12 +399,37 @@ class MadComponentHandler
      * @param  array $data Normalmente $_POST
      * @return array { id, html } ou { error }
      */
+    /**
+     * Resposta do wire para a requisição que passou do `post_max_size` do PHP
+     * (corpo descartado: `$_POST` e `$_FILES` vazios) — ou null quando não é o
+     * caso. Aviso, não erro de sistema: diz o tamanho enviado e o limite.
+     *
+     * @return array{error:string,title:string,warning:bool,status:int}|null
+     */
+    public static function oversizedPostPayload(): ?array
+    {
+        $message = \Mad\Form\MadUploadRules::oversizedPost();
+        if ($message === null) {
+            return null;
+        }
+
+        return [
+            'error'   => $message,
+            'title'   => \Mad\Form\MadUploadRules::oversizedTitle(),
+            'warning' => true,
+            'status'  => 413,
+        ];
+    }
+
     public static function process(array $data): array
     {
         // ── 1. Descriptografar estado ──────────────────────────────────────────
         $token = $data['mad_state'] ?? '';
         if (!$token) {
-            return ['error' => 'mad_state ausente'];
+            // Requisição acima do `post_max_size`: o PHP descartou o corpo
+            // inteiro (por isso não há estado). O usuário precisa saber que
+            // foi o tamanho do envio — e que nada foi salvo.
+            return self::oversizedPostPayload() ?? ['error' => 'mad_state ausente'];
         }
 
         $decoded = MadStateCrypt::decrypt($token);
@@ -418,6 +456,11 @@ class MadComponentHandler
         if ($id) {
             $component->_setId($id);
         }
+
+        // O que a AÇÃO desenhar fora do render (um trecho devolvido por
+        // `->html()`, um MadConfirm com campos) é declarado no formulário
+        // desta tela.
+        MadFormRegistry::actingComponent($component);
 
         // Restaura forward params persistidos no state do componente
         $fwd = $component->_getForwardParams();
@@ -545,6 +588,15 @@ class MadComponentHandler
             $triggerField = $params[0] ?? '';
             if ($triggerField && !empty($_FILES) && isset($_FILES[$triggerField])) {
                 $fileData = $_FILES[$triggerField];
+                // O PHP recusou o arquivo (acima do limite do servidor, envio
+                // interrompido): a ação receberia o NOME do campo no lugar do
+                // arquivo e não faria nada. Avisa em vez de seguir calado.
+                foreach (\Mad\Form\MadUploadRules::entries($fileData) as $_sent) {
+                    $_problem = \Mad\Form\MadUploadRules::phpProblem($_sent['error'], $_sent['name']);
+                    if ($_problem !== null) {
+                        return ['error' => $_problem, 'title' => \Mad\Form\MadUploadRules::oversizedTitle(), 'warning' => true];
+                    }
+                }
                 $scratch  = \Mad\Service\MadScratchStorage::disk();
                 // Limpeza probabilística: remove staged > 1h (1 em 50 requests)
                 if (rand(1, 50) === 1) {
@@ -607,6 +659,10 @@ class MadComponentHandler
             foreach ($dfForms as $_df) {
                 $_df->endDetailScope();
             }
+
+            // O que a ação recusou do navegador ao gravar (coluna de controle,
+            // detalhe que a tela não desenhou) vai para o log.
+            $component->_warnRefusedByForms();
         }
 
         // ── 6a/6b. Gerar ops (MadResponse explícito + auto-bind) ─────────────
@@ -619,6 +675,12 @@ class MadComponentHandler
         // essas mudanças no diff do auto-bind.
         MadVarRegistry::reset();
         $html = $component->render();
+
+        // O formulário anota o que ESTE render declara (é o que ele aceita do
+        // navegador na próxima requisição) e, se algo foi recusado agora e a
+        // tela desenha um campo com aquele nome, o log explica o que falta.
+        $component->_declareFromHtml($html);
+        $component->_explainRefused($html);
 
         $stateDepois = $component->_getState();
 
@@ -846,6 +908,10 @@ class MadComponentHandler
         }
 
         $allOps = array_merge($explicitOps, $bindOps, $dumpOps, $pendingFlOps);
+
+        // O que a resposta leva além do render (trecho de HTML, linhas de uma
+        // lista) passa a ser o que o servidor entregou a esta tela.
+        $component->_noteResponseOps($allOps);
 
         if (!$precisaRender && !empty($allOps)) {
             return [

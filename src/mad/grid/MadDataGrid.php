@@ -326,6 +326,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Relacoes derivadas das chains (colunas + quebra) para o with() da consulta. */
     protected array $_autoWith = [];
     private bool $_renderFieldsDetected = false;
+    /** Colunas calculadas já aplicadas nos itens desta carga (campo => true). */
+    private array $_evaluated = [];
+    /**
+     * As linhas desta carga foram montadas JÁ com as colunas do `<mad-grid
+     * self>`? Numa ação AJAX a consulta roda antes do render, quando as
+     * colunas do Blade ainda não chegaram (ver _buildRows).
+     */
+    private bool $_rowsFromInline = false;
+    /**
+     * Colunas cujo total do rodapé soma só a PÁGINA exibida (campo => true),
+     * preenchido pelo _footerTotals() — a tela avisa nessas células.
+     */
+    protected array $_totalsPageOnly = [];
 
     /** @internal Sinaliza ao MadComponentHandler que dados internos foram carregados. */
     /** Quando true, _needsFullRender retorna false mesmo com _dataLoaded — usado por onInlineSave. */
@@ -726,6 +739,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($target === '') {
             return (new \Mad\Http\MadResponse())->toast(__('grid.bulk_unavailable'), 'warning');
         }
+        // O botão desta ação não está na barra (perfil sem ela): o pedido
+        // forjado também não abre a tela.
+        $perm = $this->_bulkDecision($cfg);
+        if ($perm['mode'] !== 'allow') {
+            return (new \Mad\Http\MadResponse())->toast($perm['title'] !== '' ? $perm['title'] : __('grid.bulk_unavailable'), 'warning');
+        }
 
         $ids = $this->selectedIds();
         $min = (int) ($cfg['min'] ?? 1);
@@ -800,19 +819,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
         $this->_syncSelection();
 
-        // Ação em lote de método barrada pelo perfil: o botão fica cinza com o
-        // motivo (mesma regra das ações de linha) — o gate recusaria o clique.
+        // Ação em lote barrada pelo perfil — mesma regra das ações de linha e
+        // dos <mad-btn>, pela preferência "Ações sem permissão": some da barra
+        // (`hidden`, modo Ocultos) ou fica cinza com o motivo (`deny`, modo
+        // Desabilitados). Antes só existia o cinza, e com Ocultos todos os
+        // outros botões sumiam menos este. A ação NÃO sai da lista: o índice
+        // dela é o que o navegador manda de volta (onBulkOpen(índice)).
         $bulk = array_values($this->bulkActions);
         foreach ($bulk as &$b) {
-            $b['deny'] = '';
-            $method = (string) ($b['method'] ?? '');
-            if ($method === '') continue;
-            try {
-                $key = \Mad\Security\PermissionGate::deniedActionKey($this, $method);
-                if ($key !== null) $b['deny'] = \Mad\Security\ActionVocab::denyTitle($key);
-            } catch (\Throwable $e) {
-                // sem sessão de permissões: liberado, como as ações de linha
-            }
+            $perm        = $this->_bulkDecision($b);
+            $b['hidden'] = $perm['mode'] === 'hide';
+            $b['deny']   = $perm['mode'] === 'disable' ? $perm['title'] : '';
         }
         unset($b);
 
@@ -822,6 +839,44 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'bulkActions'    => $bulk,
             'selectionField' => MadGridSelection::REQUEST_FIELD . '[' . $this->_selectionStorageKey() . ']',
         ];
+    }
+
+    /**
+     * O que o perfil diz sobre UMA ação em lote: allow | hide | disable (+ a
+     * dica do botão recusado).
+     *
+     * `method`: quem responde é a tela dona do grid — a mesma pergunta que o
+     * servidor faz ao receber o clique (PermissionGate::deniedActionKey).
+     * `target`: a ação abre outra tela, então responde a tela de DESTINO, como
+     * num `<mad-nav>`.
+     *
+     * @return array{mode: 'allow'|'hide'|'disable', title: string}
+     */
+    protected function _bulkDecision(array $b): array
+    {
+        $livre  = ['mode' => 'allow', 'title' => ''];
+        $method = (string) ($b['method'] ?? '');
+        $target = (string) ($b['target'] ?? '');
+
+        try {
+            if ($method !== '') {
+                $key = \Mad\Security\PermissionGate::deniedActionKey($this, $method);
+
+                return $key === null ? $livre : [
+                    'mode'  => \Mad\Security\ActionGuard::mode() === 'hide' ? 'hide' : 'disable',
+                    'title' => \Mad\Security\ActionVocab::denyTitle($key),
+                ];
+            }
+            if ($target !== '') {
+                $d = \Mad\Security\ActionGuard::decide($target, (string) ($b['targetMethod'] ?? 'show') ?: 'show');
+
+                return ['mode' => $d['mode'], 'title' => (string) $d['title']];
+            }
+        } catch (\Throwable $e) {
+            // sem sessão de permissões: liberado, como as ações de linha
+        }
+
+        return $livre;
     }
 
     /**
@@ -860,6 +915,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (in_array(strtolower($prop), ['selectable', 'selection', 'bulkactions'], true)) {
             return false;
         }
+        // Idem a trava de carga: `require-filter` e `no-auto-load` vêm do Blade
+        // e ficam no state — `mad_model[requireFilter]=0` numa requisição
+        // qualquer destravava a consulta sem filtro que a opção existe para
+        // impedir. `perPageLocked` só muda pelo onPerPage().
+        if (in_array($prop, ['requireFilter', 'autoLoad', 'loadRequested', 'perPageLocked'], true)) {
+            return false;
+        }
         return parent::_isModelAssignable($prop);
     }
 
@@ -869,6 +931,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function updated(string $prop, mixed $value): void
     {
         parent::updated($prop, $value);
+        // "Por página" ligado a um campo da tela (mad:model="perPage") passa
+        // pelo mesmo teto do seletor — 0 aqui seria a listagem sem paginação.
+        if ($prop === 'perPage') {
+            $this->perPage = $this->_clampPerPage((int) $this->perPage);
+        }
         $this->_filtersUpdatedHook($prop, $value);
     }
 
@@ -1150,6 +1217,89 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     // ── Actions ──────────────────────────────────────────────────────────
 
+    /**
+     * As ações DA GRADE (página, "Por página", ordenar, filtrar, editar na
+     * célula, excluir embutido) têm parâmetros tipados, e o que chega neles vem
+     * do navegador. Um id em forma de lista, um nulo ou um texto onde cabe um
+     * número faziam o PHP lançar TypeError — erro 500/422 com o detalhe técnico
+     * na tela. Aqui a requisição malformada é recusada antes da chamada, com um
+     * aviso curto e sem alterar nada.
+     *
+     * Só os métodos declarados pelo framework: ação escrita na tela do app
+     * continua recebendo o que o MadWire mandar, como sempre.
+     */
+    public function _resolveAndCall(string $method, array $data = []): mixed
+    {
+        if ($data !== [] && array_is_list($data) && !$this->_actionArgsFit($method, $data)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: ' . static::class . '::' . static::_logSafe($method)
+                . ' recusado — argumentos fora do tipo esperado (usuario ' . static::_logUser() . ').'
+            );
+            $this->_skipFullRender = true;
+
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.bad_request'));
+        }
+
+        return parent::_resolveAndCall($method, $data);
+    }
+
+    /** Os argumentos posicionais cabem nos tipos que a ação declara? */
+    private function _actionArgsFit(string $method, array $args): bool
+    {
+        try {
+            $ref = new \ReflectionMethod($this, $method);
+        } catch (\ReflectionException) {
+            return true;   // __call (handler do <mad-grid>): não há assinatura
+        }
+        if (!str_starts_with($ref->getDeclaringClass()->getName(), 'Mad\\')) {
+            return true;
+        }
+        if (count($args) < $ref->getNumberOfRequiredParameters()) {
+            return false;
+        }
+        foreach ($ref->getParameters() as $i => $param) {
+            if ($param->isVariadic() || !array_key_exists($i, $args)) {
+                break;
+            }
+            if (!static::_argFitsType($param->getType(), $args[$i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Mesma tolerância do PHP sem strict_types: "15" cabe em int, 15 cabe em string. */
+    private static function _argFitsType(?\ReflectionType $type, mixed $value): bool
+    {
+        if ($type === null) {
+            return true;
+        }
+        if ($value === null) {
+            return $type->allowsNull();
+        }
+        if ($type instanceof \ReflectionUnionType) {
+            foreach ($type->getTypes() as $t) {
+                if (static::_argFitsType($t, $value)) return true;
+            }
+
+            return false;
+        }
+        if (!($type instanceof \ReflectionNamedType) || !$type->isBuiltin()) {
+            return true;
+        }
+
+        return match ($type->getName()) {
+            'int'    => is_int($value) || is_bool($value)
+                        || ((is_float($value) || (is_string($value) && is_numeric($value)))
+                            && is_finite((float) $value) && (float) $value == floor((float) $value)),
+            'float'  => is_int($value) || is_float($value) || is_bool($value) || (is_string($value) && is_numeric($value)),
+            'string', 'bool' => is_scalar($value),
+            'array'  => is_array($value),
+            default  => true,
+        };
+    }
+
     public function onPage(int $page): void
     {
         $this->page = max(1, $page);
@@ -1181,63 +1331,224 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _isSortableField(string $field): bool
     {
+        return $this->_sortableColumn($field) !== null;
+    }
+
+    /**
+     * A coluna ordenável que responde por `$field` — ou null.
+     *
+     * Devolve a COLUNA (e não só sim/não) porque é ela que diz como ordenar:
+     * coluna calculada ordena pela fórmula, não por um nome de coluna. E
+     * "declarou `sortable`" não basta: coluna que só existe em PHP (fórmula sem
+     * tradução para o banco, saldo acumulado por expressão) não tem ORDER BY
+     * possível — a config crua do Blade guarda `sortable` e `evaluate` juntos,
+     * e uma requisição com o nome dela derrubava a listagem com erro de SQL.
+     */
+    private function _sortableColumn(string $field): ?GridColumn
+    {
         // Ordenar por `data|day` é ordenar pela COLUNA `data`: o sufixo só diz
         // como a quebra agrupa, não existe como identificador SQL.
         $field = GridRenderHelpers::groupGrainBase($field);
         if ($field === '') {
-            return false;
+            return null;
         }
 
         $configs = $this->exportColConfigs;
         if (empty($configs)) {
-            $configs = array_map(
-                fn($c) => ['field' => $c->field, 'sortable' => $c->sortable],
-                $this->_effectiveColumns()
-            );
+            foreach ($this->_effectiveColumns() as $c) {
+                // _effectiveColumns() já passou pelo _normalizeSortable().
+                if ($c instanceof GridColumn && $c->sortable && $c->field === $field) {
+                    return $c;
+                }
+            }
+
+            return null;
         }
 
         foreach ($configs as $c) {
-            if (!empty($c['sortable']) && ($c['field'] ?? '') === $field) {
-                return true;
+            if (is_array($c) && !empty($c['sortable']) && ($c['field'] ?? '') === $field) {
+                $col = static::_colFromConfig($c);
+
+                return $this->_columnHasOrderBy($col) ? $col : null;
             }
         }
-        return false;
+
+        return null;
     }
 
     /**
-     * $field e uma coluna declarada `editable` nesta grid?
+     * Existe ORDER BY para esta coluna? Só as que vivem em PHP ficam de fora:
+     * saldo acumulado por expressão (o campo é sintético) e coluna calculada
+     * cuja fórmula o banco não reproduz (ver _evaluateOrderSql).
+     */
+    private function _columnHasOrderBy(GridColumn $col): bool
+    {
+        if ($col->isRunning() && $col->running !== 'self') {
+            return false;
+        }
+        if ($col->evaluate !== '') {
+            return $this->_evaluateOrderSql($col->evaluate) !== null;
+        }
+
+        return true;
+    }
+
+    /**
+     * A fórmula de uma coluna calculada como expressão de ORDER BY sobre a
+     * tabela do Model — a mesma tradução do total do rodapé (GridTotalsQuery).
+     * null = a fórmula usa algo que o banco não tem (caminho de relação, texto,
+     * atributo calculado no Model) ou a listagem não tem Model.
+     */
+    private function _evaluateOrderSql(string $expr): ?string
+    {
+        if (array_key_exists($expr, $this->_evaluateSqlMemo)) {
+            return $this->_evaluateSqlMemo[$expr];
+        }
+
+        $sql = null;
+        try {
+            $class = (!empty($this->model) && !class_exists($this->model))
+                ? \Mad\Form\ModelOptionsLoader::resolveModelClass($this->model)
+                : $this->model;
+            if (is_string($class) && $class !== '' && is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+                $sql = GridTotalsQuery::evaluateSql(new $class(), $expr);
+            }
+        } catch (\Throwable) {
+            $sql = null;
+        }
+
+        return $this->_evaluateSqlMemo[$expr] = $sql;
+    }
+
+    /** @var array<string, ?string> fórmula => SQL (ou null), por requisição */
+    private array $_evaluateSqlMemo = [];
+
+    /**
+     * A coluna `editable` desta grid que responde por `$field` — ou null.
      *
      * Allowlist de ESCRITA do `onInlineSave`, na mesma fonte que a allowlist
      * de ORDER BY (`_isSortableField`) e a de filtro (`_declaredFilter`):
-     * `exportColConfigs` (publico, viaja no `mad_state`, que e AES-256-GCM
-     * autenticado — o cliente nao forja) com fallback para
+     * `exportColConfigs` (público, viaja no `mad_state`, que é AES-256-GCM
+     * autenticado — o cliente não forja) com fallback para
      * `_effectiveColumns()`, que cobre a grid declarada em `columns()` na
      * subclasse e o primeiro render da grid do Blade.
      *
-     * Estar NA grid nao basta: a coluna precisa ser `editable`. Grid sem
+     * Estar NA grid não basta: a coluna precisa ser `editable`. Grid sem
      * coluna alguma (config perdido) recusa tudo — falha FECHADO.
+     *
+     * Devolve a COLUNA (e não só sim/não) porque é ela que diz o que o valor
+     * pode ser: tipo do editor, mínimo, máximo e opções.
      */
-    private function _isEditableField(string $field): bool
+    private function _editableColumn(string $field): ?GridColumn
     {
         if ($field === '') {
-            return false;
+            return null;
         }
 
         $configs = $this->exportColConfigs;
         if (empty($configs)) {
-            $configs = array_map(
-                fn($c) => ['field' => $c->field, 'editable' => $c->editable],
-                $this->_effectiveColumns()
-            );
+            foreach ($this->_effectiveColumns() as $c) {
+                if ($c instanceof GridColumn && $c->editable && $c->field === $field) {
+                    return $c;
+                }
+            }
+
+            return null;
         }
 
         foreach ($configs as $c) {
-            if (!empty($c['editable']) && ($c['field'] ?? '') === $field) {
-                return true;
+            if (is_array($c) && !empty($c['editable']) && ($c['field'] ?? '') === $field) {
+                return static::_colFromConfig($c);
             }
         }
 
-        return false;
+        return null;
+    }
+
+    /**
+     * O registro `$id`, se for uma linha que ESTA listagem mostra.
+     *
+     * As ações que recebem o id do navegador (editar na célula, excluir) não
+     * podem buscar com `find()`: ele alcança qualquer linha da tabela, e o que
+     * restringe a listagem a um dono, a uma situação, a uma unidade é a
+     * CONSULTA dela — `:filters` do Blade, o `onSearch()`, o filtro por
+     * unidade. A busca aqui é essa mesma consulta, mais a chave.
+     *
+     * Duas passadas: com os filtros que o usuário tem na tela e, se não achar,
+     * sem eles. O filtro digitado e ainda não aplicado viaja em toda requisição
+     * (`mad:model`) e esconderia da consulta uma linha que continua na tela; e a
+     * tela que só lista com filtro preenchido não mostraria nada na segunda. Os
+     * filtros do usuário só ESTREITAM a consulta — o recorte fixo vale nas duas.
+     *
+     * Tela com `query()` próprio monta a consulta por conta: não há como
+     * reproduzi-la aqui, e vale o `find()` do Model (escopos globais inclusive).
+     */
+    protected function _visibleRecord(int|string $id): ?object
+    {
+        if (empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class)) {
+            return null;
+        }
+        if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class) {
+            return $this->model::find($id);
+        }
+
+        return $this->_queryRecord($id)
+            ?? $this->_withoutUserFilters(fn () => $this->_queryRecord($id));
+    }
+
+    /** A consulta da listagem (a mesma do loadData) restrita a uma chave. */
+    private function _queryRecord(int|string $id): ?object
+    {
+        $q = $this->_buildQuery();
+        if (!method_exists($q, 'whereKey')) {
+            return null;
+        }
+        $q->whereKey($id);
+        if ($this->searchQuery) {
+            ($this->searchQuery)($q);
+        }
+
+        return $q->first();
+    }
+
+    /**
+     * Roda `$fn` com os filtros do USUÁRIO em branco — período, filtros da
+     * tela (props e campos do bloco de filtros), busca rápida, filtros de
+     * coluna e filtro avançado — e devolve tudo como estava. O que a tela fixa
+     * (`:filters`, `onSearch()`, unidade, contexto em `$notFilterProps`) fica.
+     */
+    private function _withoutUserFilters(callable $fn): mixed
+    {
+        $props = array_merge(
+            ['mes', 'ano', 'dtIni', 'dtFim', 'preset', 'search', 'filters', 'filterOps', 'colFilters', 'customFilterState'],
+            $this->discoverFilterProps()
+        );
+        $saved = [];
+        foreach ($props as $name) {
+            $saved[$name] = $this->$name;
+            $this->$name  = is_array($this->$name) ? [] : '';
+        }
+        $form   = (isset($this->form) && $this->form instanceof \Mad\Form\MadForm) ? $this->form : null;
+        $fields = $form?->fields;
+        if ($form !== null) {
+            // As chaves ficam (o onSearch lê `$data->campo`); só os valores saem.
+            // O fill([]) não muda campo nenhum: só descarta o getData() em cache,
+            // que ainda traria os valores da primeira passada.
+            $form->fields = array_map(fn ($v) => is_array($v) ? [] : '', $fields);
+            $form->fill([]);
+        }
+
+        try {
+            return $fn();
+        } finally {
+            foreach ($saved as $name => $value) {
+                $this->$name = $value;
+            }
+            if ($form !== null) {
+                $form->fields = $fields;
+                $form->fill([]);
+            }
+        }
     }
 
     /**
@@ -1308,6 +1619,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // avançado inclusive (as props dele ficam fora da descoberta da trait,
         // que é quem zera o resto).
         $this->_cfClearRules();
+        $this->_resetNavigationFilters();
         if ($this->autoLoad) {
             $this->_traitOnLimpar();
             return;
@@ -1319,6 +1631,25 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->syncFormFields();
         $this->saveFilterSession();
         $this->_resetToDeferred();
+    }
+
+    /**
+     * Busca rápida, filtros de coluna, ordenação escolhida e seleção: o que o
+     * "Limpar" sempre zerou do estado da grade. Antes isso acontecia por
+     * acidente — a descoberta da trait tomava TODA prop pública da grade por
+     * filtro e zerava junto a config (filtro fixo, colunas, ações em lote), que
+     * só voltava porque o render do Blade a reaplicava. A descoberta agora só
+     * enxerga os filtros da tela; estes continuam sendo zerados aqui.
+     */
+    protected function _resetNavigationFilters(): void
+    {
+        $this->search     = '';
+        $this->filters    = [];
+        $this->filterOps  = [];
+        $this->colFilters = [];
+        $this->sortBy     = '';
+        $this->sortDir    = '';
+        $this->selection  = [];
     }
 
     /**
@@ -1499,54 +1830,399 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     public function onPerPage(int $perPage): void
     {
-        $this->perPage       = max(5, $perPage);
+        $this->perPage       = $this->_clampPerPage($perPage);
         $this->perPageLocked = true; // escolha explícita do usuário tem prioridade sobre o per-page do Blade
         $this->page          = 1;
         $this->loadData();
     }
 
+    /**
+     * "Por página" que o usuário pode pedir: de 5 até a maior opção do seletor
+     * (100) — ou até o que a própria tela declara, quando é mais (relatório com
+     * `per-page="500"`). O número vem do navegador: sem teto, uma requisição
+     * pedia a tabela inteira numa página só.
+     */
+    protected function _clampPerPage(int $perPage): int
+    {
+        return min(max(5, $perPage), $this->_maxPerPage());
+    }
+
+    /** Maior "por página" aceito: 100 ou o declarado pela tela (classe / Blade). */
+    protected function _maxPerPage(): int
+    {
+        // O per-page do <mad-grid self> só chega no render; nas ações AJAX
+        // vale a cópia da config que o último render deixou na sessão.
+        $cfg = $this->_bladeGridConfig();
+        if ($cfg === []) {
+            $cached = session(static::class . '_dg_cfg');
+            $cfg    = is_array($cached) ? $cached : [];
+        }
+        $declared = (new \ReflectionClass(static::class))->getDefaultProperties()['perPage'] ?? 0;
+
+        return max(100, (int) $declared, (int) ($cfg['perPage'] ?? 0));
+    }
+
+    /**
+     * Edição na célula: grava UMA coluna de UMA linha.
+     *
+     * Tudo o que chega aqui vem do navegador — a chave da linha, o nome da
+     * coluna e o valor — e a atribuição é direta (`$record->coluna = ...`, que
+     * NÃO passa pelo `$fillable` do Model). Então o servidor confere os três:
+     *
+     *  1. a linha é uma que esta listagem mostra (_visibleRecord);
+     *  2. a coluna foi declarada `editable` (_editableColumn);
+     *  3. o valor cabe no que a coluna declara — número, mínimo, máximo, uma
+     *     das opções, data válida — e na regra do campo em `Model::rules()`.
+     *
+     * Mínimo, máximo e opções eram conferidos só pelo editor do navegador (e
+     * nem por ele: Enter no campo numérico gravava -5 com `edit-min="0"`).
+     *
+     * Recusa nunca grava: a linha volta do banco (a edição da tela é desfeita)
+     * com o motivo na célula e num aviso.
+     */
     public function onInlineSave(int|string $id, string $field, mixed $value): \Mad\Http\MadResponse
     {
         $resp = new \Mad\Http\MadResponse();
         if (empty($this->model)) return $resp;
 
-        // Allowlist ANTES de qualquer escrita. Este handler e publico, logo
-        // despachavel pelo MadWire com `$field` escolhido pelo cliente, e a
-        // atribuicao abaixo e direta ($record->$field = ...), que NAO passa
-        // pelo $fillable do model. Sem esta guarda, qualquer usuario que
-        // alcancasse uma grid gravava QUALQUER coluna da tabela — inclusive
-        // `is_admin` ou o hash de senha de outro registro.
-        if (! $this->_isEditableField($field)) {
+        // Só as ops voltam (a linha e o aviso): _skipFullRender faz o handler
+        // devolver `partial`, sem o html completo da grade.
+        $this->_skipFullRender = true;
+
+        $record = $this->_visibleRecord($id);
+        if ($record === null) {
             \Illuminate\Support\Facades\Log::warning(
-                'MadDataGrid: onInlineSave recusado — coluna "' . $field . '" nao e editavel em '
-                . static::class . ' (registro ' . $id . ').'
+                'MadDataGrid: onInlineSave recusado — registro ' . static::_logSafe((string) $id)
+                . ' nao esta na listagem ' . static::class . ' (usuario ' . static::_logUser() . ').'
             );
-            // Devolve a linha do banco: a edicao otimista da tela e desfeita.
-            $this->_skipFullRender = true;
+            // Sem manageRow: redesenhar a linha entregaria um registro que a
+            // listagem não mostra.
+            return $resp->toast(mad_t('mad.error.row_gone'), 'warning');
+        }
+
+        // Allowlist ANTES de qualquer escrita: sem ela, qualquer usuário que
+        // alcançasse uma grid gravava QUALQUER coluna da tabela — inclusive
+        // `is_admin` ou o hash de senha de outro registro.
+        $col    = $this->_editableColumn($field);
+        // `field="{estoque}"` (ref rename-safe resolvida no deploy) é a coluna
+        // `estoque`; caminho de relação e máscara não são coluna gravável.
+        $column = static::_unbrace($field);
+        if ($col === null || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: onInlineSave recusado — coluna "' . static::_logSafe($field) . '" nao e editavel em '
+                . static::class . ' (registro ' . static::_logSafe((string) $id) . ').'
+            );
+            // Devolve a linha do banco: a edição otimista da tela é desfeita.
             return $resp->manageRow($id, static::class);
         }
 
-        $db = $this->_db();
-        \Illuminate\Support\Facades\DB::connection($db)->transaction(function () use ($id, $field, $value) {
-            $modelClass = $this->model;
-            $record = $modelClass::find($id);
-            if ($record) {
-                $record->$field = ($value === '') ? null : $value;
-                $record->save();
+        $error = $this->_inlineValueError($col, $column, $value, $record);
+        if ($error === null) {
+            try {
+                $saved = \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(
+                    function () use ($record, $column, $value) {
+                        $record->$column = ($value === '' || $value === null) ? null : $value;
+
+                        return $record->save();
+                    }
+                );
+                // `saving`/`updating` do Model devolvendo false: nada foi gravado.
+                if ($saved === false) {
+                    $error = mad_t('mad.error.cell_not_saved');
+                }
+            } catch (\Throwable $e) {
+                // Erro técnico (tipo da coluna, índice único) não vai cru pra
+                // tela; recusa do próprio Model (exceção de domínio) vai.
+                $error = \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onInlineSave');
             }
-        });
+        }
 
         // Atualiza apenas a linha editada — sem full re-render da listagem.
-        // _skipFullRender garante que o handler retorne `partial` (so as ops),
-        // sem o html completo da grade. O manageRow gera highlight + re-init.
-        $this->_skipFullRender = true;
-        return $resp->manageRow($id, static::class);
+        // O manageRow gera highlight + re-init.
+        $resp->manageRow($id, static::class);
+        if ($error === null) {
+            // O rodapé de totais acompanha o valor gravado (a grade não é
+            // redesenhada: só as células do total são trocadas).
+            if (($totals = $this->_totalsOp()) !== null) {
+                $resp->ops[] = $totals;
+            }
+
+            return $resp;
+        }
+
+        // Motivo na própria célula (mad.js lê `cellError` do manage_row) e no
+        // aviso — que é o que aparece na visão em cartões.
+        $resp->ops[array_key_last($resp->ops)]['cellError'] = ['col' => $col->fieldKey, 'message' => $error];
+        $label = trim(strip_tags((string) $col->label));
+
+        return $resp->toast($label !== '' ? $label . ': ' . $error : $error, 'danger');
+    }
+
+    /**
+     * Por que `$value` não pode ir para a coluna — ou null se pode.
+     *
+     * Vazio é "limpar a célula" (grava NULL) em todo tipo, menos no select de
+     * opções fixas, onde só vale o que a lista oferece. Quem diz se a coluna
+     * aceita ficar vazia é a regra do campo em `Model::rules()`.
+     */
+    private function _inlineValueError(GridColumn $col, string $column, mixed $value, object $record): ?string
+    {
+        if (is_array($value) || is_object($value)) {
+            return mad_t('mad.error.cell_invalid');
+        }
+        if (is_bool($value)) {
+            $value = $value ? '1' : '0';
+        }
+        $empty = $value === null || $value === '';
+
+        switch ($col->editType) {
+            case 'number':
+            case 'numeric':
+            case 'money':
+            case 'spinner':
+                if ($empty) break;
+                if (!is_numeric($value)) {
+                    return mad_t('mad.error.cell_number');
+                }
+                $n = (float) $value;
+                if ($col->editMin !== null && $n < $col->editMin) {
+                    return mad_t('mad.error.cell_min', ['min' => static::_plainNumber($col->editMin)]);
+                }
+                if ($col->editMax !== null && $n > $col->editMax) {
+                    return mad_t('mad.error.cell_max', ['max' => static::_plainNumber($col->editMax)]);
+                }
+                break;
+
+            case 'select':
+                if (!array_key_exists((string) $value, $col->editOpts)) {
+                    return mad_t('mad.error.cell_option');
+                }
+                break;
+
+            case 'dbcombo':
+            case 'dbunique-search':
+                if (!$empty && !$this->_inlineOptionExists($col, $value)) {
+                    return mad_t('mad.error.cell_option');
+                }
+                break;
+
+            case 'date':
+            case 'datetime':
+                if (!$empty && !static::_isIsoDate((string) $value)) {
+                    return mad_t('mad.error.cell_date');
+                }
+                break;
+        }
+
+        return $this->_inlineRuleError($col, $column, $empty ? null : $value, $record);
+    }
+
+    /**
+     * A regra do campo em `Model::rules($id)`, quando o Model a declara — a
+     * mesma que o formulário aplica. Só a da coluna editada, com o registro
+     * inteiro de contexto (regras que olham outro campo continuam valendo).
+     */
+    private function _inlineRuleError(GridColumn $col, string $column, mixed $value, object $record): ?string
+    {
+        $modelClass = get_class($record);
+        if (!method_exists($modelClass, 'rules')) {
+            return null;
+        }
+
+        try {
+            $key   = method_exists($record, 'getKey') ? $record->getKey() : null;
+            $rules = (new \ReflectionMethod($modelClass, 'rules'))->isStatic()
+                ? $modelClass::rules($key)
+                : $record->rules($key);
+            if (!is_array($rules)) {
+                return null;
+            }
+            // A chave pode vir como 'campo|Rótulo' (mesma convenção do MadForm::validate).
+            $rule  = null;
+            $label = trim(strip_tags((string) $col->label));
+            foreach ($rules as $key => $r) {
+                [$name, $keyLabel] = array_pad(explode('|', (string) $key, 2), 2, '');
+                if ($name === $column) {
+                    $rule  = $r;
+                    $label = $label !== '' ? $label : trim($keyLabel);
+                    break;
+                }
+            }
+            if ($rule === null) {
+                return null;
+            }
+
+            $data          = method_exists($record, 'getAttributes') ? (array) $record->getAttributes() : [];
+            $data[$column] = $value;
+            $errors        = \Mad\Form\MadValidator::validate(
+                $data,
+                [$column => $rule],
+                [],
+                [$column => $label !== '' ? $label : $column]
+            );
+
+            return $errors === [] ? null : (string) reset($errors);
+        } catch (\Throwable $e) {
+            // rules() quebrado não pode travar uma edição que o editor aceitou:
+            // as conferências da coluna já rodaram. O motivo fica no log.
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: rules() de ' . $modelClass . ' falhou na edicao da celula "' . $column . '": ' . $e->getMessage()
+            );
+
+            return null;
+        }
+    }
+
+    /** O valor é uma das opções que o editor dbcombo/dbunique-search oferece (`edit-filters` inclusive)? */
+    private function _inlineOptionExists(GridColumn $col, mixed $value): bool
+    {
+        if (empty($col->editModel)) {
+            return false;
+        }
+
+        try {
+            $model = class_exists($col->editModel)
+                ? $col->editModel
+                : \Mad\Form\ModelOptionsLoader::resolveModelClass($col->editModel);
+            $q = $model::query();
+            if (!empty($col->editFilters)) {
+                \Mad\Database\QuerySource::applyArrayFilters($q, $col->editFilters);
+            }
+
+            return $q->where($col->editKey ?: 'id', '=', $value)->exists();
+        } catch (\Throwable $e) {
+            \Mad\Form\OptionsLoadError::report($e, 'edição na grade (conferência da opção)', [
+                'field' => (string) $col->field,
+                'model' => (string) $col->editModel,
+            ]);
+
+            return false;
+        }
+    }
+
+    /** `Y-m-d`, com hora opcional (`H:i` ou `H:i:s`, separada por espaço ou T) — o que os editores de data mandam. */
+    private static function _isIsoDate(string $value): bool
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)?$/', trim($value), $m)) {
+            return false;
+        }
+
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+    }
+
+    /** 0.0 → "0", 2.5 → "2.5": o limite como foi declarado na coluna. */
+    private static function _plainNumber(float $n): string
+    {
+        return $n == (int) $n ? (string) (int) $n : (string) $n;
+    }
+
+    /** Texto vindo do navegador que vai para o log: curto e sem quebra de linha. */
+    private static function _logSafe(string $value): string
+    {
+        return (string) preg_replace('/[^A-Za-z0-9_\-.:{}>]/', '?', substr($value, 0, 64));
+    }
+
+    /** Usuário da sessão para o log ("-" sem sessão). */
+    private static function _logUser(): string
+    {
+        try {
+            $quem = function_exists('session') ? session('userid') : null;
+        } catch (\Throwable) {
+            $quem = null;
+        }
+
+        return is_scalar($quem) && $quem !== '' ? (string) $quem : '-';
     }
 
     /** Força re-render recarregando os dados. */
     public function refresh(): void
     {
         $this->loadData();
+    }
+
+    /**
+     * Só o rodapé de totais, sem redesenhar a grade. O navegador chama depois
+     * que UMA linha mudou sem a listagem recarregar — o formulário em cortina
+     * lateral que salva e devolve a linha (manageRow), o Excluir que tira a
+     * linha (removeRow) —, para o total não ficar com o valor de antes.
+     */
+    public function onMadGridTotals(): \Mad\Http\MadResponse
+    {
+        $this->_skipFullRender = true;
+        $resp = new \Mad\Http\MadResponse();
+        if (!$this->_isDeferred() && ($op = $this->_totalsOp()) !== null) {
+            $resp->ops[] = $op;
+        }
+
+        return $resp;
+    }
+
+    /**
+     * A op `grid_totals`: chave da coluna => conteúdo novo da célula do rodapé
+     * (mad.js troca só os `[data-mad-total]` desta grade). null = a listagem
+     * não tem total.
+     *
+     * As linhas em memória numa ação são as do hydrate(), de ANTES do que a
+     * ação gravou: recarrega, para a coluna que soma a página (a que o banco
+     * não calcula) também sair com o valor novo.
+     */
+    protected function _totalsOp(): ?array
+    {
+        $columns = $this->_actionColumns();
+        if (!array_filter($columns, fn ($c) => $c instanceof GridColumn && !empty($c->totalFunc))) {
+            return null;
+        }
+
+        $this->_detectRenderFields($columns);
+        $this->loadData();
+        if (!$this->_dataLoaded) {
+            return null;   // filtro obrigatório vazio: nada carregado
+        }
+        $this->_buildRows($columns);
+
+        $totals = $this->_footerTotals($columns);
+        $cells  = [];
+        foreach ($columns as $col) {
+            if ($col instanceof GridColumn && isset($totals[$col->field])) {
+                $cells[$col->fieldKey] = static::totalCellHtml($totals[$col->field], !empty($this->_totalsPageOnly[$col->field]));
+            }
+        }
+
+        return ['op' => 'grid_totals', 'gridKey' => str_replace('\\', '_', static::class), 'totals' => $cells];
+    }
+
+    /**
+     * Colunas numa AÇÃO: as do `<mad-grid self>` só existem no render — aqui
+     * vale a cópia que o último render deixou no estado (exportColConfigs).
+     *
+     * @return GridColumn[]
+     */
+    protected function _actionColumns(): array
+    {
+        $columns = $this->_effectiveColumns();
+        if (empty($columns) && !empty($this->exportColConfigs)) {
+            $columns = $this->_normalizeFilterTokens($this->_normalizeSortable(
+                array_map(fn ($c) => static::_colFromConfig($c), $this->exportColConfigs)
+            ));
+        }
+
+        return $columns;
+    }
+
+    /**
+     * Conteúdo de uma célula do rodapé de totais: o número e, quando a coluna
+     * soma só a página exibida, o aviso embaixo. Um lugar só — o Blade (render)
+     * e a op `grid_totals` (atualização no lugar) escrevem o mesmo HTML.
+     */
+    public static function totalCellHtml(string $total, bool $pageOnly): string
+    {
+        if (!$pageOnly) {
+            return $total;
+        }
+
+        return $total . '<span class="mad-dg-total-scope" title="'
+            . htmlspecialchars((string) __('grid.page_total_title'), ENT_QUOTES) . '">'
+            . htmlspecialchars((string) __('grid.page_total_hint'), ENT_QUOTES) . '</span>';
     }
 
     // ── Exportação ──────────────────────────────────────────────────────
@@ -1959,13 +2635,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->_returnSnapshotSuspended = false;
         }
 
-        // Re-normaliza com render fields se necessário
-        if (!empty($this->_renderFields) && !empty($this->_rawItems)) {
-            $this->_rows = $this->_normalizeRows($this->_rawItems);
-            // A re-normalização reconstrói $_rows dos items crus e apagaria o
-            // saldo acumulado / a linha descritiva materializados no loadData.
-            $this->_groupLabelCache = $this->_resolveGroupLabels();
-            $this->_postProcessRows($columns);
+        // No AJAX de export as colunas do `<mad-grid self>` vêm do estado
+        // (exportColConfigs), e o loadData() acima não as conhece: monta as
+        // linhas de novo com elas — colunas calculadas, campos de relação,
+        // saldo acumulado e linha descritiva. Sem isto a coluna calculada saía
+        // zerada no PDF.
+        if (!empty($this->_rawItems)) {
+            $this->_buildRows($columns);
         }
 
         // Período é recalculado (o state dos filtros round-tripa e é a verdade);
@@ -2655,7 +3331,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                                 : 1,
             'actions'      => $this->_effectiveActions(),
             'actionGroups' => $this->_effectiveActionGroups(),
-            'totals'       => $this->_computeTotals($columns),
+            'totals'       => $this->_footerTotals($columns),
+            'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
@@ -2861,14 +3538,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($returned) {
                 $this->_afterReturnLoad();
             }
-        } elseif (!empty($this->_renderFields) && !empty($this->_rawItems)) {
-            // Dados já foram carregados sem render fields — renormalizar.
-            // Os rótulos da quebra vão junto: o group-mask do Blade só chega
-            // AQUI, depois do loadData() do mount(), e um cache calculado antes
-            // dele deixaria `{relacao->campo}` literal na banda.
-            $this->_rows = $this->_normalizeRows($this->_rawItems);
-            $this->_groupLabelCache = $this->_resolveGroupLabels();
-            $this->_postProcessRows($columns);
+        } elseif (!$this->_rowsFromInline && !empty($this->_rawItems)) {
+            // A carga rodou antes de as colunas do Blade chegarem (mount() da
+            // subclasse, ou a consulta de uma ação AJAX): monta as linhas de
+            // novo, agora com as colunas calculadas, os campos de relação, o
+            // saldo acumulado e os rótulos da quebra — o group-mask do Blade
+            // também só chega AQUI.
+            $this->_buildRows($columns);
         }
         $colsConfig = static::_colsClientConfig($columns);
 
@@ -2887,7 +3563,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                                 : 1,
             'actions'      => $this->_effectiveActions(),
             'actionGroups' => $this->_effectiveActionGroups(),
-            'totals'       => $this->_computeTotals($columns),
+            'totals'       => $this->_footerTotals($columns),
+            'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
@@ -2996,8 +3673,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if (! ($col instanceof GridColumn) || ! $col->sortable) continue;
             // Saldo acumulado por EXPRESSÃO não tem coluna no banco (o field é
             // sintético): oferecer o clique geraria ORDER BY sobre coluna
-            // inexistente e derrubaria a listagem.
-            if ($col->isRunning() && $col->running !== 'self') {
+            // inexistente e derrubaria a listagem. Coluna calculada idem,
+            // quando a fórmula não tem tradução para o banco; quando tem, o
+            // clique ordena pela fórmula (ver _buildQuery).
+            if (! $this->_columnHasOrderBy($col)) {
                 $col->sortable = false;
                 continue;
             }
@@ -3310,7 +3989,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public static function _actFromConfig(array $a, string $owner = ''): ?GridAction
     {
         $method = $a['method'] ?? '';
-        if (empty($method) && empty($a['isNav'])) return null;
+        if (empty($method) && empty($a['isNav'])) {
+            // O compilador do <mad-grid> já avisa (e nem emite a ação); aqui é
+            // a config montada à mão.
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: ação de linha sem method nem navegação — ignorada'
+                . (trim((string) ($a['label'] ?? '')) !== '' ? ' ("' . self::_logSafe((string) $a['label']) . '")' : '') . '.'
+            );
+
+            return null;
+        }
 
         // Nav action sem method explícito: gera nome interno
         if (empty($method) && !empty($a['isNav'])) {
@@ -3322,6 +4010,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($a['label']))   $act->label($a['label']);
         if (!empty($a['icon']))    $act->icon($a['icon']);
         if (!empty($a['confirm'])) $act->confirm($a['confirm']);
+        // `confirm-popover` era compilado e nunca lido: a ação configurada para
+        // perguntar no popover executava direto, sem perguntar.
+        if (!empty($a['confirmPopover'])) $act->confirmPopover = (string) $a['confirmPopover'];
+        if (!empty($a['title']))   $act->title((string) $a['title']);
+        if (!empty($a['color']))   $act->color((string) $a['color']);
         if (!empty($a['danger']))  $act->danger();
         if (!empty($a['primary'])) $act->primary();
         if (!empty($a['idField'])) $act->idField($a['idField']);
@@ -3478,30 +4171,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $result = $this->_autoQuery();
             }
 
-            $items = $result['items'] ?? [];
-
-            // Evaluate: resolve computed columns before normalization
-            $columns   = $this->_effectiveColumns();
-            $evaluates = [];
-            foreach ($columns as $col) {
-                if ($col->evaluate !== '') {
-                    $evaluates[$col->field] = $col->evaluate;
-                }
-            }
-            if (!empty($evaluates) && !empty($items)) {
-                $this->_applyEvaluates($items, $evaluates);
-            }
-
-            $this->_rawItems = $items;
-            $this->_rows    = $this->_normalizeRows($items);
-            $this->_total   = (int)($result['total'] ?? count($this->_rows));
-
-            // Pre-resolve group mask labels que dependem de relacionamentos
-            $this->_groupLabelCache = $this->_resolveGroupLabels();
-
-            // Saldo acumulado + linha descritiva: materializados em $_rows para
-            // que tela, totais, CSV, XLSX e PDF leiam exatamente o mesmo dado.
-            $this->_postProcessRows($columns);
+            $this->_rawItems  = $result['items'] ?? [];
+            $this->_evaluated = [];
+            $this->_buildRows($this->_effectiveColumns());
+            $this->_total     = (int)($result['total'] ?? count($this->_rows));
 
             $this->_saveToSession();
             $this->_saveReturnSnapshot();
@@ -3510,6 +4183,48 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->_total = 0;
             throw $e;
         }
+    }
+
+    /**
+     * Dos itens crus da consulta ($_rawItems) às linhas da tela ($_rows):
+     * colunas calculadas, normalização, rótulos da quebra, saldo acumulado e
+     * linha descritiva — materializados para que tela, totais, CSV, XLSX e PDF
+     * leiam exatamente o mesmo dado.
+     *
+     * Roda no loadData() e de novo no render do `<mad-grid self>` quando a
+     * carga aconteceu ANTES de as colunas do Blade chegarem: toda ação AJAX
+     * (página, busca, "Por página", ordenação, filtro) consulta primeiro e
+     * renderiza depois, e as colunas do `<mad-grid self>` só existem no
+     * render. Sem a segunda passada a coluna calculada saía 0,00 em toda
+     * resposta que não fosse a primeira abertura, e o total do rodapé junto.
+     *
+     * Cada fórmula é aplicada UMA vez por carga ($_evaluated): ela grava o
+     * resultado no próprio item, e reaplicar uma fórmula que lê o campo que
+     * escreve (`field="total" evaluate="{total} * 1.1"`) acumularia.
+     *
+     * @param GridColumn[] $columns
+     */
+    protected function _buildRows(array $columns): void
+    {
+        $evaluates = [];
+        foreach ($columns as $col) {
+            if ($col instanceof GridColumn && $col->evaluate !== '' && !isset($this->_evaluated[$col->field])) {
+                $evaluates[$col->field] = $col->evaluate;
+            }
+        }
+        if (!empty($evaluates) && !empty($this->_rawItems)) {
+            $this->_applyEvaluates($this->_rawItems, $evaluates);
+            $this->_evaluated += array_fill_keys(array_keys($evaluates), true);
+        }
+
+        $this->_rows = $this->_normalizeRows($this->_rawItems);
+
+        // Pre-resolve group mask labels que dependem de relacionamentos
+        $this->_groupLabelCache = $this->_resolveGroupLabels();
+
+        $this->_postProcessRows($columns);
+
+        $this->_rowsFromInline = $this->_inlineConfig !== null;
     }
 
 
@@ -3703,15 +4418,26 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // já validado, nunca orderBy() que escaparia).
         $orderExpr = '';
         $ordered   = false;   // já ordenado no builder (subquery de chain)
-        if (!empty($this->sortBy) && $this->_isSortableField($this->sortBy)) {
+        $sortCol   = !empty($this->sortBy) ? $this->_sortableColumn($this->sortBy) : null;
+        if ($sortCol !== null) {
             $dir = $this->sortDir === 'desc' ? 'desc' : 'asc';
             // `data|day` ordena pela coluna `data` — o sufixo de granularidade
             // não é identificador SQL e o OrderGuard rejeitaria.
             $sortField = GridRenderHelpers::groupGrainBase($this->sortBy);
+            // Coluna calculada: o campo só existe em PHP. Ordena pela FÓRMULA,
+            // escrita em SQL — só colunas da tabela (entre aspas do banco),
+            // números e operadores, nada que venha da requisição.
+            if ($sortCol->evaluate !== '') {
+                $evalSql = $this->_evaluateOrderSql($sortCol->evaluate);
+                if ($evalSql !== null) {
+                    $q->orderByRaw($evalSql . ' ' . $dir);
+                    $ordered = true;
+                }
+            }
             // '{rel->col}' não é identificador SQL — o OrderGuard rejeitaria e a
             // listagem 500 no clique do header. Traduz pra subquery correlacionada
             // (mesma conexão) ou desiste (outra conexão: ORDER BY não atravessa banco).
-            if (($chain = static::_chainParts($sortField)) !== null) {
+            elseif (($chain = static::_chainParts($sortField)) !== null) {
                 $ordered = $this->_applyChainOrder($q, $chain, $dir);
                 if (! $ordered) {
                     static::_warnOnce(
@@ -3898,10 +4624,113 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return GridRenderHelpers::normalizeRows($items, $this->_renderFields);
     }
 
-    /** Calcula totalizadores de rodapé (delega ao helper compartilhado). */
+    /**
+     * Totalizadores das linhas CARREGADAS ($_rows) — a página, na tela; tudo,
+     * na exportação (que carrega sem paginar). O rodapé da tela é o
+     * _footerTotals(), que parte deste e troca pelo total do banco.
+     */
     protected function _computeTotals(array $columns): array
     {
         return GridRenderHelpers::computeTotals($this->_rows, $columns);
+    }
+
+    /**
+     * Métodos que, sobrescritos pelo app, mudam as linhas ou a conta do total.
+     * Com qualquer um deles sobrescrito o rodapé fica com o que o código do app
+     * calcula (as linhas carregadas), sem consulta de total no banco.
+     */
+    private const TOTALS_QUERY_HOOKS = [
+        'query', '_autoQuery', '_runQuery', '_buildQuery', 'loadData', '_normalizeRows',
+        '_applyEvaluates', '_computeTotals',
+    ];
+
+    /**
+     * O rodapé de totais da TELA: campo => texto.
+     *
+     * Regra: o rodapé soma o RESULTADO INTEIRO da listagem — todas as linhas
+     * que passam pelos filtros, pela busca e pelo filtro fixo —, não a página
+     * exibida. É o mesmo número em qualquer página, com qualquer "Por página"
+     * e ordenação, e o mesmo "TOTAL GERAL" da exportação.
+     *
+     * O total vem de UMA consulta agregada no banco (GridTotalsQuery), feita
+     * no render: depois de editar na célula ou excluir, o número já é o novo.
+     * Listagem sem paginação (`per-page="0"`, o relatório) tem todas as linhas
+     * carregadas e soma em PHP, como a exportação.
+     *
+     * Coluna que o banco não calcula igual ao PHP (caminho de relação, saldo
+     * acumulado, atributo calculado no Model, `query()` próprio) continua
+     * somando a página — e entra em $_totalsPageOnly quando há mais linhas do
+     * que a página mostra, para a tela dizer "nesta página".
+     *
+     * @param GridColumn[] $columns
+     * @return array<string, string>
+     */
+    protected function _footerTotals(array $columns): array
+    {
+        $this->_totalsPageOnly = [];
+
+        $totals = $this->_computeTotals($columns);
+        if ($totals === [] || !$this->_dataLoaded || $this->perPage <= 0) {
+            return $totals;
+        }
+
+        $partial = $this->_total > count($this->_rows);
+        $grand   = $this->_grandTotals($columns);
+
+        foreach ($columns as $i => $col) {
+            if (!($col instanceof GridColumn) || empty($col->totalFunc) || !isset($totals[$col->field])) {
+                continue;
+            }
+            if (array_key_exists($i, $grand)) {
+                $totals[$col->field] = GridRenderHelpers::renderTotal($col, $grand[$i]);
+            } elseif ($partial) {
+                $this->_totalsPageOnly[$col->field] = true;
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Total geral no banco: índice da coluna => número, só das colunas que o
+     * banco calcula. [] quando esta listagem não tem consulta que se possa
+     * agregar (sem Model, consulta montada pelo código do app).
+     *
+     * @param GridColumn[] $columns
+     * @return array<int, int|float>
+     */
+    protected function _grandTotals(array $columns): array
+    {
+        if (empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class)) {
+            return [];
+        }
+        foreach (self::TOTALS_QUERY_HOOKS as $method) {
+            if ((new \ReflectionMethod($this, $method))->getDeclaringClass()->getName() !== self::class) {
+                return [];
+            }
+        }
+
+        try {
+            // A MESMA consulta da tela: _buildQuery() + o closure do onSearch(),
+            // como o _runQuery() faz para contar as linhas.
+            $q = $this->_buildQuery();
+            if (!$q instanceof \Illuminate\Database\Eloquent\Builder) {
+                return [];
+            }
+            if ($this->searchQuery) { ($this->searchQuery)($q); }
+
+            return GridTotalsQuery::totals($q, $columns);
+        } catch (\Throwable $e) {
+            // Banco que recusa a conta (tipo exótico, driver sem a conversão):
+            // o rodapé fica com a soma da página em vez de derrubar a listagem.
+            static::_warnOnce(
+                'grand-totals',
+                'total geral do rodapé indisponível — o rodapé soma a página. '
+                . get_class($e) . ': ' . mb_substr($e->getMessage(), 0, 300)
+            );
+
+            return [];
+        }
     }
 
     /** @var array Cache de labels resolvidos para groupMask {relacao->campo} */
@@ -4464,20 +5293,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
             // Caminho de relacionamento: produto->tipo_produto->percentual
             if (str_contains($key, '->') && is_object($item)) {
-                $v = static::_resolveObjectPath($item, $key);
-                return is_numeric($v) ? $v : '0';
+                return static::_evaluateOperand(static::_resolveObjectPath($item, $key));
             }
 
             // Campo simples do array
             if (array_key_exists($key, $row)) {
-                $v = $row[$key];
-                return is_numeric($v) ? $v : '0';
+                return static::_evaluateOperand($row[$key]);
             }
 
             // Tenta propriedade do objeto
             if (is_object($item)) {
-                $v = $item->$key ?? null;
-                return ($v !== null && is_numeric($v)) ? $v : '0';
+                return static::_evaluateOperand($item->$key ?? null);
             }
 
             return '0';
@@ -4498,6 +5324,39 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         } catch (\Throwable $e) {
             return 0;
         }
+    }
+
+    /**
+     * O valor de um `{campo}` como texto para a conta. Não numérico vale 0.
+     *
+     * O número positivo comum sai como chegou. O resto é normalizado, porque o
+     * valor entra na fórmula como TEXTO: negativo colado no operador
+     * (`{a}-{b}` com b = -5 virava `3--5`, erro de sintaxe, e a célula saía 0),
+     * notação científica (`1.0E-5` perdia o `E` no filtro e virava `1.0-5`) e
+     * zero à esquerda (`08` é literal octal inválido) davam número errado.
+     */
+    protected static function _evaluateOperand(mixed $v): string
+    {
+        if (!is_numeric($v)) {
+            return '0';
+        }
+        $s = is_string($v) ? trim($v) : (is_float($v) ? null : (string) $v);
+        if ($s !== null && preg_match('/^(?:0|[1-9]\d*)(?:\.\d+)?$/', $s)) {
+            return $s;
+        }
+        if ($s !== null && preg_match('/^-(?:0|[1-9]\d*)(?:\.\d+)?$/', $s)) {
+            return '(' . $s . ')';
+        }
+
+        $f = (float) $v;
+        if (!is_finite($f)) {
+            return '0';
+        }
+        // 15 casas: o que um double garante; sem expoente e sem zeros à direita.
+        $plain = sprintf('%.15F', abs($f));
+        $plain = str_contains($plain, '.') ? rtrim(rtrim($plain, '0'), '.') : $plain;
+
+        return $f < 0 ? '(-' . $plain . ')' : $plain;
     }
 
     /**
@@ -5591,7 +6450,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         foreach ($actions as $act) {
             if (!$act->isVisible($row)) continue;
             $aId = $row[$act->idField] ?? $rowId;
-            $ep  = !empty($act->params) ? ', ' . json_encode(array_values($act->params)) : '';
+            $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
             $act = $act->getTransformed($row);
             $dis = $act->isDisabled($row) ? ' disabled' : '';
             $ico = $act->icon
@@ -5631,7 +6490,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             foreach ($grp->actions as $act) {
                 if (!$act->isVisible($row)) continue;
                 $aId = $row[$act->idField] ?? $rowId;
-                $ep  = !empty($act->params) ? ', ' . json_encode(array_values($act->params)) : '';
+                $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
                 $act = $act->getTransformed($row);
                 $cls = 'mad-dg-dropdown-item' . ($act->isDanger ? ' mad-dg-dropdown-danger' : '');
                 $dis = $act->isDisabled($row) ? ' disabled' : '';
@@ -6094,13 +6953,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         foreach ($actions as $act) {
             if (!$act->isVisible($row)) continue;
             $aId = $row[$act->idField] ?? $rowId;
-            $ep  = !empty($act->params) ? ', ' . json_encode(array_values($act->params)) : '';
+            $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
             $act = $act->getTransformed($row);
             $dis = $act->isDisabled($row) ? ' disabled' : '';
             // Botão recusado pelo perfil explica o porquê no lugar do rótulo —
             // .mad-dg-action-btn:disabled não tem pointer-events:none, o title
             // do próprio botão aparece.
-            $ttl = ' title="' . htmlspecialchars($act->denyTitle() ?: $act->label, ENT_QUOTES) . '"';
+            $ttl = ' title="' . htmlspecialchars($act->tooltip(), ENT_QUOTES) . '"';
             $ico = $act->icon
                 ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:14px;height:14px;"></i>'
                 : '';
@@ -6138,7 +6997,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             foreach ($grp->actions as $act) {
                 if (!$act->isVisible($row)) continue;
                 $aId = $row[$act->idField] ?? $rowId;
-                $ep  = !empty($act->params) ? ', ' . json_encode(array_values($act->params)) : '';
+                $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
                 $act = $act->getTransformed($row);
                 $cls = 'mad-dg-dropdown-item' . ($act->isDanger ? ' mad-dg-dropdown-danger' : '');
                 $dis = $act->isDisabled($row) ? ' disabled' : '';

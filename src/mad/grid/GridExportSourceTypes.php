@@ -54,6 +54,27 @@ final class GridExportSourceTypes
         }
     }
 
+    /**
+     * As colunas da tabela do model: nome => é numérica? null = schema
+     * ilegível. Uma consulta de schema por tabela por REQUISIÇÃO (memo do
+     * DataScope, que não sobrevive ao worker) — quem pergunta é o render da
+     * listagem (total do rodapé, ordenação de coluna calculada), várias vezes.
+     *
+     * @return array<string, bool>|null
+     */
+    public static function tableColumns(Model $model): ?array
+    {
+        $key = ($model->getConnectionName() ?? '') . '|' . $model->getTable();
+
+        return \Mad\Database\DataScope::memo('grid.table_columns', $key, fn () => (new self())->columnTypes($model));
+    }
+
+    /** O cast do model devolve número? (`decimal:2` conta como `decimal`.) */
+    public static function hasNumericCast(Model $model, string $column): bool
+    {
+        return $model->hasCast($column, self::NUMERIC_CASTS);
+    }
+
     /** Só a coluna sem tipo declarado consulta a fonte — as outras já sabem o que são. */
     public static function needsHint(GridColumn $col): bool
     {

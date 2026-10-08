@@ -10,6 +10,7 @@ use Mad\Component\MadComponentHandler;
 use Mad\Security\MadCsrf;
 use Mad\Security\PermissionGate;
 use Mad\Ui\MadForbidden;
+use Mad\Ui\MadRenderSignal;
 
 /**
  * Port Laravel do AppRouteResolver (modo driver=web do mad-framework).
@@ -25,6 +26,22 @@ class MadAppController
     {
         if (!MadCsrf::validateWire()) {
             return new JsonResponse(['error' => 'CSRF token mismatch'], 403);
+        }
+
+        // Envio acima do `post_max_size`: o PHP entrega a requisição sem corpo
+        // (sem estado, sem tela para conferir permissão). Responde com o
+        // tamanho enviado e o limite, em vez de "Sem permissão".
+        $oversized = MadComponentHandler::oversizedPostPayload();
+        if ($oversized !== null) {
+            $status = (int) $oversized['status'];
+            unset($oversized['status']);
+
+            return new JsonResponse(
+                $oversized,
+                $status,
+                ['X-Mad-App-Wire' => '1', 'Cache-Control' => 'no-store, private'],
+                JsonResponse::DEFAULT_ENCODING_OPTIONS | JSON_UNESCAPED_UNICODE
+            );
         }
 
         if (!PermissionGate::canAccessWire($_POST)) {
@@ -232,9 +249,11 @@ class MadAppController
             }
         }
 
+        $screen = new $class();
+
         ob_start();
         try {
-            (new $class())->show($_REQUEST);
+            $screen->show($_REQUEST);
         } finally {
             $html = ob_get_clean();
         }
@@ -254,7 +273,11 @@ class MadAppController
             $headers['X-Mad-Title'] = rawurlencode($title);
         }
 
-        return new Response($html, 200, $headers);
+        // Tela que falhou ao montar responde 200 com o cartão de erro (o show()
+        // captura a exceção). Dentro do Teste Online a resposta diz isso num
+        // cabeçalho, para o teste de tela do agente de IA não ler a tela
+        // quebrada como boa; num app publicado nada é acrescentado.
+        return MadRenderSignal::stamp(new Response($html, 200, $headers), $screen->renderFailure());
     }
 
     /** GET sem X-Mad-Partial = navegação direta do browser. */

@@ -467,6 +467,28 @@ class MadBladeCompiler extends BladeCompiler
     }
 
     /**
+     * `name` LITERAL de uma tag de campo (`<mad-*-field name="x">`) — null para
+     * a tag que não é campo e para o `name` montado em runtime (`:name`,
+     * `{{ }}`): aí não dá para saber o nome na compilação.
+     */
+    private static function fieldNameLiteral(string $tag, string $params): ?string
+    {
+        if (! str_ends_with($tag, '-field')
+            || ! preg_match('/(?<![\w:.-])name\s*=\s*(["\'])((?:(?!\1).)*)\1/s', $params, $nm)
+            || trim($nm[2]) === '' || preg_match('/\{\{|\{!!/', $nm[2])) {
+            return null;
+        }
+
+        return $nm[2];
+    }
+
+    /** `$text` como literal PHP entre aspas duplas. */
+    private static function phpString(string $text): string
+    {
+        return '"' . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $text) . '"';
+    }
+
+    /**
      * Tags cujo botão passa pelo gate de permissão por ação. Restrito de
      * propósito: emitir `permClass`/`permAction` em toda tag MAD mudaria a
      * compilação de ~100 componentes para nada — só o `<mad-btn>` consome.
@@ -487,6 +509,11 @@ class MadBladeCompiler extends BladeCompiler
         $_hasNav      = false; // true se navigate/target foi processado
         // Botão que executa ação: a ação vira chave de permissão (ver ActionGuard).
         $_wantsPerm   = in_array($tag, self::PERM_TAGS, true);
+        // O que a tag diz sobre a GRAVAÇÃO do campo — ver o fim do método.
+        $_fieldName   = self::fieldNameLiteral($tag, (string) $params);
+        $_anchor      = null;   // tabela do modelo de dados (âncora do gerador)
+        $_screenOnly  = null;   // 'true' | 'false' | expressão PHP
+        $_whenUses    = [];     // campos que as condições *-when da tag usam
         $pos        = 0;
         $len        = strlen($params);
 
@@ -539,7 +566,27 @@ class MadBladeCompiler extends BladeCompiler
                     if (trim($val) !== '') {
                         $extraAttrs[] = 'x-mad-when:' . $wm[1] . '="'
                             . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
+                        // O campo que a condição lê é usado pela TELA: quando
+                        // não é coluna, é campo só de tela (não é valor perdido).
+                        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_wt)) {
+                            foreach ($_wt[1] as $_used) {
+                                $_whenUses[$_used] = true;
+                            }
+                        }
                     }
+                    continue;
+                }
+
+                // Âncora do gerador: o campo foi criado para uma coluna desta
+                // tabela do modelo de dados. Segue também como atributo comum.
+                if ($m[1] === '' && $key === 'data-mad-entity-id' && ctype_digit(trim($val))) {
+                    $_anchor = (int) trim($val);
+                }
+
+                // screen-only="…" / :screen-only="$expr": campo só de tela.
+                if ($key === 'screen-only' && $_fieldName !== null) {
+                    $_screenOnly = $m[1] === ':' ? $val
+                        : (in_array(strtolower(trim($val)), ['false', '0', 'no'], true) ? 'false' : 'true');
                     continue;
                 }
 
@@ -714,12 +761,34 @@ class MadBladeCompiler extends BladeCompiler
                     continue;
                 }
 
+                // `screen-only` nu num campo: campo só de tela.
+                if ($key === 'screen-only' && $_fieldName !== null) {
+                    $_screenOnly = 'true';
+                    continue;
+                }
+
                 // Converte kebab-case → camelCase para PHP
                 $phpKey = self::kebabToCamel($key);
                 $compiled[] = '"' . $phpKey . '"=>true';
                 continue;
             }
             $pos++; // caractere desconhecido — pula
+        }
+
+        // O que a tag diz sobre a gravação do campo vai para o formulário da
+        // tela quando os parâmetros são montados — antes de o campo se
+        // desenhar. As chaves são props que nenhum componente usa.
+        if ($_fieldName !== null && $_anchor !== null) {
+            $compiled[] = '"madColumnOf"=>\\Mad\\Form\\MadFormRegistry::anchored('
+                . self::phpString($_fieldName) . ',' . $_anchor . ')';
+        }
+        if ($_fieldName !== null && $_screenOnly !== null && $_screenOnly !== 'false') {
+            $call = '\\Mad\\Form\\MadFormRegistry::screenOnly(' . self::phpString($_fieldName) . ')';
+            $compiled[] = '"madScreenOnly"=>' . ($_screenOnly === 'true' ? $call : '((' . $_screenOnly . ') ? ' . $call . ' : false)');
+        }
+        if ($_whenUses) {
+            $compiled[] = '"madWhenUses"=>\\Mad\\Form\\MadFormRegistry::screenOnly(['
+                . implode(',', array_map([self::class, 'phpString'], array_keys($_whenUses))) . '])';
         }
 
         // Merge atributos HTML passthrough no prop 'attrs'

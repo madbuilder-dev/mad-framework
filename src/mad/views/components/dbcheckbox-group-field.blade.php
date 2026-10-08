@@ -5,7 +5,8 @@
      * Combina o carregamento de options do dbcombo-field com a renderização do checkbox-group-field.
      * Suporta dois modos de persistência via MadForm->save():
      *   - comma: IDs separados por vírgula numa coluna da mesma tabela
-     *   - table: registros numa tabela pivot/relacionada (delete all + insert)
+     *   - table: registros numa tabela pivot/relacionada — o Salvar só mexe na
+     *     ligação que mudou (a desmarcada sai, a marcada entra; o resto fica)
      *
      * Props:
      *   name        string   Nome do campo
@@ -84,16 +85,28 @@
     $breakOn   = ($breakItems > 0 && $horizontal && !$isButton) ? $breakItems : 0;
     $count     = 0;
 
-    // Auto-load selected from pivot table (mode=table)
+    // Gravação na própria coluna (por vírgula): a seleção vem do formulário
+    // (MadForm fill), como nos outros campos de seleção múltipla. Sem isto o
+    // campo abria SEM marca nenhuma — a view não enxerga a variável do
+    // contexto — e o Salvar seguinte esvaziava a coluna.
+    if ($mode !== 'table' && empty($selected) && $name) {
+        $_ctx = \Mad\Component\MadRenderContext::current();
+        if (array_key_exists($name, $_ctx)) {
+            $selected = $_ctx[$name];
+        }
+    }
+    // Auto-load selected from pivot table (mode=table). O `name` vai junto: o
+    // formulário guarda o que este campo entregou marcado, e o Salvar só
+    // desmarca o que consta lá (ver MadForm::pivotLoaded / pivotShown).
+    $__pivotNotice = null;
     if ($mode === 'table' && empty($selected) && $pivotModel && $itemKey) {
-        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database);
+        $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
+        $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
     }
 
-    // Normalize selected to array of strings
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode($separator, $selected) : [];
-    }
-    $selected = array_map('strval', (array) $selected);
+    // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
+    // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, $separator);
 
     // Registro no MadFormRegistry com metadados de persistência
     \Mad\Form\MadFormRegistry::register($name, 'db-checkbox-group', [
@@ -104,6 +117,13 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // Só quando não é a vírgula: o Salvar lê a coluna com o mesmo separador.
+        'separator'  => $separator === ',' ? '' : $separator,
+        // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
+        // deste Model (só vai para o estado da tela). Com `:query` própria quem
+        // decide a lista é o código da tela, e não há o que conferir.
+        'optionsSource' => ($model && $mode !== 'manual' && !\Mad\Database\QuerySource::isQuery($query))
+            ? ['model' => $model, 'key' => $keyField] : '',
     ]);
 
     // :filters (array DSL) → Query Builder interno → caminho :query.
@@ -150,6 +170,17 @@
         }
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbcheckbox-group-field', $__optCtx);
+    $__optError ??= $__pivotNotice;
+    // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
+    if ($mode === 'table' && $pivotModel && $itemKey) {
+        \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys($options), $pivotModel, $foreignKey, $itemKey);
+    }
+    // Gravação na própria coluna (por vírgula): o que vai MARCADO para o
+    // navegador é a base do Salvar — o item da coluna que a lista não mostra
+    // não sai dela (ver MadForm::selectionShown).
+    if ($mode !== 'table' && $mode !== 'manual') {
+        \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_keys($options), $separator);
+    }
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
