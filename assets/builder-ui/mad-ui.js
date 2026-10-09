@@ -7925,23 +7925,27 @@ document.addEventListener('alpine:init', () => {
             return v;
         }
 
+        // Vazio é estado próprio (fw#201): rawValue '' e display '', o hidden
+        // posta '' e o servidor aplica o `empty-as`. Antes o vazio virava 0 —
+        // o campo abria "0,00" e apagar gravava 0. Zero digitado continua 0.
+        const blank = (v) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+
         return {
             display:  '',
-            rawValue: 0,
+            rawValue: '',
 
             init() {
                 const inp = this.$refs.input || this.$el.querySelector('input[type="text"]');
-                const initial = cfg.value ?? (inp ? inp.getAttribute('value') : null) ?? 0;
-                this.rawValue = clamp(typeof initial === 'number' ? initial : madNumParse(initial));
-                this.display  = madNumFmt(this.rawValue, decimals);
-                if (inp) inp.value = this.display;
+                this.setValue(cfg.value ?? (inp ? inp.getAttribute('value') : null));
             },
 
             onFocus(e) {
-                // Mostra o valor numérico cru para facilitar a digitação
-                e.target.value = this.rawValue !== 0
-                    ? String(this.rawValue).replace('.', ',')
-                    : '';
+                // Mostra o valor numérico cru para facilitar a digitação. O zero
+                // aparece como "0" (e fica selecionado): mostrado vazio, sair do
+                // campo sem digitar o transformava em vazio.
+                e.target.value = this.rawValue === ''
+                    ? ''
+                    : String(this.rawValue).replace('.', ',');
                 this.$nextTick(() => e.target.select());
             },
 
@@ -7949,16 +7953,26 @@ document.addEventListener('alpine:init', () => {
             // do detail-form): atualiza cru, máscara e o input visível de uma vez.
             // Aceita número ou string ('1234.5' cru ou '1.234,50' mascarado).
             setValue(v) {
-                const num = typeof v === 'number' ? v : madNumParse(v);
-                this.rawValue = clamp(num);
-                this.display  = madNumFmt(this.rawValue, decimals);
+                if (blank(v)) {
+                    this.rawValue = '';
+                    this.display  = '';
+                } else {
+                    const num = typeof v === 'number' ? v : madNumParse(v);
+                    this.rawValue = clamp(num);
+                    this.display  = madNumFmt(this.rawValue, decimals);
+                }
                 const inp = this.$refs.input || this.$el.querySelector('input[type="text"]');
                 if (inp) inp.value = this.display;
             },
 
             onBlur(e) {
-                this.rawValue = clamp(madNumParse(e.target.value));
-                this.display  = madNumFmt(this.rawValue, decimals);
+                if (blank(e.target.value)) {
+                    this.rawValue = '';
+                    this.display  = '';
+                } else {
+                    this.rawValue = clamp(madNumParse(e.target.value));
+                    this.display  = madNumFmt(this.rawValue, decimals);
+                }
                 e.target.value = this.display;
                 // Dispara change no hidden para que detail-form/field-list capture
                 this.$nextTick(() => {
@@ -8205,23 +8219,40 @@ document.addEventListener('alpine:init', () => {
             return neg ? -v : v;
         }
 
+        // Vazio é estado próprio (fw#201): rawValue '' e display '' (o
+        // placeholder "0,00" aparece), o hidden posta '' e o servidor aplica o
+        // `empty-as`. Antes o vazio virava 0: o campo abria "0,00" e apagar
+        // gravava 0. Zero digitado continua 0.
+        function blank(v) {
+            return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+        }
+
         return {
             display:  '',
-            rawValue: 0,
+            rawValue: '',
             _intVal:  0,
 
             init() {
-                var initial = cfg.value ?? 0;
-                this.setValue(initial);
+                this.setValue(cfg.value);
+            },
+
+            _setBlank() {
+                this.rawValue = '';
+                this._intVal  = 0;
+                this.display  = '';
             },
 
             // Valor vindo de FORA (op `val` do $this->form->set(), _syncFormInputs
             // do detail-form): recalcula centavos, máscara e o input visível.
             setValue(v) {
-                var f = typeof v === 'number' ? v : madNumParse(v);
-                this.rawValue = clamp(f);
-                this._intVal  = floatToInt(this.rawValue);
-                this.display  = fmtFromInt(this._intVal);
+                if (blank(v)) {
+                    this._setBlank();
+                } else {
+                    var f = typeof v === 'number' ? v : madNumParse(v);
+                    this.rawValue = clamp(f);
+                    this._intVal  = floatToInt(this.rawValue);
+                    this.display  = fmtFromInt(this._intVal);
+                }
                 if (this.$refs.input) this.$refs.input.value = this.display;
             },
 
@@ -8254,6 +8285,12 @@ document.addEventListener('alpine:init', () => {
                         clean = clean.split(decimalSep).join('');
                     }
                     e.target.value = clean;
+                    if (clean.replace('-', '') === '') {
+                        // Apagou tudo (ou só o sinal): vazio, não zero
+                        this._setBlank();
+                        this.display = clean;
+                        return;
+                    }
                     this.display  = clean;
                     this.rawValue = clamp(parseLeft(clean));
                     this._intVal  = floatToInt(this.rawValue);
@@ -8267,6 +8304,14 @@ document.addEventListener('alpine:init', () => {
                         raw = val.replace(/\D/g, '');
                     }
                     var intV = parseInt(raw, 10) || 0;
+                    // Sem dígito, ou apagando até zerar ("0,01" → backspace):
+                    // o campo fica vazio. Digitar 0 no vazio continua zero.
+                    var deleting = String(e.inputType || '').indexOf('delete') === 0;
+                    if (raw === '' || (deleting && intV === 0)) {
+                        this._setBlank();
+                        e.target.value = '';
+                        return;
+                    }
                     if (neg) intV = -intV;
                     this._intVal  = intV;
                     this.display  = fmtFromInt(this._intVal);
@@ -8291,10 +8336,14 @@ document.addEventListener('alpine:init', () => {
             },
 
             _onBlur() {
-                var floatVal = clamp(this.rawValue);
-                this._intVal  = floatToInt(floatVal);
-                this.rawValue = floatVal;
-                this.display  = fmtFromInt(this._intVal);
+                if (this.rawValue === '') {
+                    this._setBlank();
+                } else {
+                    var floatVal = clamp(this.rawValue);
+                    this._intVal  = floatToInt(floatVal);
+                    this.rawValue = floatVal;
+                    this.display  = fmtFromInt(this._intVal);
+                }
                 if (this.$refs.input) this.$refs.input.value = this.display;
 
                 // Dispara change no hidden para detail-form/field-list

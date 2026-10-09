@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.140.2] — 2026-10-09
+
+### Correções
+
+- **Campos:** `<mad-money-field>` e `<mad-numeric-field>` abriam com 0,00 quando o registro não tinha valor, e apagar o valor gravava 0. Agora o campo abre vazio, apagado grava vazio e o `empty-as` passa a valer. Zero digitado continua sendo zero. Republique o projeto para aplicar.
+- **Campos:** campo numérico em branco ligado a uma coluna numérica que não aceita vazio derrubava o salvamento, no formulário e nas linhas de detalhe. Agora grava 0, como o dinheiro e o decimal já gravavam.
+
 ## [5.140.1] — 2026-10-09
 
 ### Correções

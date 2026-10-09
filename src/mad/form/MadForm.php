@@ -424,8 +424,11 @@ class MadForm
     /** Cache normalizado de $_FILES['mad_fl_files'] (uploads por-linha de details). */
     private ?array $_madFlFilesCache = null;
 
-    /** @var array<string, array<string,true>> colunas que aceitam NULL, por "conexão|tabela" — ver _emptyToNull() */
-    private array $_nullableColumnsCache = [];
+    /** @var array<string, array<string, array{nullable:bool, numeric:bool}>> colunas da tabela, por "conexão|tabela" — ver _columnInfo() */
+    private array $_columnInfoCache = [];
+
+    /** @var array<string, array<string,mixed>>|null schema do Salvar em curso — ver _numericEmptyNotNull() */
+    private ?array $_saveSchema = null;
 
     /** @var array<string,bool> a tabela do model filho tem a coluna da chave? — ver _detailHasKeyColumn() */
     private array $_detailKeyColumnCache = [];
@@ -616,6 +619,7 @@ class MadForm
         // Remove campos storage="db" do data antes do fromArray
         // (esses campos são tratados pelo _afterStore via prepared statement)
         $schema = MadFormRegistry::fromRequest();
+        $this->_saveSchema = is_array($schema) ? $schema : [];
         $dataArray = (array) $data;
         if (!empty($schema)) {
             foreach ($schema as $fieldName => $props) {
@@ -705,7 +709,7 @@ class MadForm
             // ver _fieldsWithoutColumn().
             $scalars = array_filter($dataArray, fn ($v) => !is_array($v));
             $this->_fieldsWithoutColumn($record, $scalars, is_array($schema) ? $schema : []);
-            $record->fill($this->_emptyToNull($record, $scalars, $schema));
+            $record->fill($this->_numericEmptyNotNull($record, $this->_emptyToNull($record, $scalars, $schema), $schema));
         } else {
             foreach ($dataArray as $key => $value) {
                 if (!is_array($value)) {
@@ -3047,31 +3051,96 @@ class MadForm
 
     /**
      * Colunas da tabela do record que aceitam NULL (chave em minúsculas).
-     * Cache por instância — um save por request; estático ficaria velho no
-     * Octane depois de uma migration.
      *
      * @return array<string,true>
      */
     private function _nullableColumns(\Illuminate\Database\Eloquent\Model $record): array
     {
+        $nullable = [];
+        foreach ($this->_columnInfo($record) as $name => $info) {
+            if ($info['nullable']) {
+                $nullable[$name] = true;
+            }
+        }
+
+        return $nullable;
+    }
+
+    /**
+     * Colunas da tabela do record (chave em minúsculas): aceita NULL? é numérica?
+     * Cache por instância — um save por request; estático ficaria velho no
+     * Octane depois de uma migration. Sem schema (driver, permissão) → `[]`.
+     *
+     * @return array<string, array{nullable:bool, numeric:bool}>
+     */
+    private function _columnInfo(\Illuminate\Database\Eloquent\Model $record): array
+    {
         $connection = $record->getConnection();
         $key = $connection->getName() . '|' . $record->getTable();
 
-        if (!isset($this->_nullableColumnsCache[$key])) {
-            $nullable = [];
+        if (!isset($this->_columnInfoCache[$key])) {
+            $info = [];
             try {
                 foreach ($connection->getSchemaBuilder()->getColumns($record->getTable()) as $column) {
-                    if (!empty($column['nullable'])) {
-                        $nullable[strtolower((string) $column['name'])] = true;
-                    }
+                    $type = strtolower((string) ($column['type_name'] ?? $column['type'] ?? ''));
+                    $info[strtolower((string) $column['name'])] = [
+                        'nullable' => !empty($column['nullable']),
+                        'numeric'  => (bool) preg_match(
+                            '/^(tinyint|smallint|mediumint|int|integer|bigint|int2|int4|int8|serial|bigserial|decimal|numeric|real|double|float|float4|float8|money|smallmoney|number)\b/',
+                            $type
+                        ),
+                    ];
                 }
             } catch (\Throwable) {
                 // sem schema: segue gravando o que veio (comportamento anterior)
             }
-            $this->_nullableColumnsCache[$key] = $nullable;
+            $this->_columnInfoCache[$key] = $info;
         }
 
-        return $this->_nullableColumnsCache[$key];
+        return $this->_columnInfoCache[$key];
+    }
+
+    /** Campos numéricos: o vazio deles vira NULL — ou 0 na coluna numérica NOT NULL. */
+    private const NUMERIC_FIELD_TYPES = ['number', 'numeric', 'money', 'spinner', 'range'];
+
+    /**
+     * Campo numérico em branco numa coluna numérica NOT NULL → 0.
+     *
+     * O vazio de um campo numérico vira NULL (ou o que o `empty-as` pedir). Na
+     * coluna que não aceita NULL isso derrubava o INSERT — e o `<mad-money-field>`
+     * e o `<mad-numeric-field>`, que até a 5.140.1 nunca chegavam vazios (o campo
+     * abria e voltava a 0), gravavam 0 nessas colunas sem ninguém pedir. Os apps
+     * que dependem disso continuam gravando 0; coluna que aceita NULL recebe NULL.
+     *
+     * Só NULL é tocado: `empty-as="zero"` já é 0 e `empty-as="empty"` é `''` de
+     * propósito. Coluna de texto NOT NULL fica como estava (o 0 seria invenção
+     * nossa) e schema indisponível não muda nada.
+     *
+     * @param  array<string,mixed>                $values
+     * @param  array<string,array<string,mixed>>  $schema
+     * @return array<string,mixed>
+     */
+    private function _numericEmptyNotNull(\Illuminate\Database\Eloquent\Model $record, array $values, array $schema): array
+    {
+        $empty = [];
+        foreach ($values as $key => $value) {
+            if ($value === null && in_array($schema[$key]['type'] ?? '', self::NUMERIC_FIELD_TYPES, true)) {
+                $empty[] = $key;
+            }
+        }
+        if ($empty === []) {
+            return $values;
+        }
+
+        $columns = $this->_columnInfo($record);
+        foreach ($empty as $key) {
+            $col = $columns[strtolower((string) $key)] ?? null;
+            if ($col !== null && !$col['nullable'] && $col['numeric']) {
+                $values[$key] = 0;
+            }
+        }
+
+        return $values;
     }
 
     /**
@@ -7461,7 +7530,8 @@ class MadForm
         $values ??= $this->_detailRowValues($instance, $parentId, $row, $detailName, $fileColumns);
         if ($instance instanceof \Illuminate\Database\Eloquent\Model) {
             $this->_rowColumnsWithoutColumn($detailName, $instance, $values, $hook !== null);
-            $instance->fill($values);
+            $this->_saveSchema ??= MadFormRegistry::fromRequest();
+            $instance->fill($this->_numericEmptyNotNull($instance, $values, $this->_saveSchema));
         } else {
             foreach ($values as $k => $v) {
                 $instance->$k = $v;

@@ -10,9 +10,11 @@
     $decimalSep  = $decimalSep !== '' ? mb_substr((string)$decimalSep, 0, 1) : ',';
     $thousandSep = mb_substr((string)$thousandSep, 0, 1);
 
-    // Valor inicial: registro (MadWire) > prop `value` (default do dev) > 0.
-    // Regra em \Mad\Support\MadFieldValue — antes a prop `value` era ignorada.
-    $rawValue = \Mad\Support\MadFieldValue::resolveFloat((string)$name, $value ?? null);
+    // Valor inicial: registro (MadWire) > prop `value` (default do dev).
+    // Sem nenhum dos dois o campo abre VAZIO: antes o NULL do registro virava
+    // 0.0, o campo abria "0,00" e salvar sem mexer gravava 0 (fw#201).
+    $_rawStr  = \Mad\Support\MadFieldValue::resolve((string)$name, $value ?? null);
+    $rawValue = is_numeric($_rawStr) ? (float)$_rawStr : null;
 
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError  = !empty($error);
