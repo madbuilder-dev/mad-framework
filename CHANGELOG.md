@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.141.0] — 2026-10-09
+
+### Novidades
+
+- **Empresas:** no modo de um banco por empresa, o Provisionar banco passa a copiar para o banco novo os dados das tabelas marcadas como compartilhadas no MadBuilder (como estado, cidade e status). Provisionar de novo traz só o que falta. Republique o projeto para aplicar.
+
+### Correções
+
+- **Unidades:** trocar de unidade pelo selo no topo mostrava o botão "Trocar de empresa" e o aviso "Empresa alterada!", mesmo sem mudar de empresa. Agora o botão diz "Trocar Unidade" e o aviso, "Unidade alterada!". Republique o projeto para aplicar.
+- **Empresas:** a empresa nova era salva como inativa, porque o interruptor Ativo vinha desligado, e por isso não aparecia no campo Empresa da Nova Unidade. Agora empresa e unidade novas abrem com Ativo ligado. Republique o projeto para aplicar.
+
 ## [5.140.3] — 2026-10-09
 
 ### Correções
