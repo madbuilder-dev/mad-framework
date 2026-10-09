@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.140.3] — 2026-10-09
+
+### Correções
+
+- **Calendário:** dois cliques seguidos num horário, num evento ou no botão Novo abriam o formulário duas vezes, uma cortina lateral sobre a outra. Agora abre uma só; vale também para a agenda por recurso e para o Gantt. Republique o projeto para aplicar.
+
 ## [5.140.2] — 2026-10-09
 
 ### Correções

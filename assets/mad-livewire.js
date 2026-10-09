@@ -1243,6 +1243,9 @@ const MadWire = (() => {
     // caso o morph tenha trocado o node.
     const _inflightByWrapper = new WeakMap();
 
+    // callOnce(): pedidos pendentes (na fila ou em voo) por componente e chave.
+    const _onceByWrapper = new WeakMap();
+
     function _request(wrapper, action = '', params = [], extraModels = {}, sourceForm = null, opts = {}) {
         const madId = wrapper.getAttribute('mad-id');
         wrapper.setAttribute('data-mad-busy', '1');
@@ -1778,6 +1781,29 @@ const MadWire = (() => {
                 : (_getWrapper(idOrEl) || idOrEl);
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
             if (wrapper) return await _request(wrapper, action, params, extra);
+        },
+
+        /**
+         * call() que não se repete: enquanto um pedido com a mesma `key` está
+         * na fila ou em voo neste componente, o repetido é descartado e quem
+         * chamou recebe a promise do pendente. Para clique que abre formulário
+         * (agenda, Gantt): o duplo clique mandava dois pedidos, a fila rodava
+         * os dois e cada resposta abria uma cortina lateral. Quando a resposta
+         * chega, o Mad.overlay já pôs o "Aguarde" por cima da tela.
+         */
+        callOnce(idOrEl, action = '', params = [], key = action) {
+            const wrapper = typeof idOrEl === 'string'
+                ? document.querySelector(`[mad-id="${idOrEl}"]`)
+                : (_getWrapper(idOrEl) || idOrEl);
+            if (!wrapper) return Promise.resolve();
+            let pending = _onceByWrapper.get(wrapper);
+            if (!pending) { pending = new Map(); _onceByWrapper.set(wrapper, pending); }
+            if (pending.has(key)) return pending.get(key);
+            const run = _request(wrapper, action, params, {});
+            const release = () => { if (pending.get(key) === run) pending.delete(key); };
+            run.then(release, release);
+            pending.set(key, run);
+            return run;
         },
 
         /**

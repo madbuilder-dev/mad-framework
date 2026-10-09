@@ -3221,7 +3221,10 @@
 (function (root) {
     'use strict';
 
-    function call(componentEl, method, payload) {
+    // `onceKey`: while a call with the same key is pending on this component,
+    // repeats are dropped (MadWire.callOnce). Clicks that open a form use it —
+    // a double click used to open the form twice, one drawer over the other.
+    function call(componentEl, method, payload, onceKey) {
         if (!method) return Promise.resolve(null);
         // MadWire is declared `const` at script scope in mad-livewire.js, so
         // it lives in the script-realm globals (NOT on window). Probe both
@@ -3234,6 +3237,9 @@
                 // MadWire.call expects the element to be (or contain) the
                 // [mad-component] wrapper. Walk up if needed.
                 const wrapper = (componentEl && componentEl.closest && componentEl.closest('[mad-component]')) || componentEl;
+                if (onceKey && typeof MW.callOnce === 'function') {
+                    return Promise.resolve(MW.callOnce(wrapper, method, payload, onceKey));
+                }
                 return Promise.resolve(MW.call(wrapper, method, payload));
             } catch (e) { console.warn('[MadGantt] MadWire.call failed', e); }
         }
@@ -3252,7 +3258,7 @@
         return Promise.resolve(null);
     }
 
-    function fireTaskClick(el, method, taskId, extra)   { return call(el, method, { task_id: taskId, ...extra }); }
+    function fireTaskClick(el, method, taskId, extra)   { return call(el, method, { task_id: taskId, ...extra }, 'open'); }
     function fireTaskUpdate(el, method, taskId, start, end, mode, extra) {
         return call(el, method, { task_id: taskId, start, end, mode, ...extra });
     }
@@ -3266,7 +3272,7 @@
         return call(el, method, { start, end });
     }
     function fireDayClick(el, method, date, rowId) {
-        return call(el, method, { date, row_id: rowId });
+        return call(el, method, { date, row_id: rowId }, 'open');
     }
     function fireHeaderAction(el, method, name) {
         return call(el, method, { name });

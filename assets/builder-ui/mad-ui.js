@@ -9564,11 +9564,15 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 // ── Botão "Novo" (event-form) ──────────────────────
+                // Novo, dia e evento abrem formulário: callOnce com UMA chave
+                // por agenda. O duplo clique (ou um clique no dia logo depois
+                // de outro no evento) mandava dois pedidos e cada resposta
+                // abria uma cortina lateral, uma sobre a outra.
                 if (cfg.addEventMethod && wrapper) {
                     opts.customButtons = {
                         madNew: {
                             text: cfg.addEventLabel || 'Novo',
-                            click: () => MadWire.call(wrapper, cfg.addEventMethod, []),
+                            click: () => MadWire.callOnce(wrapper, cfg.addEventMethod, [], 'open'),
                         },
                     };
                 }
@@ -9586,7 +9590,7 @@ document.addEventListener('alpine:init', () => {
                         if (_dragFlag) { _dragFlag = false; return; }
                         const date = _fmtDate(info.date);
                         const view = info.view.type;
-                        MadWire.call(wrapper, cfg.dayClickMethod, [date, view]);
+                        MadWire.callOnce(wrapper, cfg.dayClickMethod, [date, view], 'open');
                     };
                 }
 
@@ -9597,7 +9601,7 @@ document.addEventListener('alpine:init', () => {
                         info.jsEvent.preventDefault();
                         const ev   = info.event;
                         const view = info.view.type;
-                        MadWire.call(wrapper, cfg.eventClickMethod, [ev.id, ev.title, view]);
+                        MadWire.callOnce(wrapper, cfg.eventClickMethod, [ev.id, ev.title, view], 'open');
                     };
                 }
 
@@ -9882,18 +9886,20 @@ document.addEventListener('alpine:init', () => {
             },
 
             // ── Callbacks ──────────────────────────────────────────
+            // Os dois abrem formulário: callOnce com a mesma chave (ver o
+            // madFullCalendar) — o duplo clique não abre duas cortinas.
             onCellClick(slot, col) {
                 const method = cfg.slotClickMethod || cfg.dayClickMethod;
                 if (!method || !_wrapper) return;
                 const h = Math.floor(slot.startMin / 60);
                 const m = slot.startMin % 60;
                 const date = col.day.date + ' ' + _pad(h) + ':' + _pad(m) + ':00';
-                MadWire.call(_wrapper, method, [date, col.resource.id, col.resource.title]);
+                MadWire.callOnce(_wrapper, method, [date, col.resource.id, col.resource.title], 'open');
             },
             onEventClick(ev) {
                 const method = cfg.eventClickMethod;
                 if (!method || !_wrapper) return;
-                MadWire.call(_wrapper, method, [ev.id, ev.title, ev.resourceId || '']);
+                MadWire.callOnce(_wrapper, method, [ev.id, ev.title, ev.resourceId || ''], 'open');
             },
             refetchEvents() { this._loadEvents(); },
         };
