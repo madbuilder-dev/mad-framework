@@ -76,7 +76,10 @@ class GridAction
         return $this;
     }
 
-    /** Callable ou string 'Classe::metodo' que recebe (array $row) e retorna bool. */
+    /**
+     * Callable, string 'Classe::metodo' ou só o nome do método da tela (ver
+     * {@see resolveIn()}) que recebe a linha e retorna bool.
+     */
     public function when($condition): self
     {
         $this->whenFn = $condition;
@@ -100,6 +103,52 @@ class GridAction
     {
         $this->transformFn = $fn;
         return $this;
+    }
+
+    /**
+     * Resolve condição/transform escritos só com o NOME do método
+     * (`display-condition="podeExcluir"`) contra as classes da tela.
+     *
+     * É assim que o painel Visibilidade do Studio grava a função: o método
+     * nasce na própria tela, e o atributo leva só o nome. Um nome solto não é
+     * chamável, e a condição era ignorada em silêncio — o botão aparecia em
+     * toda linha mesmo com o método devolvendo false.
+     *
+     * Só toca string sem `::` que não seja função global; a primeira classe
+     * que tiver o método `public static` vence.
+     */
+    public function resolveIn(string ...$hosts): self
+    {
+        $this->whenFn      = self::hostCallable($this->whenFn, $hosts);
+        $this->disabledFn  = self::hostCallable($this->disabledFn, $hosts);
+        $this->transformFn = self::hostCallable($this->transformFn, $hosts);
+
+        return $this;
+    }
+
+    /**
+     * `'metodo'` → `'Classe::metodo'` quando alguma das classes tem o método
+     * `public static`; qualquer outra coisa volta intacta.
+     *
+     * @param list<string> $hosts
+     */
+    public static function hostCallable(mixed $fn, array $hosts): mixed
+    {
+        if (!is_string($fn)) {
+            return $fn;
+        }
+        $name = trim($fn);
+        if ($name === '' || str_contains($name, '::') || is_callable($name)) {
+            return $fn;
+        }
+        foreach ($hosts as $host) {
+            $host = ltrim(trim((string) $host), '\\');
+            if ($host !== '' && is_callable($host . '::' . $name)) {
+                return $host . '::' . $name;
+            }
+        }
+
+        return $fn;
     }
 
     /**
@@ -344,6 +393,7 @@ class GridAction
         if ($this->whenFn !== null && is_callable($this->whenFn)) {
             return (bool) self::_callRowCallback($this->whenFn, $row);
         }
+        self::warnUncallable('display-condition', $this->whenFn, $this->label ?: $this->method);
         return true;
     }
 
@@ -360,7 +410,34 @@ class GridAction
         if ($this->disabledFn !== null && is_callable($this->disabledFn)) {
             return (bool) self::_callRowCallback($this->disabledFn, $row);
         }
+        self::warnUncallable('disabled', $this->disabledFn, $this->label ?: $this->method);
         return false;
+    }
+
+    /** @var array<string, true> uma linha de log por condição, por processo */
+    private static array $warnedUncallable = [];
+
+    /**
+     * Condição configurada que não dá para chamar (método inexistente, sem
+     * `static`, privado, classe errada): a ação segue sem a regra, como
+     * sempre, mas agora deixa uma pista no log em vez de sumir calada.
+     */
+    private static function warnUncallable(string $kind, mixed $fn, string $action): void
+    {
+        if ($fn === null || $fn === '' || is_callable($fn)) {
+            return;
+        }
+        $ref = is_string($fn) ? $fn : get_debug_type($fn);
+        $key = $kind . '|' . $ref;
+        if (isset(self::$warnedUncallable[$key])) {
+            return;
+        }
+        self::$warnedUncallable[$key] = true;
+
+        error_log(
+            '[MadGrid] ação "' . $action . '": ' . $kind . ' "' . $ref . '" não é chamável — '
+            . 'a regra foi ignorada. Use um método public static da tela (só o nome) ou Classe::metodo.'
+        );
     }
 
     /**
@@ -392,28 +469,69 @@ class GridAction
 
     /**
      * Invoca callable de row passando args conforme aridade detectada.
-     *   1 arg → callable(array $row)
+     *   1 arg → callable($linha), ver {@see singleRowArg()}
      *   2+ args → callable(?object $record, array $row)
      *
      * Em caso de duvida, passa 2 args (record, row).
      */
     private static function _callRowCallback(callable $fn, array $row): mixed
     {
-        $object = $row['__record'] ?? null;
+        return self::callRowCallback($fn, $row['__record'] ?? null, $row);
+    }
+
+    /**
+     * Mesma regra de {@see _callRowCallback()}, com o registro explícito —
+     * usada também pelo MadKanban, para as duas telas concordarem.
+     */
+    public static function callRowCallback(callable $fn, ?object $object, array $row): mixed
+    {
         try {
             $ref = is_array($fn)
                 ? new \ReflectionMethod($fn[0], $fn[1])
                 : (is_string($fn) && str_contains($fn, '::')
                     ? new \ReflectionMethod(...explode('::', $fn, 2))
                     : new \ReflectionFunction($fn));
-            $n = $ref->getNumberOfParameters();
         } catch (\Throwable $e) {
-            $n = 2;
+            $ref = null;
         }
+        $n = $ref?->getNumberOfParameters() ?? 2;
         if ($n <= 1) {
-            return call_user_func($fn, $row);
+            return call_user_func($fn, self::singleRowArg($ref, $object, $row));
         }
         return call_user_func($fn, $object, $row);
+    }
+
+    /**
+     * O que entregar a um callable de UM parâmetro.
+     *
+     *  - tipado `array` (o contrato documentado, `podeAprovar(array $row)`):
+     *    a linha em array, como sempre;
+     *  - sem tipo: o registro, quando ele também atende `$row['campo']`
+     *    (model Eloquent). O stub do Studio (`metodo($object)`) e o método
+     *    do "Configurar expressão" (`return ($row->status == 'x');`) leem a
+     *    linha como objeto — com o array, `$row->status` derrubava a tela;
+     *  - tipado objeto/classe: o registro.
+     *
+     * Sem registro (linha que veio de array), sempre o array.
+     */
+    private static function singleRowArg(?\ReflectionFunctionAbstract $ref, ?object $object, array $row): mixed
+    {
+        $param = $ref?->getParameters()[0] ?? null;
+        if ($object === null || $param === null) {
+            return $row;
+        }
+        $type = $param->getType();
+        if ($type === null) {
+            return $object instanceof \ArrayAccess ? $object : $row;
+        }
+        $names = [];
+        foreach ($type instanceof \ReflectionNamedType ? [$type] : $type->getTypes() as $t) {
+            if ($t instanceof \ReflectionNamedType) {
+                $names[] = strtolower($t->getName());
+            }
+        }
+
+        return array_intersect($names, ['array', 'iterable', 'mixed']) !== [] ? $row : $object;
     }
 
     /**

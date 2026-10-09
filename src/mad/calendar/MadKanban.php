@@ -436,7 +436,9 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // GridAction::isVisible):
         //   1 arg  → fn(array $row): bool                — legado
         //   2 args → fn(?object $object, array $row): bool — record-compat
-        $dc = $cfg['displayCondition'] ?? ($cfg['display-condition'] ?? null);
+        // Só o nome do método (como o painel Visibilidade do Studio grava) =
+        // método public static da própria tela.
+        $dc = \Mad\Grid\GridAction::hostCallable($cfg['displayCondition'] ?? ($cfg['display-condition'] ?? null), [static::class]);
         if ($dc && is_callable($dc)) {
             $visible = (bool) self::_callRowCallback($dc, $item, $row);
             if (!$visible) return null;
@@ -1894,7 +1896,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         $sid = $this->stageId($stage);
 
         // display-condition (aceita o record do stage; string ou callable)
-        $dc = $cfg['displayCondition'] ?? ($cfg['display-condition'] ?? null);
+        $dc = \Mad\Grid\GridAction::hostCallable($cfg['displayCondition'] ?? ($cfg['display-condition'] ?? null), [static::class]);
         if ($dc && is_callable($dc)) {
             $visible = (bool) self::_callRowCallback($dc, $stage, $row);
             if (!$visible) return null;
@@ -1979,27 +1981,14 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * Invoca callable de display-condition passando args conforme aridade
      * detectada via reflection.
      *
-     *   1 arg  → fn(array $row): bool                — legado MAD
+     *   1 arg  → fn(array $row): bool  (sem tipo: o registro) — legado MAD
      *   2 args → fn(?object $object, array $row): bool — record-compat
      *
-     * Espelha GridAction::_callRowCallback.
+     * Mesma regra do grid: GridAction::callRowCallback.
      */
     private static function _callRowCallback(callable $fn, ?object $object, array $row): mixed
     {
-        try {
-            $ref = is_array($fn)
-                ? new \ReflectionMethod($fn[0], $fn[1])
-                : (is_string($fn) && str_contains($fn, '::')
-                    ? new \ReflectionMethod(...explode('::', $fn, 2))
-                    : new \ReflectionFunction($fn));
-            $n = $ref->getNumberOfParameters();
-        } catch (\Throwable $e) {
-            $n = 2;
-        }
-        if ($n <= 1) {
-            return call_user_func($fn, $row);
-        }
-        return call_user_func($fn, $object, $row);
+        return \Mad\Grid\GridAction::callRowCallback($fn, $object, $row);
     }
 
     // ── Entry point do <mad-kanban> declarativo (MadKanbanCompiler) ──────

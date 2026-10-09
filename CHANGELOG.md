@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.141.1] — 2026-10-09
+
+### Correções
+
+- **Listagens:** a opção **Exibir quando… › Função** e o **Configurar expressão** das ações da grid (Editar, Excluir, ações próprias e as do menu "…") eram ignorados, e o botão aparecia em toda linha. Agora a regra decide linha a linha; vale também para as ações dos cartões do Kanban. Republique o projeto para aplicar.
+
 ## [5.141.0] — 2026-10-09
 
 ### Novidades

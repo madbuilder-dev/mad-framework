@@ -3705,11 +3705,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _effectiveActions(): array
     {
-        $dono = $this->_permOwnerClass();
+        $dono  = $this->_permOwnerClass();
+        $hosts = $this->_actionHosts();
 
         if ($this->_inlineConfig !== null) {
             return array_values(array_filter(array_map(
-                fn($a) => static::_actFromConfig($a, $dono),
+                fn($a) => static::_actFromConfig($a, $dono)?->resolveIn(...$hosts),
                 $this->_inlineConfig['actConfigs'] ?? []
             )));
         }
@@ -3718,7 +3719,43 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // declarativo: as ações chegam sem dono. Carimbar AQUI, no único ponto
         // por onde todas passam, é o que faz a permissão valer nos dois casos —
         // senão só o caminho inline (<mad-grid self>) seria checado.
-        return array_map(fn($act) => static::_permStamp($act, $dono), $this->actions());
+        return array_map(
+            fn($act) => static::_hostStamp(static::_permStamp($act, $dono), $hosts),
+            $this->actions()
+        );
+    }
+
+    /**
+     * Onde procurar a condição/transform de uma ação escrita só com o NOME do
+     * método (`display-condition="podeExcluir"`, como o painel Visibilidade do
+     * Studio grava): a tela dona do grid, a classe de ações (`handler`) e a
+     * própria classe. Ver {@see GridAction::resolveIn()}.
+     *
+     * @return list<string>
+     */
+    protected function _actionHosts(): array
+    {
+        $hosts = [];
+        if (method_exists($this, '_permOwners')) {
+            try {
+                $hosts = (array) $this->_permOwners();
+            } catch (\Throwable $e) {
+                $hosts = [];
+            }
+        }
+        $hosts[] = $this->_permOwnerClass();
+        $hosts[] = static::class;
+
+        return array_values(array_unique(array_filter(array_map(
+            fn($h) => trim((string) $h),
+            $hosts
+        ))));
+    }
+
+    /** {@see GridAction::resolveIn()} para o que vier de actions()/actionGroups(). */
+    protected static function _hostStamp(mixed $act, array $hosts): mixed
+    {
+        return $act instanceof GridAction ? $act->resolveIn(...$hosts) : $act;
     }
 
     /**
@@ -3780,15 +3817,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _effectiveActionGroups(): array
     {
-        $dono = $this->_permOwnerClass();
+        $dono  = $this->_permOwnerClass();
+        $hosts = $this->_actionHosts();
 
         if ($this->_inlineConfig !== null) {
-            return array_map(function (array $g) use ($dono) {
+            return array_map(function (array $g) use ($dono, $hosts) {
                 $grp = GridActionGroup::make($g['label'] ?? '');
                 if (!empty($g['icon'])) $grp->icon($g['icon']);
                 foreach ($g['actions'] ?? [] as $a) {
                     $act = static::_actFromConfig($a, $dono);
-                    if ($act) $grp->add($act);
+                    if ($act) $grp->add($act->resolveIn(...$hosts));
                 }
                 return $grp;
             }, $this->_inlineConfig['actGroupConfigs'] ?? []);
@@ -3799,7 +3837,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         foreach ($grupos as $grp) {
             if (!$grp instanceof GridActionGroup) continue;
             foreach ($grp->actions as $act) {
-                static::_permStamp($act, $dono);
+                static::_hostStamp(static::_permStamp($act, $dono), $hosts);
             }
         }
 
