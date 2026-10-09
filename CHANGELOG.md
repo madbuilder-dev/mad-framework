@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.139.1] — 2026-10-09
+
+### Correções
+
+- **Formulários:** o "Valor padrão" definido no Studio não aparecia ao abrir um cadastro novo em vários campos (texto, número, spinner, seleção, rádio, interruptor e combos de tabela). Na edição continua valendo o valor gravado. Republique o projeto para aplicar.
+
 ## [5.139.0] — 2026-10-09
 
 ### Novidades

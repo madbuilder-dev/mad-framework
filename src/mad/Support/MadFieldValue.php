@@ -137,6 +137,33 @@ final class MadFieldValue
     }
 
     /**
+     * "Valor padrão" (`default` da tag) dos campos de tabela, aplicado POR
+     * ÚLTIMO: só quando nem a prop `selected` nem o registro aberto trouxeram
+     * valor.
+     *
+     * Nesses templates (dbcombo, dbradio, dbunique-search) a prop `selected`
+     * vence o registro, então o `default` não pode virar `selected` na
+     * compilação como vira `value` nos outros campos — a edição abriria no
+     * padrão em vez do valor gravado. Mesma regra de `resolve()` para o vazio:
+     * registro que guarda `''`/NULL exibe o padrão.
+     *
+     * @param string $current Valor já resolvido (selected > registro), '' = nenhum
+     * @param mixed  $default Prop `default` da tag
+     */
+    public static function withDefault(string $name, string $current, $default = null): string
+    {
+        if ($current !== '' || $default === null || is_array($default) || is_object($default) || is_bool($default)) {
+            return $current;
+        }
+        $value = (string) $default;
+        if ($name !== '' && $value !== '') {
+            MadRenderContext::getForm()?->noteFieldDefault($name, $value);
+        }
+
+        return $value;
+    }
+
+    /**
      * Idem, já coagido para float — usado por money/numeric, que trabalham com
      * o valor cru e não com o texto formatado.
      */

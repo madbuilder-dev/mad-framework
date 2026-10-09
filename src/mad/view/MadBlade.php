@@ -496,6 +496,51 @@ class MadBladeCompiler extends BladeCompiler
     private const PERM_TAGS = ['btn'];
 
     /**
+     * Campos em que o "Valor padrão" (`default` / `:default`) é o `value` da tag.
+     *
+     * O painel do Studio grava `default` em quase todo campo e o catálogo do
+     * agente o anuncia, mas nenhum destes templates declara `default`: o valor
+     * inicial sai de `value`, resolvido por `MadFieldValue` (registro aberto >
+     * `value` > vazio). O `default` virava variável morta e o campo abria vazio
+     * no cadastro novo (fórum #105: spinner com `:default="date('Y')"`).
+     *
+     * Só entram campos em que `value` PERDE para o registro — renomear ali é
+     * seguro na edição. Ficam de fora, de propósito:
+     *  - os campos de tabela (dbcombo, dbradio, dbunique-search…): neles a prop
+     *    `selected` VENCE o registro, então o padrão entra no próprio template,
+     *    por último (`MadFieldValue::withDefault`);
+     *  - `checkbox-field`: lá `value` é o valor gravado quando marcado, não o
+     *    estado inicial;
+     *  - as tags que leem `default` de verdade (`mad-tabs`, `mad-sidebar-nav`…).
+     */
+    private const DEFAULT_IS_VALUE_TAGS = [
+        'input-field', 'textarea-field', 'password-field', 'search-field', 'seek-field',
+        'number-field', 'numeric-field', 'money-field', 'spinner-field', 'range-field',
+        'date-field', 'datetime-field', 'time-field', 'color-field', 'html-editor-field',
+        'cep-field', 'cnpj-field', 'otp-field', 'dbentry-field',
+        'select-field', 'radio-field', 'switch-field',
+    ];
+
+    /**
+     * Destino do `default` de uma tag: `'value'` quando ele vira o valor
+     * inicial, `false` quando a tag já traz `value` (o escrito vence o padrão e
+     * o `default` é descartado — os dois na mesma tag virariam chave repetida no
+     * array e o último ganharia), null quando a tag não está na lista.
+     */
+    private static function defaultTarget(string $tag, string $params): string|false|null
+    {
+        if (! in_array($tag, self::DEFAULT_IS_VALUE_TAGS, true)) {
+            return null;
+        }
+        // Mesmo casamento de atributo do laço de parseParams: o valor entre
+        // aspas é consumido inteiro, então um `value=` dentro de outro
+        // atributo (hint, placeholder) não conta.
+        preg_match_all('/(:?)([a-zA-Z0-9_.:-]+)\s*=\s*(["\'])(?:(?!\3)[\s\S])*?\3/s', $params, $m);
+
+        return in_array('value', $m[2], true) ? false : 'value';
+    }
+
+    /**
      * @param string $tag Nome da tag sendo compilada ('btn', 'card'…), quando
      *                    o chamador sabe. Vazio = compilação avulsa.
      */
@@ -514,6 +559,8 @@ class MadBladeCompiler extends BladeCompiler
         $_anchor      = null;   // tabela do modelo de dados (âncora do gerador)
         $_screenOnly  = null;   // 'true' | 'false' | expressão PHP
         $_whenUses    = [];     // campos que as condições *-when da tag usam
+        // "Valor padrão" do Studio nos campos que leem `value` — ver DEFAULT_IS_VALUE_TAGS.
+        $_defaultTo   = self::defaultTarget($tag, (string) $params);
         $pos        = 0;
         $len        = strlen($params);
 
@@ -716,6 +763,14 @@ class MadBladeCompiler extends BladeCompiler
                     $method = $om[1] . ucfirst($om[2]);
                     $extraAttrs[] = "onclick=\"Mad.{$method}('{$val}')\"";
                     continue;
+                }
+
+                // `default` → `value` (o binding `:` vem junto, em $m[1]).
+                if ($key === 'default' && $_defaultTo !== null) {
+                    if ($_defaultTo === false) {
+                        continue;
+                    }
+                    $key = $_defaultTo;
                 }
 
                 // Converte kebab-case → camelCase para PHP (ex: group-by → groupBy)

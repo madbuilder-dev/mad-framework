@@ -99,6 +99,8 @@
         }
     }
     $selected = (string)$selected;
+    // "Valor padrão" do Studio: só quando nem `selected` nem o registro trouxeram valor.
+    $selected = \Mad\Support\MadFieldValue::withDefault((string) $name, $selected, $default ?? null);
 
     // Em branco grava NULL (a chave de outra tabela nunca é ''): coluna
     // inteira recusava o '' e o salvar quebrava. empty-as="empty" = antigo.

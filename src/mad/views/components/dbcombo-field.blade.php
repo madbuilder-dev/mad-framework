@@ -128,6 +128,8 @@
         }
     }
     $selected = (string) ($selected ?? '');
+    // "Valor padrão" do Studio: só quando nem `selected` nem o registro trouxeram valor.
+    $selected = \Mad\Support\MadFieldValue::withDefault((string) $name, $selected, $default ?? null);
     $placeholder   = $placeholder   ?? 'Selecione...';
     // `no-empty`: a lista sai sem a opção em branco e o navegador elege o
     // primeiro registro — o `setDefaultOption(false)` de quem vem do 4.0.
