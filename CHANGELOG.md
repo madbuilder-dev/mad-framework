@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.140.1] — 2026-10-09
+
+### Correções
+
+- **Botões:** `$this->form->disable()` e `hide()` não mudavam o botão criado no Studio. Agora o botão atende pelo ID definido no painel (ou pelo `name`), e `hide('btn_aprovar')` sem escopo esconde o botão. Republique o projeto para aplicar.
+
 ## [5.140.0] — 2026-10-09
 
 ### Novidades

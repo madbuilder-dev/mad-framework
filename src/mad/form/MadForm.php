@@ -67,7 +67,7 @@ class MadForm
     public array $placeholders = [];
 
     /**
-     * Elementos escondidos no DOM. Map `nome => scope`, onde scope ∈ 'field' | 'tab' | 'row'.
+     * Elementos escondidos no DOM. Map `nome => scope`, onde scope ∈ 'field' | 'btn' | 'tab' | 'row'.
      *
      *   ['nome' => 'field', 'abaExtras' => 'tab', 'row-abc' => 'row']
      *
@@ -5214,14 +5214,16 @@ class MadForm
      * Esconde um elemento no DOM.
      *
      *   $this->form->hide('nome');                  // campo (default)
+     *   $this->form->hide('btn_aprovar');           // <mad-btn> pelo name ou, sem ele, pelo id
      *   $this->form->hide('aba_extras', 'tab');     // tab inteira (botão + panel)
      *   $this->form->hide($rowId,       'row');     // linha de detail-form/field-list
      *
      * Ao mudar o bucket `hidden`, o MadComponentHandler emite op `mad_hide`
-     * com o seletor correto baseado no scope.
+     * com o seletor correto baseado no scope. O scope `field` (default) também
+     * acerta o botão homônimo; `'btn'` acerta só o botão.
      *
-     * @param string $name  Nome do campo, tab ou ID da row
-     * @param string $scope 'field' | 'tab' | 'row'
+     * @param string $name  Nome do campo, tab, botão ou ID da row
+     * @param string $scope 'field' | 'btn' | 'tab' | 'row'
      */
     public function hide(string $name, string $scope = 'field'): void
     {
@@ -5264,6 +5266,8 @@ class MadForm
      * Desabilita um botão (aplica atributo `disabled` no `<button data-mad-btn="X">`).
      * Bloqueia clique e o hover-efeito. Use para botões de ação como "Salvar",
      * "Aprovar", etc, quando o registro está em estado que não permite a ação.
+     * O botão é achado pelo `name` do `<mad-btn>` ou, sem ele, pelo `id` (o
+     * campo **ID** do painel do Studio).
      *
      *   $this->form->disable('btn_salvar');
      */

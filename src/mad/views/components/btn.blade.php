@@ -72,8 +72,17 @@
     }
 
     // Estado runtime do MadForm (hide/show/disable aplicados no primeiro render)
-    $_isHidden   = $name && \Mad\Component\MadRenderContext::isHidden($name, 'btn');
-    $_isDisabled = $name && \Mad\Component\MadRenderContext::isDisabled($name);
+    // O botão atende pelo `name` e, sem ele, pelo `id`: o painel do Studio só
+    // oferece o ID, e `form->disable('btn_aprovar')` não achava o botão.
+    // `hide('x')` sem escopo (vale 'field') também esconde o botão — é o que o
+    // doc ensina; antes só `hide('x', 'btn')` funcionava.
+    $_btnKey = trim(is_scalar($name) ? (string) $name : '');
+    if ($_btnKey === '' && is_scalar($id)) {
+        $_btnKey = trim((string) $id);
+    }
+    $_isHidden   = $_btnKey !== '' && (\Mad\Component\MadRenderContext::isHidden($_btnKey, 'btn')
+                                    || \Mad\Component\MadRenderContext::isHidden($_btnKey, 'field'));
+    $_isDisabled = $_btnKey !== '' && \Mad\Component\MadRenderContext::isDisabled($_btnKey);
     if ($_isDisabled) $disabled = true;
 
     // ── Permissão por ação (tela de Perfis) ─────────────────────────────────
@@ -191,7 +200,7 @@
 @if($href)
 <a href="{{ $href }}"
    class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }}{{ $posClass }} {{ $class }}"
-   @if($name) data-mad-btn="{{ $name }}" @endif
+   @if($_btnKey !== '') data-mad-btn="{{ $_btnKey }}" @endif
    @if($disabled) aria-disabled="true" tabindex="-1" @endif
    @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
    @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif
@@ -205,7 +214,7 @@
 @else
 <button type="{{ $type }}"
         class="mad-btn {{ $variantClass }}{{ $sizeClass }}{{ $blockClass }}{{ $hiddenClass }}{{ $posClass }} {{ $class }}"
-        @if($name) data-mad-btn="{{ $name }}" @endif
+        @if($_btnKey !== '') data-mad-btn="{{ $_btnKey }}" @endif
         @if($disabled) disabled @endif
         @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
         @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif

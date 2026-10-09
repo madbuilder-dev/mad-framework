@@ -2568,7 +2568,9 @@ const Mad = {
         if (scope === 'tab') return `[data-mad-tab="${safe}"]`;
         if (scope === 'row') return `[data-row-id="${safe}"]`;
         if (scope === 'btn') return `[data-mad-btn="${safe}"]`;
-        return `[data-mad-field="${safe}"]`;
+        // Sem escopo (`form->hide('btn_aprovar')`, como o doc do <mad-btn>
+        // ensina) também acerta o botão: antes só `hide(x, 'btn')` escondia.
+        return `[data-mad-field="${safe}"], [data-mad-btn="${safe}"]`;
     },
 
     /**
