@@ -1755,7 +1755,9 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
    lista do modo single — é por ela que o campo volta a ficar vazio — e o
    texto dela é o que o campo mostra sem valor.
    Sem busca: `data-mad-nosearch` (prop `no-search`) abre a lista sem a caixa
-   de digitação, nos modos single e check. */
+   de digitação, nos modos single e check.
+   "×" de limpar: no single com valor, quando o campo pode ficar vazio (tem a
+   opção em branco, não é obrigatório nem está travado) — getter `clearable`. */
 
 /* Acha um <option> pelo value sem depender de querySelector escapado. */
 function _madSelOpt(el, v) {
@@ -1911,6 +1913,15 @@ function _madSelectFactory() {
             var o = _madSelEmptyOpt(el);
             return o ? { value: '', text: (o.textContent || '').trim() || this.placeholder, empty: true } : null;
         },
+        // "×" do controle (o allowClear do select2): limpa o campo sem abrir a
+        // lista. Mesma regra da linha em branco — o campo precisa PODER ficar
+        // vazio — e vale também na busca no servidor, que não tem a linha.
+        get clearable() {
+            this._v;
+            var el = this._native;
+            return !!el && !this.multiple && !this._locked && !el.disabled && !el.required
+                && this.selectedValues.length > 0 && !!_madSelEmptyOpt(el);
+        },
         get visibleOptions() {
             this._v; this.query;
             var base;
@@ -1974,11 +1985,24 @@ function _madSelectFactory() {
         // ── interações ──
         onControlClick(e) {
             if (this._locked || this._native.disabled) return;
-            if (e.target && e.target.closest('.mad-sel-chip-x')) return;
+            if (e.target && (e.target.closest('.mad-sel-chip-x') || e.target.closest('.mad-sel-clear'))) return;
             this.openDropdown();
-            // Sem busca o foco vai para o próprio controle: é dele que saem as
-            // teclas (setas, Enter, Esc, letra inicial).
-            var self = this; this.$nextTick(function () { var i = self.searchable ? self.$refs.input : self.control; if (i) i.focus(); });
+            this._focusControl();
+        },
+        // Cursor na busca (sem busca, no próprio controle: é dele que saem as
+        // setas, Enter, Esc e a letra inicial). Espera a caixa APARECER: o
+        // x-show a mostra num setTimeout próprio e, no Firefox, o $nextTick
+        // chegava antes — o focus() caía num input ainda display:none e o
+        // primeiro clique abria a lista sem cursor (só o segundo deixava digitar).
+        _focusControl() {
+            var self = this, tries = 0;
+            var attempt = function () {
+                var i = self.searchable ? self.$refs.input : self.control;
+                if (!i) return;
+                if (i.getClientRects().length) { i.focus(); return; }
+                if (self.open && tries++ < 25) setTimeout(attempt, 16);
+            };
+            this.$nextTick(attempt);
         },
         openDropdown() {
             if (this._locked || this.open) { if (this.open) this._measure(); return; }
@@ -2076,9 +2100,17 @@ function _madSelectFactory() {
             if (m) { this.selectOption(m.value); return; }
             this._labelMap[q] = q; this.selectOption(q);
         },
-        clearValue() { this.clear(false); this.closeDropdown(); },
+        clearValue() {
+            // O "×" pode estar à vista num campo que acabou de ser travado.
+            if (this._locked || this._native.disabled) return;
+            this.clear(false); this.closeDropdown();
+        },
 
         onKeydown(e) {
+            // Delete/Backspace com a lista fechada: o teclado do "×".
+            if (!this.open && (e.key === 'Delete' || e.key === 'Backspace') && this.clearable) {
+                e.preventDefault(); this.clearValue(); return;
+            }
             // Sem busca, o teclado faz o que a caixa de digitação fazia: Espaço
             // abre a lista e a letra leva ao primeiro item que começa com ela.
             if (!this.searchable && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
@@ -2264,7 +2296,7 @@ function _madSelectFactory() {
 /* Markup do wrapper (control + dropdown teleportado). O <select> nativo é
    movido pra dentro como x-ref="native" pelo _madCreateSelect. */
 var _MAD_SEL_CONTROL_TPL =
-'<div class="mad-sel-control" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="searchable?null:-1">' +
+'<div class="mad-sel-control" :class="{\'has-clear\':clearable}" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="searchable?null:-1">' +
   '<template x-if="!multiple && !checkbox">' +
     '<span class="mad-sel-single" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?displayItems[0].text:placeholder"></span>' +
   '</template>' +
@@ -2282,6 +2314,7 @@ var _MAD_SEL_CONTROL_TPL =
   '<input class="mad-sel-input" x-ref="input" type="text" x-model="query" @input="onSearchInput()" @focus="openDropdown()" ' +
     'x-show="searchable && (open || (multiple && !checkbox))" :placeholder="(multiple && hasValue)?\'\':placeholder" ' +
     'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
+  '<span class="mad-sel-clear" role="button" tabindex="-1" aria-label="Limpar" title="Limpar" x-show="clearable" x-cloak @mousedown.prevent.stop="clearValue()" @click.stop>&times;</span>' +
   '<i class="mad-sel-caret" data-lucide="chevron-down"></i>' +
 '</div>' +
 '<template x-teleport="body">' +

@@ -1452,6 +1452,33 @@ textarea.mad-textarea:read-only:focus {
 }
 .mad-sel.is-open > .mad-sel-control .mad-sel-caret { transform: translateY(-50%) rotate(180deg); }
 
+/* "×" que limpa o campo, ao lado da seta (o allowClear do select2): sempre à
+   vista quando há valor e o campo pode ficar vazio (getter `clearable`). */
+.mad-sel-control.has-clear { padding-right: 52px; }
+.mad-sel-clear {
+  position: absolute;
+  right: 30px; top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  color: var(--mad-text-subtle);
+  font-size: 16px; line-height: 1;
+  cursor: pointer;
+  transition: color var(--mad-t), background var(--mad-t);
+}
+.mad-sel-clear:hover { color: var(--mad-danger); background: var(--mad-bg-muted); }
+/* Campo que não aceita edição agora, e as células compactas da grade e da
+   planilha (lá a linha em branco da lista já limpa): sem "×". Na grade o
+   padding compacto já é !important; na planilha é reposto aqui. */
+.mad-readonly .mad-sel-clear,
+.mad-sel-locked .mad-sel-clear,
+.mad-sel:has(> select:disabled) .mad-sel-clear,
+.mad-dg-cell .mad-sel-clear,
+.mad-dg-edit-inline .mad-sel-clear,
+.mad-sheet-cell .mad-sel-clear { display: none !important; }
+.mad-sheet-cell .mad-sel-control.has-clear { padding-right: 26px; }
+
 /* Dropdown (teleportado ao body, position:fixed via :style) */
 .mad-sel-dropdown {
   background: var(--mad-bg);

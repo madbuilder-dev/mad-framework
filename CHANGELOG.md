@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.138.0] — 2026-10-08
+
+### Novidades
+
+- **Formulários:** o combo com valor ganhou um × ao lado da seta: um clique limpa o campo sem abrir a lista. Aparece quando o campo pode ficar vazio (tem a opção em branco e não é obrigatório). Com o foco no campo, Delete faz o mesmo.
+
+### Correções
+
+- **Formulários:** no Firefox, o primeiro clique no combo abria a lista sem o cursor na busca; era preciso clicar de novo para digitar.
+
 ## [5.137.0] — 2026-10-08
 
 ### Novidades
