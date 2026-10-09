@@ -2617,8 +2617,14 @@ const Mad = {
         const attempt = () => {
             let el = this._madFocusTarget(name, scope);
             if (el && el._madSelect) {
-                el._madSelect.openDropdown();
-                el = el._madSelect.control_input;
+                // Combo sem busca (`no-search`): não há caixa de digitação para
+                // receber o cursor — o foco vai para o próprio controle, fechado.
+                if (el._madSelect.searchable === false) {
+                    el = el._madSelect.control;
+                } else {
+                    el._madSelect.openDropdown();
+                    el = el._madSelect.control_input;
+                }
             }
             // Select que ainda vai virar MAD Select: espera, senão o foco fica no nativo.
             const ready = el && el.getClientRects().length > 0

@@ -24,6 +24,8 @@
      *                                token; Builder não serializa) → lança erro se combinados.
      *   selected    string   Valor pré-selecionado
      *   placeholder string   Opção vazia (padrão: 'Selecione...')
+     *   no-empty    bool     Sem a opção vazia: o campo já abre no primeiro registro
+     *   no-search   bool     Lista sem a caixa de busca
      *   hint        string   Texto de ajuda
      *   error       string   Mensagem de erro (PHP-driven)
      *   required    bool
@@ -127,6 +129,10 @@
     }
     $selected = (string) ($selected ?? '');
     $placeholder   = $placeholder   ?? 'Selecione...';
+    // `no-empty`: a lista sai sem a opção em branco e o navegador elege o
+    // primeiro registro — o `setDefaultOption(false)` de quem vem do 4.0.
+    $noEmpty       = !empty($noEmpty ?? false);
+    $noSearch      = !empty($noSearch ?? false);
     $hint          = $hint          ?? '';
     $error         = $error         ?? '';
     $required      = !empty($required);
@@ -353,6 +359,7 @@
         name="{{ $name }}"
         class="mad-select{{ $hasError ? ' mad-input-error' : '' }}{{ $_isReadonly ? ' mad-readonly-select' : '' }}"
         data-mad-select
+        @if($noSearch) data-mad-nosearch @endif
         @if($required) required @endif
         @if($disabled) disabled @endif
         @if($dependsOn)
@@ -366,7 +373,9 @@
         {!! $noResultsAttrs !!}
         {!! $attrs !!}
     >
-        <option value="">{{ $placeholder }}</option>
+        @if(!$noEmpty)
+            <option value="">{{ $placeholder }}</option>
+        @endif
         @if($__optError !== null)
             <option value="" disabled data-mad-options-error>{{ $__optError }}</option>
         @endif

@@ -1749,13 +1749,28 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
    close/on/off/destroy + getters wrapper/control/control_input/dropdown.
 
    Modos (lidos do dataset do <select>): single, single-search, multi,
-   tags, single-ajax, multi-ajax, check (checkbox no dropdown). */
+   tags, single-ajax, multi-ajax, check (checkbox no dropdown).
+
+   Opção em branco: a `<option value="">` do <select> é a primeira linha da
+   lista do modo single — é por ela que o campo volta a ficar vazio — e o
+   texto dela é o que o campo mostra sem valor.
+   Sem busca: `data-mad-nosearch` (prop `no-search`) abre a lista sem a caixa
+   de digitação, nos modos single e check. */
 
 /* Acha um <option> pelo value sem depender de querySelector escapado. */
 function _madSelOpt(el, v) {
     v = String(v);
     var opts = el.options;
     for (var i = 0; i < opts.length; i++) { if (opts[i].value === v) return opts[i]; }
+    return null;
+}
+
+/* A opção em branco do <select>: a primeira `<option value="">` HABILITADA.
+   A desabilitada de value vazio é o aviso de lista que não carregou
+   (`data-mad-options-error`) — não é placeholder nem escolha. */
+function _madSelEmptyOpt(el) {
+    var opts = el.options;
+    for (var i = 0; i < opts.length; i++) { if (opts[i].value === '' && !opts[i].disabled) return opts[i]; }
     return null;
 }
 
@@ -1783,7 +1798,7 @@ function _madSelectFactory() {
         open: false, query: '', activeIndex: -1, loading: false, results: [],
         _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {},
         _listeners: {}, _outside: null, _onScroll: null, _ctrlRect: null,
-        _isTouch: false, _uid: '', _native: null,
+        _isTouch: false, _uid: '', _native: null, _taBuf: '', _taTimer: null,
 
         init() {
             // Resolve o <select> via $root (NÃO via $refs): o select pode já ter sido
@@ -1822,6 +1837,7 @@ function _madSelectFactory() {
         },
         destroy() {
             clearTimeout(this._debounce);
+            clearTimeout(this._taTimer);
             this._detachOutside();
             if (this._native) { try { delete this._native._madSelect; } catch (e) {} }
         },
@@ -1841,8 +1857,15 @@ function _madSelectFactory() {
             this.maxDisplay = parseInt(d.maxDisplay || '3') || 3;
             var ml = d.minLength;
             this.minLen = (ml !== undefined && ml !== '' && !isNaN(parseInt(ml))) ? parseInt(ml) : (this.ajax ? 3 : 0);
-            this.placeholder = d.placeholder || (this.ajax ? 'Digite para buscar...' : (this.mode === 'tags' ? 'Digite e pressione Enter...' : 'Selecione...'));
-            this.searchable = true;
+            // Sem `data-placeholder`, o campo vazio mostra o texto da própria
+            // opção em branco: é ali que o `placeholder` do combo chega (antes
+            // saía sempre "Selecione...", qualquer que fosse o texto escolhido).
+            var eo = this.multiple ? null : _madSelEmptyOpt(el);
+            this.placeholder = d.placeholder || (eo ? (eo.textContent || '').trim() : '')
+                || (this.ajax ? 'Digite para buscar...' : (this.mode === 'tags' ? 'Digite e pressione Enter...' : 'Selecione...'));
+            // `no-search`: só onde a busca é filtro de uma lista já carregada.
+            // Nos demais modos digitar É o campo (busca no servidor, tags, chips).
+            this.searchable = !(d.madNosearch !== undefined && (this.mode === 'single' || this.mode === 'check'));
         },
         _seedLabels() {
             var el = this._native, o = el.options;
@@ -1875,6 +1898,19 @@ function _madSelectFactory() {
             for (var i = 0; i < o.length; i++) { if (o[i].value !== '') out.push({ value: o[i].value, text: o[i].textContent }); }
             return out;
         },
+        // Opção em branco como linha da lista: sem ela, depois de escolher um
+        // item não havia como deixar o campo vazio de novo. Só no single (no
+        // múltiplo desmarca-se item a item), fora de campo obrigatório (vazio
+        // ali não é escolha) e fora da busca no servidor (a lista é o
+        // resultado). A option DESABILITADA de value vazio é o aviso de lista
+        // que não carregou, não uma escolha — ver _madSelEmptyOpt.
+        get emptyOption() {
+            this._v;
+            var el = this._native;
+            if (!el || this.multiple || this.ajax || el.required) return null;
+            var o = _madSelEmptyOpt(el);
+            return o ? { value: '', text: (o.textContent || '').trim() || this.placeholder, empty: true } : null;
+        },
         get visibleOptions() {
             this._v; this.query;
             var base;
@@ -1884,6 +1920,9 @@ function _madSelectFactory() {
                 var q = (this.query || '').toLowerCase();
                 base = this.nativeOptions;
                 if (q) base = base.filter(function (o) { return o.text.toLowerCase().indexOf(q) >= 0; });
+                // Lista sem nenhum item fica como era: "nenhum registro" e os
+                // botões de cadastro, sem uma linha em branco sozinha no lugar.
+                else if (base.length) { var eo = this.emptyOption; if (eo) base = [eo].concat(base); }
             }
             // Multi (não-checkbox): esconde os já selecionados da lista — vale também
             // pro AJAX, pra não reaparecerem após selecionar (ficam só como chips).
@@ -1937,16 +1976,34 @@ function _madSelectFactory() {
             if (this._locked || this._native.disabled) return;
             if (e.target && e.target.closest('.mad-sel-chip-x')) return;
             this.openDropdown();
-            var self = this; this.$nextTick(function () { var i = self.$refs.input; if (i) i.focus(); });
+            // Sem busca o foco vai para o próprio controle: é dele que saem as
+            // teclas (setas, Enter, Esc, letra inicial).
+            var self = this; this.$nextTick(function () { var i = self.searchable ? self.$refs.input : self.control; if (i) i.focus(); });
         },
         openDropdown() {
             if (this._locked || this.open) { if (this.open) this._measure(); return; }
-            this.open = true; this.activeIndex = -1;
+            this.open = true; this.activeIndex = this._currentIndex();
             this._measure(); this._attachOutside();
             if (this.ajax && this.minLen === 0 && !this.results.length) this._fetch('');
             this._emit('dropdown_open');
             var self = this;
-            this.$nextTick(function () { self._reicon(); });
+            this.$nextTick(function () { self._reicon(); if (self.activeIndex > 0) self._revealActive(); });
+        },
+        // Linha ativa ao abrir (single com a lista já carregada): o item atual
+        // ou, com o campo vazio, a linha em branco — assim a seta para baixo
+        // continua caindo no primeiro item. Nos outros modos, nenhuma.
+        _currentIndex() {
+            if (this.multiple || this.ajax) return -1;
+            var vo = this.visibleOptions, sv = this.selectedValues;
+            if (!sv.length) return (vo.length && vo[0].empty) ? 0 : -1;
+            for (var i = 0; i < vo.length; i++) { if (vo[i].value === sv[0]) return i; }
+            return -1;
+        },
+        // Traz a linha ativa para dentro da lista rolando SÓ a lista (o
+        // scrollIntoView rolaria também a página com a lista ainda se posicionando).
+        _revealActive() {
+            var d = this.dropdown, a = d && d.querySelector('.mad-sel-option.is-active');
+            if (a) d.scrollTop = Math.max(0, a.offsetTop - (d.clientHeight - a.offsetHeight) / 2);
         },
         closeDropdown() { if (!this.open) return; this.open = false; this.query = ''; this._detachOutside(); },
         _measure() {
@@ -2000,6 +2057,8 @@ function _madSelectFactory() {
                 if (!this.ajax && !this.checkbox) this.query = '';
                 var self = this; this.$nextTick(function () { var i = self.$refs.input; if (i) { i.focus(); self._measure(); } });
             } else {
+                // Linha em branco: o campo volta a vazio pelo mesmo caminho do clear().
+                if (v === '') { this.clearValue(); return; }
                 this._ensureOption(v); el.value = v;
                 this._commit(); this._emit('item_add', v);
                 this.closeDropdown();
@@ -2020,6 +2079,14 @@ function _madSelectFactory() {
         clearValue() { this.clear(false); this.closeDropdown(); },
 
         onKeydown(e) {
+            // Sem busca, o teclado faz o que a caixa de digitação fazia: Espaço
+            // abre a lista e a letra leva ao primeiro item que começa com ela.
+            if (!this.searchable && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
+                e.preventDefault();
+                if (e.key !== ' ') this._typeAhead(e.key);
+                else if (!this.open) this.openDropdown();
+                return;
+            }
             if (!this.open && (e.key === 'ArrowDown' || e.key === 'Enter')) { if (e.key === 'ArrowDown') e.preventDefault(); this.openDropdown(); return; }
             if (!this.open) return;
             var opts = this.visibleOptions;
@@ -2027,11 +2094,28 @@ function _madSelectFactory() {
             else if (e.key === 'ArrowUp') { e.preventDefault(); this.activeIndex = Math.max(0, this.activeIndex - 1); this._scrollActive(); }
             else if (e.key === 'Enter') {
                 e.preventDefault();
-                if (this.activeIndex >= 0 && opts[this.activeIndex]) this.selectOption(opts[this.activeIndex].value);
+                var ao = this.activeIndex >= 0 ? opts[this.activeIndex] : null;
+                // A lista abre com a linha do valor atual ativa: Enter nela só
+                // fecha, sem disparar change de um valor que não mudou.
+                if (ao && !this.multiple && !this.ajax && ao.value === (this.selectedValues[0] || '')) this.closeDropdown();
+                else if (ao) this.selectOption(ao.value);
                 else if (this.canCreate) this.createTag();
             }
             else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeDropdown(); }
             else if (e.key === 'Backspace' && !this.query && this.multiple) { var sv = this.selectedValues; if (sv.length) this.removeItem(sv[sv.length - 1]); }
+        },
+        // Letras digitadas em sequência (até ~0,7 s entre elas) formam o começo
+        // do texto procurado; a linha em branco não entra na procura.
+        _typeAhead(ch) {
+            var self = this;
+            clearTimeout(this._taTimer);
+            this._taBuf += ch.toLowerCase();
+            this._taTimer = setTimeout(function () { self._taBuf = ''; }, 700);
+            if (!this.open) this.openDropdown();
+            var opts = this.visibleOptions, buf = this._taBuf;
+            for (var i = 0; i < opts.length; i++) {
+                if (!opts[i].empty && String(opts[i].text).trim().toLowerCase().indexOf(buf) === 0) { this.activeIndex = i; this._scrollActive(); return; }
+            }
         },
         _scrollActive() {
             var self = this;
@@ -2180,9 +2264,9 @@ function _madSelectFactory() {
 /* Markup do wrapper (control + dropdown teleportado). O <select> nativo é
    movido pra dentro como x-ref="native" pelo _madCreateSelect. */
 var _MAD_SEL_CONTROL_TPL =
-'<div class="mad-sel-control" @click="onControlClick($event)" role="combobox" :aria-expanded="open">' +
+'<div class="mad-sel-control" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="searchable?null:-1">' +
   '<template x-if="!multiple && !checkbox">' +
-    '<span class="mad-sel-single" x-show="!open" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?displayItems[0].text:placeholder"></span>' +
+    '<span class="mad-sel-single" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?displayItems[0].text:placeholder"></span>' +
   '</template>' +
   '<template x-if="multiple && !checkbox">' +
     '<span class="mad-sel-chips">' +
@@ -2193,10 +2277,10 @@ var _MAD_SEL_CONTROL_TPL =
     '</span>' +
   '</template>' +
   '<template x-if="checkbox">' +
-    '<span class="mad-sel-summary" x-show="!open" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?summaryText():placeholder"></span>' +
+    '<span class="mad-sel-summary" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?summaryText():placeholder"></span>' +
   '</template>' +
   '<input class="mad-sel-input" x-ref="input" type="text" x-model="query" @input="onSearchInput()" @focus="openDropdown()" ' +
-    'x-show="open || (multiple && !checkbox)" :placeholder="(multiple && hasValue)?\'\':placeholder" ' +
+    'x-show="searchable && (open || (multiple && !checkbox))" :placeholder="(multiple && hasValue)?\'\':placeholder" ' +
     'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
   '<i class="mad-sel-caret" data-lucide="chevron-down"></i>' +
 '</div>' +
@@ -2207,7 +2291,7 @@ var _MAD_SEL_CONTROL_TPL =
       '<div class="mad-sel-dropdown-inner">' +
         '<ul class="mad-sel-list" role="listbox">' +
           '<template x-for="(opt,i) in visibleOptions" :key="opt.value">' +
-            '<li class="mad-sel-option" role="option" :class="{\'is-active\':i===activeIndex,\'is-selected\':isSelected(opt.value)}" ' +
+            '<li class="mad-sel-option" role="option" :class="{\'is-active\':i===activeIndex,\'is-selected\':isSelected(opt.value),\'is-empty\':opt.empty}" ' +
               '@mouseenter="activeIndex=i" @mousedown.prevent="selectOption(opt.value)">' +
               '<template x-if="checkbox"><input type="checkbox" class="mad-sel-checkbox" tabindex="-1" :checked="isSelected(opt.value)" @click.prevent></template>' +
               '<span class="mad-sel-option-text" x-html="highlight(opt.text)"></span>' +

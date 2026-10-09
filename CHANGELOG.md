@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.137.0] — 2026-10-08
+
+### Novidades
+
+- **Formulários:** o combo aceita `no-search`, que abre a lista sem a caixa de busca. Vale no `<mad-select-field>` (também com `multiple`) e no `<mad-dbcombo-field>`; setas, Enter e a letra inicial continuam escolhendo o item.
+- **Formulários:** `allow-empty` no `<mad-select-field>` põe a opção em branco no topo da lista sem precisar de `placeholder`. No `<mad-dbcombo-field>`, `no-empty` tira essa opção e o campo já abre no primeiro registro.
+
+### Correções
+
+- **Formulários:** depois de escolher um item no combo não havia como deixar o campo vazio de novo. A opção em branco voltou a aparecer no topo da lista, menos em campo obrigatório.
+- **Formulários:** o combo vazio mostrava sempre "Selecione...", mesmo com outro texto no `placeholder`.
+
 ## [5.136.5] — 2026-10-08
 
 ### Novidades

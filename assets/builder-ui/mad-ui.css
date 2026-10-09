@@ -1476,6 +1476,8 @@ textarea.mad-textarea:read-only:focus {
 }
 .mad-sel-option.is-active { background: var(--mad-bg-muted); }
 .mad-sel-option.is-selected { font-weight: 600; }
+/* Linha em branco da lista (a `<option value="">`): volta o campo a vazio. */
+.mad-sel-option.is-empty { color: var(--mad-text-subtle); }
 .mad-sel-hl {
   background: color-mix(in srgb, var(--mad-primary, #3b82f6) 24%, transparent);
   color: inherit;

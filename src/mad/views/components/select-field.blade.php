@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => 'Cadastrar novo', 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => 'Adicionar', 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => 'Cadastrar novo', 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => 'Adicionar', 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -60,6 +60,16 @@
     $_multipleAttrs = $multiple
         ? ' multiple data-mad-selectcheck' . ($placeholder !== '' && $placeholder !== null ? ' data-placeholder="' . e($placeholder) . '"' : '')
         : '';
+    // `no-search`: a lista abre sem a caixa de busca (também no múltiplo).
+    // Colado no `data-mad-select` pelo mesmo motivo do `$_multipleAttrs`.
+    $_noSearchAttr = !empty($noSearch) ? ' data-mad-nosearch' : '';
+    // Opção em branco no topo da lista — é ela que deixa o campo sem escolha.
+    // Sai com `placeholder` (como sempre saiu) ou com `allow-empty`, que
+    // dispensa inventar um placeholder só para isso; `no-empty` tira mesmo com
+    // placeholder. No múltiplo não existe: desmarca-se item a item.
+    $_hasPlaceholder = $placeholder !== '' && $placeholder !== null;
+    $_emptyOption    = !$_slotMultiple && empty($noEmpty) && (!empty($allowEmpty) || $_hasPlaceholder);
+    $_emptyLabel     = $_hasPlaceholder ? $placeholder : 'Selecione...';
     $_slotValues   = \Mad\Support\MadSelectSlot::valueList(
         $selected,
         [$name ? (\Mad\Component\MadRenderContext::current()[$name] ?? null) : null, $_rawSelected, $_rawValue],
@@ -96,7 +106,7 @@
         id="{{ $id }}"
         name="{{ $name }}"
         class="mad-select{{ $hasError ? ' mad-input-error' : '' }}{{ $_isReadonly ? ' mad-readonly-select' : '' }}"
-        data-mad-select{!! $_multipleAttrs !!}
+        data-mad-select{!! $_multipleAttrs !!}{!! $_noSearchAttr !!}
         @if($selected) data-mad-selected="{{ $selected }}" @endif
         @if($required) required @endif
         @if($disabled) disabled @endif
@@ -104,7 +114,7 @@
         {!! $attrs !!}
     >
         @if(!empty($items))
-            @if($placeholder && !$_slotMultiple)<option value="">{{ $placeholder }}</option>@endif
+            @if($_emptyOption)<option value="">{{ $_emptyLabel }}</option>@endif
             @foreach($items as $optKey => $optLabel)
                 @php
                     // Coercao: labels como ['Label','variant'] (badge map) ou
@@ -119,6 +129,9 @@
                 <option value="{{ $optKey }}" @if($_slotMultiple ? in_array((string)$optKey, $_slotValues, true) : (string)$optKey === (string)$selected) selected @endif>{{ $optLabel }}</option>
             @endforeach
         @else
+            {{-- Slot: quem escreve as <option> escreve também a em branco; só o
+                 `allow-empty` explícito a acrescenta, e nunca uma segunda. --}}
+            @if($_emptyOption && !empty($allowEmpty) && !preg_match('/<option\b[^>]*\svalue\s*=\s*(""|\'\')/i', (string) $slot))<option value="">{{ $_emptyLabel }}</option>@endif
             {!! \Mad\Support\MadSelectSlot::markSelected((string) $slot, $_slotValues, $_slotMultiple) !!}
         @endif
     </select>
