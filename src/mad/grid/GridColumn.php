@@ -449,6 +449,30 @@ class GridColumn
         return $map;
     }
 
+    /**
+     * Valor da linha como chave do selo. Coluna `boolean` chega como
+     * `true`/`false` (PDO do Postgres, cast do model) e `(string) false` é ''
+     * — o "0:danger:Inativo" nunca casava e a célula saía como pílula vazia
+     * (fórum #113). Boolean vira '1'/'0'.
+     */
+    private static function badgeValue(mixed $value): string
+    {
+        return is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+    }
+
+    /** Entrada do mapa para o valor; boolean aceita a chave '1'/'0' ou 'true'/'false'. */
+    private function badgeEntry(mixed $value): mixed
+    {
+        $key = self::badgeValue($value);
+        if (array_key_exists($key, $this->badgeMap)) {
+            return $this->badgeMap[$key];
+        }
+        if (is_bool($value)) {
+            return $this->badgeMap[$value ? 'true' : 'false'] ?? null;
+        }
+        return null;
+    }
+
     /** "A:success:Ativo|I:danger" → ['A' => 'success:Ativo', 'I' => 'danger'] */
     public static function parseBadgeMap(string $str): array
     {
@@ -800,18 +824,19 @@ class GridColumn
         //   'value' => 'success:Ativo'                       → variant:label
         //   'value' => ['variant'=>'success','label'=>'Ativo']→ array
         if ($this->isBadge) {
-            $entry = $this->badgeMap[(string)$value] ?? null;
+            $entry = $this->badgeEntry($value);
+            $raw   = self::badgeValue($value);
             if ($entry === null) {
                 $variant = 'secondary';
-                $lbl     = (string)$value;
+                $lbl     = $raw;
             } elseif (is_array($entry)) {
                 $variant = $entry['variant'] ?? 'secondary';
-                $lbl     = $entry['label']   ?? (string)$value;
+                $lbl     = $entry['label']   ?? $raw;
             } elseif (strpos((string)$entry, ':') !== false) {
                 [$variant, $lbl] = explode(':', (string)$entry, 2);
             } else {
                 $variant = (string)$entry;
-                $lbl     = (string)$value;
+                $lbl     = $raw;
             }
             $label = htmlspecialchars($lbl, ENT_QUOTES);
             return "<span class=\"mad-badge mad-badge-{$variant}\">{$label}</span>";
@@ -931,18 +956,19 @@ class GridColumn
 
         // Badges — estilos inline equivalentes ao mad-ui.css
         if ($this->isBadge) {
-            $entry = $this->badgeMap[(string)$value] ?? null;
+            $entry = $this->badgeEntry($value);
+            $raw   = self::badgeValue($value);
             if ($entry === null) {
                 $variant = 'secondary';
-                $lbl     = (string)$value;
+                $lbl     = $raw;
             } elseif (is_array($entry)) {
                 $variant = $entry['variant'] ?? 'secondary';
-                $lbl     = $entry['label']   ?? (string)$value;
+                $lbl     = $entry['label']   ?? $raw;
             } elseif (strpos((string)$entry, ':') !== false) {
                 [$variant, $lbl] = explode(':', (string)$entry, 2);
             } else {
                 $variant = (string)$entry;
-                $lbl     = (string)$value;
+                $lbl     = $raw;
             }
 
             // Paleta equivalente aos tokens do mad-ui.css (cores sólidas

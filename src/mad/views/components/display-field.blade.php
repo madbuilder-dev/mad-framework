@@ -6,9 +6,11 @@
     // Resolve valor: prop value > MadRenderContext
     if ($value === null && $name) {
         $_ctx = \Mad\Component\MadRenderContext::current();
-        $value = array_key_exists($name, $_ctx) ? (string) $_ctx[$name] : '';
+        $value = array_key_exists($name, $_ctx) ? $_ctx[$name] : '';
     }
-    $rawValue  = (string) $value;
+    // Selo de coluna boolean: `(string) false` é '' — o campo saía "—" em vez
+    // do "0:danger:Inativo" do mapa. Com selo, boolean vira '1'/'0'.
+    $rawValue  = (is_bool($value) && !empty($badge)) ? ($value ? '1' : '0') : (string) $value;
     $isEmpty   = ($rawValue === '' || $rawValue === null);
     $displayHtml = '';
 

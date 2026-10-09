@@ -390,9 +390,10 @@
                                 @elseif($col->isBadge && !empty($col->badgeMap))
                                 @php $badgeJson = json_encode($col->badgeMap); @endphp
                                 <span x-html="(() => {
-                                    let v = String({!! $_cv !!} || '');
+                                    let raw = {!! $_cv !!};
+                                    let v = raw === true ? '1' : (raw === false ? '0' : (raw == null ? '' : String(raw)));
                                     let map = {{ $badgeJson }};
-                                    let entry = map[v];
+                                    let entry = map[v] ?? (typeof raw === 'boolean' ? map[String(raw)] : undefined);
                                     if (!entry) return v;
                                     let variant = 'secondary', lbl = v;
                                     if (typeof entry === 'string' && entry.includes(':')) {

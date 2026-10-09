@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.141.2] — 2026-10-09
+
+### Correções
+
+- **Listagens:** numa coluna verdadeiro/falso (como Ativo) com selo `badge="1:success:Ativo|0:danger:Inativo"`, as linhas falsas apareciam com um selo vazio. Agora mostram o selo do `0`, também no PDF, na planilha, nas linhas de detalhe e no campo de exibição. Republique o projeto para aplicar.
+
 ## [5.141.1] — 2026-10-09
 
 ### Correções
