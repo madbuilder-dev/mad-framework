@@ -1767,6 +1767,14 @@ textarea.mad-textarea:read-only:focus {
   padding: 14px 16px;
 }
 .mad-switch-text { flex: 1; min-width: 0; }
+/* label-position="right": chave primeiro, texto colado depois. A ordem do HTML
+   não muda (o texto continua vindo antes para o leitor de tela). */
+.mad-switch-row--label-right {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.mad-switch-row--label-right .mad-switch-text { flex: 0 1 auto; }
 .mad-switch-desc {
   font-size: 0.82rem;
   color: var(--mad-text-muted);

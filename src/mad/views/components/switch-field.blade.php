@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'description' => '', 'hint' => '', 'error' => '', 'name' => '', 'value' => '', 'checked' => false, 'required' => false,'disabled' => false, 'readonly' => false, 'attrs' => '', 'style' => '', 'valueOn' => '1', 'valueOff' => '0', 'variant' => '', 'size' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'description' => '', 'hint' => '', 'error' => '', 'name' => '', 'value' => '', 'checked' => false, 'required' => false,'disabled' => false, 'readonly' => false, 'attrs' => '', 'style' => '', 'valueOn' => '1', 'valueOff' => '0', 'variant' => '', 'size' => '', 'labelPosition' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -29,6 +29,12 @@
     if ($size)    { $toggleClass .= ' mad-toggle--' . $size; }
     $rowClass = 'mad-switch-row';
     if ($description) { $rowClass .= ' mad-switch-card'; }
+    // label-position="right": chave primeiro, texto colado depois (como no
+    // checkbox). Qualquer outro valor mantém o layout publicado: texto à
+    // esquerda e chave na ponta direita da coluna.
+    if (is_string($labelPosition) && strtolower(trim($labelPosition)) === 'right') {
+        $rowClass .= ' mad-switch-row--label-right';
+    }
     // readonly via prop ou contexto: pointer-events:none + opacity .75 no field todo
     // (mantem name + value postando; impede toggle pelo usuario)
     \Mad\Form\MadFormRegistry::register($name, 'switch', [

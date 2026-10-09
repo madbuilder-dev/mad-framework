@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.139.0] — 2026-10-09
+
+### Novidades
+
+- **Formulários:** `label-position="right"` no `<mad-switch-field>` põe a chave primeiro e o texto logo depois, juntos. Sem a prop nada muda: texto à esquerda e chave na ponta direita da coluna.
+- **Formulários:** `valign` no `<mad-form-grid>` alinha os campos da linha na vertical: `top`, `center` ou `bottom`. Serve para um switch ou checkbox ao lado de um campo com label, que ficava sempre no topo da coluna.
+
 ## [5.138.0] — 2026-10-08
 
 ### Novidades
