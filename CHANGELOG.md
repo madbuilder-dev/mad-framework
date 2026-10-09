@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.140.0] — 2026-10-09
+
+### Novidades
+
+- **Layout:** o `<mad-separator>` ganhou aparência própria: `color` (cor da linha), `thickness` (espessura em px), `line-style` (`solid`, `dashed`, `dotted` ou `double`) e `spacing` (espaço acima e abaixo). Sem as props nada muda: linha fina contínua na cor da borda do tema.
+- **Layout:** no separador com texto, `label-align="left"` ou `"right"` encosta o texto num dos lados; o padrão continua centralizado.
+
 ## [5.139.1] — 2026-10-09
 
 ### Correções

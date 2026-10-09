@@ -2124,9 +2124,24 @@ textarea.mad-textarea:read-only:focus {
    22. COMPONENTE — SEPARATOR
    ═══════════════════════════════════════════════════════════════════ */
 
-.mad-sep   { border: none; background: var(--mad-border); display: block; }
-.mad-sep-h { height: 1px; width: 100%; margin: var(--mad-s3) 0; }
-.mad-sep-v { width: 1px; height: 100%; margin: 0 var(--mad-s2); align-self: stretch; display: inline-block; }
+/* A linha é BORDA (não fundo) para aceitar formato tracejado/pontilhado/duplo.
+   Aparência por custom property, que o separator.blade.php só emite quando a
+   prop vem preenchida: --mad-sep-color (color), --mad-sep-size (thickness),
+   --mad-sep-style (line-style) e --mad-sep-space (spacing). Sem elas, o padrão
+   é o de sempre: 1px contínuo na cor da borda do tema. */
+.mad-sep   { border: 0; background: none; display: block; }
+.mad-sep-h { height: 0; width: 100%; margin: var(--mad-sep-space, var(--mad-s3)) 0;
+             border-top: var(--mad-sep-size, 1px) var(--mad-sep-style, solid) var(--mad-sep-color, var(--mad-border)); }
+.mad-sep-v { width: 0; height: 100%; margin: 0 var(--mad-sep-space, var(--mad-s2)); align-self: stretch; display: inline-block;
+             border-left: var(--mad-sep-size, 1px) var(--mad-sep-style, solid) var(--mad-sep-color, var(--mad-border)); }
+
+/* Com texto (label): linha · texto · linha. Sem margem por padrão, como sempre foi. */
+.mad-sep-labeled { display: flex; align-items: center; gap: 8px; margin: var(--mad-sep-space, 0) 0; }
+.mad-sep-labeled > .mad-sep-line { flex: 1; height: 0; display: block;
+             border-top: var(--mad-sep-size, 1px) var(--mad-sep-style, solid) var(--mad-sep-color, var(--mad-border)); }
+.mad-sep-labeled > .mad-sep-text { font-size: 11px; color: var(--mad-text-subtle); white-space: nowrap; }
+.mad-sep-labeled--left  > .mad-sep-line:first-child,
+.mad-sep-labeled--right > .mad-sep-line:last-child { flex: 0 0 12px; }
 
 
 /* ═══════════════════════════════════════════════════════════════════
