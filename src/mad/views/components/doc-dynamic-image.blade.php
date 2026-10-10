@@ -1,8 +1,13 @@
 {{-- Dynamic image bound to a model attribute.
-     Usage: mad-doc-dynamic-image(:src="$record->foto_url", width-mm=40, fit=contain, alt="Foto").
-     `src` accepts URL, filesystem path, or base64 data URI — all three
-     work in DOMPDF. Empty src renders nothing so the surrounding layout
-     closes over the hole. --}}
+     Usage: mad-doc-dynamic-image(:src="$record->foto", width-mm=40, fit=contain, alt="Foto").
+     `src` aceita o que um app grava numa coluna de imagem: chave do disco de
+     uploads (campo Upload/Imagem gravando em disco), base64 com ou sem o
+     prefixo `data:` (gravação no banco), URL http(s) e caminho absoluto. O
+     Dompdf não busca nada sozinho (isRemoteEnabled desligado): o valor vira
+     data URI em Mad\Doc\MadDocImage, com as travas de SSRF para a URL (a URL
+     que o app não busca segue crua, como antes). Valor que não vira imagem
+     mostra o texto alternativo; coluna vazia não desenha nada (o layout fecha
+     o buraco). --}}
 @props([
     'src' => null,
     'widthMm' => 40,
@@ -15,12 +20,15 @@
     $alignSafe = in_array($align, ['left', 'center', 'right'], true) ? $align : 'left';
     $fitSafe = in_array($fit, ['contain', 'cover'], true) ? $fit : 'contain';
     $width = max(1, min(500, (int) $widthMm));
-    $srcStr = is_string($src) ? trim($src) : '';
+    $hasValue = is_array($src) ? $src !== [] : (is_scalar($src) && trim((string) $src) !== '');
+    $imgSrc = $hasValue ? \Mad\Doc\MadDocImage::src($src) : '';
 @endphp
 
-@if($srcStr !== '')
+@if($imgSrc !== '')
 <div style="text-align:{{ $alignSafe }};margin:2pt 0;">
-    <img src="{{ $srcStr }}" alt="{{ $alt }}"
+    <img src="{{ $imgSrc }}" alt="{{ $alt }}"
          style="width:{{ $width }}mm;max-width:100%;object-fit:{{ $fitSafe }};" />
 </div>
+@elseif($hasValue && trim((string) $alt) !== '')
+<div style="text-align:{{ $alignSafe }};margin:2pt 0;font-size:9pt;color:#6b7280;">{{ $alt }}</div>
 @endif

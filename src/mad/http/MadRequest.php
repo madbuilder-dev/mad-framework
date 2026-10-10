@@ -237,6 +237,12 @@ class MadRequest
      *
      *   foreach ($request->files('anexos') as $file) { $file->getClientOriginalName(); }
      *
+     * Arquivo que o PHP não recebeu inteiro (acima do limite de envio do
+     * servidor, envio interrompido) interrompe a ação com
+     * {@see \Mad\Form\MadUploadRefusedException}: o usuário vê no campo — e no
+     * aviso — o arquivo e o limite. Antes ele sumia da lista e a ação gravava
+     * o registro sem o anexo, calada.
+     *
      * @return array<int,\Symfony\Component\HttpFoundation\File\UploadedFile>
      */
     public function files(string $key): array
@@ -247,10 +253,19 @@ class MadRequest
             if ($found === null) {
                 return [];
             }
-            return is_array($found) ? array_values(array_filter($found)) : [$found];
+            $found = is_array($found) ? array_values(array_filter($found)) : [$found];
+            foreach ($found as $file) {
+                if (is_object($file) && method_exists($file, 'getError')) {
+                    self::refuseUnreceived($key, (int) $file->getError(), (string) $file->getClientOriginalName());
+                }
+            }
+            return $found;
         }
 
         // Fallback sem container HTTP (CLI/testes): monta a partir de $_FILES.
+        foreach (\Mad\Form\MadUploadRules::entries($_FILES[$key] ?? null) as $sent) {
+            self::refuseUnreceived($key, $sent['error'], $sent['name']);
+        }
         $raw = $_FILES[$key] ?? null;
         if (!is_array($raw) || empty($raw['tmp_name'])) {
             return [];
@@ -288,6 +303,15 @@ class MadRequest
     public function hasFile(string $key): bool
     {
         return $this->files($key) !== [];
+    }
+
+    /** O PHP não recebeu o arquivo (ver MadUploadRules::phpProblem): a ação para aqui, com o aviso. */
+    private static function refuseUnreceived(string $key, int $error, string $fileName): void
+    {
+        $problem = \Mad\Form\MadUploadRules::phpProblem($error, $fileName);
+        if ($problem !== null) {
+            throw new \Mad\Form\MadUploadRefusedException($key, $problem);
+        }
     }
 
     // ── Array access ────────────────────────────────────────────────────

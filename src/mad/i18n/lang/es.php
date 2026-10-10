@@ -279,6 +279,8 @@ return [
             'not_stored_field_many'  => 'Lo que se escribió en :fields no se guardó: los campos no están vinculados a ninguna columna de la tabla :table.',
             'not_stored_column_one'  => 'En la lista :list, lo que se escribió en :columns no se guardó: la columna no existe en la tabla :table.',
             'not_stored_column_many' => 'En la lista :list, lo que se escribió en :columns no se guardó: las columnas no existen en la tabla :table.',
+            'not_stored_guarded_one'  => 'Lo que se escribió en :fields no se guardó: la tabla :table no acepta este cambio desde esta pantalla.',
+            'not_stored_guarded_many' => 'Lo que se escribió en :fields no se guardó: la tabla :table no acepta estos cambios desde esta pantalla.',
             'not_stored_tail'        => 'Lo demás se guardó. Avise al administrador del sistema.',
             // Fila de una lista (o marca de un checklist) con la clave de un registro que quien guarda no ve: Guardar se rechaza.
             'row_invalid'            => 'En la lista :list, fila :row: :message',
@@ -293,12 +295,19 @@ return [
             'gone_title'      => 'Ítems ya eliminados',
             'gone_rows_one'   => 'La línea :rows de la lista ya había sido eliminada en otra pestaña o por otra persona y no se grabó de nuevo.',
             'gone_rows_many'  => 'Las líneas :rows de la lista ya habían sido eliminadas en otra pestaña o por otra persona y no se grabaron de nuevo.',
+            'gone_rows_edits_one'  => 'Si había modificado esa línea en esta pantalla, el cambio tampoco se grabó.',
+            'gone_rows_edits_many' => 'Si había modificado esas líneas en esta pantalla, los cambios tampoco se grabaron.',
             'gone_files_one'  => 'El adjunto :files ya había sido eliminado en otra pestaña o por otra persona.',
             'gone_files_many' => 'Los adjuntos :files ya habían sido eliminados en otra pestaña o por otra persona.',
             // Selección múltiple en otra tabla (checkbox, búsqueda múltiple, checklist en mode=table).
             'gone_options_one'  => 'En :field, una opción que esta pantalla todavía mostraba marcada ya había sido desmarcada en otra pestaña o por otra persona y no se marcó de nuevo.',
             'gone_options_many' => 'En :field, :count opciones que esta pantalla todavía mostraba marcadas ya habían sido desmarcadas en otra pestaña o por otra persona y no se marcaron de nuevo.',
             'gone_tail'       => 'Lo demás se guardó. Actualice la pantalla para ver la situación actual.',
+            // Guardado que no grabó las filas de una lista (el formulario recibido la describe de otra forma).
+            'not_saved_title' => 'Filas no guardadas',
+            'not_saved_named' => 'Las filas de :lists no se guardaron: recargue la pantalla e inténtelo de nuevo.',
+            'not_saved' => 'Las filas de la lista no se guardaron: recargue la pantalla e inténtelo de nuevo.',
+            'not_saved_tail' => 'Todo lo demás se guardó.',
             'and'             => 'y',
         ],
 
@@ -309,10 +318,18 @@ return [
             'changed_title'      => 'Modificado en otra pestaña o por otra persona',
             'marked_elsewhere'   => 'Otra pestaña u otra persona marcó :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
             'unmarked_elsewhere' => 'Otra pestaña u otra persona desmarcó :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
+            'marked_elsewhere_in'   => 'En :list, otra pestaña u otra persona marcó :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
+            'unmarked_elsewhere_in' => 'En :list, otra pestaña u otra persona desmarcó :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
+            'changed_elsewhere'     => 'Otra pestaña u otra persona cambió los datos de :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
+            'changed_elsewhere_in'  => 'En :list, otra pestaña u otra persona cambió los datos de :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
             'changed_tail'       => 'Actualice la pantalla para ver la situación actual.',
             'items_one'          => '1 ítem',
             'items_many'         => ':count ítems',
             'more'               => ':count más',
+            // Campo Checklist: el contador cuenta solo las marcas de la lista en pantalla; las guardadas en ítems que no muestra aparecen aparte.
+            'counter'            => ':n de :total seleccionados',
+            'counter_outside'    => ':n más fuera de la lista',
+            'only_checked'       => 'Mostrar solo seleccionados',
         ],
 
         // Campo de tabla (DB Combo, DB Select, DB Radio, DB Unique Search): la

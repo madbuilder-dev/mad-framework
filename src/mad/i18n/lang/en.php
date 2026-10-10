@@ -286,6 +286,8 @@ return [
             'not_stored_field_many'  => 'What was typed in :fields was not saved: the fields are not bound to any column of table :table.',
             'not_stored_column_one'  => 'In the list :list, what was typed in :columns was not saved: the column does not exist in table :table.',
             'not_stored_column_many' => 'In the list :list, what was typed in :columns was not saved: the columns do not exist in table :table.',
+            'not_stored_guarded_one'  => 'What was typed in :fields was not saved: table :table does not accept this change from this screen.',
+            'not_stored_guarded_many' => 'What was typed in :fields was not saved: table :table does not accept these changes from this screen.',
             'not_stored_tail'        => 'Everything else was saved. Tell the system administrator.',
             // List row (or checklist mark) holding the key of a record the person saving cannot see: Save is refused.
             'row_invalid'            => 'In the list :list, row :row: :message',
@@ -300,12 +302,19 @@ return [
             'gone_title'      => 'Items already removed',
             'gone_rows_one'   => 'Row :rows of the list had already been removed in another tab or by someone else and was not saved again.',
             'gone_rows_many'  => 'Rows :rows of the list had already been removed in another tab or by someone else and were not saved again.',
+            'gone_rows_edits_one'  => 'If you had changed that row on this screen, the change was not saved either.',
+            'gone_rows_edits_many' => 'If you had changed those rows on this screen, the changes were not saved either.',
             'gone_files_one'  => 'The attachment :files had already been removed in another tab or by someone else.',
             'gone_files_many' => 'The attachments :files had already been removed in another tab or by someone else.',
             // Multiple selection stored in another table (checkbox, multi search, checklist in mode=table).
             'gone_options_one'  => 'In :field, one option this screen still showed as selected had already been cleared in another tab or by someone else and was not selected again.',
             'gone_options_many' => 'In :field, :count options this screen still showed as selected had already been cleared in another tab or by someone else and were not selected again.',
             'gone_tail'       => 'Everything else was saved. Reload the screen to see the current state.',
+            // Save that did not store the rows of a list (the received form describes it differently).
+            'not_saved_title' => 'Rows not saved',
+            'not_saved_named' => 'The rows of :lists were not saved: reload the screen and try again.',
+            'not_saved' => 'The rows of the list were not saved: reload the screen and try again.',
+            'not_saved_tail' => 'Everything else was saved.',
             'and'             => 'and',
         ],
 
@@ -316,10 +325,18 @@ return [
             'changed_title'      => 'Changed in another tab or by someone else',
             'marked_elsewhere'   => 'Another tab or someone else checked :items while this screen was open. That was kept.',
             'unmarked_elsewhere' => 'Another tab or someone else unchecked :items while this screen was open. That was kept.',
+            'marked_elsewhere_in'   => 'In :list, another tab or someone else checked :items while this screen was open. That was kept.',
+            'unmarked_elsewhere_in' => 'In :list, another tab or someone else unchecked :items while this screen was open. That was kept.',
+            'changed_elsewhere'     => 'Another tab or someone else changed the details of :items while this screen was open. That was kept.',
+            'changed_elsewhere_in'  => 'In :list, another tab or someone else changed the details of :items while this screen was open. That was kept.',
             'changed_tail'       => 'Refresh the screen to see the current state.',
             'items_one'          => '1 item',
             'items_many'         => ':count items',
             'more'               => ':count more',
+            // Checklist field: the counter counts only the marks of the list on screen; saved marks of items it does not show are listed apart.
+            'counter'            => ':n of :total selected',
+            'counter_outside'    => ':n more not in the list',
+            'only_checked'       => 'Show selected only',
         ],
 
         // Table-backed field (DB Combo, DB Select, DB Radio, DB Unique Search): the

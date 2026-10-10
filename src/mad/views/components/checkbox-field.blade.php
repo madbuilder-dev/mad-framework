@@ -10,9 +10,22 @@
     $_isReadonly = $readonly || ($name && \Mad\Component\MadRenderContext::isReadonly($name));
     if ($name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false) {
         $_ctx = \Mad\Component\MadRenderContext::current();
-        // Compara contra value (ativo) — suporta dual-value tipo 'A'/'I'
-        if (array_key_exists($name, $_ctx)) {
-            $checked = ((string) $_ctx[$name]) === $value;
+        // Compara contra value (ativo) — suporta dual-value tipo 'A'/'I'.
+        // Coluna presente e VAZIA (''/NULL: o cadastro novo traz a coluna assim)
+        // não atropela o `checked` da tag nem o "Valor padrão" — a mesma regra
+        // de MadFieldValue::resolve. `false` (coluna booleana com cast) é
+        // "desligado", não vazio.
+        $_cur = array_key_exists($name, $_ctx) ? $_ctx[$name] : null;
+        if ($_cur !== null && $_cur !== '' && !is_array($_cur) && !is_object($_cur)) {
+            $checked = ((string) $_cur) === $value;
+        } else {
+            // "Valor padrão" (`default`): o `value` do checkbox é o valor GRAVADO
+            // quando marcado, não o estado inicial — o padrão marca o campo
+            // quando é igual a ele.
+            $_def = \Mad\Support\MadFieldValue::withDefault($name, '', $default ?? null);
+            if ($_def !== '') {
+                $checked = $_def === $value;
+            }
         }
         // Prepend mad:model/checked preservando atributos do caller (ex: @change,
         // x-on:click via :attrs) — sobrescrever descartava handlers silenciosamente.

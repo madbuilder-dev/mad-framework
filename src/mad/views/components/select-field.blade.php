@@ -10,6 +10,12 @@
         $_form = \Mad\Component\MadRenderContext::getForm();
         if ($_form && isset($_form->items[$name]) && is_array($_form->items[$name])) {
             $items = $_form->items[$name];
+            // O texto da opção vazia vem junto (4º parâmetro do setItems), como
+            // no reload_combo de uma ação. Sem isto o combo abria sem ela e com
+            // a primeira opção da lista escolhida (fw#151).
+            if (isset($_form->placeholders[$name])) {
+                $placeholder = (string) $_form->placeholders[$name];
+            }
         }
     }
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] —

@@ -85,7 +85,15 @@
         'display'  => $display,
         'order_by' => $orderBy,
     ];
-    if (\Mad\Database\QuerySource::isQuery($query)) {
+    // Lista posta pelo código (`$this->form->setItems()`, num On Change ou no
+    // mount/onEdit) vence a do Model: é a que o reload_checklist mostrou. Sem isto qualquer
+    // redesenho da tela voltava a lista inteira, sem erro (fw#228; o
+    // <mad-dbcombo-field> já fazia assim, fw#139).
+    // Aqui o item é registro (vai inteiro, como no reload_checklist).
+    $__codeItems = \Mad\Support\MadItems::fromForm((string) $name);
+    if ($__codeItems !== null) {
+        $items = array_values($__codeItems);
+    } elseif (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $objects = (clone $query)->get()->all();
         } catch (\Throwable $e) {

@@ -331,11 +331,11 @@
         var q  = searchElems.input.value.trim();
 
         if (searchState === 'loading') {
-            el.innerHTML = '<div class="mad-docs-search-hint">Carregando indice...</div>';
+            el.innerHTML = '<div class="mad-docs-search-hint">Carregando índice...</div>';
             return;
         }
         if (searchState === 'error') {
-            el.innerHTML = '<div class="mad-docs-search-empty">Nao foi possivel carregar o indice de busca.</div>';
+            el.innerHTML = '<div class="mad-docs-search-empty">Não foi possível carregar o índice de busca.</div>';
             return;
         }
         if (q.length < 2) {

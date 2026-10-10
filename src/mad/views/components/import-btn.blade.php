@@ -3,8 +3,9 @@
      * mad-import-btn — Botão de importação via template.
      *
      * Busca um template de importação pelo código e renderiza um botão que abre
-     * o drawer de importação (DataImportUseForm). Se o template não existe
-     * ou está inativo, não renderiza nada.
+     * o drawer de importação (DataImportUseForm). Se o template não existe,
+     * está inativo ou o usuário não está nos Grupos/Usuários com acesso dele,
+     * não renderiza nada.
      *
      * Emite HTML final auto-contido (botão + onclick resolvido por MadAction) em
      * vez de delegar a um <mad-btn navigate=...> aninhado: o pré-passe mad-* do
@@ -37,7 +38,11 @@
     $_importTemplate = null;
     if ($code) {
         try {
-            $_importTemplate = \App\Models\Sys\ImportTemplate::findByCode($code);
+            // Só aparece para quem pode USAR o template (seção Permissões).
+            $_importTemplate = \App\Models\Sys\ImportTemplate::findByCode(
+                $code,
+                \App\Models\Sys\ImportTemplate::sessionUserId()
+            );
         } catch (\Throwable $e) {
             $_importTemplate = null;
         }

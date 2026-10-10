@@ -125,6 +125,50 @@ class MadErrorPage
             HTML);
     }
 
+    /**
+     * Registro que não existe — ou que um escopo/trava esconde de quem abriu —
+     * pedido pelo método de entrada da tela (`/…/onEdit?id=N`, o botão Editar da
+     * listagem). Não é falha: não tem código de erro nem vai para o log, e o
+     * texto é o mesmo nos dois casos (não diz se o registro existe).
+     *
+     * @param bool $inLayer a tela abre em cortina lateral/janela: o botão fecha a
+     *                      camada (a listagem continua por trás). Em página
+     *                      inteira, volta para a tela anterior.
+     */
+    public static function notFound(bool $inLayer = false): string
+    {
+        $title = self::esc(self::t('mad.record_not_found_title', 'Registro não encontrado'));
+        $body  = self::esc(self::t('mad.record_not_found_body', 'Ele pode ter sido excluído, ou você não tem acesso a ele.'));
+
+        if ($inLayer) {
+            $close = self::esc(self::t('mad.record_not_found_close', 'Fechar'));
+
+            return self::card('search-x', '#d97706', $title, $body, <<<HTML
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                    <button type="button" class="mad-btn mad-btn-primary"
+                            onclick="var o=this.closest('[data-mad-overlay]');if(o&&typeof MadOverlayEsc!=='undefined'){MadOverlayEsc.close(o);}">{$close}</button>
+                </div>
+                HTML);
+        }
+
+        $back = self::esc(self::t('mad.record_not_found_back', 'Voltar'));
+        $home = self::esc(self::t('mad.forbidden_home', 'Ir para o início'));
+        $url  = self::esc(self::homeUrl());
+
+        // Voltar = o voltar do navegador. A tela que o app abriu direto pelo
+        // endereço (a listagem de onde veio o clique) não tem estado de
+        // navegação para o Mad redesenhar: nesse caso ela é recarregada.
+        $onBack = "window.addEventListener('popstate',function(e){if(!(e.state&&e.state.url)){location.reload();}},{once:true});history.back();";
+
+        return self::card('search-x', '#d97706', $title, $body, <<<HTML
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <button type="button" onclick="{$onBack}"
+                        class="mad-btn mad-btn-primary">{$back}</button>
+                <a href="{$url}" class="mad-btn mad-btn-secondary">{$home}</a>
+            </div>
+            HTML);
+    }
+
     // ── internos ───────────────────────────────────────────────────────────
 
     /**

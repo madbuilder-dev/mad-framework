@@ -689,26 +689,40 @@ document.addEventListener('alpine:init', () => {
 
     /* ═══════════════════════════════════════════════════════════════
        6b. madContextMenu — menu de contexto (right-click)
-       ═══════════════════════════════════════════════════════════════ */
+       ═══════════════════════════════════════════════════════════════
+
+       O menu é `position: fixed` nas coordenadas da JANELA (clientX/Y) e os
+       componentes (<mad-context-menu>, <mad-tree-context-menu>) o põem num
+       `<template x-teleport="body">` com `x-ref="menu"` — fw#133. Antes ele
+       era `absolute` dentro do componente: numa coluna com rolagem (a árvore
+       de pastas numa barra lateral) a parte que passava da borda era cortada
+       pelo `overflow` do container. Fixo, ele não acompanha a rolagem: fecha
+       quando qualquer container (ou a janela) rola ou muda de tamanho.
+       Markup antigo, com o menu dentro do wrapper e sem teleporte, continua
+       funcionando (o `fixed` já escapa do `overflow`). */
     Alpine.data('madContextMenu', () => ({
         open: false,
         x: 0,
         y: 0,
+        _dismiss: null,
 
         openAt(e) {
-            var rect = this.$el.getBoundingClientRect();
-            this.x = e.clientX - rect.left;
-            this.y = e.clientY - rect.top;
+            this.x = e.clientX;
+            this.y = e.clientY;
             this.open = true;
+            this._bindDismiss();
 
             this.$nextTick(() => {
-                var menu = this.$el.querySelector('.mad-context-menu');
+                var menu = this._menu();
                 if (!menu) return;
-                var mr = menu.getBoundingClientRect();
+                // offsetWidth/Height: o tamanho de verdade, sem o scale(.95) da
+                // transição de entrada que o getBoundingClientRect pegaria.
                 var vw = window.innerWidth;
                 var vh = window.innerHeight;
-                if (mr.right > vw - 8) this.x -= (mr.right - vw + 8);
-                if (mr.bottom > vh - 8) this.y -= (mr.bottom - vh + 8);
+                var w = menu.offsetWidth;
+                var h = menu.offsetHeight;
+                if (this.x + w > vw - 8) this.x = vw - 8 - w;
+                if (this.y + h > vh - 8) this.y = vh - 8 - h;
                 if (this.x < 0) this.x = 0;
                 if (this.y < 0) this.y = 0;
 
@@ -716,10 +730,50 @@ document.addEventListener('alpine:init', () => {
             });
         },
 
-        close() { this.open = false; },
+        close() {
+            this.open = false;
+            this._unbindDismiss();
+        },
+
+        destroy() { this._unbindDismiss(); },
 
         menuStyle() {
-            return 'left:' + this.x + 'px;top:' + this.y + 'px;';
+            return 'position:fixed;left:' + this.x + 'px;top:' + this.y + 'px;z-index:var(--mad-z-float,9999);';
+        },
+
+        // O menu teleportado (x-ref="menu"); sem ref, o do markup antigo. A
+        // classe confere que o ref não é um "menu" de um x-data de fora.
+        _menu() {
+            var ref = this.$refs && this.$refs.menu;
+            if (ref && ref.classList && ref.classList.contains('mad-context-menu')) return ref;
+            var root = this.$root;
+            var tpl = root.querySelector('template[x-teleport]');
+            if (tpl && tpl._x_teleport) return tpl._x_teleport;
+            return root.querySelector('.mad-context-menu');
+        },
+
+        // Rolagem em QUALQUER container (captura na janela — `scroll` não
+        // borbulha) ou redimensionamento: o menu fixo ficaria descolado do
+        // item. Rolagem dentro do próprio menu não fecha.
+        _bindDismiss() {
+            if (this._dismiss) return;
+            var self = this;
+            var onScroll = function (ev) {
+                var menu = self._menu();
+                if (menu && ev.target && ev.target.nodeType === 1 && menu.contains(ev.target)) return;
+                self.close();
+            };
+            var onResize = function () { self.close(); };
+            window.addEventListener('scroll', onScroll, true);
+            window.addEventListener('resize', onResize);
+            this._dismiss = function () {
+                window.removeEventListener('scroll', onScroll, true);
+                window.removeEventListener('resize', onResize);
+            };
+        },
+
+        _unbindDismiss() {
+            if (this._dismiss) { this._dismiss(); this._dismiss = null; }
         }
     }));
 
@@ -978,7 +1032,9 @@ document.addEventListener('change', function(e) {
     body.append('mad_params', JSON.stringify([el.value, rowData]));
 
     // Coleta mad:model values do formulário (necessário para getData() no PHP)
+    // — menos o campo desabilitado por disabled-when (como no Salvar).
     wrapper.querySelectorAll('[data-mad-model], [data-mad-model-live]').forEach(function(mel) {
+        if (typeof _madWhen !== 'undefined' && _madWhen.disabledByWhen(mel)) return;
         var prop = (mel.dataset.madModel || mel.dataset.madModelLive || '').trim();
         if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : mel.value);
     });
@@ -2590,8 +2646,16 @@ window._madInitSelects = _madInitSelects;
    elemento. Vários *-when sobre o mesmo controle (seção + campo) se somam:
    cada condição é um VOTO; o controle fica desabilitado enquanto houver voto
    e, sem votos, volta ao estado que tinha antes (nunca reabilita o que o
-   servidor renderizou `disabled`). Desabilitado NÃO é enviado no submit
-   (FormData nativo); readonly-when e visible-when continuam enviando.
+   servidor renderizou `disabled`). Desabilitado por disabled-when NÃO é
+   enviado no Salvar: a coleta do MadWire pula o controle com voto
+   (disabledByWhen); o `disabled` fixo do servidor continua indo, como sempre.
+   readonly-when e visible-when continuam enviando. readonly-when trava o
+   texto com `readOnly` e o resto (select, combo, checkbox, rádio,
+   interruptor) com a classe `.mad-readonly` no `.mad-field`, a mesma do
+   somente-leitura desenhado pelo servidor.
+   required-when liga o `required` e o asterisco do rótulo; o Salvar
+   (blockSubmit, chamado pelo submit do MadWire) segura o envio enquanto um
+   campo obrigatório — fixo ou por condição — estiver vazio, e avisa no campo.
    Expressão inválida ou que lança = sem efeito (o campo fica como está).
 */
 // <madWhen:core> — núcleo puro, fatiado por tests/js/mad-when.test.mjs
@@ -2599,7 +2663,16 @@ var _madWhen = (function () {
     var KINDS = { disabled: 1, readonly: 1, required: 1, visible: 1 };
     var PROP = { disabled: 'disabled', readonly: 'readOnly', required: 'required' };
     var NOT_TEXT = { hidden: 1, checkbox: 1, radio: 1, file: 1, button: 1, submit: 1, reset: 1, image: 1, range: 1, color: 1 };
+    var LOCK_SKIP = { hidden: 1, button: 1, submit: 1, reset: 1, image: 1 };
     var CTL_SEL = 'input,select,textarea,button';
+    var MODEL_SEL = '[data-mad-model],[data-mad-model-live]';
+    // Linhas de Lista de itens / Detail Form: fora da trava do Salvar.
+    var EDITORS = '[data-mad-df-name],[data-mad-fl-name],[data-df-fields]';
+    var STAR = 'data-mad-when-star';
+    var REQ_MARK = 'data-mad-req-error';
+    // Mesma frase do `required` do validador do servidor (MadValidator).
+    var REQ_MSG = 'O campo :attribute é obrigatório.';
+    var api = {};
     var _seq = 0;
 
     function compile(expr) {
@@ -2648,6 +2721,254 @@ var _madWhen = (function () {
         if (kind === 'readonly') return tag === 'textarea' || (tag === 'input' && !NOT_TEXT[t]);
         if (kind === 'required') return tag !== 'button' && t !== 'hidden';
         return false;
+    }
+
+    // Controle sem `readOnly` nativo que o readonly-when trava pela classe do
+    // campo (select, combo, checkbox, rádio, interruptor, arquivo).
+    function lockable(ctl) {
+        var tag = String(ctl.tagName || '').toLowerCase();
+        var t = String(ctl.type || '').toLowerCase();
+        if (tag === 'select') return true;
+        return tag === 'input' && !!NOT_TEXT[t] && !LOCK_SKIP[t];
+    }
+
+    // Raiz de UM campo (o `.mad-field` do controle). A seção vota sobre os
+    // controles de vários campos; o asterisco e a trava são por campo.
+    function fieldOf(ctl, fallback) {
+        return (ctl.closest && ctl.closest('.mad-field')) || fallback;
+    }
+
+    // Voto sobre uma classe (mesma regra do vote(): sem votos, a classe volta
+    // ao que era — a `.mad-readonly` que o servidor desenhou fica).
+    function voteClass(el, cls, id, on) {
+        var all = el._madWhenCls || (el._madWhenCls = {});
+        var st = all[cls] || (all[cls] = { votes: new Set(), base: false, enforcing: false });
+        if (on) st.votes.add(id); else st.votes.delete(id);
+        if (st.votes.size > 0) {
+            if (!st.enforcing) { st.base = el.classList.contains(cls); st.enforcing = true; }
+            el.classList.add(cls);
+        } else if (st.enforcing) {
+            if (!st.base) el.classList.remove(cls);
+            st.enforcing = false;
+        }
+    }
+
+    // Controle com voto de disabled-when — ou, num elemento que não é
+    // controle (grupo de rádio/checkbox, checklist), o primeiro controle de
+    // dentro. É o que a coleta do Salvar pula. O `disabled` fixo do HTML não
+    // tem voto e continua sendo enviado.
+    function disabledByWhen(el) {
+        if (!el) return false;
+        var on = function (c) { return !!(c && c._madWhen && c._madWhen.disabled && c._madWhen.disabled.enforcing); };
+        if (on(el)) return true;
+        if (el.matches && el.matches('input,select,textarea')) return false;
+        return on(el.querySelector ? el.querySelector('input,select,textarea') : null);
+    }
+
+    // ── Obrigatório: asterisco e trava do Salvar ─────────────────────────────
+    function isRequired(ctl) {
+        var tag = String(ctl.tagName || '').toLowerCase();
+        var t = String(ctl.type || '').toLowerCase();
+        return ctl.required === true && tag !== 'button' && t !== 'hidden';
+    }
+
+    function requiredControl(field) {
+        var list = controls(field);
+        for (var i = 0; i < list.length; i++) if (isRequired(list[i])) return list[i];
+        return null;
+    }
+
+    function labelOf(field) {
+        return field.querySelector ? (field.querySelector('.mad-label') || field.querySelector('label')) : null;
+    }
+
+    // Asterisco do required-when. O que o servidor desenhou (`required` fixo)
+    // fica como está; o nosso entra e sai com o `required` do campo.
+    function syncStar(field) {
+        var label = field && labelOf(field);
+        if (!label) return;
+        var mine = label.querySelector('[' + STAR + ']');
+        var stars = label.querySelectorAll('.mad-required');
+        var fixed = false;
+        for (var i = 0; i < stars.length; i++) {
+            if (!(stars[i].closest && stars[i].closest('[' + STAR + ']'))) { fixed = true; break; }
+        }
+        var want = !fixed && !!requiredControl(field);
+        if (want && !mine) {
+            var doc = label.ownerDocument || document;
+            var wrap = doc.createElement('span');
+            wrap.setAttribute(STAR, '');
+            wrap.appendChild(doc.createTextNode(' '));
+            var star = doc.createElement('span');
+            star.className = 'mad-required';
+            star.textContent = '*';
+            wrap.appendChild(star);
+            label.appendChild(wrap);
+        } else if (!want && mine && mine.parentNode) {
+            mine.parentNode.removeChild(mine);
+        }
+    }
+
+    // Escondido por condição (visible-when) ou pelo servidor (`.mad-hidden`:
+    // form->hide(), etapa do wizard que não está à vista). Aba fechada NÃO
+    // conta: o campo existe para o usuário, o Salvar abre a aba.
+    function hiddenByCondition(el, stop) {
+        for (var n = el; n && n !== stop; n = n.parentElement) {
+            var v = n._madWhenVis;
+            if (v && v.enforcing && v.votes.size > 0) return true;
+            if (n.classList && n.classList.contains('mad-hidden')) return true;
+        }
+        return false;
+    }
+
+    // Valor que o Salvar vai mandar para o campo, como a coleta do MadWire o
+    // lê; null quando o campo não tem `mad:model` (aí vale o do controle).
+    function modelValue(field) {
+        var m = (field.matches && field.matches(MODEL_SEL)) ? field : field.querySelector(MODEL_SEL);
+        if (!m) return null;
+        var tag = String(m.tagName || '').toLowerCase();
+        var group = m.getAttribute('data-mad-radio-group') !== null
+            || m.classList.contains('mad-checkbox-group') || m.classList.contains('mad-checklist');
+        if (group) {
+            if (m.classList.contains('mad-checklist')) {
+                try {
+                    var ad = (window.Alpine && typeof window.Alpine.$data === 'function') ? window.Alpine.$data(m) : null;
+                    if (ad && typeof ad.selection === 'function') return ad.selection().length ? 'x' : '';
+                } catch (e) { /* nó sem escopo Alpine: lê as caixas */ }
+            }
+            var boxes = m.querySelectorAll('input');
+            for (var i = 0; i < boxes.length; i++) {
+                var t = String(boxes[i].type || '').toLowerCase();
+                if ((t === 'checkbox' || t === 'radio') && boxes[i].checked && boxes[i].value !== '') return boxes[i].value;
+            }
+            return '';
+        }
+        if (tag === 'select' && m.multiple) {
+            var opts = m.options || [];
+            for (var j = 0; j < opts.length; j++) if (opts[j].selected && opts[j].value !== '') return 'x';
+            return '';
+        }
+        // Checkbox/interruptor manda 1 ou 0: nunca é "vazio" (como no servidor).
+        if (String(m.type || '').toLowerCase() === 'checkbox') return '1';
+        return m.value;
+    }
+
+    function fieldName(field, ctl) {
+        var m = (field.matches && field.matches(MODEL_SEL)) ? field : field.querySelector(MODEL_SEL);
+        return field.getAttribute('data-mad-field')
+            || (m && (m.getAttribute('data-mad-model') || m.getAttribute('data-mad-model-live')))
+            || String(ctl.name || '').replace(/\[\]$/, '');
+    }
+
+    // O campo ainda precisa ser preenchido? (obrigatório, editável, à vista e
+    // vazio.) Desabilitado e somente leitura ficam de fora, como na validação
+    // nativa do navegador: o usuário não teria como preencher.
+    function missing(field, stop) {
+        var ctl = requiredControl(field);
+        if (!ctl || ctl.disabled || ctl.readOnly) return null;
+        if (field.classList.contains('mad-readonly')) return null;
+        if (hiddenByCondition(field, stop)) return null;
+        var v = modelValue(field);
+        if (v === null) v = ctl.value;
+        if (String(v == null ? '' : v).trim() !== '') return null;
+        return ctl;
+    }
+
+    // Campos obrigatórios vazios do formulário. Fora: linhas de Lista de
+    // itens / Detail Form (têm validação própria), campos de uma tela
+    // embutida e o wrapper de um campo composto (respondem os de dentro).
+    function pending(form) {
+        var out = [];
+        if (!form || !form.querySelectorAll) return out;
+        var comp = form.closest ? form.closest('[mad-component]') : null;
+        var fields = form.querySelectorAll('.mad-field');
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            if (f.querySelector('.mad-field')) continue;
+            if (f.closest(EDITORS)) continue;
+            if (comp && f.closest('[mad-component]') !== comp) continue;
+            var ctl = missing(f, form);
+            if (ctl) out.push({ field: f, control: ctl, name: fieldName(f, ctl) });
+        }
+        return out;
+    }
+
+    function labelText(field, fallback) {
+        var label = labelOf(field);
+        var txt = label ? String(label.textContent || '').replace(/\s*\*\s*$/, '').trim() : '';
+        return txt || fallback;
+    }
+
+    // Erro no campo, no mesmo lugar e com a mesma cara do fieldError() do
+    // servidor ([data-field-error] + .mad-error, .mad-input-error no controle).
+    function mark(e) {
+        var f = e.field;
+        var slot = f.querySelector('[data-field-error]');
+        if (!f.hasAttribute(REQ_MARK)) {
+            f._madReqPrev = slot ? { html: slot.innerHTML, err: slot.classList.contains('mad-error') } : null;
+            f.setAttribute(REQ_MARK, '');
+        }
+        if (slot) {
+            slot.textContent = REQ_MSG.replace(':attribute', labelText(f, e.name));
+            slot.classList.add('mad-error');
+        }
+        if (!e.control.classList.contains('mad-input-error')) {
+            e.control.classList.add('mad-input-error');
+            f._madReqCtl = e.control;
+        }
+        watch(f);
+    }
+
+    // Tira o erro que o Salvar marcou: devolve a dica que o campo mostrava.
+    function unmark(f) {
+        if (!f.hasAttribute || !f.hasAttribute(REQ_MARK)) return;
+        f.removeAttribute(REQ_MARK);
+        var slot = f.querySelector('[data-field-error]');
+        var prev = f._madReqPrev;
+        if (slot) {
+            // Erro anterior (do servidor) não volta: o campo acabou de mudar.
+            slot.innerHTML = prev && !prev.err ? prev.html : '';
+            slot.classList.remove('mad-error');
+        }
+        if (f._madReqCtl) f._madReqCtl.classList.remove('mad-input-error');
+        f._madReqPrev = null;
+        f._madReqCtl = null;
+    }
+
+    // Erro marcado num campo que não precisa mais dele (preenchido, a
+    // condição deixou de valer, ficou escondido ou desabilitado) sai sozinho.
+    function recheck(scope) {
+        if (!scope || !scope.querySelectorAll) return;
+        var list = scope.hasAttribute && scope.hasAttribute(REQ_MARK) ? [scope] : [];
+        var inner = scope.querySelectorAll('[' + REQ_MARK + ']');
+        for (var i = 0; i < inner.length; i++) list.push(inner[i]);
+        for (var j = 0; j < list.length; j++) {
+            var form = list[j].closest ? list[j].closest('form') : null;
+            if (!missing(list[j], form)) unmark(list[j]);
+        }
+    }
+
+    function watch(f) {
+        if (f._madReqWatch) return;
+        f._madReqWatch = true;
+        // Um tick: o hidden de campo com máscara só recebe o valor depois do
+        // handler de input que disparou (mesma razão do schedule da diretiva).
+        var later = function () { setTimeout(function () { recheck(f); }, 0); };
+        f.addEventListener('input', later);
+        f.addEventListener('change', later);
+    }
+
+    // Salvar: marca os obrigatórios vazios e diz se o envio tem de parar.
+    function blockSubmit(form) {
+        if (!form || !form.querySelectorAll) return false;
+        var old = form.querySelectorAll('[' + REQ_MARK + ']');
+        for (var i = 0; i < old.length; i++) unmark(old[i]);
+        var list = pending(form);
+        for (var j = 0; j < list.length; j++) mark(list[j]);
+        if (list.length && typeof api.onBlocked === 'function') {
+            try { api.onBlocked(list, form); } catch (e) { /* aviso é extra: o envio já está seguro */ }
+        }
+        return list.length > 0;
     }
 
     // Voto de uma instância sobre um controle. Com voto: força a propriedade.
@@ -2702,32 +3023,94 @@ var _madWhen = (function () {
             }
         }
 
+        // readonly-when em controle sem readOnly: voto na `.mad-readonly` do
+        // campo (e na `.mad-readonly-select` do select), como o servidor desenha.
+        var locked = [];
+        function lock(ctl, on) {
+            var f = fieldOf(ctl, root);
+            var pairs = [[f, 'mad-readonly']];
+            if (String(ctl.tagName || '').toLowerCase() === 'select') pairs.push([ctl, 'mad-readonly-select']);
+            for (var i = 0; i < pairs.length; i++) {
+                var known = false;
+                for (var j = 0; j < locked.length; j++) {
+                    if (locked[j][0] === pairs[i][0] && locked[j][1] === pairs[i][1]) { known = true; break; }
+                }
+                if (!known) locked.push(pairs[i]);
+                voteClass(pairs[i][0], pairs[i][1], id, on);
+            }
+        }
+
+        // Campos cujo asterisco depende desta condição.
+        function starFields() {
+            var out = [];
+            touched.forEach(function (ctl) {
+                var f = fieldOf(ctl, null);
+                if (f && out.indexOf(f) === -1) out.push(f);
+            });
+            return out;
+        }
+
         function apply() {
             var on = evaluate();
-            if (kind === 'visible') { voteHidden(root, id, on === false); return; }
+            if (kind === 'visible') { voteHidden(root, id, on === false); recheck(root); return; }
             if (on === null) on = false;
             var list = controls(root);
             for (var i = 0; i < list.length; i++) {
-                if (!accepts(kind, list[i])) continue;
+                if (!accepts(kind, list[i])) {
+                    if (kind === 'readonly' && lockable(list[i])) lock(list[i], on);
+                    continue;
+                }
                 touched.add(list[i]);
                 vote(list[i], kind, id, on);
             }
             if (kind === 'disabled' && root.classList) root.classList.toggle('mad-when-disabled', on);
+            if (kind === 'required') starFields().forEach(syncStar);
+            recheck(root);
         }
 
         function release() {
+            var stars = kind === 'required' ? starFields() : [];
             touched.forEach(function (ctl) { vote(ctl, kind, id, false); });
             touched.clear();
+            for (var i = 0; i < locked.length; i++) voteClass(locked[i][0], locked[i][1], id, false);
+            locked = [];
+            stars.forEach(syncStar);
             if (kind === 'visible') voteHidden(root, id, false);
             if (kind === 'disabled' && root.classList) root.classList.remove('mad-when-disabled');
+            recheck(root);
         }
 
         return { id: id, root: root, scope: scope, apply: apply, release: release };
     }
 
-    return { KINDS: KINDS, compile: compile, readValue: readValue, controls: controls, mount: mount };
+    api.KINDS = KINDS;
+    api.compile = compile;
+    api.readValue = readValue;
+    api.controls = controls;
+    api.mount = mount;
+    api.disabledByWhen = disabledByWhen;
+    api.pending = pending;
+    api.blockSubmit = blockSubmit;
+    // api.onBlocked(list, form): aviso, aba e foco — ligado fora do núcleo.
+    return api;
 })();
 // </madWhen:core>
+window._madWhen = _madWhen;
+
+// Salvar segurado por obrigatório vazio: o mesmo aviso do servidor
+// (MadValidationException::asInline), a aba do primeiro campo aberta e o
+// cursor nele (o op `focus` espera a aba aparecer).
+_madWhen.onBlocked = function (list, form) {
+    var first = list[0];
+    var slot = first.field.querySelector('[data-field-error]') || first.field;
+    if (window.Mad && typeof window.Mad._revealFieldError === 'function') window.Mad._revealFieldError(slot);
+    if (window.Mad && typeof window.Mad._madFocusField === 'function') {
+        window.Mad._madFocusField(first.name, form.closest('[mad-component]') || form);
+    } else if (typeof first.control.focus === 'function') {
+        try { first.control.focus(); } catch (e) { /* controle escondido */ }
+    }
+    if (typeof window.madToast === 'function') window.madToast('Corrija os erros antes de continuar.', 'warning');
+};
 
 // Liga uma condição a um elemento. `onCleanup` recebe o teardown (o `cleanup`
 // do Alpine na diretiva; no-op na montagem fora do Alpine, logo abaixo).
@@ -2948,6 +3331,25 @@ document.addEventListener('change', function (e) {
     var value   = src.value;
     var srcName = src.name || src.id || '';
 
+    // Valor atual do campo-alvo, comparável entre a escrita e o "desfazer".
+    // Campo mascarado (numeric/money): o HIDDEN com `name` é reescrito pelo
+    // Alpine logo depois (`:value="rawValue"`, '3,00' → '3'), então vale o
+    // rawValue — que só muda de novo se o usuário editar o campo.
+    function current(el) {
+        var tag = el.tagName;
+        if (!(el._madSelect || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA')) {
+            return String(el.textContent || '');
+        }
+        if (el.type === 'hidden' && window.Alpine && el.closest) {
+            try {
+                var box = el.closest('[x-data]');
+                var ad  = box && Alpine.$data(box);
+                if (ad && 'rawValue' in ad) return 'raw:' + String(ad.rawValue);
+            } catch (e) { /* nó sem escopo Alpine */ }
+        }
+        return String(el.value == null ? '' : el.value);
+    }
+
     // Escreve val no campo `name` (input/select nativo, MAD-select ou texto).
     // onlyEmpty: não sobrescreve campo que já tem valor.
     function write(name, val, onlyEmpty) {
@@ -2957,26 +3359,39 @@ document.addEventListener('change', function (e) {
         if (el._madSelect) {
             if (onlyEmpty && el.value) return;
             el._madSelect.setValue(val, true);       // silent: não re-dispara change (evita recursão)
-            return;
-        }
-        var tag = el.tagName;
-        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
-            if (onlyEmpty && el.value) return;
-            el.value = val;
-            // Campo mascarado (numeric/money): `name` mora no HIDDEN e o texto
-            // que o usuário vê é `display` no Alpine. Sem isto o auto-fill
-            // gravava o valor e a tela continuava em "0,00".
-            _madSyncMaskedField(el);
-            el.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
-            if (onlyEmpty && el.textContent) return;
-            el.textContent = val;
+            var tag = el.tagName;
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+                if (onlyEmpty && el.value) return;
+                el.value = val;
+                // Campo mascarado (numeric/money): `name` mora no HIDDEN e o texto
+                // que o usuário vê é `display` no Alpine. Sem isto o auto-fill
+                // gravava o valor e a tela continuava em "0,00".
+                _madSyncMaskedField(el);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+                if (onlyEmpty && el.textContent) return;
+                el.textContent = val;
+            }
         }
+        // O que ESTE combo deixou no campo (já formatado pela máscara): é só
+        // isso que o "desfazer" abaixo pode apagar.
+        el._madAutofillWrote = { src: srcName, value: current(el) };
     }
 
-    // Sem valor (deselecionou): limpa os campos-alvo (igual ao clear do dbseek).
+    // Sem valor (deselecionou): desfaz o que este combo preencheu — só onde o
+    // campo ainda tem o valor que ele escreveu. A cascata do depends-on esvazia
+    // o combo filho e dispara `change` nele: apagar todos os destinos levava
+    // junto o Título que o usuário digitou antes de escolher o Cliente (#115).
     if (!value) {
-        fields.forEach(function (name) { write(name, '', false); });
+        fields.forEach(function (name) {
+            if (!name || name === srcName) return;
+            var el = _madScopedField(src, name);
+            var mark = el && el._madAutofillWrote;
+            if (!mark || mark.src !== srcName || mark.value !== current(el)) return;
+            write(name, '', false);
+            el._madAutofillWrote = null;
+        });
         return;
     }
     if (!token) return;
@@ -3802,8 +4217,18 @@ document.addEventListener('alpine:init', () => {
             return this.items.map(item => String(item[this.idCol])).filter(id => checked.has(id));
         },
 
-        get checkedCount() { return this.checkedIds.length; },
+        // O contador ("N de M") e a caixa do cabeçalho contam só as marcas
+        // dos itens DESTA lista. O valor do campo traz todas as ligações
+        // gravadas, inclusive as de itens que a lista não desenha (fora do
+        // filtro, escondidos pelo Model): elas ficam em checkedIds — o Salvar
+        // não as manda e o servidor as mantém —, mas não são marcas da lista.
+        get checkedCount() { return this.selection().length; },
         get totalCount()   { return this.items.length; },
+        // Quantas marcas gravadas a lista não desenha (aviso ao lado do contador).
+        get outsideCount() {
+            const listed = new Set(this.items.map(item => String(item[this.idCol])));
+            return new Set(this.checkedIds.filter(id => !listed.has(id))).size;
+        },
         get allChecked() {
             const fi = this.filteredItems;
             if (fi.length === 0) return false;
@@ -5031,9 +5456,12 @@ document.addEventListener('alpine:init', () => {
             // comprimento. CEP e digitos; CNPJ e ALFANUMERICO desde
             // julho/2026, e um replace(/\D/g,'') o mutilaria.
             _clean:      opts.clean || function (v) { return String(v || '').replace(/\D/g, ''); },
-            _lengthMsg:  opts.lengthMsg || ('Informe ' + opts.maxDigits + ' digitos.'),
+            _lengthMsg:  opts.lengthMsg || ('Informe ' + opts.maxDigits + ' dígitos.'),
             // name -> valor que ESTA consulta escreveu no campo (ver _setField).
             _filled:     {},
+            // Campos que ESTA consulta preenche (chaves do fill-fields, vindas
+            // do Blade). null = desconhecido (markup antigo).
+            _targets:    Array.isArray(cfg.targets) ? cfg.targets.map(String) : null,
 
             init() {
                 const root  = this.$el;
@@ -5072,9 +5500,24 @@ document.addEventListener('alpine:init', () => {
                 function _tryAutoLookup() {
                     if (!self._auto) return;
                     var clean = self._clean(input.value);
+                    // Valor que OUTRA consulta acabou de escrever aqui (o CNPJ
+                    // preenche o CEP) — lido uma vez, no change que o próprio
+                    // preenchimento dispara.
+                    var fill = input._madApiFill;
+                    input._madApiFill = null;
                     if (clean.length === self._maxDigits && clean !== _lastLookedUp) {
                         _lastLookedUp = clean;
-                        self._lookup(input, btn);
+                        var keepFrom = null;
+                        if (fill && fill.writer && fill.writer !== self && self._clean(fill.value) === clean) {
+                            // Ela já mapeou tudo o que esta consulta preenche:
+                            // uma segunda consulta (paga) só reescreveria o
+                            // endereço com outra grafia e mostraria outro aviso.
+                            if (self._covers(fill.keys)) return;
+                            // Mapeou só parte: consulta para o resto, sem
+                            // reescrever o que ela gravou.
+                            keepFrom = fill.writer;
+                        }
+                        self._lookup(input, btn, keepFrom);
                     }
                 }
                 input.addEventListener('blur', _tryAutoLookup);
@@ -5112,7 +5555,19 @@ document.addEventListener('alpine:init', () => {
                 }
             },
 
-            _setField(fieldName, val, label) {
+            /** A consulta que mapeou `keys` já preenche todos os campos desta? */
+            _covers(keys) {
+                var t = this._targets;
+                if (!t || !t.length || !Array.isArray(keys)) return false;
+                return t.every(function (k) { return keys.indexOf(k) !== -1; });
+            },
+
+            /**
+             * @param keep consulta (outro campo CEP/CNPJ) que disparou esta:
+             *             o campo que ela gravou e que ainda está com o valor
+             *             dela não é reescrito.
+             */
+            _setField(fieldName, val, label, keep) {
                 if (!fieldName) return;
                 // Escopo: mesmo chain do cascade de dbcombo (data-mad-depends) —
                 // com dois forms na mesma pagina (mestre + drawer de detalhe,
@@ -5125,6 +5580,11 @@ document.addEventListener('alpine:init', () => {
 
                 var sv = (val === null || val === undefined) ? '' : String(val);
                 if (this._keepTyped(el, fieldName, sv)) return;   // '' não apaga o digitado
+                if (keep && keep !== this && keep._filled
+                    && Object.prototype.hasOwnProperty.call(keep._filled, fieldName)
+                    && keep._filled[fieldName] === String(el.value == null ? '' : el.value)) {
+                    return;
+                }
 
                 // Mesmo valor que já está no campo: não regrava nem dispara
                 // input/change. O CNPJ preenche o CEP, o CEP faz a própria busca
@@ -5167,6 +5627,11 @@ document.addEventListener('alpine:init', () => {
                     _madSyncMaskedField(el);
                 }
 
+                // O destino pode ser outro campo de consulta (o CNPJ preenche o
+                // CEP): o change abaixo dispara a busca automática dele, que lê
+                // isto para não consultar de novo o que esta já trouxe.
+                el._madApiFill = { value: sv, keys: this._fillKeys || [], writer: this };
+
                 try { el.dispatchEvent(new Event('input',  { bubbles: true })); } catch (e) {}
                 try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
 
@@ -5200,10 +5665,12 @@ document.addEventListener('alpine:init', () => {
                 else filled[fieldName] = el.value == null ? '' : String(el.value);
             },
 
-            _applyValues(values, cascade, labels) {
+            _applyValues(values, cascade, labels, keep) {
                 if (!values || typeof values !== 'object') return;
                 const self = this;
                 const lbl  = (labels && typeof labels === 'object') ? labels : {};
+                // Os campos que esta consulta mapeia (ver _madApiFill no _setField).
+                this._fillKeys = Object.keys(values);
 
                 // Campos que dependem do cascade estado->cidade (o combo de
                 // cidade recarrega quando estado_id muda): setados com delay.
@@ -5225,16 +5692,21 @@ document.addEventListener('alpine:init', () => {
                     else otherKeys.push(k);
                 });
 
-                otherKeys.forEach(function (k) { self._setField(k, values[k], lbl[k]); });
+                otherKeys.forEach(function (k) { self._setField(k, values[k], lbl[k], keep); });
 
                 if (cityKeys.length) {
                     setTimeout(function () {
-                        cityKeys.forEach(function (k) { self._setField(k, values[k], lbl[k]); });
+                        cityKeys.forEach(function (k) { self._setField(k, values[k], lbl[k], keep); });
                     }, 150);
                 }
             },
 
-            _lookup(input, btn) {
+            /**
+             * @param keepFrom consulta que preencheu este campo e disparou esta
+             *                 (ver _tryAutoLookup): não reescreve o que ela gravou
+             *                 nem repete o aviso dela.
+             */
+            _lookup(input, btn, keepFrom) {
                 const self = this;
                 const raw  = this._clean(input.value);
 
@@ -5249,13 +5721,13 @@ document.addEventListener('alpine:init', () => {
                 })
                 .then(function (r) { return r.text(); })
                 .then(function (text) {
-                    return _madExtractJson(text) || { ok: false, error: 'Resposta invalida do servidor.' };
+                    return _madExtractJson(text) || { ok: false, error: 'Resposta inválida do servidor.' };
                 })
                 .then(function (data) {
                     self._setLoading(btn, false);
                     if (data && data.ok) {
-                        self._applyValues(data.values || {}, data._cascade, data._labels);
-                        if (typeof madToast === 'function' && data.values && Object.keys(data.values).length) {
+                        self._applyValues(data.values || {}, data._cascade, data._labels, keepFrom);
+                        if (!keepFrom && typeof madToast === 'function' && data.values && Object.keys(data.values).length) {
                             madToast('Dados preenchidos!', 'success');
                         }
                     } else {
@@ -5265,7 +5737,7 @@ document.addEventListener('alpine:init', () => {
                 })
                 .catch(function () {
                     self._setLoading(btn, false);
-                    if (typeof madToast === 'function') madToast('Falha na comunicacao com o servidor.', 'danger');
+                    if (typeof madToast === 'function') madToast('Falha na comunicação com o servidor.', 'danger');
                 });
             },
         });
@@ -6386,7 +6858,8 @@ document.addEventListener('alpine:init', () => {
                 this._releaseIdle();
             };
             let call;
-            try { call = MadWire.call(w, 'onInlineSave', [rowId, field, value]); }
+            // O aviso de rede é o da própria grade (com o nome da coluna): o do wire fica calado.
+            try { call = MadWire.call(w, 'onInlineSave', [rowId, field, value], {}, { quietNetwork: true }); }
             catch (e) { call = Promise.reject(e); }
             Promise.resolve(call).then(done, () => done({ ok: false, reason: 'network' }));
         },
@@ -7674,10 +8147,14 @@ document.addEventListener('alpine:init', () => {
             },
 
             // ── Calcula totais das colunas com doSum/doCount ────────────────
+            // `<campo>_sum` = texto do rodapé; `<campo>_sum_value` = número.
             _computeTotals() {
                 var totals = {};
                 this._columns.forEach(c => {
-                    if (c.doSum)   totals[c.field + '_sum']   = this.getSum(c.field);
+                    if (c.doSum) {
+                        totals[c.field + '_sum']       = this.getSum(c.field);
+                        totals[c.field + '_sum_value'] = this.getSumValue(c.field);
+                    }
                     if (c.doCount) totals[c.field + '_count'] = this.getCount();
                 });
                 return totals;
@@ -7700,8 +8177,10 @@ document.addEventListener('alpine:init', () => {
                 body.append('mad_action', action);
                 body.append('mad_params', JSON.stringify(params || []));
 
-                // mad:model do wrapper (para getData() no PHP)
+                // mad:model do wrapper (para getData() no PHP) — menos o campo
+                // desabilitado por disabled-when (como no Salvar).
                 wrapper.querySelectorAll('[data-mad-model], [data-mad-model-live]').forEach(function(mel) {
+                    if (typeof _madWhen !== 'undefined' && _madWhen.disabledByWhen(mel)) return;
                     const prop = (mel.dataset.madModel || mel.dataset.madModelLive || '').trim();
                     if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : mel.value);
                 });
@@ -7871,15 +8350,26 @@ document.addEventListener('alpine:init', () => {
             },
 
             // ── Soma de coluna numérica ─────────────────────────────────────
+            // Texto do rodapé e do `<campo>_sum` do on-totalize: pt-BR com as
+            // casas da coluna (`decimals`). Eram 2 fixas (fw#116): uma coluna de
+            // 3 casas somava 3,735 e mostrava/mandava "3,74". Continua TEXTO —
+            // é o que o código das telas converte com str_replace.
             getSum(field) {
-                const sum = this.rows.reduce((acc, row) => {
-                    const v = parseFloat(String(row[field] || '').replace(',', '.'));
-                    return acc + (isNaN(v) ? 0 : v);
-                }, 0);
-                return sum.toLocaleString('pt-BR', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                });
+                return madNumFmt(this.getSumValue(field), this._sumDecimals(field));
+            },
+
+            // A soma como NÚMERO, sem arredondar (`<campo>_sum_value` do
+            // on-totalize). Lê número, texto do banco ("1234.50") e texto pt-BR
+            // ("1.234,56"); `toPrecision(15)` tira o ruído do ponto flutuante.
+            getSumValue(field) {
+                const sum = this.rows.reduce((acc, row) => acc + madNumParse(row[field]), 0);
+                return parseFloat(sum.toPrecision(15));
+            },
+
+            _sumDecimals(field) {
+                const col = this._columns.find(c => c.field === field);
+                const d   = col ? parseInt(col.decimals, 10) : NaN;
+                return isNaN(d) || d < 0 ? 2 : d;
             },
 
             // ── Contagem de linhas ────────────────────────────────────────────
@@ -7943,10 +8433,17 @@ document.addEventListener('alpine:init', () => {
                 // Mostra o valor numérico cru para facilitar a digitação. O zero
                 // aparece como "0" (e fica selecionado): mostrado vazio, sair do
                 // campo sem digitar o transformava em vazio.
-                e.target.value = this.rawValue === ''
+                const el = e.target;
+                el.value = this.rawValue === ''
                     ? ''
                     : String(this.rawValue).replace('.', ',');
-                this.$nextTick(() => e.target.select());
+                // Só seleciona se o foco ainda está aqui (fw#132). No Chromium,
+                // select() num campo sem foco DEVOLVE o foco para ele: com o foco
+                // indo deste campo para outro numérico antes do $nextTick, os
+                // dois passavam a tomar o foco um do outro sem parar (a fila do
+                // $nextTick nunca esvaziava) e a aba travava. Mesma guarda do
+                // madSelectOnFocus.
+                this.$nextTick(() => { if (document.activeElement === el) el.select(); });
             },
 
             // Valor vindo de FORA (op `val` do $this->form->set(), _syncFormInputs
@@ -8446,7 +8943,9 @@ document.addEventListener('alpine:init', () => {
                 } else {
                     e.target.value = '';
                 }
-                this.$nextTick(() => e.target.select());
+                // Só seleciona se o foco ainda está aqui — ver madNumericField.onFocus (fw#132).
+                var el = e.target;
+                this.$nextTick(() => { if (document.activeElement === el) el.select(); });
             },
 
             _onBlur(e) {
@@ -8587,29 +9086,77 @@ document.addEventListener('alpine:init', () => {
     // row[field] armazena nome(s) dos arquivos (separados por '|' se multi).
     // File objects ficam em window.__madFlFiles[key] para coleta no submit.
     //
+    // multifile (fw#162): os caminhos gravados chegam em row['__flfiles_<campo>']
+    // ({ key, name, url }, o formato da célula Arquivos). A célula manda de
+    // volta, no Salvar, os que continuam nela (o X tira daqui) e o
+    // identificador de cada arquivo novo; a resposta conta quais foram gravados
+    // (op `files_saved`, markSaved) e eles deixam de ir de novo a cada Salvar.
     Alpine.data('madFileCell', function(cfg) {
         cfg = cfg || {};
         var field     = cfg.field || '';
         var rowRef    = cfg.row || null;
         var multi     = cfg.multi || false;
         var maxSizeKB = cfg.maxSize || 0;
+        var listKey   = '__flfiles_' + field;
+
+        function _label(path) {
+            var bn = String(path || '').split('/').pop();
+            var m = bn.match(/^[a-f0-9]{13,16}_(.+)$/i);
+            return m ? m[1] : bn;
+        }
 
         return {
             _newFiles: [],   // File objects (uploads novos)
-            _existing: [],   // nomes de arquivos já salvos (vindos do DB)
+            _existing: [],   // arquivos já salvos (vindos do DB): { key, name, url }
+            _known: false,   // multifile: a célula sabe quais caminhos a linha tem
 
             init: function() {
                 var val = rowRef ? String(rowRef[field] || '') : '';
-                if (val) {
-                    this._existing = val.split('|').filter(Boolean);
+                var list = (multi && rowRef && Array.isArray(rowRef[listKey])) ? rowRef[listKey] : null;
+                if (list) {
+                    this._existing = list.map(function(e) { return { key: String(e.key || ''), name: e.name || _label(e.key), url: e.url || '' }; });
+                    this._known = true;
+                } else if (multi && val.indexOf('|') === -1) {
+                    // Caminhos por vírgula, como estão na coluna (linha que o
+                    // código da tela entregou sem a lista).
+                    this._existing = val.split(',').map(function(p) { return p.trim(); }).filter(Boolean)
+                        .map(function(p) { return { key: p, name: _label(p), url: '' }; });
+                    this._known = true;
+                } else if (val) {
+                    // Só nomes (o que a própria célula escreve na linha): sem o
+                    // caminho a célula não diz o que mantém — o Salvar só acrescenta.
+                    this._existing = val.split('|').filter(Boolean).map(function(n) { return { key: '', name: n, url: '' }; });
                 }
-                if (this._existing.length) {
+                if (multi) this._syncList();
+                // Célula recriada: os arquivos novos desta linha continuam em
+                // window.__madFlFiles e vão no próximo Salvar.
+                var pend = multi ? (window.__madFlFiles || {})[this.keyFor()] : null;
+                if (Array.isArray(pend) && pend.length) {
+                    this._newFiles = pend.slice();
+                }
+                if (this._existing.length || this._newFiles.length) {
                     this.$nextTick(function() { if (typeof _madLucide === 'function') _madLucide(); });
                 }
             },
 
+            keyFor: function() {
+                var flName = cfg.flName || '';
+                if (!flName && this.$refs && this.$refs.fileInput) {
+                    var flEl = this.$refs.fileInput.closest('[data-mad-fl-name]');
+                    flName = flEl ? flEl.getAttribute('data-mad-fl-name') : '';
+                }
+                return flName + '__' + (rowRef ? rowRef.__id : '') + '__' + field;
+            },
+
+            listKnown: function() { return multi && this._known; },
+            keptKeys: function() {
+                if (!this.listKnown()) return [];
+                return this._existing.map(function(e) { return e.key; }).filter(Boolean);
+            },
+
             allNames: function() {
-                return this._existing.concat(this._newFiles.map(function(f) { return f.name; }));
+                return this._existing.map(function(e) { return e.name; })
+                    .concat(this._newFiles.map(function(f) { return f.name; }));
             },
 
             onSelect: function(e) {
@@ -8632,6 +9179,12 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
 
+                // Cada arquivo novo leva um identificador (vai no POST e volta
+                // no files_saved): é por ele que a célula sabe qual foi gravado.
+                selected.forEach(function(f) {
+                    if (!f.__madUid) { try { f.__madUid = _madUploadUid(); } catch (err) {} }
+                });
+
                 if (multi) {
                     this._newFiles = this._newFiles.concat(selected);
                 } else {
@@ -8651,17 +9204,43 @@ document.addEventListener('alpine:init', () => {
                 this._sync();
             },
 
+            // O servidor gravou estes arquivos (op `files_saved` da resposta do
+            // Salvar): saem dos novos e entram nos gravados, com o caminho que
+            // o servidor deu. Casado pelo identificador: o arquivo que o
+            // usuário tirou da célula enquanto o Salvar corria não volta, e o
+            // que ele acrescentou nesse meio tempo continua novo.
+            markSaved: function(saved) {
+                if (!multi) return;
+                var self = this, changed = false;
+                (saved || []).forEach(function(s) {
+                    if (!s || !s.uid || !s.key) return;
+                    var i = self._newFiles.findIndex(function(f) { return f && f.__madUid === s.uid; });
+                    if (i === -1) return;
+                    self._newFiles.splice(i, 1);
+                    changed = true;
+                    if (self._existing.some(function(e) { return e.key === s.key; })) return;
+                    self._existing.push({ key: s.key, name: s.name || _label(s.key), url: s.url || '' });
+                });
+                if (!changed) return;
+                this._known = true;
+                this._sync();
+            },
+
+            // multifile: a linha guarda a lista do que a célula tem — é dela
+            // que a célula se redesenha (redesenho completo da tela).
+            _syncList: function() {
+                if (!multi || !rowRef || !this._known) return;
+                rowRef[listKey] = this._existing.map(function(e) { return { key: e.key, name: e.name, url: e.url }; });
+            },
+
             _sync: function() {
                 var names = this.allNames();
                 if (rowRef) rowRef[field] = multi ? names.join('|') : (names[0] || '');
+                this._syncList();
 
                 // Armazena File objects globalmente para coleta no submit
-                var flEl = this.$refs.fileInput
-                    ? this.$refs.fileInput.closest('[data-mad-fl-name]')
-                    : null;
-                if (flEl && rowRef) {
-                    var flName = flEl.getAttribute('data-mad-fl-name');
-                    var key = flName + '__' + rowRef.__id + '__' + field;
+                if (rowRef && (cfg.flName || this.$refs.fileInput)) {
+                    var key = this.keyFor();
                     window.__madFlFiles = window.__madFlFiles || {};
                     if (this._newFiles.length > 0) {
                         window.__madFlFiles[key] = this._newFiles.slice();
@@ -9153,6 +9732,25 @@ document.addEventListener('alpine:init', () => {
                     if (!field || field.startsWith('__')) return;
 
                     const val = this.formData[field] ?? '';
+
+                    // ── Arquivo: o navegador só aceita '' no value de um
+                    //    <input type="file">. Com o nome do arquivo da linha
+                    //    lançava InvalidStateError e a cópia parava ali: os
+                    //    campos seguintes ficavam com o valor anterior e o
+                    //    modal/cortina lateral de edição não abria. O arquivo
+                    //    da linha continua no formData; o campo fica livre
+                    //    para um arquivo novo (como em _clearFileInputs).
+                    if (inp.type === 'file') {
+                        inp.value = '';
+                        const fileWrap = inp.closest('[x-data]');
+                        if (fileWrap && window.Alpine) {
+                            try {
+                                const ad = Alpine.$data(fileWrap);
+                                if (ad && 'file' in ad) { ad.file = null; ad.removed = false; }
+                            } catch(e) {}
+                        }
+                        return;
+                    }
 
                     // ── madNumericField: hidden input com rawValue/display no Alpine
                     if (inp.type === 'hidden') {
@@ -10382,7 +10980,7 @@ document.addEventListener('alpine:init', () => {
                 );
             } catch (err) {
                 if (typeof madToast === 'function') {
-                    madToast('Camera nao disponivel. Use HTTPS ou digite o codigo manualmente.', 'warning');
+                    madToast('Câmera não disponível. Use HTTPS ou digite o código manualmente.', 'warning');
                 }
                 try { this._scanner.clear(); } catch(e) {}
                 this._scanner = null;
@@ -10492,17 +11090,12 @@ document.addEventListener('alpine:init', () => {
             var file = e.target.files[0];
             if (!file) return;
 
-            // Validate type
-            var types = this._accept.split(',').map(function(t) { return t.trim(); });
-            if (!types.some(function(t) { return file.type === t || (t.endsWith('/*') && file.type.startsWith(t.replace('/*', '/'))); })) {
-                if (typeof madToast === 'function') madToast('Formato não permitido: ' + file.name, 'danger');
-                e.target.value = '';
-                return;
-            }
-
-            // Validate size
-            if (file.size > this._maxBytes) {
-                if (typeof madToast === 'function') madToast('Arquivo muito grande. Máximo: ' + cfg.maxSizeLabel, 'danger');
+            // Tipos aceitos (`image/*`, `image/png`, `.png`) e Tamanho máximo,
+            // pela mesma regra do servidor (MadUploadRules::check) e do campo
+            // Imagem: o arquivo recusado não fica no <input> que vai no Salvar.
+            var problem = _madUploadProblem(file, { accept: this._accept, maxBytes: this._maxBytes, stored: !!cfg.storage });
+            if (problem) {
+                _madUploadWarn(problem);
                 e.target.value = '';
                 return;
             }
@@ -11341,22 +11934,27 @@ document.addEventListener('alpine:init', () => {
                 return cls;
             },
 
-            prevMonth: function(side) {
-                if (side === 'left') {
-                    this.leftMonth = _drpAddMonths(this.leftMonth, -1);
+            // Calendários ligados: a seta move o calendário do lado clicado um
+            // mês e o outro segue colado nele — os dois meses ficam sempre
+            // consecutivos. Antes cada lado andava sozinho: voltar a esquerda de
+            // outubro para setembro deixava a direita em novembro e outubro
+            // sumia da vista (builder#148).
+            _moveMonths: function(side, delta) {
+                if (side === 'right') {
+                    this.rightMonth = _drpAddMonths(this.rightMonth, delta);
+                    this.leftMonth = _drpAddMonths(this.rightMonth, -1);
                 } else {
-                    this.rightMonth = _drpAddMonths(this.rightMonth, -1);
+                    this.leftMonth = _drpAddMonths(this.leftMonth, delta);
+                    this.rightMonth = _drpAddMonths(this.leftMonth, 1);
                 }
-                this._ensureMonthOrder();
+            },
+
+            prevMonth: function(side) {
+                this._moveMonths(side, -1);
             },
 
             nextMonth: function(side) {
-                if (side === 'left') {
-                    this.leftMonth = _drpAddMonths(this.leftMonth, 1);
-                } else {
-                    this.rightMonth = _drpAddMonths(this.rightMonth, 1);
-                }
-                this._ensureMonthOrder();
+                this._moveMonths(side, 1);
             },
         };
     });
@@ -11435,6 +12033,10 @@ document.addEventListener('alpine:init', () => {
             _withTime: !!withTime,
             _onCommit: typeof cfg.onCommit === 'function' ? cfg.onCommit : null,
             _maskingInput: false,
+            // Data e hora: `change` adiado para o close() (fw#140) e o valor do
+            // campo no último `change` — o mesmo valor não chama o On Change.
+            _changePending: false,
+            _lastNotified: '',
 
             init: function() {
                 var inp = this._getInput();
@@ -11456,6 +12058,11 @@ document.addEventListener('alpine:init', () => {
                     var self = this;
                     inp.addEventListener('input', function(e) { self._onInput(e); });
                     inp.addEventListener('blur',  function(e) { self._onBlur(e);  });
+                    // Todo `change` do campo (o do seletor, o do navegador depois
+                    // de digitar, o de quem escreve de fora) passa a ser o valor
+                    // já notificado.
+                    self._lastNotified = inp.value;
+                    inp.addEventListener('change', function() { self._lastNotified = inp.value; });
                 }
             },
 
@@ -11516,6 +12123,17 @@ document.addEventListener('alpine:init', () => {
             close: function() {
                 if (!this.isOpen) return;
                 this.isOpen = false;
+                this._flushChange();
+            },
+
+            // Fecha UMA escolha de data e hora (Aplicar, Agora, Limpar, clique
+            // fora, Esc): um `change` só, e só se o valor mudou desde o último.
+            _flushChange: function() {
+                if (!this._changePending) return;
+                this._changePending = false;
+                var inp = this._getInput();
+                if (!inp || inp.value === this._lastNotified) return;
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
             },
 
             prevMonth: function() { this.currentMonth = _drpAddMonths(this.currentMonth, -1); },
@@ -11637,7 +12255,12 @@ document.addEventListener('alpine:init', () => {
                     var self = this;
                     this.$nextTick(function() { self._maskingInput = false; });
                     inp.dispatchEvent(new Event('input',  { bubbles: true }));
-                    inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Data e hora: dia, hora e minuto são passos de UMA escolha.
+                    // O `change` — que chama o On Change do campo no servidor —
+                    // sai uma vez, no close(). Antes cada passo chamava o
+                    // método, o primeiro com a hora ainda zerada (fw#140).
+                    if (this._withTime && this.isOpen) this._changePending = true;
+                    else inp.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 if (this._onCommit) {
                     var iso = this.selectedDate
@@ -11863,6 +12486,29 @@ document.addEventListener('alpine:init', () => {
         var _widthsArr  = cfg.penWidths || [1, 2, 4];
         var _maxSize    = cfg.maxBytes || 5 * 1024 * 1024;
         var _accept     = cfg.accept || 'image/png,image/jpeg';
+
+        // A assinatura desenhada ou digitada sai num tipo que o campo aceita
+        // (PNG primeiro) e dentro do Tamanho máximo — o servidor confere os
+        // dois no Salvar. Devolve '' (com aviso) quando nenhum tipo aceito cabe.
+        function _exportSignature(source) {
+            var fits = function(url) { return Math.floor((url.length - url.indexOf(',') - 1) * 3 / 4) <= _maxSize; };
+            var types = ['image/png', 'image/jpeg', 'image/webp'].filter(function(t) {
+                return _madUploadAccepts(_accept, { name: 'assinatura.' + t.slice(6), type: t });
+            });
+            if (!types.length) types = ['image/png'];
+            for (var i = 0; i < types.length; i++) {
+                var quality = 0.9;
+                var url = source.toDataURL(types[i], quality);
+                while (!fits(url) && types[i] !== 'image/png' && quality > 0.5) {
+                    quality -= 0.1;
+                    url = source.toDataURL(types[i], quality);
+                }
+                if (fits(url)) return url;
+            }
+            _madUploadWarn('A assinatura passa do limite deste campo (' + _madUploadSize(_maxSize) + ') e não foi gravada.');
+            return '';
+        }
+
         var _heightPx   = parseInt(cfg.height, 10) || 200;
         var _fontsLoaded = false;
         // Celular: desenhar é na tela cheia, e ela só abre por ação do usuário.
@@ -12110,7 +12756,9 @@ document.addEventListener('alpine:init', () => {
                     if (typeof madToast === 'function') madToast('Desenhe sua assinatura primeiro', 'warning');
                     return;
                 }
-                this.signatureData = pad.toDataURL('image/png');
+                var dataUrl = _exportSignature(pad);
+                if (!dataUrl) return;
+                this.signatureData = dataUrl;
                 this.hasSignature = true;
                 this.editing = false;
                 this._destroyPad();
@@ -12185,7 +12833,9 @@ document.addEventListener('alpine:init', () => {
                     if (typeof madToast === 'function') madToast('Desenhe sua assinatura primeiro', 'warning');
                     return;
                 }
-                this.signatureData = pad.toDataURL('image/png');
+                var dataUrl = _exportSignature(pad);
+                if (!dataUrl) return;
+                this.signatureData = dataUrl;
                 this.hasSignature = true;
                 this.editing = false;
                 this._destroyFsPad();
@@ -12240,7 +12890,9 @@ document.addEventListener('alpine:init', () => {
                 ctx.textBaseline = 'middle';
                 ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
-                this.signatureData = canvas.toDataURL('image/png');
+                var dataUrl = _exportSignature(canvas);
+                if (!dataUrl) return;
+                this.signatureData = dataUrl;
                 this.hasSignature = true;
                 this.editing = false;
                 this._syncHidden();
@@ -12525,9 +13177,16 @@ document.addEventListener("alpine:init", function () {
                 html += '</div>';
 
                 if (menuHtml) {
-                    html += '<div class="mad-context-menu" x-show="open" x-cloak @click="close()" role="menu">';
+                    // Mesmo menu do nó desenhado no servidor (tree-view.blade.php):
+                    // teleportado e posicionado no clique (fw#133). Antes o nó
+                    // incluído aqui nem tinha posição: o menu abria no canto.
+                    html += '<template x-teleport="body">';
+                    html += '<div class="mad-context-menu mad-ui" x-ref="menu" x-show="open" x-cloak'
+                         + ' x-transition:enter="mad-context-enter" x-transition:enter-start="mad-context-enter-start" x-transition:enter-end="mad-context-enter-end"'
+                         + ' x-transition:leave="mad-context-leave" x-transition:leave-start="mad-context-leave-start" x-transition:leave-end="mad-context-leave-end"'
+                         + ' :style="menuStyle()" @click="close()" role="menu">';
                     html += menuHtml;
-                    html += '</div></div>';
+                    html += '</div></template></div>';
                 }
 
                 html += '</div>';

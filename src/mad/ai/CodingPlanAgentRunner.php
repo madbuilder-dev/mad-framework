@@ -147,6 +147,9 @@ final class CodingPlanAgentRunner
     private const DROPPED_GAVE_UP =
         'A resposta do modelo chegou incompleta e não consegui concluir esta consulta. Tente perguntar de novo.';
 
+    /** Sem sessão e sem motivo conhecido (rede, resposta sem `code`). */
+    private const MINT_UNAVAILABLE = 'Mad Coding Plan indisponível (falha ao autenticar no builder).';
+
     /**
      * Saída não entregue a partir da qual a rodada é fantasma. Uma chamada de
      * tool perdida custa 200–450 tokens; o texto que chega é estimado com
@@ -182,9 +185,10 @@ final class CodingPlanAgentRunner
      */
     public function run(string $system, array $history, array $tools, string $userMessage, string $context = ''): AgentResult
     {
-        $sess = self::mintSession();
+        $refusal = null;
+        $sess    = self::mintSession($refusal);
         if ($sess === null) {
-            $this->sink->error('Mad Coding Plan indisponível (falha ao autenticar no builder).');
+            $this->sink->error($refusal ?? self::MINT_UNAVAILABLE);
 
             return new AgentResult('', null, false);
         }
@@ -581,6 +585,57 @@ final class CodingPlanAgentRunner
     }
 
     /**
+     * Texto para o usuário quando a plataforma recusa a sessão: um por `code`
+     * da resposta (403 do /api/embed-llm/session). Código desconhecido cai na
+     * falha genérica com o status HTTP.
+     *
+     * @param array<string, mixed> $body
+     */
+    public static function refusalMessage(int $status, array $body): string
+    {
+        $code = (string) ($body['code'] ?? '');
+
+        switch ($code) {
+            case 'EMBED_CHAT_DISABLED':
+                return 'O Chat IA está desligado neste projeto. Quem desenvolve o app liga em Propriedades do projeto › Modelos de IA, no MadBuilder.';
+            case 'CODING_PLAN_QUOTA_REACHED':
+                $when = self::localDateTime($body['reset_at'] ?? null);
+
+                return 'A franquia semanal do Mad Coding Plan acabou. O Chat IA volta a responder '
+                    . ($when !== '' ? "em {$when}." : 'na próxima semana.');
+            case 'CODING_PLAN_TRIAL_EXHAUSTED':
+                return 'A franquia de teste do Mad Coding Plan acabou. Para continuar usando o Chat IA, é preciso assinar o Mad Coding Plan.';
+            case 'CODING_PLAN_REQUIRED':
+                return 'O Chat IA deste projeto usa o Mad Coding Plan, e a assinatura não está ativa.';
+            case 'PLAN_UPGRADE_REQUIRED':
+                return 'O plano do MadBuilder de quem desenvolve o app não inclui o Chat IA embutido.';
+            case 'PLAN_LIMIT_REACHED':
+                return 'O Chat IA atingiu o limite do plano do MadBuilder de quem desenvolve o app.';
+        }
+
+        if ($status === 401) {
+            return 'O MadBuilder não reconheceu este app (token do projeto inválido ou revogado). Publique o projeto de novo.';
+        }
+
+        return 'Mad Coding Plan indisponível (o MadBuilder recusou: HTTP ' . $status . ').';
+    }
+
+    /** 'd/m/Y H:i' no fuso do app; '' quando não dá para ler. */
+    private static function localDateTime(mixed $iso): string
+    {
+        if (! is_string($iso) || $iso === '') {
+            return '';
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($iso)
+                ->setTimezone((string) config('app.timezone', 'UTC'))
+                ->format('d/m/Y H:i');
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
      * Transporte padrão: POST no stream do builder (Node do embed) com os bytes
      * do SSE entregues a $feed conforme chegam.
      *
@@ -620,9 +675,13 @@ final class CodingPlanAgentRunner
      * worker até 60s antes do exp). Endpoint do stream: o que a nuvem devolver,
      * senão config mad.ai.embed_stream_url.
      *
+     * Sem sessão, `$refusal` diz ao usuário POR QUÊ — o chat desligado no
+     * projeto, a franquia que acabou, o app sem vínculo — em vez da falha
+     * genérica (null = sem motivo conhecido: MINT_UNAVAILABLE).
+     *
      * @return array{token: string, endpoint: string, exp: int}|null
      */
-    private static function mintSession(): ?array
+    private static function mintSession(?string &$refusal = null): ?array
     {
         if (self::$session !== null && self::$session['exp'] - time() > 60) {
             return self::$session;
@@ -631,6 +690,8 @@ final class CodingPlanAgentRunner
         $builderUrl   = rtrim((string) config('mad.builder.url'), '/');
         $projectToken = (string) config('mad.builder.token');
         if ($builderUrl === '' || $projectToken === '') {
+            $refusal = 'Chat IA sem vínculo com o MadBuilder (MAD_BUILDER_URL / MAD_PROJECT_TOKEN ausentes no .env do app).';
+
             return null;
         }
 
@@ -647,6 +708,7 @@ final class CodingPlanAgentRunner
         }
         if (! $resp->successful()) {
             \error_log('[coding-plan] mint HTTP ' . $resp->status() . ': ' . mb_substr((string) $resp->body(), 0, 200));
+            $refusal = self::refusalMessage($resp->status(), (array) $resp->json());
 
             return null;
         }

@@ -32,6 +32,7 @@ class MadComponentWrapper
             'title'   => $component::getTitle(),
             'size'    => $component::getSize(),
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
+            'confirmClose'    => self::confirmDiscard($component),
         ]);
     }
 
@@ -44,6 +45,32 @@ class MadComponentWrapper
             'size'    => $component::getSize(),
             'side'    => $component::getSide(),
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
+            'confirmClose'    => self::confirmDiscard($component),
         ]);
+    }
+
+    /**
+     * A tela pede confirmação antes de fechar com alteração não salva?
+     * Opt-in na classe da tela:
+     *
+     *     protected static bool $confirmDiscard = true;
+     *
+     * Esc, X e clique fora perguntam antes de fechar a gaveta/modal; o
+     * fechamento que vem do servidor (closeDrawer() depois de salvar), o
+     * Voltar e o Cancelar fecham direto. Lido por reflexão: tela que não
+     * declara a propriedade fecha como sempre.
+     */
+    private static function confirmDiscard(MadComponent $component): bool
+    {
+        try {
+            $prop = new \ReflectionProperty($component, 'confirmDiscard');
+        } catch (\ReflectionException) {
+            return false;
+        }
+        if (!$prop->isStatic()) {
+            return false;
+        }
+        $prop->setAccessible(true);
+        return filter_var($prop->getValue(), FILTER_VALIDATE_BOOL);
     }
 }

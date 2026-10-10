@@ -6952,6 +6952,36 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dg-row.mad-dg-row-selected td {
   background: color-mix(in srgb, var(--mad-primary) 9%, transparent);
 }
+/* <mad-row-highlights>: destaque da linha (ou só da célula) por condição.
+   Tom = fundo suave + barra de acento com os tokens --mad-* (o escuro vem
+   pronto: os *-subtle mudam no tema escuro). Cor livre: --mad-dg-hl-color no
+   style da linha/célula, misturada ao transparente — lê nos dois temas. A
+   linha selecionada continua com a cor da seleção. */
+.mad-dg-hl--danger  { --mad-dg-hl-bg: var(--mad-danger-subtle);  --mad-dg-hl-accent: var(--mad-danger); }
+.mad-dg-hl--warning { --mad-dg-hl-bg: var(--mad-warning-subtle); --mad-dg-hl-accent: var(--mad-warning); }
+.mad-dg-hl--success { --mad-dg-hl-bg: var(--mad-success-subtle); --mad-dg-hl-accent: var(--mad-success); }
+.mad-dg-hl--info    { --mad-dg-hl-bg: var(--mad-info-subtle);    --mad-dg-hl-accent: var(--mad-info); }
+.mad-dg-hl--color {
+  --mad-dg-hl-bg: color-mix(in srgb, var(--mad-dg-hl-color, var(--mad-warning)) 18%, transparent);
+  --mad-dg-hl-accent: var(--mad-dg-hl-color, var(--mad-warning));
+}
+tr.mad-dg-row.mad-dg-hl:not(.mad-dg-row-selected) > td,
+tr.mad-dg-row.mad-dg-hl:not(.mad-dg-row-selected):hover > td,
+tr.mad-dg-row:not(.mad-dg-row-selected) > td.mad-dg-hl-cell,
+tr.mad-dg-row:not(.mad-dg-row-selected):hover > td.mad-dg-hl-cell {
+  background: var(--mad-dg-hl-bg);
+}
+tr.mad-dg-row.mad-dg-hl > td:first-child { box-shadow: inset 3px 0 0 var(--mad-dg-hl-accent); }
+.mad-dg-card.mad-dg-hl {
+  background: var(--mad-dg-hl-bg);
+  border-left: 3px solid var(--mad-dg-hl-accent);
+}
+.mad-dg-card-field.mad-dg-hl-cell {
+  background: var(--mad-dg-hl-bg);
+  border-radius: var(--mad-radius-sm, 4px);
+  margin-inline: -4px;
+  padding-inline: 4px;
+}
 /* <mad-grid row-click>: a mão só aparece onde o clique faz algo — linha/card
    com uma ação que não é de exclusão (o que o madDataGrid.onRowClick dispara). */
 .mad-dg-wrap[data-row-click] tr.mad-dg-row:has(.mad-dg-actions > button:not(.mad-dg-action-danger):not(:disabled):not([aria-disabled="true"])),
@@ -8565,6 +8595,15 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   border-color: var(--mad-primary);
   color: var(--mad-primary);
 }
+/* Variantes do painel da Ação Grid além de danger/primary (GridAction::btnClass). */
+.mad-dg-action-success { color: var(--mad-success); border-color: color-mix(in srgb, var(--mad-success) 30%, transparent); }
+.mad-dg-action-warning { color: var(--mad-warning); border-color: color-mix(in srgb, var(--mad-warning) 30%, transparent); }
+.mad-dg-action-info    { color: var(--mad-info);    border-color: color-mix(in srgb, var(--mad-info) 30%, transparent); }
+.mad-dg-action-success:hover { background: color-mix(in srgb, var(--mad-success) 8%, transparent); border-color: var(--mad-success); color: var(--mad-success); }
+.mad-dg-action-warning:hover { background: color-mix(in srgb, var(--mad-warning) 8%, transparent); border-color: var(--mad-warning); color: var(--mad-warning); }
+.mad-dg-action-info:hover    { background: color-mix(in srgb, var(--mad-info) 8%, transparent);    border-color: var(--mad-info);    color: var(--mad-info); }
+.mad-dg-action-ghost { background: transparent; border-color: transparent; }
+.mad-dg-action-ghost:hover { background: var(--mad-bg-muted); border-color: transparent; }
 
 /* Dropdown */
 .mad-dg-dropdown-wrap {
@@ -8604,6 +8643,12 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 .mad-dg-dropdown-item:disabled:hover { background: none; }
 .mad-dg-dropdown-danger { color: var(--mad-danger); }
 .mad-dg-dropdown-danger:hover { background: color-mix(in srgb, var(--mad-danger) 8%, transparent); }
+.mad-dg-dropdown-success { color: var(--mad-success); }
+.mad-dg-dropdown-warning { color: var(--mad-warning); }
+.mad-dg-dropdown-info    { color: var(--mad-info); }
+.mad-dg-dropdown-success:hover { background: color-mix(in srgb, var(--mad-success) 8%, transparent); }
+.mad-dg-dropdown-warning:hover { background: color-mix(in srgb, var(--mad-warning) 8%, transparent); }
+.mad-dg-dropdown-info:hover    { background: color-mix(in srgb, var(--mad-info) 8%, transparent); }
 
 /* ── Inline editing ──────────────────────────────────────────────── */
 .mad-dg-cell-input {
@@ -9689,6 +9734,13 @@ textarea.mad-dg-inline-input {
   background: color-mix(in srgb, var(--mad-danger) 6%, transparent);
   color: var(--mad-danger);
 }
+.mad-dg-card-action-success { color: var(--mad-success); border-color: color-mix(in srgb, var(--mad-success) 25%, transparent); }
+.mad-dg-card-action-warning { color: var(--mad-warning); border-color: color-mix(in srgb, var(--mad-warning) 25%, transparent); }
+.mad-dg-card-action-info    { color: var(--mad-info);    border-color: color-mix(in srgb, var(--mad-info) 25%, transparent); }
+.mad-dg-card-action-success:hover { background: color-mix(in srgb, var(--mad-success) 6%, transparent); color: var(--mad-success); }
+.mad-dg-card-action-warning:hover { background: color-mix(in srgb, var(--mad-warning) 6%, transparent); color: var(--mad-warning); }
+.mad-dg-card-action-info:hover    { background: color-mix(in srgb, var(--mad-info) 6%, transparent);    color: var(--mad-info); }
+.mad-dg-card-action-ghost { background: transparent; border-color: transparent; }
 
 /* ── Card highlight animation (manageRow) ──────────────────────── */
 .mad-dg-card-highlight-anim {

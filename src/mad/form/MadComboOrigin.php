@@ -82,7 +82,7 @@ final readonly class MadComboOrigin
     /** O que o usuário tinha digitado na busca antes de não achar nada. */
     public function term(): string { return $this->term; }
 
-    /** `display` do combo — nome de coluna OU máscara (ver isMask()). */
+    /** `display` do combo — nome de coluna OU máscara (ver isMask() e column()). */
     public function display(): string { return $this->display; }
 
     /** Model Eloquent que alimenta o combo (nome curto ou FQCN). */
@@ -105,5 +105,23 @@ final readonly class MadComboOrigin
     public function isMask(): bool
     {
         return str_contains($this->display, '{');
+    }
+
+    /**
+     * Coluna que o `display` nomeia: `nome` ou `{nome}` — a forma de um token
+     * só é a que o Studio grava no Display do combo. É ela que recebe o termo
+     * digitado e dá o rótulo da option nova.
+     *
+     * null para máscara composta (`{nome} — {sigla}`) e caminho de relação
+     * (`{cidade->nome}`): nenhum dos dois é campo do formulário.
+     */
+    public function column(): ?string
+    {
+        $display = trim($this->display);
+        if (preg_match('/^\{\s*([A-Za-z_]\w*)\s*\}$/', $display, $m) === 1) {
+            return $m[1];
+        }
+
+        return preg_match('/^[A-Za-z_]\w*$/', $display) === 1 ? $display : null;
     }
 }

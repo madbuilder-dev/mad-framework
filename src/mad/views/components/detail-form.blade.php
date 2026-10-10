@@ -181,6 +181,23 @@
             $_dfColMeta[$_dfFn] = ['mask' => (string) $_dfFp['mask'], 'stripMask' => true];
         }
         $_dfT = $_dfFp['type'] ?? '';
+        // `image` SEM `storage` (<mad-image-field>, <mad-signature-field>)
+        // guarda o base64 na própria coluna — o hidden com `name` o leva na
+        // linha, como no formulário próprio da tabela. Como coluna de arquivo
+        // (com "disk" no lugar do storage ausente) o Salvar pulava o valor e,
+        // sem arquivo enviado, a coluna ficava NULL: a assinatura desenhada na
+        // cortina sumia sem erro. O `file` sem storage segue indo para o disco,
+        // e o `<mad-avatar-field>` também: ele só manda o arquivo (o
+        // `<input type="file">` dele tem `name` mesmo sem storage), que é o
+        // que o navegador captura como arquivo da linha.
+        if ($_dfT === 'image' && empty($_dfFp['storage'])
+            && !preg_match(
+                '/<input\b(?=(?:[^>"\']|"[^"]*"|\'[^\']*\')*?\stype="file")(?=(?:[^>"\']|"[^"]*"|\'[^\']*\')*?\sname="'
+                    . preg_quote(e((string) $_dfFn), '/') . '")/',
+                (string) $formHtml
+            )) {
+            continue;
+        }
         if ($_dfT === 'file' || $_dfT === 'image') {
             $_dfFileCols[$_dfFn] = [
                 'storage'    => $_dfFp['storage'] ?? 'disk',

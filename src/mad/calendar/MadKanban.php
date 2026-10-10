@@ -893,6 +893,12 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * Hook executado após mover um card entre colunas.
      * Ex: salvar histórico de mudança de etapa.
      *
+     * Roda DENTRO da transação do movimento: lançar aqui desfaz o movimento
+     * (o cartão volta e a mensagem da exceção aparece). Efeito que sai da
+     * transação — fila, HTTP, outra conexão no mesmo arquivo SQLite — vai em
+     * `DB::connection(...)->afterCommit(fn () => ...)`; o
+     * `MailService::send` já espera o commit sozinho (fw#146).
+     *
      * Sobrescreva com `int|string $cardId` para quadros com chave de texto —
      * alargar o parâmetro na subclasse é permitido; o pai fica `int` porque
      * páginas geradas antes de 5.73 declaram `int` e alargar aqui quebraria

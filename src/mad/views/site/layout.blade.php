@@ -22,6 +22,11 @@
     $logoUrl   = class_exists(SiteBranding::class) ? SiteBranding::logoUrl() : null;
     $favicon   = class_exists(SiteBranding::class) ? SiteBranding::faviconUrl() : null;
 
+    // Trechos do dono do app (Header & Footer Tags, app/config/app.json via
+    // config/mad.php do esqueleto). App sem a chave não imprime nada.
+    $headerTags = (string) config('mad.general.header_tags', '');
+    $footerTags = (string) config('mad.general.footer_tags', '');
+
     $tituloPagina = trim((string) ($seo['title'] ?? ''));
     $titulo       = $tituloPagina !== '' && $tituloPagina !== $brandName
         ? $tituloPagina . ' · ' . $brandName
@@ -130,6 +135,9 @@
          site sairia azul. Por isso a cor da marca vem por último. --}}
     {!! MadSiteAssets::renderHead() !!}
     <style>{!! $vars !!}</style>
+    {{-- "Header & Footer Tags" das Propriedades do projeto (analytics, fonte,
+         verificação do domínio): sem escape, no fim do <head>. --}}
+    {!! $headerTags !!}
 </head>
 <body class="site">
 {!! $body ?? ($componentHtml ?? '') !!}
@@ -137,5 +145,6 @@
     <script type="application/ld+json">{!! json_encode($bloco, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 @endforeach
 {!! MadSiteAssets::renderBody() !!}
+{!! $footerTags !!}
 </body>
 </html>

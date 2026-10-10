@@ -6,6 +6,10 @@
     $name        = $name        ?? '';
     $label       = $label       ?? '';
     $items       = $items       ?? [];
+    // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
+    // que o reload_checklist mostrou (fw#228). O <mad-dbchecklist-field> já
+    // chega aqui com ela (e sem consultar o Model).
+    $items       = \Mad\Support\MadItems::fromForm((string) $name) ?? $items;
     $columns     = $columns     ?? [];
     $idCol       = $idColumn    ?? 'id';
     $selected    = $selected    ?? [];
@@ -145,6 +149,13 @@
     if ($mode !== 'table' && $mode !== 'manual') {
         \Mad\Component\MadRenderContext::selectionRendered($name, $selected, array_column($normalizedItems, $idCol));
     }
+    // Checklist que o código da tela grava (`saveChecklist()`): de que Model
+    // saem as opções, o rótulo e quais das marcas lidas ele desenhou — a
+    // ligação que a lista não oferece não volta marcada, e ninguém a desmarcou
+    // (ver MadForm::checklistDrawn).
+    if ($mode !== 'table') {
+        \Mad\Component\MadRenderContext::checklistRendered($name, $selected, array_column($normalizedItems, $idCol), (string) $label, $optionsSource ?? null);
+    }
 
     $itemsJson    = json_encode($normalizedItems, JSON_UNESCAPED_UNICODE);
     $selectedJson = json_encode($selected);
@@ -159,8 +170,12 @@
         'itemKey'    => $itemKey,
         'database'   => $database,
         // Checklist sobre tabela (`<mad-dbchecklist-field>`): o Model e a chave das
-        // opções, para o Salvar conferir a marca nova (só vai para o estado da tela).
-        'optionsSource' => ($mode !== 'manual' && is_array($optionsSource ?? null)) ? $optionsSource : '',
+        // opções, para o Salvar conferir a marca nova. Com itens fixos ou consulta
+        // própria, as chaves dos itens que a tela oferece. Só vai para o estado da
+        // tela; `records` diz em que coluna o setItems() traz a chave.
+        'optionsSource' => $mode === 'manual' ? '' : (is_array($optionsSource ?? null)
+            ? $optionsSource
+            : ['offered' => array_column($normalizedItems, $idCol), 'records' => $idCol]),
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
@@ -182,11 +197,11 @@
                     @if($disabled) disabled @endif>
             </div>
             @endif
-            <span class="mad-checklist-counter" x-text="checkedCount + ' de ' + totalCount + ' selecionados'"></span>
+            <span class="mad-checklist-counter" x-text="@js(mad_t('mad.checklist.counter')).replace(':n', checkedCount).replace(':total', totalCount) + (outsideCount ? ' · ' + @js(mad_t('mad.checklist.counter_outside')).replace(':n', outsideCount) : '')"></span>
             <button type="button" class="mad-checklist-filter-btn"
                 :class="showCheckedOnly && 'mad-checklist-filter-active'"
                 @click="showCheckedOnly = !showCheckedOnly"
-                title="Mostrar somente selecionados">
+                title="{{ mad_t('mad.checklist.only_checked') }}">
                 <i data-lucide="list-filter" style="width:14px;height:14px;"></i>
             </button>
             <label class="mad-checklist-select-all">

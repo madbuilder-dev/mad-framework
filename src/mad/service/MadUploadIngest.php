@@ -193,9 +193,36 @@ class MadUploadIngest
     }
 
     /**
+     * O aviso do primeiro arquivo do campo que o PHP NÃO recebeu inteiro
+     * (acima do `upload_max_filesize`, envio interrompido, falha do servidor)
+     * — ou null quando todos chegaram (ou o campo veio sem arquivo).
+     *
+     * {@see filesFor()} só devolve os arquivos recebidos: quem grava pergunta
+     * aqui antes, senão o item era gravado sem o anexo, calado — o usuário
+     * achava que tinha enviado.
+     */
+    public static function refused(string $fieldName): ?string
+    {
+        if ($fieldName === '') {
+            return null;
+        }
+        foreach (\Mad\Form\MadUploadRules::entries($_FILES[$fieldName] ?? null) as $file) {
+            $problem = \Mad\Form\MadUploadRules::phpProblem($file['error'], $file['name']);
+            if ($problem !== null) {
+                return $problem;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Arquivos válidos de um campo em `$_FILES`, SEMPRE como lista de entradas
      * simples (`name`/`tmp_name`/`type`/`size`) — normaliza o formato
      * multi-arquivo do PHP (arrays paralelos).
+     *
+     * ⚠️ O arquivo que o PHP recusou fica de fora: confira {@see refused()}
+     * antes de gravar.
      *
      * @return array<int,array{name:string,tmp_name:string,type:string,size:int}>
      */

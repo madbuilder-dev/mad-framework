@@ -165,6 +165,104 @@ final class ReferenceGuard
     }
 
     /**
+     * Das chaves `$keys`, as que a consulta PRÓPRIA do campo (`:query` da tag)
+     * não devolve — o mesmo papel do outsideSource(), para o campo cuja lista
+     * de opções é a consulta do código da tela e não a do Model.
+     *
+     * `$sql` e `$bindings` são a consulta como a tela a montou ao desenhar o
+     * campo (QuerySource::compileSql, guardada no estado cifrado da tela —
+     * nunca vinda do navegador): ela vira tabela derivada e a conferência é um
+     * `whereIn` na coluna-chave das opções. Os escopos que a consulta tinha
+     * (unidade, empresa, exclusão lógica) ficam como eram quando a tela abriu.
+     *
+     * Mesmas regras do outsideSource(): texto exato da chave, e consulta que
+     * falha recusa tudo (o motivo vai para o log).
+     *
+     * @param  list<mixed>      $bindings
+     * @param  list<int|string> $keys     as marcas NOVAS
+     * @return list<string> as chaves recusadas (vazio = todas estão na consulta)
+     */
+    public static function outsideQuery(string $connection, string $sql, array $bindings, string $key, array $keys): array
+    {
+        $asked = [];
+        foreach ($keys as $value) {
+            if (is_scalar($value) && !is_bool($value) && (string) $value !== '') {
+                $asked[(string) $value] = true;
+            }
+        }
+        $asked = array_map('strval', array_keys($asked));
+        if ($asked === []) {
+            return [];
+        }
+
+        try {
+            if (trim($sql) === '') {
+                throw new \RuntimeException('a consulta das opções está vazia');
+            }
+            $key = $key !== '' ? $key : 'id';
+
+            $found = [];
+            foreach (array_chunk($asked, self::SOURCE_CHUNK) as $chunk) {
+                $rows = \Illuminate\Support\Facades\DB::connection($connection !== '' ? $connection : null)->query()
+                    ->fromRaw('(' . $sql . ') as mad_q', $bindings)
+                    ->whereIn('mad_q.' . $key, $chunk)
+                    ->pluck('mad_q.' . $key);
+                foreach ($rows as $value) {
+                    if (is_scalar($value)) {
+                        $found[(string) $value] = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            self::log('a consulta própria das opções de uma seleção não pôde ser refeita ao conferir as marcas novas: ' . \Mad\Ui\MadErrorRedactor::describe($e));
+
+            return $asked;
+        }
+
+        return array_values(array_filter($asked, static fn (string $v): bool => !isset($found[$v])));
+    }
+
+    /**
+     * Das chaves `$keys`, as que não estão entre as opções que a tela OFERECEU
+     * — a lista fixa do campo (`:options`, `:items`), o que a consulta própria
+     * dele (`:query`) carregou ao desenhar, ou o que o código trocou com
+     * `setItems()`. Texto exato da chave, como no outsideSource().
+     *
+     * A lista vem do estado cifrado da tela: `$plain` com as chaves como
+     * texto, ou `$prints` com a impressão de cada uma (offeredPrint) quando a
+     * lista é grande demais para viajar inteira.
+     *
+     * @param  list<string>     $plain
+     * @param  list<string>     $prints
+     * @param  list<int|string> $keys   as marcas NOVAS
+     * @return list<string> as chaves recusadas (vazio = todas foram oferecidas)
+     */
+    public static function outsideOffered(array $plain, array $prints, array $keys): array
+    {
+        $offered = array_fill_keys(array_map('strval', $plain), true);
+        $printed = array_fill_keys(array_map('strval', $prints), true);
+
+        $outside = [];
+        foreach ($keys as $value) {
+            if (!is_scalar($value) || is_bool($value) || (string) $value === '') {
+                continue;
+            }
+            $value = (string) $value;
+            if (!isset($offered[$value]) && !isset($printed[self::offeredPrint($value)])) {
+                $outside[$value] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($outside));
+    }
+
+    /** Impressão curta de uma chave oferecida (lista grande no estado da tela). */
+    public static function offeredPrint(string $key): string
+    {
+        return substr(hash('sha256', 'mad-offered|' . $key), 0, 12);
+    }
+
+    /**
      * `rules($key)` do Model, por coluna: a regra e o rótulo que a chave traz
      * (`'coluna|Rótulo'`, a convenção do MadForm::validate). Vazio quando o
      * Model não tem `rules()` na forma da convenção, ou quando ele falha — o

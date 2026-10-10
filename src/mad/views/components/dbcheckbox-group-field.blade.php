@@ -85,11 +85,13 @@
     $breakOn   = ($breakItems > 0 && $horizontal && !$isButton) ? $breakItems : 0;
     $count     = 0;
 
-    // Gravação na própria coluna (por vírgula): a seleção vem do formulário
-    // (MadForm fill), como nos outros campos de seleção múltipla. Sem isto o
-    // campo abria SEM marca nenhuma — a view não enxerga a variável do
-    // contexto — e o Salvar seguinte esvaziava a coluna.
-    if ($mode !== 'table' && empty($selected) && $name) {
+    // A seleção vem do formulário (MadForm fill), como nos outros campos de
+    // seleção múltipla — a view não enxerga a variável do contexto. Na coluna
+    // por vírgula, sem isto o campo abria SEM marca nenhuma e o Salvar seguinte
+    // esvaziava a coluna. Em mode=table é o que mantém, num redesenho completo,
+    // o que o usuário marcou e desmarcou e ainda não salvou: só sem seleção no
+    // formulário (a tela abrindo) as ligações são lidas do banco, logo abaixo.
+    if (empty($selected) && $name) {
         $_ctx = \Mad\Component\MadRenderContext::current();
         if (array_key_exists($name, $_ctx)) {
             $selected = $_ctx[$name];
@@ -107,6 +109,14 @@
     // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
     // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
     $selected = \Mad\Form\MadForm::selectionKeys($selected, $separator);
+    // "Valor padrão" (`default`, lista separada pelo separador do campo): só no
+    // cadastro novo e com a seleção vazia — ANTES de anotar o que vai marcado
+    // para o navegador, que é a base do Salvar.
+    $selected = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, $selected, $default ?? null, $separator);
+
+    // Consulta própria (`:query`), vista ANTES de `:filters` virar consulta: as
+    // chaves que ela carregar são as opções que a tela oferece (ver abaixo).
+    $__ownQuery = \Mad\Database\QuerySource::isQuery($query);
 
     // Registro no MadFormRegistry com metadados de persistência
     \Mad\Form\MadFormRegistry::register($name, 'db-checkbox-group', [
@@ -120,10 +130,11 @@
         // Só quando não é a vírgula: o Salvar lê a coluna com o mesmo separador.
         'separator'  => $separator === ',' ? '' : $separator,
         // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
-        // deste Model (só vai para o estado da tela). Com `:query` própria quem
-        // decide a lista é o código da tela, e não há o que conferir.
-        'optionsSource' => ($model && $mode !== 'manual' && !\Mad\Database\QuerySource::isQuery($query))
-            ? ['model' => $model, 'key' => $keyField] : '',
+        // deste Model — ou, com `:query` própria, entre as opções que ela carregou
+        // ao desenhar o campo (anotadas logo abaixo). Só vai para o estado da tela.
+        'optionsSource' => $mode === 'manual' ? '' : ($__ownQuery
+            ? ['offered' => null]
+            : ($model ? ['model' => $model, 'key' => $keyField] : '')),
     ]);
 
     // :filters (array DSL) → Query Builder interno → caminho :query.
@@ -146,8 +157,15 @@
         'order_by' => $orderBy,
     ];
     // Carrega options do banco — :query (Builder) tem prioridade sobre model puro
+    // Lista posta pelo código (`$this->form->setItems()`, num On Change ou no
+    // mount/onEdit) vence a do Model: é a que o reload_checkbox_group mostrou. Sem isto qualquer
+    // redesenho da tela voltava a lista inteira, sem erro (fw#228; o
+    // <mad-dbcombo-field> já fazia assim, fw#139).
+    $__codeItems = \Mad\Support\MadItems::fromForm((string) $name);
     $options = [];
-    if (\Mad\Database\QuerySource::isQuery($query)) {
+    if ($__codeItems !== null) {
+        $options = \Mad\Support\MadItems::normalize($__codeItems);
+    } elseif (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
                 $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
@@ -168,6 +186,9 @@
             $options = [];
             $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbcheckbox-group-field', $__optCtx);
         }
+    }
+    if ($__ownQuery && $mode !== 'manual') {
+        \Mad\Form\MadFormRegistry::offered($name, array_keys($options));
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbcheckbox-group-field', $__optCtx);
     $__optError ??= $__pivotNotice;

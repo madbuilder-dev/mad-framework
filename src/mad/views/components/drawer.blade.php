@@ -1,4 +1,4 @@
-@props(['name' => '', 'title' => '', 'subtitle' => '', 'icon' => '', 'side' => 'right', 'size' => 'lg', 'dismissible' => true, 'closeOnBackdrop' => true, 'class' => ''])
+@props(['name' => '', 'title' => '', 'subtitle' => '', 'icon' => '', 'side' => 'right', 'size' => 'lg', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => ''])
 @php
     // `dismissible` = pode ser fechada (X e Esc). `close-on-backdrop` = fecha
     // também no clique na área escurecida — separado de propósito: formulário
@@ -10,6 +10,12 @@
         : (filter_var($dismissible, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true);
     $closeOnBackdrop = $dismissible && (is_bool($closeOnBackdrop) ? $closeOnBackdrop
         : (filter_var($closeOnBackdrop, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true));
+    // `confirm-close` = Esc, X e clique fora perguntam antes de fechar quando
+    // há alteração não salva (MadOverlayEsc.dismiss, mad.js). Opt-in; na tela
+    // com $wrapper = DRAWER vem de `protected static bool $confirmDiscard`.
+    $confirmClose = $dismissible && (is_bool($confirmClose) ? $confirmClose
+        : (filter_var($confirmClose, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false));
+    $confirmCloseAttrs = $confirmClose ? \Mad\Support\OverlayConfirmClose::attrs() : '';
     $sizes = ['sm' => '320px', 'md' => '420px', 'lg' => '560px', 'xl' => '720px', 'full' => '100vw'];
     // `size` fora do mapa é escape hatch pra medida livre (size="400"), e ia crua
     // pro style — declaração inválida, drawer na largura default do CSS.
@@ -31,7 +37,7 @@
              ancestral comum, que é o overlay). --}}
         <div class="mad-ui mad-drawer-overlay {{ $sideClass }} {{ $class }}"
              data-mad-overlay="drawer" data-mad-overlay-name="{{ $name }}" data-mad-dismissible="{{ $dismissible ? '1' : '0' }}"
-             data-mad-close-on-backdrop="{{ $closeOnBackdrop ? '1' : '0' }}"
+             data-mad-close-on-backdrop="{{ $closeOnBackdrop ? '1' : '0' }}"{!! $confirmCloseAttrs !!}
              x-show="open"
              x-transition>
             <div class="mad-drawer" style="width:{{ $width }};">
@@ -57,7 +63,11 @@
                             <button type="button"
                                     class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon"
                                     aria-label="Fechar"
-                                    @click="open = false; $dispatch('maddrawer', { name: '{{ $name }}', action: 'close' })">
+                                    @if($confirmClose)
+                                    @click="MadOverlayEsc.dismiss($el.closest('[data-mad-overlay]'))"
+                                    @else
+                                    @click="open = false; $dispatch('maddrawer', { name: '{{ $name }}', action: 'close' })"
+                                    @endif>
                                 <i data-lucide="x" style="width:16px;height:16px;"></i>
                             </button>
                         @endif

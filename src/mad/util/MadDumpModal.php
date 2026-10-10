@@ -25,9 +25,14 @@ class MadDumpModal
      */
     public static function push(array $args): void
     {
-        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3);
-        // bt[0] = MadDumpModal::push, bt[1] = mad_dump_modal/mdm, bt[2] = caller
-        $callerFrame = $bt[2] ?? $bt[1] ?? $bt[0] ?? [];
+        // O arquivo/linha de um quadro é ONDE aquela função foi chamada:
+        // bt[0] = a chamada a push() (dentro do helper), bt[1] = a chamada a
+        // mad_dump_modal()/mdm() — a linha da tela que o modal tem de mostrar.
+        // (bt[2] era a chamada ao MÉTODO da tela: o modal apontava para o
+        // MadComponent.) Chamada direta a push(), sem helper: bt[0].
+        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+        $viaHelper   = in_array($bt[1]['function'] ?? '', ['mad_dump_modal', 'mdm'], true) && !isset($bt[1]['class']);
+        $callerFrame = ($viaHelper ? $bt[1] : $bt[0]) ?? [];
         $file = $callerFrame['file'] ?? 'unknown';
         $line = $callerFrame['line'] ?? 0;
 

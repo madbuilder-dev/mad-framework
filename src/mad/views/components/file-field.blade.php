@@ -192,7 +192,7 @@
                 <iframe x-show="ftype === 'pdf'" :src="src" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>
                 <div x-show="ftype === 'other'" style="padding:60px 20px;color:var(--mad-text-muted);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
-                    <p>Preview nao disponivel para este tipo de arquivo.</p>
+                    <p>Preview não disponível para este tipo de arquivo.</p>
                     <a x-show="downloadUrl" :href="downloadUrl" target="_blank" download
                         class="mad-btn mad-btn-primary mad-btn-sm" style="margin-top:12px;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>

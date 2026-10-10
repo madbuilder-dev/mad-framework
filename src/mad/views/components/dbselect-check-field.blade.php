@@ -97,6 +97,12 @@
     // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
     $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
 
+    // Consulta própria (`:query`), vista ANTES de `:filters` virar consulta: as
+    // chaves que ela carregar são as opções que a tela oferece (ver abaixo). Com
+    // "Cadastrar novo"/"Adicionar" a opção nova nasce fora dela: não há lista a conferir.
+    $__ownQuery = \Mad\Database\QuerySource::isQuery($query);
+    $__offers   = $__ownQuery && $mode !== 'manual' && empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction);
+
     \Mad\Form\MadFormRegistry::register($name, 'multi-search', [
         'label'      => strip_tags($label),
         'required'   => $required,
@@ -106,10 +112,11 @@
         'itemKey'    => $itemKey,
         'database'   => $database,
         // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
-        // deste Model (só vai para o estado da tela). Com `:query` própria quem
-        // decide a lista é o código da tela, e não há o que conferir.
-        'optionsSource' => ($model && $mode !== 'manual' && !\Mad\Database\QuerySource::isQuery($query))
-            ? ['model' => $model, 'key' => $keyField] : '',
+        // deste Model — ou, com `:query` própria, entre as opções que ela carregou
+        // ao desenhar o campo (anotadas logo abaixo). Só vai para o estado da tela.
+        'optionsSource' => $mode === 'manual' ? '' : ($__ownQuery
+            ? ($__offers ? ['offered' => null] : '')
+            : ($model ? ['model' => $model, 'key' => $keyField] : '')),
     ]);
 
     // :filters (array DSL) → Query Builder interno → caminho :query.
@@ -170,6 +177,9 @@
             $options = [];
             $__optError = \Mad\Form\OptionsLoadError::handle($e, 'mad-dbselect-check-field', $__optCtx);
         }
+    }
+    if ($__offers) {
+        \Mad\Form\MadFormRegistry::offered($name, array_keys($options));
     }
     $__optError ??= \Mad\Form\OptionsLoadError::handleMissing($__optMissing, 'mad-dbselect-check-field', $__optCtx);
     $__optError ??= $__pivotNotice;

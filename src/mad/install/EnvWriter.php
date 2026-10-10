@@ -12,6 +12,7 @@ namespace Mad\Install;
  * - Seed a partir de .env.example quando o .env ainda não existe (clone fresco).
  * - Reescreve a linha existente (mesmo se comentada: `# KEY=...`) ou anexa no fim.
  * - Escrita atômica (temp + rename) pra nunca deixar um .env truncado.
+ * - Permissão: .env novo 0640; o que já existia mantém a que tinha.
  */
 final class EnvWriter
 {
@@ -41,9 +42,19 @@ final class EnvWriter
             }
         }
 
+        // Permissão: .env novo nasce 0640 (dono lê e grava, o grupo — onde
+        // costumam estar o servidor web e o usuário do deploy — só lê, os
+        // outros nada: o arquivo tem a APP_KEY e as senhas do banco). .env que
+        // já existia mantém a permissão que tinha: quem o criou sabe quem
+        // precisa ler.
+        $mode = is_file($path) ? (@fileperms($path) & 0777) : 0640;
+        if (! $mode) {
+            $mode = 0640;
+        }
+
         $tmp = $path . '.tmp' . bin2hex(random_bytes(4));
         file_put_contents($tmp, $contents, LOCK_EX);
-        @chmod($tmp, 0644);
+        @chmod($tmp, $mode);
         rename($tmp, $path);
     }
 

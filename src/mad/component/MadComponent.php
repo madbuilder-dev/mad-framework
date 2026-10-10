@@ -391,7 +391,20 @@ abstract class MadComponent
 
             $method = $cleanParams['method'] ?? null;
             if ($method && $method !== 'show' && is_callable([$this, $method])) {
-                $result = $this->_resolveAndCall($method, $cleanParams);
+                try {
+                    $result = $this->_resolveAndCall($method, $cleanParams);
+                } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+                    // O método de entrada não achou o registro (`/…/onEdit?id=N`
+                    // do botão Editar da listagem): ele não existe, um escopo o
+                    // esconde de quem abriu ou a trava do onEdit o recusou. É o
+                    // "Registro não encontrado" do `mount()` gerado, não uma
+                    // falha da tela — sem cartão de erro, sem log, igual com o
+                    // debug ligado ou desligado. Só aqui: o mesmo erro no
+                    // render() continua sendo defeito da tela.
+                    $this->_echoRecordNotFound();
+
+                    return;
+                }
                 if ($result !== false) {
                     // Depois do método (create-action pode ser onNovo, não show):
                     // prefill não pode ser atropelado pelo que o método montou.
@@ -423,6 +436,29 @@ abstract class MadComponent
     public function renderFailure(): ?\Throwable
     {
         return $this->_renderFailure;
+    }
+
+    /**
+     * Abertura cujo método de entrada não achou o registro.
+     *
+     * Nada do que o método chegou a carregar vai ao navegador: nem o formulário
+     * nem o estado da tela (a chave que um onEdit escrito à mão guardasse antes
+     * de recusar seria o alvo do próximo Salvar). Em cortina lateral/janela a
+     * resposta continua sendo a camada — o `Mad.go` troca a tela de trás por
+     * qualquer fragmento que não seja camada —, com o aviso dentro.
+     */
+    private function _echoRecordNotFound(): void
+    {
+        $inLayer = in_array(static::$wrapper, [self::DRAWER, self::MODAL], true)
+            && !$this->_rowAttach && !static::_requestIsRowAttach();
+
+        $html = MadErrorPage::notFound($inLayer);
+        if ($inLayer) {
+            $this->_id = $this->_id ?: ('mc_' . bin2hex(random_bytes(6)));
+            $html = MadComponentWrapper::wrap($this, $html);
+        }
+
+        echo $html;
     }
 
     /**
@@ -555,10 +591,12 @@ abstract class MadComponent
             return; // edição não é sobrescrita pelo termo de busca
         }
 
-        $display = $origin->display();
-        $term    = $origin->term();
-        if ($term === '' || $display === '' || $origin->isMask()) {
-            return; // máscara (`{nome} — {sigla}`) não é nome de campo
+        // `nome` ou `{nome}` (a forma que o Studio grava). Máscara composta
+        // (`{nome} — {sigla}`) e caminho de relação não são nome de campo.
+        $column = $origin->column();
+        $term   = $origin->term();
+        if ($term === '' || $column === null) {
+            return;
         }
 
         $form = $this->_findMadForm();
@@ -566,8 +604,8 @@ abstract class MadComponent
             return;
         }
 
-        if ((string) $form->get($display, '') === '') {
-            $form->set($display, $term);
+        if ((string) $form->get($column, '') === '') {
+            $form->set($column, $term);
         }
     }
 
@@ -599,10 +637,11 @@ abstract class MadComponent
     private function _resolveComboOriginLabel(MadComboOrigin $origin, int|string $id): string
     {
         $display = $origin->display();
+        $column  = $origin->column();
         $form    = $this->_findMadForm();
 
-        if ($display !== '' && ! $origin->isMask() && $form !== null) {
-            $value = (string) $form->get($display, '');
+        if ($column !== null && $form !== null) {
+            $value = (string) $form->get($column, '');
             if ($value !== '') {
                 return $value;
             }
@@ -1449,6 +1488,9 @@ abstract class MadComponent
         // Filtro avançado do grid (MadGridCustomFilters): defs = allowlist de
         // colunas, state = regras (só mudam pelos handlers onCustomFilter*).
         'customfilterdefs', 'customfilterstate', 'customfilterconfig', 'customfilterseal',
+        // Marca de que o Blade da listagem declarou <mad-del>: liga o Excluir
+        // embutido (MadDataGrid::onMadGridDelete). Só o render a escreve.
+        'griddeletedeclared',
     ];
 
     /**

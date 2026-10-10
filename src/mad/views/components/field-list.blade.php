@@ -144,6 +144,11 @@
                 'nameColumn' => $_fc->nameColumn ?: '',
                 'multi'      => $_fc->type === 'multifile',
             ];
+            // multifile no disco: a célula manda a lista do que mantém e o
+            // Salvar reconcilia pela coluna (fw#162; ver MadForm::_rowMultiFiles).
+            if ($_fc->type === 'multifile' && ($_fc->storage ?: 'disk') === 'disk') {
+                $_flFileCols[$_fc->field]['kind'] = 'multifile';
+            }
         } elseif ($_fc->type === 'files' && $_fc->model && $_fc->foreignKey && $_fc->pathColumn) {
             // modal multi-arquivo → tabela NETO (1 linha por arquivo, disk ou db)
             $_flFileCols[$_fc->field] = [
@@ -157,6 +162,15 @@
                 'nameColumn' => $_fc->nameColumn ?: '',
                 'database'   => $_fc->database ?: $database,
             ];
+        } else {
+            continue;
+        }
+        // Tamanho máximo da coluna (`max-size`, em KB): o Salvar confere cada
+        // arquivo das células (MadUploadRules::check) — antes só o navegador.
+        // Entra na impressão das colunas que o estado da tela guarda: o
+        // formulário recebido sem o limite não grava as linhas.
+        if ((int) $_fc->maxSize > 0) {
+            $_flFileCols[$_fc->field]['maxBytes'] = (int) $_fc->maxSize * 1024;
         }
     }
     // Sempre, mesmo sem coluna de arquivo: o formulário da tela anota como a
@@ -241,6 +255,61 @@
             }
         }
         unset($_flForm, $_flRowPk, $_flRowCls, $_gcModel);
+    }
+
+    // type='multifile' no disco: os caminhos moram na coluna da PRÓPRIA linha,
+    // por vírgula. A célula recebe os arquivos gravados em `__flfiles_<campo>`
+    // (o formato da célula Arquivos) e devolve no Salvar os que o usuário
+    // manteve; o formulário anota o que cada célula mostrou — o Salvar só tira
+    // da coluna o arquivo que a célula mostrou e o usuário removeu, e acrescenta
+    // os novos (fw#162; ver MadForm::_rowMultiFiles). Linha que voltou do
+    // navegador (redesenho) já traz a lista: a célula segue com o que tem, e o
+    // que ela mostrou ao abrir continua valendo.
+    $_multiCols = array_values(array_filter(
+        $columns,
+        fn ($c) => $c->type === 'multifile' && ($c->storage ?: 'disk') === 'disk'
+    ));
+    if ($_multiCols && !empty($initialRows)) {
+        $_flForm  = \Mad\Component\MadRenderContext::getForm();
+        $_flRowPk = 'id';
+        if ($model) {
+            try {
+                $_flRowCls = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
+                $_flRowPk  = (new $_flRowCls())->getKeyName() ?: 'id';
+            } catch (\Throwable $e) {
+                // model que não resolve: fica o `id` de sempre
+            }
+        }
+        foreach ($initialRows as $_ri => $_r) {
+            $_rid = $_r[$_flRowPk] ?? null;
+            if (!$_rid && $_flForm) {
+                $_rid = $_flForm->knownRowKey($name, (string) ($_r['__id'] ?? ''));
+            }
+            foreach ($_multiCols as $_fc) {
+                $_attr = '__flfiles_' . $_fc->field;
+                if (is_array($_r[$_attr] ?? null)) {
+                    continue;
+                }
+                $_paths = [];
+                foreach (explode(',', is_scalar($_r[$_fc->field] ?? null) ? (string) $_r[$_fc->field] : '') as $_p) {
+                    $_p = trim($_p);
+                    if ($_p !== '' && !in_array($_p, $_paths, true)) {
+                        $_paths[] = $_p;
+                    }
+                }
+                $list = [];
+                foreach ($_paths as $_p) {
+                    $_nm = basename($_p);
+                    $_nm = preg_match('/^[a-f0-9]{13,16}_(.+)$/i', $_nm, $_m) ? $_m[1] : $_nm;
+                    $list[] = ['key' => $_p, 'name' => $_nm, 'url' => mad_download_url($_p, $_nm)];
+                }
+                if ($_rid) {
+                    $_flForm?->noteCellFiles($name, $_fc->field, $_rid, $_paths);
+                }
+                $initialRows[$_ri][$_attr] = $list;
+            }
+        }
+        unset($_flForm, $_flRowPk, $_flRowCls, $_paths, $_p, $_nm, $_m);
     }
 
     // Registra variáveis de autocomplete no VarRegistry para auto-bind
@@ -457,6 +526,33 @@
                                     ]);
                                 }
                             }
+
+                            // Valor da linha que a lista de quem edita não mostra
+                            // (cadastro de outra unidade, usuário que a pessoa não
+                            // enxerga, registro inativo): a linha ganha a opção
+                            // neutra da fw#169, selecionada, só enquanto aquele é o
+                            // valor DELA (fw#198). Sem ela o combo abria em
+                            // "Selecione..." com o valor escondido na linha. As
+                            // opções são as mesmas para todas as linhas (o x-for
+                            // repete este HTML): a condição do x-if é o valor de
+                            // cada linha contra os valores fora da lista que as
+                            // linhas entregues têm — linha nova ou que trocou para
+                            // um item da lista não a vê.
+                            $__flOutCond = '';
+                            if ($col->type === 'dbcombo') {
+                                $__flOut = [];
+                                foreach ($initialRows as $__flRow) {
+                                    $__flV = $__flRow[$fld] ?? null;
+                                    if (\Mad\Form\OutsideOption::applies($__flV, (array) $col->options)) {
+                                        $__flOut[(string) $__flV] = true;
+                                    }
+                                }
+                                if ($__flOut) {
+                                    $__flOutCond = json_encode(array_map('strval', array_keys($__flOut)))
+                                        . ".includes(String(row['{$fld}'] ?? ''))";
+                                }
+                                unset($__flOut, $__flRow, $__flV);
+                            }
                         @endphp
                             <select class="mad-input-sm"
                                     name="{{ $fld }}[]"
@@ -483,6 +579,11 @@
                                     <option value="{{ $optVal }}"
                                             :selected="row['{{ $fld }}'] == '{{ $optVal }}'">{{ is_scalar($optLabel) ? $optLabel : $optVal }}</option>
                                 @endforeach
+                                @if($__flOutCond !== '')
+                                    <template x-if="{{ $__flOutCond }}">
+                                        <option :value="row['{{ $fld }}']" selected {!! \Mad\Form\OutsideOption::ATTRS !!}>{{ \Mad\Form\OutsideOption::label() }}</option>
+                                    </template>
+                                @endif
                             </select>
                             @if($dw !== '')
                                 {{-- select disabled NAO submete → este hidden assume o name
@@ -615,7 +716,8 @@
                             $fMulti   = $col->type === 'multifile' ? 'true' : 'false';
                         @endphp
                             <div class="mad-fl-file"
-                                 x-data="madFileCell({ field: '{{ $fld }}', row: row, multi: {{ $fMulti }}, accept: '{{ $fAccept }}', maxSize: {{ $fMaxSize }} })"
+                                 x-data="madFileCell({ field: '{{ $fld }}', flName: '{{ $name }}', row: row, multi: {{ $fMulti }}, accept: '{{ $fAccept }}', maxSize: {{ $fMaxSize }} })"
+                                 @if($fMulti === 'true') :data-mad-upload="keyFor()" @endif
                                  @if($col->attrs) {!! $col->attrs !!} @endif>
 
                                 {{-- Lista de arquivos selecionados --}}
@@ -649,6 +751,24 @@
                                 <input type="hidden"
                                        name="{{ $fld }}[]"
                                        x-model="row['{{ $fld }}']">
+
+                                @if($fMulti === 'true')
+                                    {{-- Vários arquivos na própria linha (fw#162): os gravados que
+                                         continuam na célula (o X tira daqui) e o identificador de
+                                         cada arquivo novo, na ordem do envio — a resposta do Salvar
+                                         devolve, por identificador, onde ele foi gravado (op
+                                         files_saved). O hidden em branco diz ao servidor que a
+                                         célula conhece a lista: sem ele o Salvar só acrescenta. --}}
+                                    <template x-if="listKnown()">
+                                        <input type="hidden" :name="'__mad_existing_files[' + keyFor() + '][]'" value="">
+                                    </template>
+                                    <template x-for="(ef, i) in keptKeys()" :key="'k'+i">
+                                        <input type="hidden" :name="'__mad_existing_files[' + keyFor() + '][]'" :value="ef">
+                                    </template>
+                                    <template x-for="(nf, i) in _newFiles" :key="'u'+i">
+                                        <input type="hidden" :name="'__mad_new_files[' + keyFor() + '][]'" :value="nf.__madUid || ''">
+                                    </template>
+                                @endif
                             </div>
 
                         @elseif($col->type === 'files')

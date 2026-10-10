@@ -202,6 +202,9 @@ class MadForm
      *     ver takesFromBrowser() e takeRowsFromBrowser() — e que o conteúdo de
      *     um Editor HTML é limpo sem depender do token `__mad_form`, que é o
      *     navegador quem devolve — ver cleanFromBrowser();
+     *     em `cl`, por checklist que o código da tela grava, o Model das
+     *     opções, o rótulo, o nome da aba e a lista de marcas que ele mostra —
+     *     ver checklistDrawn();
      *   - sob o prefixo reservado VALUES + nome da fonte, o que a tela carregou
      *     de uma tabela chave-valor (preferências, parâmetros): `p` = a fonte,
      *     `k` = [chave => impressão digital do valor gravado]. É por ela que a
@@ -209,9 +212,10 @@ class MadForm
      *     e valuesChanged();
      *   - sob o prefixo reservado MARKS + nome da lista, as marcas que um
      *     checklist gravado pelo código da tela mostrou: `p` = o pai, `k` =
-     *     [item => '']. É por ela que o `saveChecklist()` só inclui o que foi
-     *     marcado nesta tela e só remove o que foi desmarcado nela — ver
-     *     marksLoaded() e marksShown().
+     *     [item => ''] (`'n'` = ligação que o checklist não desenhou). É por
+     *     ela que o `saveChecklist()` só inclui o que foi marcado nesta tela e
+     *     só remove o que foi desmarcado nela — ver marksLoaded(),
+     *     marksShown() e checklistDrawn().
      *
      * @var array<string, array{p: string, k: array<int|string, string|int>, u?: array<int|string, int>, g?: array<int|string, int>, h?: array<int|string, string>, d?: array<string, array<string,mixed>>}>
      */
@@ -243,6 +247,24 @@ class MadForm
     /** @var array<string, array<string,int>> campos do editor de cada detalhe neste render (detalhe => [campo => 1]) */
     private array $_editorFields = [];
 
+    /**
+     * Seleções múltiplas do editor de cada detalhe neste render: de onde saem
+     * as opções (detalhe => [campo => anotação, no formato de `@fields.q`]).
+     * Vão para `@fields.d[detalhe].q` em declareDetail(). Não serializado.
+     *
+     * @var array<string, array<string, array<string,mixed>>>
+     */
+    private array $_editorSources = [];
+
+    /**
+     * Imagens guardadas na coluna da linha, do editor de cada detalhe neste
+     * render (detalhe => [campo => limites, no formato de `@fields.i`]). Vão
+     * para `@fields.d[detalhe].i` em declareDetail(). Não serializado.
+     *
+     * @var array<string, array<string, array<string,mixed>>>
+     */
+    private array $_editorImages = [];
+
     /** @var array<string,string> chave da linha de uma lista carregada à mão (`loadDetailRows`), até a lista ser desenhada */
     private array $_detailKeyHints = [];
 
@@ -264,6 +286,25 @@ class MadForm
      * @var array<string, array<string,int>>
      */
     private array $_renderingRows = [];
+
+    /**
+     * Impressão das colunas de arquivo de cada detalhe que o render EM CURSO
+     * desenhou (declareDetailFiles). Vira `fpd` — a do último render entregue
+     * ao navegador — só quando o HTML é entregue (renderDelivered). Não
+     * serializado.
+     *
+     * @var array<string,string>
+     */
+    private array $_renderingDetailFiles = [];
+
+    /**
+     * Detalhes cujas linhas o Salvar NÃO gravou porque o formulário recebido os
+     * descreve de outro jeito (nome => rótulo da lista, '' sem rótulo). Vira um
+     * aviso na resposta da ação (getPendingFlOps). Não serializado.
+     *
+     * @var array<string,string>
+     */
+    private array $_detailNotSaved = [];
 
     /**
      * O que chegou do navegador nesta requisição e NÃO foi aceito: nome =>
@@ -291,6 +332,19 @@ class MadForm
 
     /** @var array<string,true> campos que algum registro ACEITOU neste Salvar (`fillRecord()` em mais de um registro) */
     private array $_storedNow = [];
+
+    /**
+     * Campos da tela ligados a uma coluna que EXISTE no registro e que ele não
+     * aceita da tela — fora do `$fillable` / em `$guarded`, ou a chave e as
+     * colunas de controle que o formulário não grava (_withoutScreenGuarded) —
+     * com um valor que o usuário trocou: o registro, o valor de antes e o
+     * rótulo. Conferidos no fim da ação (_settleGuardedTyped): a coluna que
+     * continua com o valor de antes vira o aviso "Valor não gravado". Não
+     * serializado.
+     *
+     * @var array<string, array{record: \Illuminate\Database\Eloquent\Model, before: mixed, label: string, table: string, committed: bool}>
+     */
+    private array $_guardedTyped = [];
 
     /** @var array<string,true> seleções por vírgula cujas marcas novas o `fillRecord()` em curso já conferiu na fonte das opções */
     private array $_selectionChecked = [];
@@ -343,26 +397,41 @@ class MadForm
 
     /**
      * O que este Salvar NÃO regravou porque outra tela já tinha removido:
-     * posições das linhas (como estavam na lista), nomes dos anexos e, por
-     * campo de seleção múltipla em outra tabela, quantas marcas. Vira um aviso
-     * na resposta da ação (getPendingFlOps). Não serializado.
+     * linhas (o texto que a tela mostrava nelas — ou a posição, na linha sem
+     * texto), nomes dos anexos e, por campo de seleção múltipla em outra
+     * tabela, quantas marcas. Vira um aviso na resposta da ação
+     * (getPendingFlOps). Não serializado.
      *
-     * @var array{rows: list<int>, files: list<string>, options: array<string,int>}
+     * @var array{rows: list<int|string>, files: list<string>, options: array<string,int>}
      */
     private array $_goneNotice = ['rows' => [], 'files' => [], 'options' => []];
 
     /**
-     * O que outra aba ou outra pessoa marcou e desmarcou, numa lista de marcas
-     * gravada pelo código da tela, enquanto esta tela estava aberta: nomes dos
-     * itens (nome => true) e quantos outros sem nome conhecido. Vira um aviso
-     * na resposta da ação (getPendingFlOps). Não serializado.
+     * O que outra aba ou outra pessoa marcou, desmarcou e mudou nos dados de
+     * um item, numa lista de marcas gravada pelo código da tela, enquanto esta
+     * tela estava aberta — por lista (o nome dela na tela; '' = sem nome
+     * conhecido): nomes dos itens (nome => true) e quantos outros sem nome
+     * conhecido. Vira um aviso na resposta da ação (getPendingFlOps). Não
+     * serializado.
      *
-     * @var array{marked: array{names: array<string,true>, more: int}, unmarked: array{names: array<string,true>, more: int}}
+     * @var array<string, array<string, array{names: array<string,true>, more: int}>>
      */
-    private array $_marksNotice = [
-        'marked'   => ['names' => [], 'more' => 0],
-        'unmarked' => ['names' => [], 'more' => 0],
-    ];
+    private array $_marksNotice = [];
+
+    /**
+     * Abas desenhadas neste render: nome => o texto da aba. É o nome de um
+     * checklist sem rótulo no aviso das marcas (ver tabPanelRendered). Não
+     * serializado.
+     *
+     * @var array<string,string>
+     */
+    private array $_tabLabels = [];
+
+    /** Checklists cuja aba este render já anotou (a mais interna vale). Não serializado. @var array<string,true> */
+    private array $_tabbed = [];
+
+    /** Lista de marcas lida nesta requisição => o checklist que a desenhou ('' = mais de um). Não serializado. @var array<string,string> */
+    private array $_marksClaims = [];
 
     /**
      * Linhas filhas que o Upload Múltiplo em modo tabela criou ou apagou NESTE
@@ -621,6 +690,8 @@ class MadForm
         $schema = MadFormRegistry::fromRequest();
         $this->_saveSchema = is_array($schema) ? $schema : [];
         $dataArray = (array) $data;
+        /** @var array<string, array{s?: string, l?: string}> $columnSelections */
+        $columnSelections = array_filter((array) ($this->_known[self::DECLARED]['c'] ?? []), 'is_array');
         if (!empty($schema)) {
             foreach ($schema as $fieldName => $props) {
                 $t = $props['type'] ?? '';
@@ -666,10 +737,27 @@ class MadForm
                     $dataArray[$fieldName] = \Mad\Util\MadHtmlSanitizer::sanitize($dataArray[$fieldName]);
                 }
                 // Seleção múltipla gravada na própria coluna: só sai da coluna
-                // o item que a tela mostrou marcado e o usuário desmarcou.
-                if (array_key_exists($fieldName, $dataArray) && self::_isColumnSelection((string) $t, $props)) {
+                // o item que a tela mostrou marcado e o usuário desmarcou. O
+                // campo que a tela anotou no estado é mesclado logo abaixo.
+                if (array_key_exists($fieldName, $dataArray) && self::_isColumnSelection((string) $t, $props)
+                    && !isset($columnSelections[$fieldName])) {
                     $this->_mergeColumnSelection($record, (string) $fieldName, $props, $dataArray);
                 }
+            }
+        }
+
+        // Seleção múltipla por vírgula pelo que a TELA declarou (estado
+        // cifrado), e não só pelo formulário recebido: sem ele (ou com o de
+        // outra tela) o laço acima não reconhece o campo, e a coluna recebia o
+        // valor como veio — os itens que a tela não mostra saíam. Vale também
+        // para o campo que não vem neste request (marcado numa ação anterior,
+        // ou desabilitado na tela).
+        foreach ($columnSelections as $fieldName => $declared) {
+            if (array_key_exists($fieldName, $dataArray)) {
+                $this->_mergeColumnSelection($record, (string) $fieldName, [
+                    'separator' => (string) ($declared['s'] ?? ''),
+                    'label'     => (string) ($declared['l'] ?? ''),
+                ], $dataArray, true);
             }
         }
 
@@ -694,8 +782,11 @@ class MadForm
 
         // Chave, colunas de controle e empresa: o formulário não as atribui a
         // partir da tela, nem quando alguém as declara como campo.
+        $screenGuarded = [];
         if ($record instanceof \Illuminate\Database\Eloquent\Model) {
-            $dataArray = $this->_withoutScreenGuarded($record, $dataArray);
+            $offered       = $dataArray;
+            $dataArray     = $this->_withoutScreenGuarded($record, $dataArray);
+            $screenGuarded = array_diff_key($offered, $dataArray);
         }
 
         // Seleção múltipla sobre tabela gravada na própria coluna: a marca que
@@ -709,6 +800,9 @@ class MadForm
             // ver _fieldsWithoutColumn().
             $scalars = array_filter($dataArray, fn ($v) => !is_array($v));
             $this->_fieldsWithoutColumn($record, $scalars, is_array($schema) ? $schema : []);
+            // Coluna que existe e que o registro não aceita da tela: só no fim
+            // da ação se sabe se o código gravou nela (ver _noteGuardedTyped).
+            $this->_noteGuardedTyped($record, $scalars, $screenGuarded, is_array($schema) ? $schema : []);
             $record->fill($this->_numericEmptyNotNull($record, $this->_emptyToNull($record, $scalars, $schema), $schema));
         } else {
             foreach ($dataArray as $key => $value) {
@@ -985,6 +1079,17 @@ class MadForm
     private const MARKS_NAMED = 5;
 
     /**
+     * Valor, nas marcas de uma lista (`k`), do item que o código da tela leu
+     * como ligação e o checklist NÃO desenhou: a lista da tela não oferece o
+     * item (filtro, consulta própria, cadastro que quem edita não enxerga).
+     * Não volta marcado no Salvar, e ninguém o desmarcou (ver checklistDrawn).
+     */
+    private const MARK_NOT_DRAWN = 'n';
+
+    /** Nome reservado, em `$_known[DECLARED]`, dos checklists que a tela desenhou fora do `mode="table"` (ver checklistDrawn). */
+    private const DRAWN_CHECKLISTS = 'cl';
+
+    /**
      * O código da tela leu do banco as marcas de `$list` para este pai, para
      * mostrá-las. Passam a valer como "o que a tela mostra" quando o HTML for
      * entregue (renderDelivered): a ação que relê as marcas sem redesenhar a
@@ -1035,13 +1140,34 @@ class MadForm
     public function marksShown(string $list, mixed $parentId): ?array
     {
         $known = $list !== '' ? $this->_knownFor(self::MARKS . $list, $parentId) : null;
+        if ($known === null) {
+            return null;
+        }
 
-        return $known === null ? null : array_map('strval', array_keys($known));
+        return array_map('strval', array_keys(array_filter($known, static fn ($mark): bool => $mark !== self::MARK_NOT_DRAWN)));
+    }
+
+    /**
+     * Das ligações que o código da tela leu para `$list` (este pai), as que o
+     * checklist NÃO desenhou: a lista da tela não oferece o item (filtro,
+     * consulta própria, cadastro que quem edita não enxerga). Elas não voltam
+     * marcadas no Salvar, e ninguém as desmarcou.
+     *
+     * @internal usado por MadChecklistTrait::saveChecklist()
+     *
+     * @return list<string>
+     */
+    public function marksNotDrawn(string $list, mixed $parentId): array
+    {
+        $known = $list !== '' ? $this->_knownFor(self::MARKS . $list, $parentId) : null;
+
+        return array_map('strval', array_keys(array_filter((array) $known, static fn ($mark): bool => $mark === self::MARK_NOT_DRAWN)));
     }
 
     /**
      * O Salvar gravou `$list`: a tela continua mostrando marcado o que mandou
-     * marcado (`$items`), e é disso que o Salvar seguinte parte.
+     * marcado (`$items`), e é disso que o Salvar seguinte parte. `$notDrawn`
+     * são as ligações que continuam fora da lista da tela (ver marksNotDrawn).
      *
      * Só vale quando a transação em curso confirmar (`$owner` é um registro da
      * tabela gravada): se ela for desfeita, nada foi gravado e a base continua
@@ -1050,18 +1176,261 @@ class MadForm
      *
      * @internal usado por MadChecklistTrait::saveChecklist()
      *
-     * @param list<int|string> $items itens que a tela mandou marcados
+     * @param list<int|string> $items    itens que a tela mandou marcados
+     * @param list<int|string> $notDrawn ligações que o checklist não desenha
      */
-    public function marksSaved(string $list, mixed $parentId, array $items, ?object $owner = null): void
+    public function marksSaved(string $list, mixed $parentId, array $items, ?object $owner = null, array $notDrawn = []): void
     {
         if ($list === '' || $parentId === null || $parentId === '') {
             return;
         }
 
-        $entry = ['p' => (string) $parentId, 'k' => array_fill_keys(self::selectionKeys($items), '')];
+        $marks = array_fill_keys(self::selectionKeys($items), '');
+        $marks += array_fill_keys(self::selectionKeys($notDrawn), self::MARK_NOT_DRAWN);
+        $entry = ['p' => (string) $parentId, 'k' => $marks];
         $this->_afterCommit($owner, function () use ($list, $entry): void {
             $this->_known[self::MARKS . $list] = $entry;
         });
+    }
+
+    /**
+     * Um checklist que o código da tela grava (fora do `mode="table"`)
+     * terminou de montar a tela: `$selected` é o que ele mostra marcado,
+     * `$drawn` as chaves dos itens que ele desenhou, `$label` o rótulo e
+     * `$source` o Model das opções (`['model' => …, 'key' => …]`; vazio =
+     * itens fixos ou consulta própria).
+     *
+     * O formulário anota, no estado cifrado, por campo:
+     *
+     *   - a lista de marcas que o código da tela leu NESTA requisição com o
+     *     `loadChecklist()` e que este campo mostra (as marcas lidas são
+     *     exatamente as dele, e nenhuma outra lista lida tem as mesmas). É por
+     *     ela que o `saveChecklist()` acha o campo da lista que grava: o Model
+     *     das opções, para conferir a marca nova (ReferenceGuard), e o nome da
+     *     lista no aviso das marcas mudadas por fora;
+     *   - nas marcas dessa lista, as ligações que o checklist NÃO desenhou
+     *     (MARK_NOT_DRAWN): a lista da tela não oferece o item, ele não volta
+     *     marcado, e o Salvar não pode tomá-lo por desmarcado;
+     *   - o Model das opções e o rótulo.
+     *
+     * Duas listas com as mesmas marcas (ou dois campos mostrando a mesma): não
+     * dá para saber qual é qual, e nenhuma fica ligada a campo — vale o que
+     * valia antes.
+     *
+     * @internal chamado por MadRenderContext::checklistRendered()
+     *
+     * @param iterable<mixed>                         $drawn
+     * @param array{model?: string, key?: string}|mixed $source
+     */
+    public function checklistDrawn(string $field, mixed $selected, iterable $drawn, string $label = '', mixed $source = null): void
+    {
+        if ($field === '' || $this->_openedBefore || $this->_editorScope !== null) {
+            return;
+        }
+
+        $this->_openDeclared();
+        $before = (array) ($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$field] ?? []);
+        $entry  = [];
+        $model  = is_array($source) ? trim((string) ($source['model'] ?? '')) : '';
+        if ($model !== '') {
+            $entry['m'] = $model;
+            $key        = trim((string) ($source['key'] ?? ''));
+            if ($key !== '' && $key !== 'id') {
+                $entry['k'] = $key;
+            }
+        }
+        $label = trim((string) preg_replace('/\s+/u', ' ', strip_tags($label)));
+        if ($label !== '') {
+            $entry['l'] = $label;
+        }
+        // A aba é anotada pelo painel dela (desenhado depois); a lista, só
+        // quando as marcas são lidas — o redesenho depois de uma ação mostra o
+        // que o navegador mandou e continua sendo a mesma lista.
+        foreach (['t', 'L'] as $part) {
+            if (isset($before[$part])) {
+                $entry[$part] = $before[$part];
+            }
+        }
+
+        $chosen  = self::_markKeys($selected);
+        $matches = [];
+        foreach ($this->_rendering as $name => $loaded) {
+            $name = (string) $name;
+            if (!str_starts_with($name, self::MARKS) || !is_array($loaded['k'] ?? null)) {
+                continue;
+            }
+            $marks = array_map('strval', array_keys($loaded['k']));
+            if (count($marks) === count($chosen) && !array_diff($marks, $chosen)) {
+                $matches[] = substr($name, strlen(self::MARKS));
+            }
+        }
+        if (count($matches) === 1) {
+            $list  = $matches[0];
+            $owner = $this->_marksClaims[$list] ?? null;
+            $marks = array_keys($this->_rendering[self::MARKS . $list]['k']);
+            if ($owner === null || $owner === $field) {
+                $this->_marksClaims[$list] = $field;
+                $entry['L'] = $list;
+                $offered = array_fill_keys(self::_markKeys(is_array($drawn) ? $drawn : iterator_to_array($drawn, false)), true);
+                foreach ($marks as $item) {
+                    $this->_rendering[self::MARKS . $list]['k'][$item] = isset($offered[(string) $item]) ? '' : self::MARK_NOT_DRAWN;
+                }
+                // A lista estava ligada a outro campo (a tela mudou): passa a ser deste.
+                foreach ((array) ($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS] ?? []) as $other => $drawnEntry) {
+                    if ((string) $other !== $field && is_array($drawnEntry) && ($drawnEntry['L'] ?? null) === $list) {
+                        unset($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$other]['L']);
+                    }
+                }
+            } else {
+                // Dois campos mostram as mesmas marcas: nenhum dos dois é a lista.
+                if ($owner !== '') {
+                    unset($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$owner]['L']);
+                }
+                unset($entry['L']);
+                foreach ($marks as $item) {
+                    $this->_rendering[self::MARKS . $list]['k'][$item] = '';
+                }
+                $this->_marksClaims[$list] = '';
+            }
+        }
+
+        $this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$field] = $entry;
+    }
+
+    /**
+     * Uma aba (`<mad-tab>`) foi desenhada: o texto dela é o nome, no aviso das
+     * marcas, do checklist sem rótulo que estiver no painel dela.
+     *
+     * @internal chamado por MadRenderContext::tabRendered()
+     */
+    public function tabRendered(string $tab, string $label): void
+    {
+        if ($tab !== '') {
+            $this->_tabLabels[$tab] = trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($label), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        }
+    }
+
+    /**
+     * O painel de uma aba (`<mad-tab-panel>`) foi desenhado com `$html`: os
+     * checklists dele ficam com o nome da aba (o painel mais interno vale).
+     *
+     * @internal chamado por MadRenderContext::tabPanelRendered()
+     */
+    public function tabPanelRendered(string $tab, string $html): void
+    {
+        $drawn = $this->_known[self::DECLARED][self::DRAWN_CHECKLISTS] ?? null;
+        if ($tab === '' || !is_array($drawn) || !preg_match_all('/data-mad-checklist="([^"]*)"/', $html, $m)) {
+            return;
+        }
+        $label = $this->_tabLabels[$tab] ?? '';
+        foreach ($m[1] as $field) {
+            $field = html_entity_decode($field, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if (isset($this->_tabbed[$field]) || !is_array($drawn[$field] ?? null)) {
+                continue;
+            }
+            $this->_tabbed[$field] = true;
+            if ($label !== '') {
+                $this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$field]['t'] = $label;
+            } else {
+                unset($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS][$field]['t']);
+            }
+        }
+    }
+
+    /**
+     * As marcas que vão virar ligação NOVA em `$list` são de itens que a
+     * consulta do Model das opções do checklist devolve para quem salva?
+     *
+     * O Model da ligação pode não ter `rules()` (e então a regra `exists` do
+     * ReferenceGuard não confere nada): a requisição alterada ligava o
+     * registro a um item que a lista de quem salva não mostra. É a mesma
+     * segunda barreira do `mode="table"` (_guardSelectionSource), pelo Model
+     * das opções que a TELA desenhou (estado cifrado).
+     *
+     * O campo é o que a tela desenhou com as marcas desta lista (ver
+     * checklistDrawn). Sem isso — cadastro novo, marcas que a tela não leu com
+     * o `loadChecklist()` — o checklist cujas marcas estão todas entre as que o
+     * código manda gravar (o `$data->campo` de sempre). Só a marca que está no
+     * campo é conferida: o item que o código da tela acrescenta por conta
+     * própria, ou que ele pôs no campo com `set()` neste request, não veio do
+     * navegador.
+     *
+     * @internal usado por MadChecklistTrait::saveChecklist()
+     *
+     * @param list<string> $entering itens que vão virar ligação nova
+     * @param list<string> $wanted   tudo o que o código mandou gravar marcado
+     *
+     * @throws ReferenceViolation marca de um item que quem salva não enxerga
+     */
+    public function guardMarksSource(string $list, array $entering, array $wanted): void
+    {
+        $drawn = array_filter((array) ($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS] ?? []), 'is_array');
+        if ($entering === [] || $drawn === []) {
+            return;
+        }
+
+        $fields = array_keys(array_filter($drawn, static fn (array $entry): bool => ($entry['L'] ?? null) === $list));
+        if (count($fields) !== 1) {
+            $wantedSet = array_fill_keys(self::_markKeys($wanted), true);
+            $fields    = [];
+            foreach (array_keys($drawn) as $field) {
+                $marks = self::_markKeys($this->fields[$field] ?? null);
+                if ($marks !== [] && array_diff_key(array_fill_keys($marks, true), $wantedSet) === []) {
+                    $fields[] = $field;
+                }
+            }
+        }
+
+        $entering = self::_markKeys($entering);
+        foreach ($fields as $field) {
+            $field = (string) $field;
+            if (isset($this->_assignedNow[$field])) {
+                continue;
+            }
+            $check = array_values(array_intersect($entering, self::_markKeys($this->fields[$field] ?? null)));
+            if (isset($this->_known[self::DECLARED]['q'][$field])) {
+                // Seleção que a tela também conhece como campo (gravação por
+                // vírgula): a mesma conferência dele.
+                $this->_guardSelectionSource($field, $check);
+                continue;
+            }
+            $source = $drawn[$field];
+            if ($check !== [] && isset($source['m'])
+                && ReferenceGuard::outsideSource((string) $source['m'], (string) ($source['k'] ?? 'id'), $check) !== []) {
+                ReferenceGuard::logRefused(sprintf('uma marca do checklist "%s"', $field));
+
+                throw new ReferenceViolation(
+                    [$field => self::_text('mad.form.selection_invalid', [], 'Um dos itens marcados não pode ser gravado: ele não está na sua lista ou não existe mais.')],
+                    [$field],
+                );
+            }
+        }
+    }
+
+    /** O nome da lista `$list` na tela (rótulo do checklist, ou o da aba dele), para o aviso das marcas. '' = sem nome conhecido. */
+    private function _marksListLabel(string $list): string
+    {
+        foreach ((array) ($this->_known[self::DECLARED][self::DRAWN_CHECKLISTS] ?? []) as $entry) {
+            if (is_array($entry) && ($entry['L'] ?? null) === $list) {
+                return (string) ($entry['l'] ?? $entry['t'] ?? '');
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Itens de uma lista de marcas como o `saveChecklist()` os compara: o
+     * número do item em texto (`'7'`), como ele grava a ligação.
+     *
+     * @return list<string>
+     */
+    private static function _markKeys(mixed $value): array
+    {
+        return array_values(array_unique(array_map(
+            static fn (string $item): string => (string) (int) $item,
+            self::selectionKeys($value)
+        )));
     }
 
     /**
@@ -1072,6 +1441,12 @@ class MadForm
      *
      * `$marked` / `$unmarked` são os nomes dos itens, como o usuário os vê;
      * `$markedMore` / `$unmarkedMore`, quantos outros não têm nome conhecido.
+     * `$changed` / `$changedMore`: os itens que continuaram marcados e cujos
+     * dados (o que o `$each` do `saveChecklist()` grava) foram mudados por
+     * fora — e ficaram como a outra aba deixou.
+     *
+     * `$list` é a lista (o nome dela no formulário): o aviso diz o nome que
+     * ela tem na tela — o rótulo do checklist, ou o da aba em que ele está.
      *
      * Com `$owner` (um registro da tabela gravada), o aviso só sai se a
      * transação em curso confirmar: o Salvar que falhou não manteve nada, e a
@@ -1079,38 +1454,64 @@ class MadForm
      *
      * @param list<string> $marked
      * @param list<string> $unmarked
+     * @param list<string> $changed
      */
-    public function warnMarksChanged(array $marked, array $unmarked, int $markedMore = 0, int $unmarkedMore = 0, ?object $owner = null): void
+    public function warnMarksChanged(array $marked, array $unmarked, int $markedMore = 0, int $unmarkedMore = 0, ?object $owner = null, array $changed = [], int $changedMore = 0, string $list = ''): void
     {
-        $this->_afterCommit($owner, function () use ($marked, $unmarked, $markedMore, $unmarkedMore): void {
-            foreach (['marked' => [$marked, $markedMore], 'unmarked' => [$unmarked, $unmarkedMore]] as $kind => [$names, $more]) {
+        $label = $list !== '' ? $this->_marksListLabel($list) : '';
+        $this->_afterCommit($owner, function () use ($marked, $unmarked, $changed, $markedMore, $unmarkedMore, $changedMore, $label): void {
+            foreach (['marked' => [$marked, $markedMore], 'unmarked' => [$unmarked, $unmarkedMore], 'changed' => [$changed, $changedMore]] as $kind => [$names, $more]) {
+                $named = [];
                 foreach ($names as $name) {
                     $name = trim(strip_tags((string) $name));
                     if ($name !== '') {
-                        $this->_marksNotice[$kind]['names'][$name] = true;
+                        $named[$name] = true;
                     } else {
                         $more++;
                     }
                 }
-                $this->_marksNotice[$kind]['more'] += max(0, $more);
+                if (!$named && $more <= 0) {
+                    continue;
+                }
+                $notice = $this->_marksNotice[$label][$kind] ?? ['names' => [], 'more' => 0];
+                $notice['names'] += $named;
+                $notice['more']  += max(0, $more);
+                $this->_marksNotice[$label][$kind] = $notice;
             }
         });
     }
 
-    /** O aviso (diálogo) do que foi marcado/desmarcado por fora, ou null se não há o que avisar. */
+    /** O aviso (diálogo) do que foi marcado/desmarcado/mudado por fora, ou null se não há o que avisar. */
     private function _marksNoticeOp(): ?array
     {
         $texts = [
-            'marked'   => ['mad.checklist.marked_elsewhere', 'Outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.'],
-            'unmarked' => ['mad.checklist.unmarked_elsewhere', 'Outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.'],
+            'marked'   => [
+                'mad.checklist.marked_elsewhere', 'Outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+                'mad.checklist.marked_elsewhere_in', 'Em :list, outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            ],
+            'unmarked' => [
+                'mad.checklist.unmarked_elsewhere', 'Outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+                'mad.checklist.unmarked_elsewhere_in', 'Em :list, outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            ],
+            'changed'  => [
+                'mad.checklist.changed_elsewhere', 'Outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
+                'mad.checklist.changed_elsewhere_in', 'Em :list, outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
+            ],
         ];
 
         $parts = [];
-        foreach ($texts as $kind => [$key, $fallback]) {
-            $names = array_map('strval', array_keys($this->_marksNotice[$kind]['names']));
-            $more  = (int) $this->_marksNotice[$kind]['more'];
-            if ($names || $more > 0) {
-                $parts[] = self::_text($key, ['items' => self::_marksItems($names, $more)], $fallback);
+        foreach ($this->_marksNotice as $label => $kinds) {
+            $label = (string) $label;
+            foreach ($texts as $kind => [$key, $fallback, $keyIn, $fallbackIn]) {
+                $names = array_map('strval', array_keys($kinds[$kind]['names'] ?? []));
+                $more  = (int) ($kinds[$kind]['more'] ?? 0);
+                if (!$names && $more <= 0) {
+                    continue;
+                }
+                $items   = self::_marksItems($names, $more);
+                $parts[] = $label !== ''
+                    ? self::_text($keyIn, ['items' => $items, 'list' => $label], $fallbackIn)
+                    : self::_text($key, ['items' => $items], $fallback);
             }
         }
         if (!$parts) {
@@ -1282,6 +1683,8 @@ class MadForm
     {
         $this->_editorScope = $detail;
         $this->_editorFields[$detail] = [];
+        $this->_editorSources[$detail] = [];
+        $this->_editorImages[$detail] = [];
     }
 
     /** @internal fim do `<mad-detail-fields>` — `$html` é o que ele desenhou */
@@ -1354,6 +1757,9 @@ class MadForm
         if (is_array($before['fp'] ?? null)) {
             $entry['fp'] = $before['fp'];
         }
+        if (is_string($before['fpd'] ?? null)) {
+            $entry['fpd'] = $before['fpd'];
+        }
         // Colunas em que o usuário DIGITA: no Detail Form, os campos do editor
         // (a grade só exibe); na Lista de itens quem diz é a view — ver
         // detailTypedColumns().
@@ -1363,6 +1769,19 @@ class MadForm
             $entry['t'] = $before['t'];
             if (is_string($before['tl'] ?? null)) {
                 $entry['tl'] = $before['tl'];
+            }
+        }
+        // Seleção múltipla por vírgula e Imagem sem `storage` do editor: o que
+        // o Salvar confere na coluna da LINHA (a fonte das opções, os limites
+        // da imagem), como no formulário principal — ver _guardRowEditorFields().
+        foreach (['q' => $this->_editorSources[$name] ?? null, 'i' => $this->_editorImages[$name] ?? null] as $kind => $drawn) {
+            if (!empty($this->_editorFields[$name])) {
+                $drawn = array_intersect_key((array) $drawn, $this->_editorFields[$name]);
+                if ($drawn !== []) {
+                    $entry[$kind] = $drawn;
+                }
+            } elseif (is_array($before[$kind] ?? null)) {
+                $entry[$kind] = $before[$kind];
             }
         }
 
@@ -1395,6 +1814,10 @@ class MadForm
         unset($prints[$print]);
         $prints[$print] = 1;
         $this->_known[self::DECLARED]['d'][$name]['fp'] = array_slice($prints, -self::WRITE_PRINTS, null, true);
+        // A forma do render que o navegador recebe fica guardada à parte (`fpd`,
+        // em renderDelivered): passadas mais de WRITE_PRINTS ações cujo HTML foi
+        // descartado, ela já teria saído da lista acima.
+        $this->_renderingDetailFiles[$name] = $print;
     }
 
     /** @internal a chave da linha de uma lista carregada à mão (MadFieldListTrait::loadDetailRows) */
@@ -1447,8 +1870,10 @@ class MadForm
         if ($render) {
             $skip = $this->_scanSkip;
             $this->_scanSkip     = ['fields' => [], 'lists' => []];
-            $this->_editorFields = [];
-            $this->_editorScope  = null;
+            $this->_editorFields  = [];
+            $this->_editorSources = [];
+            $this->_editorImages  = [];
+            $this->_editorScope   = null;
         }
         if ($this->_openedBefore) {
             return;
@@ -2490,6 +2915,165 @@ class MadForm
         }
     }
 
+    // ── Coluna que EXISTE e que o registro não aceita da tela ────────────────
+    //
+    // O `fill()` descarta também a coluna que existe e está fora do
+    // `$fillable` (ou em `$guarded`), e o formulário não grava da tela a chave
+    // nem as colunas de controle. Mas proteger a coluna no Model e atribuí-la
+    // no código é padrão legítimo (`if ($admin) $user->papel = $data->papel;`,
+    // a senha que vira hash): no `fillRecord()` não dá para decidir. Ele anota
+    // o que o usuário trocou, e o fim da ação confere se a coluna continua com
+    // o valor de antes — o código que atribuiu qualquer coisa nela a tira do
+    // aviso.
+
+    /**
+     * Antes do `fill()` do registro: anota as colunas que existem, que o
+     * registro não vai aceitar da tela e cujo valor o usuário trocou num
+     * campo em que ele pode digitar.
+     *
+     * @param array<string,mixed>               $values  o que vai para o `fill()` (só escalares)
+     * @param array<string,mixed>               $dropped o que o _withoutScreenGuarded() tirou
+     * @param array<string,array<string,mixed>> $schema
+     */
+    private function _noteGuardedTyped(\Illuminate\Database\Eloquent\Model $record, array $values, array $dropped, array $schema): void
+    {
+        if (!$this->_notesNotStored() || $record->totallyGuarded()) {
+            return;
+        }
+        $candidates = array_filter($dropped, static fn ($v) => !is_array($v));
+        foreach ($values as $name => $value) {
+            if (!$record->isFillable((string) $name)) {
+                $candidates[$name] = $value;
+            }
+        }
+        if ($candidates === []) {
+            return;
+        }
+
+        $declared = (array) ($this->_known[self::DECLARED]['k'] ?? []);
+        $marked   = (array) ($this->_known[self::DECLARED]['o'] ?? []);
+        $posted   = $_POST['mad_model'] ?? null;
+        $posted   = is_array($posted) ? $posted : [];
+        $columns  = null;
+        $labels   = null;
+
+        foreach ($candidates as $name => $value) {
+            $name = (string) $name;
+            // Só o campo que a tela desenhou, em que o usuário pode digitar, com
+            // o valor que veio do navegador nesta requisição.
+            if (!isset($declared[$name]) || isset($marked[$name]) || isset($this->_assignedNow[$name])
+                || str_contains($name, '__') || !array_key_exists($name, $posted)
+                || !empty($this->readonly[$name]) || !empty($this->disabled[$name])) {
+                continue;
+            }
+            $columns ??= $this->_tableColumns($record) ?? false;
+            if ($columns === false) {
+                return;   // sem as colunas da tabela não há o que afirmar
+            }
+            if (!isset($columns[strtolower($name)])) {
+                continue;   // não é coluna: é o caso do _fieldsWithoutColumn()
+            }
+
+            $props   = (array) ($schema[$name] ?? []);
+            $before  = $record->exists ? $record->getRawOriginal($name) : null;
+            $changed = $record->exists
+                ? !self::_sameColumnValue($before, $value, $props)
+                : $this->_typedValue($name, $value, $props);
+            if (!$changed) {
+                unset($this->_guardedTyped[$name]);
+                continue;
+            }
+
+            $labels ??= $this->_fieldLabels();
+            $this->_guardedTyped[$name] = [
+                'record'    => $record,
+                'before'    => $before,
+                'label'     => trim((string) ($labels[$name] ?? '')) ?: $name,
+                'table'     => (string) $record->getTable(),
+                'committed' => false,
+            ];
+            // Transação desfeita: o erro do Salvar basta (nada de "o restante foi salvo").
+            $this->_afterCommit($record, function () use ($name, $record): void {
+                if (($this->_guardedTyped[$name]['record'] ?? null) === $record) {
+                    $this->_guardedTyped[$name]['committed'] = true;
+                }
+            });
+        }
+    }
+
+    /**
+     * No fim da ação: das colunas anotadas por _noteGuardedTyped(), as que o
+     * registro gravou e que continuam com o valor de antes — o usuário trocou,
+     * ninguém atribuiu. Nome do campo => rótulo e tabela.
+     *
+     * @return array<string, array{label: string, table: string}>
+     */
+    private function _settleGuardedTyped(): array
+    {
+        $notStored = [];
+        foreach ($this->_guardedTyped as $name => $entry) {
+            $record = $entry['record'];
+            // O registro não foi gravado (Salvar com erro, código que não grava)
+            // ou outro registro aceitou o campo: não é este o aviso.
+            if (!$entry['committed'] || isset($this->_storedNow[$name]) || isset($this->_assignedNow[$name])
+                || !$record->exists || $record->isDirty()) {
+                continue;
+            }
+            if (!self::_sameColumnValue($entry['before'], $record->getRawOriginal($name), [])) {
+                continue;   // o código gravou alguma coisa na coluna
+            }
+            $notStored[$name] = ['label' => $entry['label'], 'table' => $entry['table']];
+        }
+        $this->_guardedTyped = [];
+
+        return $notStored;
+    }
+
+    /**
+     * `$a` e `$b` são o mesmo valor de coluna? — número pelo valor (10.5 ×
+     * 10.50), data pelo instante (com ou sem os segundos), interruptor pelo
+     * ligado/desligado, texto sem os espaços das pontas.
+     *
+     * @param array<string,mixed> $props props do campo no schema do formulário
+     */
+    private static function _sameColumnValue(mixed $a, mixed $b, array $props): bool
+    {
+        if (in_array((string) ($props['type'] ?? ''), ['switch', 'checkbox'], true)) {
+            $off = ['', '0', 'false', 'f', 'off', 'n', strtolower(trim((string) ($props['value_off'] ?? '')))];
+            $on  = static fn (mixed $v): bool => !in_array(strtolower(trim(is_scalar($v) ? (string) $v : '')), $off, true);
+
+            return $on($a) === $on($b);
+        }
+
+        $empty = static fn (mixed $v): bool => $v === null || (is_string($v) && trim($v) === '');
+        if ($empty($a) || $empty($b)) {
+            return $empty($a) && $empty($b);
+        }
+        if (is_bool($a) || is_bool($b)) {
+            return (bool) filter_var($a, FILTER_VALIDATE_BOOLEAN) === (bool) filter_var($b, FILTER_VALIDATE_BOOLEAN);
+        }
+        if (!is_scalar($a) || !is_scalar($b)) {
+            return $a == $b;
+        }
+        $x = trim((string) $a);
+        $y = trim((string) $b);
+        if ($x === $y) {
+            return true;
+        }
+        if (is_numeric($x) && is_numeric($y)) {
+            return abs((float) $x - (float) $y) <= 1e-9 * max(1.0, abs((float) $x), abs((float) $y));
+        }
+        $date = '/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?/';
+        if (preg_match($date, $x) && preg_match($date, $y)) {
+            $tx = strtotime($x);
+            $ty = strtotime($y);
+
+            return $tx !== false && $ty !== false && abs($tx - $ty) < 60;
+        }
+
+        return false;
+    }
+
     /**
      * Antes do `fill()` de uma linha de detalhe: as colunas da lista em que o
      * usuário digita, com valor, que o Model da linha vai descartar porque não
@@ -2548,13 +3132,34 @@ class MadForm
         }
     }
 
+    /** Pista no log: coluna trocada pelo usuário que o registro não aceita da tela e que o código não gravou (nunca o valor). */
+    private static function _logGuardedNotStored(string $column, string $table): void
+    {
+        $screen = MadFormRegistry::actingScreen();
+        $tela   = is_object($screen) ? (string) preg_replace('/@anonymous.*$/s', '@anonymous', $screen::class) : '-';
+        $msg    = sprintf(
+            '[MadForm] campo "%s" de %s recebeu valor do usuário e NÃO foi gravado: a coluna existe em "%s", mas o Model não a aceita da tela'
+            . ' ($fillable/$guarded, ou é chave/coluna de controle) e o código não a atribuiu. Acrescente-a ao $fillable,'
+            . ' atribua no código, ou deixe o campo somente leitura.',
+            $column,
+            $tela,
+            $table,
+        );
+        try {
+            function_exists('logger') ? logger()->warning($msg) : error_log($msg);
+        } catch (\Throwable) {
+            error_log($msg);
+        }
+    }
+
     /** O aviso (diálogo) do que o usuário digitou e este Salvar não gravou, ou null se não há o que avisar. */
     private function _notStoredNoticeOp(): ?array
     {
-        $fields = $this->_notStored['fields'];
-        $rows   = $this->_notStored['rows'];
+        $fields  = $this->_notStored['fields'];
+        $rows    = $this->_notStored['rows'];
+        $guarded = $this->_settleGuardedTyped();
         $this->_notStored = ['fields' => [], 'rows' => []];
-        if (!$fields && !$rows) {
+        if (!$fields && !$rows && !$guarded) {
             return null;
         }
 
@@ -2573,6 +3178,9 @@ class MadForm
                 self::_logNotStored(sprintf('coluna "%s" da lista "%s"', $column, $detail), $table);
             }
         }
+        foreach ($guarded as $name => $field) {
+            self::_logGuardedNotStored($name, $field['table']);
+        }
 
         $parts = [];
         if ($fields) {
@@ -2581,6 +3189,13 @@ class MadForm
             $parts[] = count($names) === 1
                 ? self::_text('mad.form.not_stored_field_one', ['fields' => $list($names), 'table' => $table], 'O que foi digitado em :fields não foi gravado: o campo não está ligado a nenhuma coluna da tabela :table.')
                 : self::_text('mad.form.not_stored_field_many', ['fields' => $list($names), 'table' => $table], 'O que foi digitado em :fields não foi gravado: os campos não estão ligados a nenhuma coluna da tabela :table.');
+        }
+        if ($guarded) {
+            $names = array_values(array_unique(array_column($guarded, 'label')));
+            $table = (string) (reset($guarded)['table'] ?? '');
+            $parts[] = count($names) === 1
+                ? self::_text('mad.form.not_stored_guarded_one', ['fields' => $list($names), 'table' => $table], 'O que foi digitado em :fields não foi gravado: a tabela :table não aceita essa alteração por esta tela.')
+                : self::_text('mad.form.not_stored_guarded_many', ['fields' => $list($names), 'table' => $table], 'O que foi digitado em :fields não foi gravado: a tabela :table não aceita essas alterações por esta tela.');
         }
         foreach ($rows as $detail => $columns) {
             // No aviso vão os rótulos da tela (a coluna e a lista), quando ela os tem.
@@ -2652,21 +3267,43 @@ class MadForm
      * usuário é avisado.
      *
      * Sem base (registro novo, tela aberta antes desta versão, tela que não diz
-     * qual registro tem aberto): vale o que veio no POST, como sempre valeu.
+     * qual registro tem aberto): vale o que veio no POST, como sempre valeu —
+     * gravado como lista separada, nunca no formato do navegador (`["1"]`).
      *
-     * Só entra aqui a seleção que o NAVEGADOR mandou neste request, e só quando
-     * o campo é uma coluna do registro. O valor que o código da tela pôs no
-     * formulário, o campo que não veio no POST e o campo que não é coluna
-     * (a tela grava a seleção por conta própria) seguem como sempre.
+     * Só entra aqui a seleção que veio do NAVEGADOR, e só quando o campo é uma
+     * coluna do registro. O valor que o código da tela pôs no formulário e o
+     * campo que não é coluna (a tela grava a seleção por conta própria) seguem
+     * como sempre. O campo que não veio neste request só entra quando a tela o
+     * declarou (`$fromState`): a seleção é a que o formulário guarda, de uma
+     * ação anterior ou de quando a tela abriu.
+     *
+     * A coluna é gravada com o separador do campo (`separator`): é com ele que
+     * o campo a lê.
      *
      * @param array<string,mixed> $dataArray campos que vão para o registro (por referência)
      */
-    private function _mergeColumnSelection(object $record, string $fieldName, array $props, array &$dataArray): void
+    private function _mergeColumnSelection(object $record, string $fieldName, array $props, array &$dataArray, bool $fromState = false): void
     {
-        $posted = self::selectionKeys($this->fields[$fieldName] ?? []);
+        $separator = (string) ($props['separator'] ?? '');
+        $separator = $separator !== '' ? $separator : ',';
+        $value     = $this->fields[$fieldName] ?? [];
+        $json      = is_string($value) && str_starts_with(trim($value), '[');
+        $list      = $json ? json_decode(trim($value), true) : $value;
+        if (($json && !is_array($list)) || (is_array($list) && array_filter($list, static fn ($v): bool => !is_scalar($v) && $v !== null) !== [])) {
+            // Lista aninhada ou JSON quebrado não é uma seleção: a coluna fica como está.
+            unset($dataArray[$fieldName]);
+
+            return;
+        }
+        $posted = self::selectionKeys($value, $separator);
 
         $sent = $_POST['mad_model'] ?? null;
-        if (!is_array($sent) || !array_key_exists($fieldName, $sent) || self::selectionKeys($sent[$fieldName]) !== $posted) {
+        if (is_array($sent) && array_key_exists($fieldName, $sent)) {
+            // Veio agora: o código da tela não trocou o valor depois.
+            if (self::selectionKeys($sent[$fieldName], $separator) !== $posted) {
+                return;
+            }
+        } elseif (!$fromState || isset($this->_assignedNow[$fieldName])) {
             return;
         }
         if ($record instanceof \Illuminate\Database\Eloquent\Model
@@ -2680,13 +3317,16 @@ class MadForm
 
         if ($known === null) {
             // A coluna passa a ter exatamente o que veio: é o que a tela tem.
+            if (!is_array($dataArray[$fieldName] ?? null)) {
+                $dataArray[$fieldName] = implode($separator, $posted);
+            }
             $this->_baseUpdate($fieldName, array_fill_keys($posted, ''), $parentId === null ? $posted : []);
 
             return;
         }
 
         $raw         = $record->$fieldName ?? null;
-        $current     = self::selectionKeys($raw, (string) ($props['separator'] ?? ','));
+        $current     = self::selectionKeys($raw, $separator);
         $unconfirmed = (array) ($this->_known[$fieldName]['u'] ?? []);
         $postedSet   = array_fill_keys($posted, true);
         $currentSet  = array_fill_keys($current, true);
@@ -2744,7 +3384,7 @@ class MadForm
             // Coluna gravada como lista JSON: continua no formato em que estava.
             $dataArray[$fieldName] = json_encode(array_map('strval', $final), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } else {
-            $dataArray[$fieldName] = implode(',', $final);
+            $dataArray[$fieldName] = implode($separator, $final);
         }
 
         // A tela não é redesenhada depois do Salvar: ela continua mostrando o
@@ -2774,25 +3414,62 @@ class MadForm
     //   - o filtro da tag (`:filters`, `depends-on`) não é reaplicado: confere-se
     //     o que o Model deixa a pessoa ver, como a regra `exists` de uma chave;
     //   - campo com `:query` própria ou com opções fixas não tem Model a
-    //     conferir (a consulta é do código da tela) e segue como sempre;
+    //     conferir: a marca nova tem de estar entre as opções que a TELA
+    //     ofereceu (`o`, ou `oh` com a impressão de cada chave quando a lista é
+    //     grande) — a lista fixa, o que a consulta própria carregou ao desenhar
+    //     o campo, ou o que o código trocou com `setItems()`. A multi busca com
+    //     `:query` carrega as opções enquanto a pessoa digita: ali a anotação é a
+    //     consulta compilada (`qs` + `qb`, conexão `qc`), refeita no Salvar;
     //   - o valor que o CÓDIGO da tela atribui neste request (`set()`,
     //     `fill([...])`, os extras do `save()`) não passa por aqui.
 
     /**
      * Um campo de seleção múltipla foi desenhado: de onde saem as opções dele.
-     * `$source` vazio = opções fixas ou consulta própria (nada a conferir).
      *
-     * @internal chamado por MadFormRegistry::register()
+     *   - `model` (+ `key`): o Model das opções, consultado no Salvar;
+     *   - `query` (+ `key`): a consulta própria (`:query`) da multi busca,
+     *     compilada agora e refeita no Salvar;
+     *   - `offered` (+ `records`): as chaves das opções que a tela oferece —
+     *     `records` é a coluna da chave quando as opções são registros
+     *     (checklist), para o `setItems()` saber ler a lista nova. Só vale
+     *     quando o HTML for entregue (renderDelivered): o render de uma ação
+     *     com resposta parcial não muda o que a tela está mostrando, e não
+     *     desfaz o que o `setItems()` trocou. `offered` nulo: as opções são
+     *     carregadas depois (MadFormRegistry::offered);
+     *   - vazio: nada a conferir (a opção nasce no navegador, "manual").
      *
-     * @param array{model?: string, key?: string} $source
+     * @internal chamado por MadFormRegistry::register() e MadFormRegistry::offered()
+     *
+     * @param array{model?: string, key?: string, query?: mixed, offered?: list<int|string>|null, records?: string} $source
      */
     public function declareOptionsSource(string $name, array $source, string $separator = ''): void
     {
-        if ($name === '' || $this->_openedBefore || $this->_editorScope !== null) {
+        if ($name === '' || $this->_openedBefore) {
             return;
         }
+        // Campo do editor de um detalhe: as opções valem para a coluna da LINHA.
+        if ($this->_editorScope !== null) {
+            $this->_declareEditorSource($this->_editorScope, $name, $source, $separator);
+
+            return;
+        }
+        if (array_key_exists('offered', $source)) {
+            if (is_array($source['offered'])) {
+                $this->_renderingOffered[$name] = self::_offeredEntry($source['offered'], (string) ($source['records'] ?? ''), $separator);
+            }
+
+            return;
+        }
+
+        $entry = null;
+        $key   = trim((string) ($source['key'] ?? ''));
         $model = trim((string) ($source['model'] ?? ''));
-        if ($model === '') {
+        if (\Mad\Database\QuerySource::isQuery($source['query'] ?? null)) {
+            $entry = self::_queryEntry($source['query']);
+        } elseif ($model !== '') {
+            $entry = ['m' => $model];
+        }
+        if ($entry === null) {
             // A tela passou a desenhar o campo com outra fonte.
             unset($this->_known[self::DECLARED]['q'][$name]);
             if (($this->_known[self::DECLARED]['q'] ?? null) === []) {
@@ -2803,8 +3480,6 @@ class MadForm
         }
 
         $this->_openDeclared();
-        $entry = ['m' => $model];
-        $key   = trim((string) ($source['key'] ?? ''));
         if ($key !== '' && $key !== 'id') {
             $entry['k'] = $key;
         }
@@ -2812,6 +3487,153 @@ class MadForm
             $entry['s'] = $separator;
         }
         $this->_known[self::DECLARED]['q'][$name] = $entry;
+    }
+
+    /**
+     * A fonte das opções de uma seleção múltipla do editor de um detalhe, no
+     * formato de `@fields.q`: o Model (+ chave), a consulta própria compilada,
+     * ou as chaves que o campo oferece. Vale para a linha inteira do render —
+     * o editor é redesenhado junto com a tela.
+     *
+     * @param array<string,mixed> $source
+     */
+    private function _declareEditorSource(string $detail, string $name, array $source, string $separator): void
+    {
+        $entry = null;
+        if (array_key_exists('offered', $source)) {
+            if (!is_array($source['offered'])) {
+                return;   // as opções são carregadas depois (MadFormRegistry::offered)
+            }
+            $entry = self::_offeredEntry($source['offered'], (string) ($source['records'] ?? ''), $separator);
+        } else {
+            $key   = trim((string) ($source['key'] ?? ''));
+            $model = trim((string) ($source['model'] ?? ''));
+            if (\Mad\Database\QuerySource::isQuery($source['query'] ?? null)) {
+                $entry = self::_queryEntry($source['query']);
+            } elseif ($model !== '') {
+                $entry = ['m' => $model];
+            }
+            if ($entry !== null && $key !== '' && $key !== 'id') {
+                $entry['k'] = $key;
+            }
+            if ($entry !== null && $separator !== '' && $separator !== ',') {
+                $entry['s'] = $separator;
+            }
+        }
+        if ($entry === null) {
+            unset($this->_editorSources[$detail][$name]);
+
+            return;
+        }
+        $this->_editorSources[$detail][$name] = $entry;
+    }
+
+    /**
+     * @var array<string, array<string,mixed>> opções que o render em curso
+     *      oferece, por campo (ver declareOptionsSource). Não serializado.
+     */
+    private array $_renderingOffered = [];
+
+    /** Até quantas chaves oferecidas viajam como texto no estado; acima, só a impressão de cada uma. */
+    private const OFFERED_PLAIN = 300;
+
+    /**
+     * A anotação das opções oferecidas: as chaves (`o`) ou a impressão delas
+     * (`oh`), a coluna da chave nos registros (`r`) e o separador (`s`).
+     *
+     * @param  iterable<mixed> $keys
+     * @return array<string,mixed>
+     */
+    private static function _offeredEntry(iterable $keys, string $records = '', string $separator = ''): array
+    {
+        $plain = [];
+        foreach ($keys as $key) {
+            if (is_scalar($key) && !is_bool($key) && (string) $key !== '') {
+                $plain[(string) $key] = true;
+            }
+        }
+        $plain = array_map('strval', array_keys($plain));
+
+        $entry = count($plain) > self::OFFERED_PLAIN
+            ? ['oh' => array_map([ReferenceGuard::class, 'offeredPrint'], $plain)]
+            : ['o' => $plain];
+        if ($records !== '') {
+            $entry['r'] = $records;
+        }
+        if ($separator !== '' && $separator !== ',') {
+            $entry['s'] = $separator;
+        }
+
+        return $entry;
+    }
+
+    /**
+     * A consulta própria das opções, compilada como a tela a montou (escopos de
+     * unidade, empresa e exclusão lógica inclusos). Null quando ela não cabe no
+     * estado — um parâmetro que não é texto, número ou data: o campo segue sem
+     * conferência, como antes.
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function _queryEntry(mixed $query): ?array
+    {
+        try {
+            [$sql, $bindings] = \Mad\Database\QuerySource::compileSql($query);
+            $connection = (string) (\Mad\Database\QuerySource::connectionName($query) ?? '');
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $values = [];
+        foreach ($bindings as $binding) {
+            if ($binding instanceof \DateTimeInterface) {
+                $binding = $binding->format('Y-m-d H:i:s');
+            } elseif ($binding instanceof \BackedEnum) {
+                $binding = $binding->value;
+            } elseif (is_bool($binding)) {
+                $binding = (int) $binding;
+            }
+            if ($binding !== null && !is_scalar($binding)) {
+                return null;
+            }
+            $values[] = $binding;
+        }
+
+        $entry = ['qs' => $sql];
+        if ($values !== []) {
+            $entry['qb'] = $values;
+        }
+        if ($connection !== '') {
+            $entry['qc'] = $connection;
+        }
+
+        return $entry;
+    }
+
+    /**
+     * O `setItems()` trocou as opções de um campo cuja lista é a que a tela
+     * oferece: a marca nova passa a ser conferida na lista nova.
+     *
+     * @param array<int|string,mixed> $items
+     */
+    private function _offeredChanged(string $field, array $items): void
+    {
+        $entry = $this->_known[self::DECLARED]['q'][$field] ?? null;
+        if (!is_array($entry) || isset($entry['m']) || $this->_openedBefore) {
+            return;
+        }
+        $records = (string) ($entry['r'] ?? '');
+        if ($records !== '') {
+            $keys = [];
+            foreach ($items as $item) {
+                $value = is_array($item) ? ($item[$records] ?? null) : (is_object($item) ? ($item->$records ?? null) : null);
+                $keys[] = $value;
+            }
+        } else {
+            $keys = array_keys(\Mad\Support\MadItems::normalize($items));
+        }
+        $this->_known[self::DECLARED]['q'][$field] = self::_offeredEntry($keys, $records, (string) ($entry['s'] ?? ''));
+        unset($this->_renderingOffered[$field]);
     }
 
     /**
@@ -2843,14 +3665,15 @@ class MadForm
             // em coluna): nenhuma marca entra.
             $entering = [];
             if (array_key_exists($name, $dataArray) && !is_array($dataArray[$name])) {
-                // O que vai para a coluna sai por vírgula (ou em JSON); o que
-                // está nela pode estar com o separador da tag.
-                $raw      = $record->$name ?? null;
-                $current  = self::selectionKeys($raw);
-                if (is_string($source['s'] ?? null) && $source['s'] !== '') {
-                    $current = array_merge($current, self::selectionKeys($raw, $source['s']));
+                // O que vai para a coluna sai com o separador da tag (ou em
+                // JSON); o que está nela pode estar por vírgula, de antes.
+                $raw       = $record->$name ?? null;
+                $current   = self::selectionKeys($raw);
+                $separator = is_string($source['s'] ?? null) && $source['s'] !== '' ? $source['s'] : ',';
+                if ($separator !== ',') {
+                    $current = array_merge($current, self::selectionKeys($raw, $separator));
                 }
-                $entering = array_values(array_diff(self::selectionKeys($dataArray[$name]), $current));
+                $entering = array_values(array_diff(self::selectionKeys($dataArray[$name], $separator), $current));
             }
             $this->_guardSelectionSource($name, $entering);
         }
@@ -2872,8 +3695,7 @@ class MadForm
         if (!is_array($source) || isset($this->_assignedNow[$fieldName])) {
             return;
         }
-        if ($entering !== []
-            && ReferenceGuard::outsideSource((string) ($source['m'] ?? ''), (string) ($source['k'] ?? 'id'), $entering) !== []) {
+        if ($entering !== [] && self::_outsideOptions($source, $entering) !== []) {
             ReferenceGuard::logRefused(sprintf('uma marca do campo "%s"', $fieldName));
 
             throw new ReferenceViolation(
@@ -2883,6 +3705,28 @@ class MadForm
         }
         // Passou: a mensagem que um Salvar recusado deixou no campo sai da tela.
         $this->_passedNow[$fieldName] = true;
+    }
+
+    /**
+     * Das marcas `$entering`, as que a fonte anotada não oferece.
+     *
+     * @param  array<string,mixed> $source a anotação do campo (`$_known[DECLARED]['q']`)
+     * @param  list<string>        $entering
+     * @return list<string>
+     */
+    private static function _outsideOptions(array $source, array $entering): array
+    {
+        if (isset($source['m'])) {
+            return ReferenceGuard::outsideSource((string) $source['m'], (string) ($source['k'] ?? 'id'), $entering);
+        }
+        if (isset($source['qs'])) {
+            return ReferenceGuard::outsideQuery((string) ($source['qc'] ?? ''), (string) $source['qs'], array_values((array) ($source['qb'] ?? [])), (string) ($source['k'] ?? 'id'), $entering);
+        }
+        if (isset($source['o']) || isset($source['oh'])) {
+            return ReferenceGuard::outsideOffered(array_values((array) ($source['o'] ?? [])), array_values((array) ($source['oh'] ?? [])), $entering);
+        }
+
+        return [];
     }
 
     /**
@@ -3685,10 +4529,49 @@ class MadForm
             // POST — evita XSS quando o nome e renderizado como link de download).
             $cleanName  = $this->_sanitizeUploadName($_FILES[$fieldName]['name']);
             $nameColumn = $props['nameColumn'] ?? '';
-            if ($nameColumn) {
+            // O mesmo arquivo que esta tela já gravou (reenvio do campo que não
+            // foi esvaziado): não é troca — o nome fica o que está no registro
+            // (ver _processBlobUpload).
+            if ($nameColumn && !$this->_blobResent($record, (string) $fieldName, (string) $_FILES[$fieldName]['tmp_name'])) {
                 $record->$nameColumn = $cleanName;
             }
         }
+    }
+
+    /**
+     * O arquivo enviado para um campo gravado NO BANCO é o mesmo (mesmo
+     * conteúdo) que esta tela já gravou nele? O campo não é esvaziado depois do
+     * Salvar (JavaScript anterior, `<mad-image-field>`): ele manda o arquivo de
+     * novo a cada Salvar, e regravá-lo punha de volta o arquivo antigo por cima
+     * do que outra aba (ou outra pessoa) gravou depois (fw#162).
+     */
+    private function _blobResent(object $record, string $fieldName, string $tmpPath): bool
+    {
+        $base = $this->_fileBase($fieldName, self::_existingKey($record));
+        $hash = self::_fileHash($tmpPath);
+
+        return $base !== null && $base['hash'] !== '' && $hash !== '' && hash_equals($base['hash'], $hash);
+    }
+
+    /** Impressão digital do conteúdo guardado AGORA numa coluna BLOB (base64) do registro ('' = vazia). */
+    private function _storedBlobHash(object $record, string $column): string
+    {
+        try {
+            $pk   = $record->getKeyName();
+            $conn = \Illuminate\Support\Facades\DB::connection($record->getConnectionName());
+            $raw  = $conn->table($record->getTable())->where($pk, $record->$pk)->value($column);
+        } catch (\Throwable) {
+            return '';
+        }
+        if (is_resource($raw)) {
+            $raw = stream_get_contents($raw);
+        }
+        if (!is_string($raw) || $raw === '') {
+            return '';
+        }
+        $binary = base64_decode($raw, true);
+
+        return sha1($binary === false ? $raw : $binary);
     }
 
     /**
@@ -3986,6 +4869,7 @@ class MadForm
             return;
         }
         $this->_declareInlineImage($name, $props);
+        $this->_declareColumnSelection($name, $props);
 
         $print = MadUploadRules::writePrint($props);
         if ($print === null) {
@@ -4018,11 +4902,18 @@ class MadForm
      */
     private function _declareInlineImage(string $name, array $props): void
     {
-        // Campo do editor de um detalhe: é coluna da linha, não deste formulário.
+        $limits = MadUploadRules::inlineImageLimits($props);
+        // Campo do editor de um detalhe: é coluna da LINHA, não deste
+        // formulário — os limites vão para o detalhe (declareDetail).
         if ($this->_editorScope !== null) {
+            if ($limits !== null) {
+                $this->_editorImages[$this->_editorScope][$name] = $limits;
+            } else {
+                unset($this->_editorImages[$this->_editorScope][$name]);
+            }
+
             return;
         }
-        $limits = MadUploadRules::inlineImageLimits($props);
         if ($limits === null) {
             // A tela passou a desenhar o campo de outro jeito (ou sem limite).
             unset($this->_known[self::DECLARED]['i'][$name]);
@@ -4034,6 +4925,46 @@ class MadForm
         }
         $this->_openDeclared();
         $this->_known[self::DECLARED]['i'][$name] = $limits;
+    }
+
+    /**
+     * Seleção múltipla gravada na PRÓPRIA coluna, por vírgula: a tela anota no
+     * estado (`$_known[DECLARED]['c']`) que tem esse campo, com o separador
+     * (`s`, só quando não é a vírgula) e o rótulo (`l`).
+     *
+     * É por ela que o Salvar mescla a seleção com o que está na coluna — tira
+     * só o que a tela mostrou marcado e o usuário desmarcou — mesmo sem o
+     * formulário `__mad_form` (que é o navegador quem devolve) e mesmo quando o
+     * campo não vem neste request — ver fillRecord().
+     *
+     * @param array<string,mixed> $props as props registradas do campo
+     */
+    private function _declareColumnSelection(string $name, array $props): void
+    {
+        // Campo do editor de um detalhe: é coluna da linha, não deste formulário.
+        if ($this->_editorScope !== null) {
+            return;
+        }
+        if (!self::_isColumnSelection((string) ($props['type'] ?? ''), $props)) {
+            // A tela passou a desenhar o campo de outro jeito.
+            unset($this->_known[self::DECLARED]['c'][$name]);
+            if (($this->_known[self::DECLARED]['c'] ?? null) === []) {
+                unset($this->_known[self::DECLARED]['c']);
+            }
+
+            return;
+        }
+        $this->_openDeclared();
+        $entry     = [];
+        $separator = (string) ($props['separator'] ?? '');
+        if ($separator !== '' && $separator !== ',') {
+            $entry['s'] = $separator;
+        }
+        $label = trim((string) ($props['label'] ?? ''));
+        if ($label !== '') {
+            $entry['l'] = $label;
+        }
+        $this->_known[self::DECLARED]['c'][$name] = $entry;
     }
 
     /**
@@ -4509,8 +5440,33 @@ class MadForm
         $removed    = $_POST['__mad_file_removed'] ?? [];
         $nameColumn = $props['nameColumn'] ?? '';
 
+        // Mesma base do arquivo no disco (_processDiskFile, fw#160 → fw#162): o
+        // que esta tela tem no campo — a impressão digital do arquivo que ELA
+        // gravou, ou nenhum arquivo depois de ela remover. O campo não é
+        // redesenhado depois do Salvar: a marca de removido e o arquivo
+        // escolhido seguem indo em todo Salvar. Sem base (primeiro Salvar da
+        // tela, tela aberta antes desta versão): como sempre.
+        $parentId = self::_existingKey($record);
+        $base     = $this->_fileBase($fieldName, $parentId);
+
         // Arquivo removido pelo usuário
         if (!empty($removed[$fieldName])) {
+            if ($base !== null && $base['path'] === '') {
+                // Esta tela já removeu (ou nunca mostrou arquivo): a marca que
+                // sobrou não apaga o que outra aba enviou depois.
+                return;
+            }
+            if ($base !== null && $base['hash'] !== '') {
+                $now = $this->_storedBlobHash($record, $fieldName);
+                if ($now !== '' && !hash_equals($base['hash'], $now)) {
+                    // O arquivo que esta tela gravou já foi trocado por outra aba
+                    // (ou outra pessoa): não é ele que sai. Avisa.
+                    $this->warnChildRowsGone([], [$base['path']]);
+                    $this->_remember($fieldName, $parentId, [], $record, ['']);
+
+                    return;
+                }
+            }
             if ($nameColumn) {
                 $record->$nameColumn = null;
             }
@@ -4518,6 +5474,9 @@ class MadForm
             $record->save();
             // Limpa o BLOB no banco via NULL
             $this->_saveBlobToDb($record, $fieldName, '');
+            // Daqui em diante esta tela não mostra arquivo ('' = remoção não
+            // confirmada até a transação confirmar).
+            $this->_remember($fieldName, $parentId, [], $record, ['']);
             return;
         }
 
@@ -4527,12 +5486,27 @@ class MadForm
             return;
         }
 
-        $originalName = $_FILES[$fieldName]['name'];
-        $content      = base64_encode(file_get_contents($_FILES[$fieldName]['tmp_name']));
+        $tmpPath   = (string) $_FILES[$fieldName]['tmp_name'];
+        $cleanName = $this->_sanitizeUploadName((string) $_FILES[$fieldName]['name']);
 
-        // Atualiza nome do arquivo via ORM
+        // O mesmo arquivo que esta tela já gravou: não é troca.
+        if ($this->_blobResent($record, $fieldName, $tmpPath)) {
+            $now = $this->_storedBlobHash($record, $fieldName);
+            if ($now === '' || !hash_equals($base['hash'], $now)) {
+                // …e ele não está mais no registro: outra aba já o trocou ou removeu.
+                $this->warnChildRowsGone([], [$base['path']]);
+            }
+
+            return;
+        }
+
+        $raw     = (string) file_get_contents($tmpPath);
+        $content = base64_encode($raw);
+
+        // Atualiza nome do arquivo via ORM (o nome sanitizado, como no
+        // _processFileUploads — nunca o cru do POST).
         if ($nameColumn) {
-            $record->$nameColumn = $originalName;
+            $record->$nameColumn = $cleanName;
             // Evita que o ORM tente gravar o campo BLOB (vai por prepared statement)
             unset($record->$fieldName);
             $record->save();
@@ -4540,6 +5514,20 @@ class MadForm
 
         // Grava BLOB via prepared statement (driver-specific)
         $this->_saveBlobToDb($record, $fieldName, $content);
+
+        // A tela passa a "ter" este arquivo (com a impressão digital, para
+        // reconhecer o reenvio), e o `<mad-file-field>` fica sabendo que ele
+        // foi gravado (op `files_saved`, depois de a transação confirmar):
+        // deixa de mandá-lo a cada Salvar, e o Remover passa a valer para ele.
+        $label = $cleanName !== '' ? $cleanName : $fieldName;
+        $this->_remember($fieldName, $parentId, [$label => sha1($raw)], $record, [$label]);
+        $uid = ($props['type'] ?? '') === 'file' ? ($this->_newFileIds($fieldName, 1)[0] ?? '') : '';
+        if ($uid !== '' && $parentId !== null) {
+            $url = function_exists('mad_blob_url') && $record instanceof \Illuminate\Database\Eloquent\Model
+                ? (string) mad_blob_url(get_class($record), $parentId, $fieldName, $label)
+                : '';
+            $this->_announceSavedFiles($fieldName, [['uid' => $uid, 'key' => $label, 'name' => $label, 'url' => $url]], $record);
+        }
     }
 
     /**
@@ -4856,11 +5844,11 @@ class MadForm
                 // Anexo que o campo (desatualizado) ainda mostra e que outra tela
                 // já removeu: não há o que regravar — o arquivo não existe mais.
                 // O usuário é avisado; daqui em diante o campo não o "tem".
+                // Citado pelo nome que o campo mostrava (`name-column`).
                 $goneFiles = [];
                 foreach ($kept as $cp) {
                     if ($shown !== null && array_key_exists($cp, $shown) && !isset($alive[$cp])) {
-                        $bn = basename($cp);
-                        $goneFiles[] = preg_match('/^[a-f0-9]{13,16}_(.+)$/i', $bn, $m) ? $m[1] : $bn;
+                        $goneFiles[] = is_string($shown[$cp]) && $shown[$cp] !== '' ? $shown[$cp] : self::_storedFileLabel($cp);
                     }
                 }
                 if ($goneFiles) {
@@ -4872,6 +5860,10 @@ class MadForm
             $count  = (!empty($files['tmp_name']) && is_array($files['tmp_name'])) ? count($files['tmp_name']) : 0;
             $ids    = $this->_newFileIds($fieldName, $count);
             $saved  = [];   // o que o campo recebe de volta (files_saved)
+            $labels = [];   // caminho => nome exibido no campo (_uploadKeys)
+            foreach ($keptShown as $cp) {
+                $labels[$cp] = is_string($shown[$cp] ?? null) ? $shown[$cp] : '';
+            }
             $unique = self::_uniqueFileNames($props['fileName'] ?? 'prefix');
             for ($i = 0; $i < $count; $i++) {
                 if (empty($files['tmp_name'][$i]) || $files['error'][$i] !== UPLOAD_ERR_OK) {
@@ -4913,6 +5905,7 @@ class MadForm
 
                     $label   = $nameColumn ? $cleanName : self::_storedFileLabel($filePath);
                     $saved[] = ['uid' => $ids[$i] ?? '', 'key' => $filePath, 'name' => $label, 'url' => self::_storedFileUrl($filePath, $label)];
+                    $labels[$filePath] = $label;
                 } elseif ($storage === 'db') {
                     $child->save();
                     $content = base64_encode(file_get_contents($files['tmp_name'][$i]));
@@ -4934,7 +5927,7 @@ class MadForm
             // os manda entre os mantidos — não de novo como arquivo novo, o que
             // fazia cada Salvar apagar a linha do envio anterior e criar outra.
             if ($storage === 'disk') {
-                $this->_remember($fieldName, $parentId, array_fill_keys(array_merge($keptShown, $newPaths), ''), $record);
+                $this->_remember($fieldName, $parentId, self::_uploadKeys(array_merge($keptShown, $newPaths), $labels), $record);
             }
             $this->_announceSavedFiles($fieldName, $saved, $record);
         }
@@ -5009,6 +6002,18 @@ class MadForm
         [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withoutMask($this->fields), $parsedRules);
 
         $errors = MadValidator::validate($data, $parsedRules, $messages, $attrs);
+
+        // Passou: a mensagem que um Salvar recusado deixou nesses campos sai da
+        // tela (a resposta de quem passa não dizia nada, e o erro corrigido
+        // ficava embaixo do campo até o próximo F5). Recusou: quem pinta e
+        // limpa esses campos é o `asInline()` da própria recusa.
+        foreach (array_keys($parsedRules) as $field) {
+            if ($errors) {
+                unset($this->_passedNow[(string) $field]);
+            } else {
+                $this->_passedNow[(string) $field] = true;
+            }
+        }
 
         if ($errors) {
             throw new MadValidationException(
@@ -5268,6 +6273,9 @@ class MadForm
         }
 
         $this->items[$field] = $items;
+        // Seleção múltipla com a lista que a tela oferece: a marca nova passa a
+        // ser conferida nas opções novas.
+        $this->_offeredChanged($field, $items);
 
         if ($placeholder !== null) {
             $this->placeholders[$field] = $placeholder;
@@ -5680,6 +6688,7 @@ class MadForm
                     || (string) ($declared['m'] ?? '') !== (string) ($meta['model'] ?? '')
                     || (string) ($declared['f'] ?? '') !== (string) ($meta['foreignKey'] ?? '')) {
                     $this->_refused['[' . $name . ']'] = 'o formulário recebido descreve um detalhe que esta tela não desenhou assim; as linhas não foram gravadas';
+                    $this->_noteDetailNotSaved((string) $name, $record);
                     continue;
                 }
             }
@@ -5697,9 +6706,11 @@ class MadForm
             // gravado como texto. Só vale o que ESTA tela desenhou. (Detalhe sem
             // a anotação: tela aberta antes desta versão, grava como sempre.)
             $declared = $this->_known[self::DECLARED]['d'][$name] ?? null;
-            if (is_array($declared['fp'] ?? null) && !isset($declared['fp'][MadUploadRules::detailFilesPrint($fileCols)])) {
+            $print    = MadUploadRules::detailFilesPrint($fileCols);
+            if (is_array($declared['fp'] ?? null) && !isset($declared['fp'][$print]) && ($declared['fpd'] ?? null) !== $print) {
                 $this->_refused['[' . $name . ']'] = 'o formulário recebido descreve as colunas de arquivo deste detalhe de um jeito que esta tela não desenhou'
                     . ' (armazenamento, pasta, coluna do nome ou tabela dos arquivos); as linhas não foram gravadas';
+                $this->_noteDetailNotSaved((string) $name, $record);
                 continue;
             }
 
@@ -5880,19 +6891,23 @@ class MadForm
     }
 
     /**
-     * Registra linhas (posição na lista, a partir de 1), anexos (nome) e marcas
-     * de um campo de seleção múltipla em outra tabela (rótulo do campo =>
-     * quantas) que um Salvar deixou de regravar porque outra tela já os tinha
-     * removido. A resposta da ação leva UM aviso com tudo (ver getPendingFlOps).
+     * Registra linhas, anexos (nome) e marcas de um campo de seleção múltipla
+     * em outra tabela (rótulo do campo => quantas) que um Salvar deixou de
+     * regravar porque outra tela já os tinha removido. A resposta da ação leva
+     * UM aviso com tudo (ver getPendingFlOps).
      *
-     * @param list<int>         $rows
+     * A linha é citada como o usuário a vê: o texto dela já entre aspas
+     * (`“Arruela”`, ver _goneRowLabel()) ou, na linha sem texto, a posição na
+     * lista (a partir de 1).
+     *
+     * @param list<int|string>  $rows
      * @param list<string>      $files
      * @param array<string,int> $options
      */
     public function warnChildRowsGone(array $rows = [], array $files = [], array $options = []): void
     {
-        foreach ($rows as $position) {
-            $this->_goneNotice['rows'][] = (int) $position;
+        foreach ($rows as $row) {
+            $this->_goneNotice['rows'][] = is_int($row) || ctype_digit((string) $row) ? (int) $row : (string) $row;
         }
         foreach ($files as $file) {
             $this->_goneNotice['files'][] = (string) $file;
@@ -5900,6 +6915,68 @@ class MadForm
         foreach ($options as $field => $count) {
             $field = (string) $field;
             $this->_goneNotice['options'][$field] = ($this->_goneNotice['options'][$field] ?? 0) + max(1, (int) $count);
+        }
+    }
+
+    /**
+     * Como o aviso "Itens já removidos" cita uma linha: pelo primeiro texto
+     * que a tela mostrava nela, na ordem das colunas da lista, entre aspas e
+     * encurtado em 60 caracteres (`“Arruela”`). A posição na lista só na
+     * linha sem texto: chave, código, valor e data não dizem ao usuário qual
+     * linha era.
+     */
+    private function _goneRowLabel(string $detailName, array $row, string $detailPk, string $fk, int $position): int|string
+    {
+        $declared = (array) ($this->_known[self::DECLARED]['d'][$detailName] ?? []);
+        $columns  = array_map('strval', array_keys((array) ($declared['c'] ?? [])));
+        $html     = (array) ($declared['z'] ?? []);
+
+        foreach (array_unique([...$columns, ...array_map('strval', array_keys($row))]) as $column) {
+            $value = $row[$column] ?? null;
+            if ($column === $detailPk || $column === $fk || str_starts_with($column, '__') || !is_string($value)) {
+                continue;
+            }
+            // Editor HTML: o texto que a célula mostra, sem as marcações.
+            if (isset($html[$column])) {
+                $value = html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            $text = trim((string) preg_replace('/\s+/u', ' ', $value));
+            // Duas letras, ao menos: o S/N de um switch e o código de um select não descrevem a linha.
+            if (preg_match('/\p{L}.*\p{L}/su', $text) !== 1) {
+                continue;
+            }
+            if (mb_strlen($text) > 60) {
+                $text = rtrim(mb_substr($text, 0, 60)) . '…';
+            }
+
+            return '“' . $text . '”';
+        }
+
+        return $position;
+    }
+
+    /**
+     * Tira da Lista de itens / Detail Form da tela as linhas que este Salvar
+     * não regravou porque outra aba (ou outra pessoa) já as tinha removido
+     * (op `fl_drop`, pelo `__id`). Sem isso a linha continuava na tela até o
+     * F5, e cada Salvar repetia o aviso.
+     *
+     * @param list<string> $rowIds
+     */
+    private function _dropGoneRows(string $detailName, array $rowIds): void
+    {
+        if ($detailName === '' || $rowIds === []) {
+            return;
+        }
+        $this->_pendingFlOps[] = ['op' => 'fl_drop', 'target' => $detailName, 'ids' => $rowIds];
+
+        // E o formulário deixa de tê-las: o código da tela que lê a lista
+        // depois do Salvar vê o mesmo que a tela.
+        if (is_array($this->fields[$detailName] ?? null)) {
+            $this->fields[$detailName] = array_values(array_filter(
+                $this->fields[$detailName],
+                static fn ($row): bool => !is_array($row) || !in_array((string) ($row['__id'] ?? ''), $rowIds, true),
+            ));
         }
     }
 
@@ -5912,7 +6989,15 @@ class MadForm
         if (!$rows && !$files && !$options) {
             return null;
         }
-        sort($rows);
+        // Só posições: em ordem. Com texto, a ordem em que as linhas estavam.
+        if (array_filter($rows, 'is_int') === $rows) {
+            sort($rows);
+        }
+        // O diálogo desenha a mensagem como HTML, e o texto da linha e o nome
+        // do anexo foram digitados por alguém.
+        $esc   = static fn ($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $rows  = array_map($esc, $rows);
+        $files = array_map($esc, $files);
 
         $and  = ' ' . self::_text('mad.detail.and', [], 'e') . ' ';
         $list = static function (array $items) use ($and): string {
@@ -5926,6 +7011,12 @@ class MadForm
             $parts[] = count($rows) === 1
                 ? self::_text('mad.detail.gone_rows_one', ['rows' => $list($rows)], 'A linha :rows da lista já tinha sido removida em outra aba ou por outra pessoa e não foi gravada de novo.')
                 : self::_text('mad.detail.gone_rows_many', ['rows' => $list($rows)], 'As linhas :rows da lista já tinham sido removidas em outra aba ou por outra pessoa e não foram gravadas de novo.');
+            // O servidor não sabe se a linha foi editada nesta tela (ele guarda
+            // a chave das linhas que entregou, não o conteúdo): quem editou
+            // precisa saber que a edição também se perdeu.
+            $parts[] = count($rows) === 1
+                ? self::_text('mad.detail.gone_rows_edits_one', [], 'Se você tinha alterado essa linha nesta tela, a alteração também não foi gravada.')
+                : self::_text('mad.detail.gone_rows_edits_many', [], 'Se você tinha alterado essas linhas nesta tela, as alterações também não foram gravadas.');
         }
         if ($files) {
             $parts[] = count($files) === 1
@@ -5944,6 +7035,51 @@ class MadForm
             'message' => implode(' ', $parts),
             'type'    => 'warning',
             'title'   => self::_text('mad.detail.gone_title', [], 'Itens já removidos'),
+        ];
+    }
+
+    /**
+     * As linhas de `$name` ficaram de fora deste Salvar (o formulário recebido
+     * descreve o detalhe de outro jeito). O aviso só sai se a gravação do
+     * registro CONFIRMAR: o Salvar desfeito responde com o próprio erro.
+     */
+    private function _noteDetailNotSaved(string $name, object $record): void
+    {
+        $entry = (array) ($this->_known[self::DECLARED]['d'][$name] ?? []);
+        $label = is_string($entry['tl'] ?? null) ? trim($entry['tl']) : '';
+
+        $this->_afterCommit($record, function () use ($name, $label): void {
+            $this->_detailNotSaved[$name] = $label;
+        });
+    }
+
+    /** O aviso (diálogo) das listas cujas linhas não foram gravadas, ou null. */
+    private function _detailNotSavedNoticeOp(): ?array
+    {
+        $lists = $this->_detailNotSaved;
+        $this->_detailNotSaved = [];
+        if (!$lists) {
+            return null;
+        }
+
+        $and    = ' ' . self::_text('mad.detail.and', [], 'e') . ' ';
+        $labels = array_values(array_unique(array_filter($lists, static fn (string $l): bool => $l !== '')));
+        // Lista sem rótulo não tem nome que a pessoa reconheça (o nome interno
+        // dela não vai para a tela): o texto fala "da lista".
+        if ($labels && count($labels) === count($lists)) {
+            $last = array_pop($labels);
+            $text = self::_text('mad.detail.not_saved_named', ['lists' => $labels ? implode(', ', $labels) . $and . $last : $last],
+                'As linhas de :lists não foram gravadas: recarregue a tela e tente de novo.');
+        } else {
+            $text = self::_text('mad.detail.not_saved', [], 'As linhas da lista não foram gravadas: recarregue a tela e tente de novo.');
+        }
+
+        return [
+            'op'      => 'alert',
+            // O diálogo aceita HTML: o rótulo vem da tela e vai escapado.
+            'message' => htmlspecialchars($text . ' ' . self::_text('mad.detail.not_saved_tail', [], 'O restante foi salvo.'), ENT_QUOTES, 'UTF-8'),
+            'type'    => 'warning',
+            'title'   => self::_text('mad.detail.not_saved_title', [], 'Linhas não gravadas'),
         ];
     }
 
@@ -6645,18 +7781,37 @@ class MadForm
      *
      * @internal chamado pela view do framework (multi-file-field)
      *
-     * @param list<string> $paths
+     * @param list<string>          $paths
+     * @param array<string, string> $labels caminho => nome que o campo exibe
      */
-    public function rememberUploadFiles(string $name, mixed $parentId, array $paths): void
+    public function rememberUploadFiles(string $name, mixed $parentId, array $paths, array $labels = []): void
+    {
+        $this->_remember($name, $parentId, self::_uploadKeys($paths, $labels));
+    }
+
+    /**
+     * Os anexos que o campo mostra: caminho => nome exibido, quando ele não é
+     * o do arquivo (`name-column`) — o aviso de anexo já removido cita esse
+     * nome, e a linha que o guardava já não existe quando o aviso sai. O nome
+     * igual ao do arquivo não ocupa o estado ('').
+     *
+     * @param list<string>          $paths
+     * @param array<string, string> $labels
+     * @return array<string, string>
+     */
+    private static function _uploadKeys(array $paths, array $labels): array
     {
         $keys = [];
         foreach ($paths as $path) {
             $path = (string) $path;
-            if ($path !== '') {
-                $keys[$path] = '';
+            if ($path === '') {
+                continue;
             }
+            $label       = is_scalar($labels[$path] ?? null) ? trim((string) $labels[$path]) : '';
+            $keys[$path] = ($label !== '' && $label !== self::_storedFileLabel($path)) ? mb_substr($label, 0, 120) : '';
         }
-        $this->_remember($name, $parentId, $keys);
+
+        return $keys;
     }
 
     /**
@@ -6688,22 +7843,16 @@ class MadForm
      *
      * @internal chamado pela view do framework (multi-file-field)
      *
-     * @param list<string>|null $paths
+     * @param list<string>|null     $paths
+     * @param array<string, string> $labels caminho => nome que o campo exibe
      */
-    public function noteUploadFiles(string $name, mixed $parentId, ?array $paths): void
+    public function noteUploadFiles(string $name, mixed $parentId, ?array $paths, array $labels = []): void
     {
         if ($name === '' || $parentId === null || $parentId === '') {
             return;
         }
 
-        $keys = [];
-        foreach ($paths ?? [] as $path) {
-            $path = (string) $path;
-            if ($path !== '') {
-                $keys[$path] = '';
-            }
-        }
-        $this->_rendering[$name] = ['p' => (string) $parentId, 'k' => $keys];
+        $this->_rendering[$name] = ['p' => (string) $parentId, 'k' => self::_uploadKeys($paths ?? [], $labels)];
     }
 
     /**
@@ -6736,6 +7885,13 @@ class MadForm
      */
     public function renderDelivered(): void
     {
+        // As opções que os campos de seleção múltipla ofereceram neste render.
+        foreach ($this->_renderingOffered as $name => $entry) {
+            $this->_openDeclared();
+            $this->_known[self::DECLARED]['q'][(string) $name] = $entry;
+        }
+        $this->_renderingOffered = [];
+
         // Leitura do pivô que o campo não chegou a conferir contra as opções
         // (view que só chama loadPivotSelected): vale o que foi lido.
         foreach ($this->_pivotRead as $name => $read) {
@@ -6758,6 +7914,14 @@ class MadForm
             }
         }
         $this->_renderingRows = [];
+
+        // A forma das colunas de arquivo de cada detalhe que este render entrega.
+        foreach ($this->_renderingDetailFiles as $name => $print) {
+            if (isset($this->_known[self::DECLARED]['d'][$name])) {
+                $this->_known[self::DECLARED]['d'][$name]['fpd'] = $print;
+            }
+        }
+        $this->_renderingDetailFiles = [];
 
         // Listas gravadas à mão: a base do que o loadDetailRows() leu.
         foreach (array_keys($this->_handBase) as $name) {
@@ -6994,6 +8158,8 @@ class MadForm
      * itens está desenhando: as linhas da tabela neta lidas para ela — ou
      * `$keys` null quando a leitura falhou (a célula abre sem arquivos). O
      * Salvar só apaga o arquivo que a célula entregou e que o usuário tirou.
+     * Vale também para a célula `type="multifile"` (os caminhos gravados na
+     * própria linha — ver _rowMultiFiles).
      *
      * Passa a valer quando o HTML for entregue (renderDelivered). Leitura que
      * falhou → base VAZIA: o Salvar não apaga nenhum arquivo da linha.
@@ -7148,7 +8314,7 @@ class MadForm
         $plan    = [];   // [linha, __id, instância existente | null, posição na lista]
         $kept    = [];   // chaves das linhas deste pai que voltaram no POST
         $stale   = [];   // chave => __id das linhas que outra tela já removeu
-        $staleAt = [];   // posição dessas linhas na lista (a partir de 1)
+        $staleAt = [];   // como o aviso cita essas linhas (_goneRowLabel)
         $silent  = [];   // chave => __id das que o usuário removeu aqui, pelo Upload
 
         foreach ($rows as $position => $row) {
@@ -7188,13 +8354,14 @@ class MadForm
                 // o que foi editado aqui — quem removeu por último decidiu. O
                 // resto do Salvar segue, e o usuário é avisado.
                 $stale[$pkVal] = $rowId;
-                $staleAt[]     = $position + 1;
+                $staleAt[]     = $this->_goneRowLabel($detailName, $row, (string) $detailPk, $fk, $position + 1);
                 continue;
             }
             $plan[] = [$row, $rowId, $instance, $position + 1];
         }
         if ($staleAt) {
             $this->warnChildRowsGone($staleAt);
+            $this->_dropGoneRows($detailName, array_values(array_filter($stale, static fn ($id): bool => $id !== '')));
         }
 
         // ── 1b) As chaves para outro cadastro que as linhas vão gravar ──────
@@ -7376,7 +8543,8 @@ class MadForm
     private function _guardRowReferences(string $cls, string $fk, mixed $parentId, array $lines, string $detailName, array $fileColumns): array
     {
         $guarded = $lines !== [] ? ReferenceGuard::columns($cls) : [];
-        if ($guarded === []) {
+        $editor  = $lines !== [] ? $this->_rowEditorGuards($detailName) : [];
+        if ($guarded === [] && $editor === []) {
             return [];
         }
 
@@ -7387,12 +8555,119 @@ class MadForm
             $check[]    = [$position, $instance, $values[$i]];
         }
 
-        $errors = self::rowReferenceErrors($cls, $guarded, $fk, $check, $this->rowLabels($detailName), $detailName, true);
+        $errors = $guarded !== [] ? self::rowReferenceErrors($cls, $guarded, $fk, $check, $this->rowLabels($detailName), $detailName, true) : [];
         if ($errors) {
             throw new ReferenceViolation($errors);
         }
+        if ($editor !== []) {
+            $this->_guardRowEditorFields($detailName, $editor, $check);
+        }
 
         return $values;
+    }
+
+    /**
+     * O que o editor de `$detailName` desenhou e o Salvar confere na coluna da
+     * linha: `q` (seleção múltipla: campo => fonte das opções) e `i` (Imagem
+     * sem `storage`: campo => limites). Vazio = nada a conferir.
+     *
+     * @return array{q?: array<string, array<string,mixed>>, i?: array<string, array<string,mixed>>}
+     */
+    private function _rowEditorGuards(string $detailName): array
+    {
+        if ($detailName === '' || !$this->declares()) {
+            return [];
+        }
+        $entry = (array) ($this->_known[self::DECLARED]['d'][$detailName] ?? []);
+
+        return array_filter([
+            'q' => is_array($entry['q'] ?? null) ? $entry['q'] : [],
+            'i' => is_array($entry['i'] ?? null) ? $entry['i'] : [],
+        ]);
+    }
+
+    /**
+     * As conferências que o formulário principal faz na seleção múltipla por
+     * vírgula (#197: a marca NOVA tem de estar na fonte das opções) e na
+     * Imagem sem `storage` (#192: Tamanho máximo e Tipos aceitos), aplicadas
+     * ao que cada linha do editor de um Detail Form vai GRAVAR.
+     *
+     * Pela anotação do estado cifrado da tela (`@fields.d[detalhe]`), nunca
+     * pelo formulário `__mad_form` que o navegador devolve. O que a linha já
+     * tem gravado não é conferido de novo: a marca de um item que quem salva
+     * não enxerga, a imagem de antes do limite. Uma linha recusada recusa o
+     * Salvar inteiro, com a lista, a linha e o motivo.
+     *
+     * @param array{q?: array<string, array<string,mixed>>, i?: array<string, array<string,mixed>>} $editor
+     * @param list<array{0: int, 1: object, 2: array<string,mixed>}>                               $lines [posição, instância (a que existe ou uma nova), o que a linha atribui]
+     *
+     * @throws ReferenceViolation
+     */
+    private function _guardRowEditorFields(string $detailName, array $editor, array $lines): void
+    {
+        $labels = null;
+        $errors = [];
+        foreach ($lines as [$position, $instance, $values]) {
+            $model = $instance instanceof \Illuminate\Database\Eloquent\Model ? $instance : null;
+            $stored = static fn (string $column) => ($model !== null && $model->exists) ? $model->getRawOriginal($column) : null;
+
+            foreach ((array) ($editor['q'] ?? []) as $column => $source) {
+                $column = (string) $column;
+                $value  = $values[$column] ?? null;
+                if (!is_array($source) || !array_key_exists($column, $values) || is_array($value)
+                    || ($model !== null && !$model->isFillable($column))) {
+                    continue;
+                }
+                // O que entra: as marcas do valor menos as que a coluna já tem
+                // (por vírgula, de antes, ou com o separador do campo).
+                $separator = is_string($source['s'] ?? null) && $source['s'] !== '' ? $source['s'] : ',';
+                $raw       = $stored($column);
+                $current   = self::selectionKeys($raw);
+                if ($separator !== ',') {
+                    $current = array_merge($current, self::selectionKeys($raw, $separator));
+                }
+                $entering = array_values(array_diff(self::selectionKeys($value, $separator), $current));
+                if ($entering !== [] && self::_outsideOptions($source, $entering) !== []) {
+                    $errors[$detailName . '.' . $position . '.' . $column] = $this->_rowEditorMessage(
+                        $labels, $detailName, $position,
+                        self::_text('mad.form.selection_invalid', [], 'Um dos itens marcados não pode ser gravado: ele não está na sua lista ou não existe mais.'),
+                    );
+                    ReferenceGuard::logRefused(sprintf('uma marca do campo "%s" da linha %d da lista "%s"', $column, $position, $detailName));
+                }
+            }
+
+            foreach ((array) ($editor['i'] ?? []) as $column => $limits) {
+                $column = (string) $column;
+                $value  = $values[$column] ?? null;
+                if (!is_array($limits) || !is_string($value) || $value === ''
+                    || ($model !== null && !$model->isFillable($column))) {
+                    continue;
+                }
+                // A imagem que a linha JÁ tem volta inteira em todo Salvar.
+                $raw = $stored($column);
+                if (is_string($raw) && $raw === $value) {
+                    continue;
+                }
+                $problem = MadUploadRules::inlineImageProblem($value, $limits);
+                if ($problem !== null) {
+                    $errors[$detailName . '.' . $position . '.' . $column] = $this->_rowEditorMessage($labels, $detailName, $position, $problem);
+                }
+            }
+        }
+
+        if ($errors) {
+            throw new ReferenceViolation($errors);
+        }
+    }
+
+    /** "Na lista Itens, linha 2: <motivo>" (rótulos lidos uma vez só). */
+    private function _rowEditorMessage(?array &$labels, string $detailName, int $position, string $message): string
+    {
+        $labels ??= $this->rowLabels($detailName);
+
+        return $labels['list'] !== ''
+            ? self::_text('mad.form.row_invalid', ['list' => $labels['list'], 'row' => $position, 'message' => $message], 'Na lista :list, linha :row: :message')
+            : self::_text('mad.form.row_invalid_unnamed', ['row' => $position, 'message' => $message], 'Linha :row: :message');
     }
 
     /**
@@ -7546,6 +8821,7 @@ class MadForm
         $blobJobs = [];
         $grandchildCols = [];
         $cellFiles = [];   // coluna de arquivo único => [caminho gravado => impressão digital]
+        $multiCells = [];  // coluna de vários arquivos => o que a célula passa a ter (_rowMultiFiles)
         foreach ($fileColumns as $field => $meta) {
             // type='files' → tabela NETO: processado APÓS o save do item (precisa do
             // id do item) e SEMPRE (mesmo sem upload novo) p/ reconciliar remoções.
@@ -7553,13 +8829,22 @@ class MadForm
                 $grandchildCols[$field] = $meta;
                 continue;
             }
-            $files = $this->_madFlFilesFor($detailName, $rowId, $field);
-            if (empty($files)) {
-                continue; // sem arquivo novo → mantém valor existente
-            }
+            $files      = $this->_madFlFilesFor($detailName, $rowId, $field);
             $storage    = (($meta['storage'] ?? 'disk') === 'db') ? 'db' : 'disk';
             $nameColumn = $meta['nameColumn'] ?? '';
             $multi      = !empty($meta['multi']);
+
+            // type='multifile' da Lista de itens, no disco: a lista mora na coluna
+            // da linha — SEMPRE (mesmo sem upload novo), para valer a remoção
+            // feita na célula. (O `<mad-file-field multiple>` do editor de um
+            // Detail Form segue como antes.)
+            if (($meta['kind'] ?? '') === 'multifile' && $storage === 'disk') {
+                $multiCells[$field] = $this->_rowMultiFiles($instance, $detailName, $rowId, (string) $field, $meta, $files);
+                continue;
+            }
+            if (empty($files)) {
+                continue; // sem arquivo novo → mantém valor existente
+            }
 
             if ($storage === 'db') {
                 // BLOB = 1 arquivo por coluna → usa o primeiro
@@ -7625,6 +8910,17 @@ class MadForm
                 $this->_remember(self::_cellKnownName($detailName, (string) $field, $key), $key, $stored, $instance, array_keys($stored));
             }
         }
+        // Coluna de vários arquivos: a célula passa a "ter" os mantidos e os
+        // recém-gravados (a tela não é redesenhada depois do Salvar), e a
+        // resposta conta a ela quais arquivos novos foram gravados — daí em
+        // diante ela não os manda de novo.
+        foreach ($multiCells as $field => $cell) {
+            $key = self::_existingKey($instance);
+            if ($key !== null) {
+                $this->_remember(self::_cellKnownName($detailName, (string) $field, $key), $key, array_fill_keys($cell['has'], ''), $instance);
+            }
+            $this->_announceSavedFiles($cell['cell'], $cell['saved'], $instance);
+        }
 
         foreach ($blobJobs as $field => $file) {
             $content = base64_encode((string) file_get_contents($file['tmp_name']));
@@ -7637,6 +8933,124 @@ class MadForm
         }
 
         return $instance;
+    }
+
+    /**
+     * Coluna `type="multifile"` no disco de UMA linha da Lista de itens: os
+     * caminhos, por vírgula, na coluna da própria linha (fw#162).
+     *
+     * Mesma regra do Upload Múltiplo por vírgula (_processMultiFileUpload):
+     * parte do que está na coluna AGORA (a linha lida neste Salvar), tira só o
+     * arquivo que a célula MOSTROU (`$_known`, anotado pelo Blade) e que não
+     * voltou entre os mantidos (`__mad_existing_files[lista__linha__coluna]`),
+     * acrescenta os novos e deixa o resto onde está. Antes a coluna recebia só
+     * os arquivos enviados agora: os que estavam lá saíam do registro e
+     * sobravam no disco, e o X da célula não chegava ao servidor.
+     *
+     * A remoção só vale quando a célula mandou a lista (o hidden em branco que
+     * ela põe quando conhece os caminhos): sem ela (tela aberta antes desta
+     * versão, linha montada sem os caminhos) o Salvar só acrescenta.
+     *
+     * Chamado ANTES de gravar a linha (atribui a coluna); o que a célula passa
+     * a ter e o aviso `files_saved` são aplicados depois (_persistDetailInstance).
+     *
+     * @param list<array{name:string,tmp_name:string,error:int,size:int,uid:string}> $files
+     * @return array{cell: string, has: list<string>, saved: list<array<string,mixed>>}
+     */
+    private function _rowMultiFiles(object $instance, string $detailName, string $rowId, string $field, array $meta, array $files): array
+    {
+        $cellKey = "{$detailName}__{$rowId}__{$field}";
+
+        $posted = $_POST['__mad_existing_files'] ?? [];
+        $spoke  = is_array($posted) && array_key_exists($cellKey, $posted);
+        $kept   = $spoke ? $posted[$cellKey] : [];
+        if (is_string($kept)) {
+            $kept = [$kept];
+        }
+        $kept    = array_values(array_filter(array_map('strval', array_filter((array) $kept, 'is_scalar')), static fn ($v) => $v !== ''));
+        $keptSet = array_fill_keys($kept, true);
+
+        // O que está na coluna agora, na ordem em que está.
+        $current = [];
+        foreach (explode(',', is_scalar($instance->$field ?? null) ? (string) $instance->$field : '') as $path) {
+            $path = trim($path);
+            if ($path !== '' && !in_array($path, $current, true)) {
+                $current[] = $path;
+            }
+        }
+        $currentSet = array_fill_keys($current, true);
+
+        // O que a célula mostrou. Sem esse registro: só reconcilia se o POST
+        // prova que ela tinha a lista — algum caminho mantido está na coluna.
+        $rowKey = self::_existingKey($instance);
+        $shown  = $rowKey !== null ? $this->_knownFor(self::_cellKnownName($detailName, $field, $rowKey), $rowKey) : null;
+        if ($shown === null && array_intersect($current, $kept)) {
+            $shown = $currentSet;
+        }
+        if (!$spoke) {
+            $shown = [];   // a célula não disse o que mantém: nada sai
+        }
+        $shown ??= [];
+
+        $final     = [];
+        $keptShown = [];   // mantidos que a célula de fato mostrou e que estão na coluna
+        foreach ($current as $path) {
+            if (array_key_exists($path, $shown) && !isset($keptSet[$path])) {
+                // Mostrado e removido pelo usuário. O arquivo sai do disco quando
+                // a transação confirmar: se o Salvar falhar depois, a linha volta
+                // a listá-lo — e ele tem de estar lá.
+                $this->_discardFile($path, $instance);
+                continue;
+            }
+            $final[] = $path;
+            if (array_key_exists($path, $shown)) {
+                $keptShown[] = $path;
+            }
+        }
+
+        // Arquivo que a célula (desatualizada) ainda mostra e que outra tela já
+        // removeu: não volta para a coluna. O usuário é avisado.
+        $goneFiles = [];
+        foreach ($kept as $path) {
+            if (!isset($currentSet[$path]) && array_key_exists($path, $shown)) {
+                $goneFiles[] = self::_storedFileLabel($path);
+            }
+        }
+        if ($goneFiles) {
+            $this->warnChildRowsGone([], $goneFiles);
+        }
+
+        // Novos uploads: entram no fim da lista.
+        $newPaths = [];
+        $saved    = [];   // o que a célula recebe de volta (files_saved)
+        if ($files) {
+            $folder = $this->_normalizeUploadFolder((string) ($meta['folder'] ?? 'uploads'));
+            $unique = self::_uniqueFileNames($meta['fileName'] ?? 'prefix');
+            foreach ($files as $file) {
+                $fileName = $this->_buildFileName($file['name'], $meta['fileName'] ?? 'prefix', $instance);
+                $dest     = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                if (!$this->_storeFile($file['tmp_name'], $dest, $instance, $unique)) {
+                    continue;
+                }
+                $newPaths[] = $dest;
+                if (!in_array($dest, $final, true)) {
+                    $final[] = $dest;
+                }
+                $label   = self::_storedFileLabel($dest);
+                $saved[] = ['uid' => (string) ($file['uid'] ?? ''), 'key' => $dest, 'name' => $label, 'url' => self::_storedFileUrl($dest, $label)];
+            }
+            $nameColumn = (string) ($meta['nameColumn'] ?? '');
+            if ($newPaths && $nameColumn !== '') {
+                $instance->$nameColumn = $this->_sanitizeUploadName($files[0]['name']);
+            }
+        }
+
+        // Nada mudou: a coluna não é regravada.
+        if ($final !== $current) {
+            $instance->$field = $final ? implode(',', $final) : null;
+        }
+
+        return ['cell' => $cellKey, 'has' => array_values(array_unique(array_merge($keptShown, $newPaths))), 'saved' => $saved];
     }
 
     /**
@@ -7811,6 +9225,29 @@ class MadForm
      * Serializa o formulário para array (usado em _publicProps / _encryptState).
      */
     /**
+     * Ops que tiram da tela a mensagem de erro dos campos que passaram neste
+     * request — pelo `validate()`, ou pelas conferências do Salvar (campo sem
+     * coluna, seleção em outra tabela). Uma vez só: depois de lidas, saem.
+     *
+     * O MadComponentHandler as põe ANTES das ops da resposta da ação: a
+     * mensagem que a MESMA resposta pinta num desses campos (a conferência
+     * própria da tela depois do `validate()`, uma recusa do Salvar) é a que
+     * fica.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function takePassedFieldClears(): array
+    {
+        $ops = [];
+        foreach (array_keys($this->_passedNow) as $field) {
+            $ops = [...$ops, ...(new MadResponse())->clearFieldError((string) $field)->getOps()];
+        }
+        $this->_passedNow = [];
+
+        return $ops;
+    }
+
+    /**
      * Retorna ops fl_combo pendentes (geradas por setItems('campo[]')).
      * Consumidas pelo MadComponentHandler após a action.
      */
@@ -7831,16 +9268,20 @@ class MadForm
             $ops[] = $notice;
         }
 
+        // Lista cujas linhas este Salvar não gravou (o formulário recebido a
+        // descreve de outro jeito): sem isto a resposta dizia só "salvo".
+        if ($notice = $this->_detailNotSavedNoticeOp()) {
+            $ops[] = $notice;
+        }
+
         // O que o usuário digitou e este Salvar não gravou (campo ou coluna de
         // lista que não é coluna da tabela).
         if ($notice = $this->_notStoredNoticeOp()) {
             $ops[] = $notice;
         }
-        // Campo que um Salvar anterior recusou e que agora passou: a mensagem sai.
-        foreach (array_keys($this->_passedNow) as $field) {
-            $ops = [...$ops, ...(new MadResponse())->clearFieldError((string) $field)->getOps()];
-        }
-        $this->_passedNow = [];
+        // Campo que um Salvar anterior recusou e que agora passou: a mensagem sai
+        // (o MadComponentHandler já as tira antes, por takePassedFieldClears()).
+        $ops = [...$ops, ...$this->takePassedFieldClears()];
 
         if ($this->_pendingFocus === null) {
             return $ops;

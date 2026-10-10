@@ -200,7 +200,26 @@
         'order_by' => $orderBy,
     ];
     $__optMissing = [];
-    if (\Mad\Database\QuerySource::isQuery($query)) {
+    // Lista posta pelo código da tela (`$this->form->setItems('tecnico_id', …)`
+    // num On Change, no mount/onEdit): o desenho mostra ESSA lista, como o
+    // `reload_combo` mostrou. Sem isto qualquer redesenho da tela — um método
+    // que não devolve nada — voltava o combo filtrado para a lista inteira do
+    // Model, sem erro (fw#139). Mesmo contrato do <mad-select-field>.
+    $__codeItems = null;
+    if ($name) {
+        $__itemsForm = \Mad\Component\MadRenderContext::getForm();
+        if ($__itemsForm && isset($__itemsForm->items[$name]) && is_array($__itemsForm->items[$name])) {
+            $__codeItems = \Mad\Support\MadItems::normalize($__itemsForm->items[$name]);
+            // Texto da opção vazia passado ao setItems (4º parâmetro), como no
+            // reload_combo (fw#151).
+            if (isset($__itemsForm->placeholders[$name])) {
+                $placeholder = (string) $__itemsForm->placeholders[$name];
+            }
+        }
+    }
+    if ($__codeItems !== null) {
+        $options = $__codeItems;
+    } elseif (\Mad\Database\QuerySource::isQuery($query)) {
         // Novo padrão: builder pronto fornece o WHERE; soft-delete preservado.
         try {
             $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(

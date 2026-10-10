@@ -1,5 +1,8 @@
 @props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'items' => [], 'selected' => [], 'orientation' => 'vertical', 'limit' => -1, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false])
 @php
+    // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
+    // que o reload_sort_list mostrou (fw#228).
+    $items = \Mad\Support\MadItems::fromForm((string) $name) ?? $items;
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] (\Mad\Support\MadItems).
     if (is_array($items)) { $items = \Mad\Support\MadItems::normalize($items); }
     $required   = !empty($required);
@@ -8,11 +11,19 @@
     $reqStar    = $required ? ' <span class="mad-required">*</span>' : '';
     $limit      = (int)$limit;
     $horizontal = ($orientation === 'horizontal');
-    // Normalize selected to array of strings
-    if (is_string($selected)) {
-        $selected = $selected !== '' ? explode(',', $selected) : [];
+    // Sem `selected` na tag, vale a ordem do registro aberto (MadForm fill) —
+    // antes a edição abria na ordem original das opções.
+    if (empty($selected) && $name) {
+        $_ctx = \Mad\Component\MadRenderContext::current();
+        if (array_key_exists($name, $_ctx)) {
+            $selected = $_ctx[$name];
+        }
     }
-    $selected = array_map('strval', (array)$selected);
+    // Lista de strings: por vírgula, JSON ('["c","a"]') ou array.
+    $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
+    // "Valor padrão" (`default`, lista separada por vírgula = a ordem inicial):
+    // só no cadastro novo e sem `selected` escrito na tag.
+    $selected = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, $selected, $default ?? null);
     // Reorder items: selected first (in order), then remaining
     $orderedItems = [];
     foreach ($selected as $selKey) {

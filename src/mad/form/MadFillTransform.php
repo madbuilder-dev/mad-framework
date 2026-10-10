@@ -3,6 +3,7 @@
 namespace Mad\Form;
 
 use Illuminate\Support\Carbon;
+use Mad\Support\ValueFormatter;
 
 /**
  * MadFillTransform — DSL declarativa server-side aplicada ao valor de um
@@ -16,8 +17,12 @@ use Illuminate\Support\Carbon;
  *   trim             → remove espaços das pontas
  *   date:FMT         → reformata data (Carbon::parse → format($fmt); default d/m/Y)
  *   money            → number_format pt-BR, 2 casas (1234.5 → "1.234,50")
+ *   number           → number_format pt-BR, 2 casas (o "Número (1.234,56)" do seletor)
  *   number:N         → number_format pt-BR, N casas
  *   mask:PADRÃO      → preenche placeholders (#, 9, A) do padrão; ex mask:###.###-##
+ *   cpf, cnpj, cep, phone-br, integer, percent, currency-USD, date-long, …
+ *                    → os formatos do seletor do MadBuilder, pelo mesmo resolver
+ *                      de Documento e grade (Mad\Support\ValueFormatter)
  *   Classe::metodo   → callable do dev: metodo(string $valor, ?object $registro): string
  *                      Forma curta gerada pelo MadBuilder: 'FillTransformer::formataCpf'
  *                      (sem namespace) → resolvida para \App\Transformer\FillTransformer.
@@ -111,6 +116,12 @@ class MadFillTransform
                 return number_format((float) $value, 2, ',', '.');
 
             case 'number':
+                // Sem casas é o "Número (1.234,56)" do seletor de formatos: 2
+                // casas, como em Documento e grade (antes saía com 0 — 1234.567
+                // virava "1.235").
+                if ($arg === '') {
+                    return ValueFormatter::apply($value, 'number');
+                }
                 $n = ctype_digit($arg) ? (int) $arg : 0;
                 return number_format((float) $value, $n, ',', '.');
 
@@ -118,6 +129,13 @@ class MadFillTransform
                 return $arg !== '' ? self::applyMask($arg, $value) : $value;
 
             default:
+                // Os demais formatos que o seletor da Transformação oferece (CPF,
+                // CNPJ, CEP, telefone, moedas, inteiro, percentual, datas…): o
+                // mesmo resolver de Documento e grade. Antes caíam aqui como
+                // desconhecidos e o valor entrava no campo sem formatação.
+                if ($arg === '' && ValueFormatter::supports($name)) {
+                    return ValueFormatter::apply($value, $name);
+                }
                 self::warn($warnings, "transform desconhecido: '{$name}' (passthrough)");
                 return $value;
         }

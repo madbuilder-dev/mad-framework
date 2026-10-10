@@ -4,6 +4,7 @@ namespace Mad\Service;
 
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
+use Mad\Security\StoredSecret;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -84,10 +85,11 @@ final class MadUploadStorage
             if (!in_array($name, [self::LOCAL_DISK, 'mad_s3'], true)) {
                 throw new \RuntimeException('Configuração de armazenamento inválida.');
             }
+            self::sealSettingsFile($file, $vars);
             $s3 = [
                 'driver' => 's3',
-                'key' => $vars['MAD_UPLOAD_S3_KEY'] ?? null,
-                'secret' => $vars['MAD_UPLOAD_S3_SECRET'] ?? null,
+                'key' => StoredSecret::open($vars['MAD_UPLOAD_S3_KEY'] ?? null, 'Propriedades do projeto › Armazenamento › Access key') ?: null,
+                'secret' => StoredSecret::open($vars['MAD_UPLOAD_S3_SECRET'] ?? null, 'Propriedades do projeto › Armazenamento › Secret key') ?: null,
                 'region' => $vars['MAD_UPLOAD_S3_REGION'] ?? null,
                 'bucket' => $vars['MAD_UPLOAD_S3_BUCKET'] ?? null,
                 'endpoint' => ($vars['MAD_UPLOAD_S3_ENDPOINT'] ?? '') ?: null,
@@ -110,6 +112,44 @@ final class MadUploadStorage
         }
 
         return $name;
+    }
+
+    /** Credenciais do S3 no arquivo da plataforma: guardadas cifradas (StoredSecret). */
+    private const SETTINGS_SECRETS = ['MAD_UPLOAD_S3_KEY', 'MAD_UPLOAD_S3_SECRET'];
+
+    /**
+     * Cifra, no próprio arquivo, a credencial que chegou em texto puro: uma
+     * cópia do `storage/` que saia sem o `.env` não leva a chave do bucket. O
+     * valor continua sendo lido por `StoredSecret::open()`, que aceita os dois.
+     * Sem permissão de escrita, segue como está.
+     *
+     * @param array<string,mixed> $vars
+     */
+    private static function sealSettingsFile(string $file, array $vars): void
+    {
+        try {
+            $plain = false;
+            foreach (self::SETTINGS_SECRETS as $key) {
+                if (isset($vars[$key]) && StoredSecret::needsSealing((string) $vars[$key])) {
+                    $vars[$key] = StoredSecret::seal((string) $vars[$key]);
+                    $plain = true;
+                }
+            }
+            if (! $plain || ! is_writable(dirname($file))) {
+                return;
+            }
+            $tmp = $file . '.tmp' . bin2hex(random_bytes(4));
+            if (@file_put_contents($tmp, json_encode($vars, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX) === false) {
+                return;
+            }
+            $mode = @fileperms($file);
+            @chmod($tmp, $mode !== false ? ($mode & 0777) : 0600);
+            if (! @rename($tmp, $file)) {
+                @unlink($tmp);
+            }
+        } catch (\Throwable) {
+            // Nunca derruba quem só queria o disco de uploads.
+        }
     }
 
     /** Há um disco CUSTOM configurado (MAD_UPLOAD_DISK ≠ local default)? */

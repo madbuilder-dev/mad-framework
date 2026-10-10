@@ -93,6 +93,11 @@
     background: var(--mad-bg, #fff);
 }
 
+/* Linhas travadas enquanto o Salvar não responde (inert no <tbody>). */
+.mad-sheet tbody[inert] {
+    opacity: .55;
+}
+
 .mad-sheet-table {
     width: 100%;
     border-collapse: separate;

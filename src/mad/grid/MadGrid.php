@@ -138,6 +138,12 @@ class MadGrid extends MadDataGrid
         return array_filter($acts);
     }
 
+    /** `<mad-row-highlights>` do `<mad-grid model="…">` — viaja no gridConfig, como as ações. */
+    protected function rowHighlights(): array
+    {
+        return (array) ($this->gridConfig['rowHighlights'] ?? []);
+    }
+
     /**
      * `<mad-action-group>` de um `<mad-grid model=…>`: o compilador gravava os
      * grupos em `actGroupConfigs` e só a listagem `<mad-grid self>` os lia —
@@ -179,14 +185,9 @@ class MadGrid extends MadDataGrid
      * Action embutida de exclusão — chamada quando configurado via ->del().
      * Não requer handler externo.
      *
-     * O id vem do navegador. A busca é pela consulta da própria listagem
-     * (_visibleRecord): só se exclui linha que ela mostra — com `find()`, uma
-     * requisição com o id de outra pessoa passava por cima do `:filters`.
-     *
-     * E a resposta diz o que aconteceu. "Excluído com sucesso" só quando o
-     * registro saiu do banco: linha que não está mais na listagem (outra
-     * pessoa excluiu, mudou de dono) e exclusão que o Model recusou no evento
-     * `deleting` avisam isso, e a listagem recarregada mostra o que ficou.
+     * O corpo (busca pela consulta da listagem, condições do `<mad-del>`
+     * conferidas de novo, desfecho honesto) é o mesmo da listagem
+     * `<mad-grid self>`: {@see MadDataGrid::_deleteVisibleRow()}.
      */
     public function onMadGridDelete(int|string $id): mixed
     {
@@ -198,41 +199,19 @@ class MadGrid extends MadDataGrid
         if (empty($this->model)) {
             $this->model = $model;
         }
+        // Grade sem `<mad-del>` não tem Excluir: o método é público, e o perfil
+        // com Excluir na tela não basta — uma requisição montada à mão excluía
+        // qualquer linha que a grade mostra. O gridConfig viaja selado.
+        if (!static::_declaresGridDelete($this->gridConfig)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadGrid: onMadGridDelete recusado — a grade (' . ($this->_permOwner() ?: static::class) . ') não declara <mad-del> '
+                . '(registro ' . static::_logSafe((string) $id) . ', usuario ' . static::_logUser() . ').'
+            );
 
-        $db      = $this->_db();
-        $found   = false;
-        $deleted = false;
-        try {
-            \Illuminate\Support\Facades\DB::connection($db)->transaction(function () use ($id, &$found, &$deleted) {
-                $record = $this->_visibleRecord($id);
-                if (!$record) {
-                    return;
-                }
-                $found = true;
-                // delete() devolve false quando um `deleting` cancela. O estado
-                // do registro confirma (um delete() sobrescrito pode não devolver
-                // nada): sumiu do banco, ou foi para a lixeira (SoftDeletes).
-                $result  = $record->delete();
-                $deleted = $result !== false
-                    && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
-            });
-        } catch (\Throwable $e) {
-            // Erro técnico (ex.: registro em uso — violação de FK) não vai cru
-            // pra tela: o toast mostrava o SQL e o caminho do banco.
-            return \Mad\Ui\MadUserError::isTechnical($e)
-                ? MadToast::danger(\Mad\Ui\MadUserError::message($e, mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
-                : MadToast::danger('Erro ao excluir: ' . $e->getMessage());
+            return MadToast::danger(mad_t('mad.error.bad_request'));
         }
 
-        $this->loadData();
-        if (!$found) {
-            return MadToast::warning(mad_t('mad.error.delete_gone'));
-        }
-        if (!$deleted) {
-            return MadToast::warning(mad_t('mad.error.delete_refused'));
-        }
-
-        return MadToast::success('Registro excluído com sucesso.');
+        return $this->_deleteVisibleRow($id);
     }
 
     // ── Dono da permissão ─────────────────────────────────────────────────

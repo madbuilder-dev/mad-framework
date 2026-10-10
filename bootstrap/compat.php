@@ -28,6 +28,44 @@ if (!function_exists('mad_app_config')) {
     }
 }
 
+if (!function_exists('mad_dump_modal')) {
+    /**
+     * Mostra variáveis num modal de depuração no navegador, ao fim da ação
+     * (botão, evento, Salvar) — o `dd()` das telas, sem interromper a ação.
+     *
+     *   mad_dump_modal($this->form->getData(), $cliente);
+     *   mad_dump_modal('marcador', $valor);   // várias chamadas, um modal só
+     *
+     * Os valores vão para o buffer de {@see \Mad\Util\MadDumpModal} e saem
+     * como op `dump_modal` na resposta da ação. Mesma função de
+     * src/mad/util/GlobalFunctions.php — que NÃO é carregado (redefine
+     * `__()`/`response()` do Laravel): sem esta cópia, `mdm($x)` num método de
+     * tela dava "Call to undefined function mdm()".
+     *
+     * @param mixed ...$args qualquer número de variáveis
+     */
+    function mad_dump_modal(...$args): void
+    {
+        // Chamada direta (sem passar por outro helper): o modal mostra o
+        // arquivo e a linha de quem chamou.
+        \Mad\Util\MadDumpModal::push($args);
+    }
+}
+
+if (!function_exists('mdm')) {
+    /**
+     * Atalho curto de mad_dump_modal().
+     *
+     *   mdm($email, $dados);
+     *
+     * @param mixed ...$args qualquer número de variáveis
+     */
+    function mdm(...$args): void
+    {
+        \Mad\Util\MadDumpModal::push($args);
+    }
+}
+
 if (!function_exists('mad_can_access')) {
     /**
      * mad_can_access — o usuário logado tem acesso a um programa (e, opcional, ação)?

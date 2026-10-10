@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ApiResourceController — base REST/CRUD para models Eloquent.
@@ -89,6 +90,15 @@ abstract class ApiResourceController
     /** Transformers do master: campo => fn($value, $model). */
     protected array $transformers = [];
 
+    /**
+     * Chaves do corpo do último store/update que não chegaram ao registro
+     * (ver ignoredKeys()): 'master' => lista, 'details' => [relação => [chave
+     * da linha => lista]]. Zerado a cada persist().
+     *
+     * @var array{master: list<string>, details: array<string, array<string, list<string>>>}
+     */
+    private array $ignoredInBody = ['master' => [], 'details' => []];
+
     public function __construct()
     {
         if (empty($this->model) || !class_exists($this->model)) {
@@ -103,8 +113,9 @@ abstract class ApiResourceController
     {
         $this->authorize('index', $request);
 
-        $query = $this->newQuery();
-        $this->applyFilters($query, (array) $request->input('filters', []));
+        $query   = $this->newQuery();
+        $filters = $this->requestFilters($request);
+        $this->applyFilters($query, $filters);
         $this->applyOrder($query, $request);
 
         $total   = (clone $query)->toBase()->getCountForPagination();
@@ -118,14 +129,22 @@ abstract class ApiResourceController
             $data[] = $this->serializeItem($object, $this->indexFields);
         }
 
+        $meta = [
+            'total'        => $total,
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int) max(1, ceil($total / $perPage)),
+        ];
+        // O que veio em `filters` e NÃO foi aplicado (coluna fora de
+        // $searchable, operador desconhecido): sem esta lista a resposta
+        // trazia todas as linhas como se o filtro tivesse valido.
+        if ($ignored = $this->ignoredFilters($filters)) {
+            $meta['ignored_filters'] = $ignored;
+        }
+
         return response()->json([
             'data' => $data,
-            'meta' => [
-                'total'        => $total,
-                'per_page'     => $perPage,
-                'current_page' => $page,
-                'last_page'    => (int) max(1, ceil($total / $perPage)),
-            ],
+            'meta' => $meta,
         ]);
     }
 
@@ -149,7 +168,7 @@ abstract class ApiResourceController
 
         $object = $this->persist($request, null);
 
-        return response()->json($this->serializeFresh($object), 201);
+        return response()->json($this->withIgnoredKeys($this->serializeFresh($object)), 201);
     }
 
     /** PUT/PATCH /recurso/{id} — atualiza master e SINCRONIZA detalhes. */
@@ -164,7 +183,7 @@ abstract class ApiResourceController
 
         $object = $this->persist($request, $id);
 
-        return response()->json($this->serializeFresh($object));
+        return response()->json($this->withIgnoredKeys($this->serializeFresh($object)));
     }
 
     /** DELETE /recurso/{id} — apaga master + detalhes em cascata. */
@@ -200,6 +219,7 @@ abstract class ApiResourceController
      */
     protected function persist(Request $request, $id): Model
     {
+        $this->ignoredInBody = ['master' => [], 'details' => []];
         $payload = $request->all();
 
         // Separa os detalhes do payload do master.
@@ -233,6 +253,9 @@ abstract class ApiResourceController
             $master->fill($payload);
             $master->save();
             $this->afterSave($master, $payload);
+            $this->ignoredInBody['master'] = $this->ignoredKeys(
+                $master, $payload, array_filter([$master->getKeyName(), $this->primaryKey])
+            );
 
             // Sync de cada detalhe.
             foreach ($detailPayload as $relation => $rows) {
@@ -292,6 +315,11 @@ abstract class ApiResourceController
             $child->save();
             $this->afterSaveDetail($master, $child, $relation, $row);
 
+            // A chave da linha e a do mestre vêm da relação, não do corpo.
+            if ($ignored = $this->ignoredKeys($child, $row, [$pk, $foreign])) {
+                $this->ignoredInBody['details'][$relation][(string) $child->getKey()] = $ignored;
+            }
+
             $kept[] = $child->getKey();
         }
 
@@ -301,6 +329,82 @@ abstract class ApiResourceController
                 $child->delete();
             }
         }
+    }
+
+    /**
+     * Chaves do corpo que NÃO chegaram ao registro: fora do `$fillable` (o
+     * `fill()` as descarta calado — nome antigo de uma coluna renomeada, erro
+     * de digitação) e com um valor que o registro gravado não tem. A que um
+     * hook (beforeSave…) gravou por conta própria, ou que já tinha aquele
+     * valor, não é aviso; `$skip` são as chaves de identidade (PK, FK do
+     * detalhe), que valem pela rota/relação.
+     *
+     * Não recusa (422): integração que manda campo a mais continua
+     * funcionando. A lista volta na resposta, em `ignored` (withIgnoredKeys()).
+     * Hook que consome uma chave sem coluna (ex.: `senha` → hash em
+     * `password`) pode sobrescrever este método para tirá-la da lista.
+     *
+     * @return list<string>
+     */
+    protected function ignoredKeys(Model $record, array $data, array $skip = []): array
+    {
+        $stored  = $record->getAttributes();
+        $ignored = [];
+        foreach ($data as $key => $value) {
+            $key = (string) $key;
+            if (in_array($key, $skip, true) || $record->isFillable($key)) {
+                continue;
+            }
+            if (array_key_exists($key, $stored) && self::sameStoredValue($stored[$key], $value)) {
+                continue;
+            }
+            $ignored[] = $key;
+        }
+
+        return $ignored;
+    }
+
+    /** O valor gravado é o que veio no corpo? (`'10'` = `10`, nulo = nulo) */
+    private static function sameStoredValue(mixed $stored, mixed $sent): bool
+    {
+        if ($stored === null || $sent === null) {
+            return $stored === $sent;
+        }
+        if (!is_scalar($stored) || !is_scalar($sent)) {
+            return false;
+        }
+
+        return (string) $stored === (string) $sent;
+    }
+
+    /**
+     * Põe na resposta do store/update o que o corpo mandou e não foi gravado:
+     * `ignored` no registro e em cada linha filha (casada pela chave dela).
+     * Sem nada ignorado a resposta sai como antes.
+     */
+    protected function withIgnoredKeys(array $body): array
+    {
+        if ($this->ignoredInBody['master']) {
+            $body['ignored'] = $this->ignoredInBody['master'];
+        }
+
+        foreach ($this->ignoredInBody['details'] as $relation => $byKey) {
+            // toArray() devolve a relação em snake_case; a projeção, pelo nome.
+            $field = array_key_exists($relation, $body) ? $relation : \Illuminate\Support\Str::snake($relation);
+            if (!isset($body[$field]) || !is_array($body[$field])) {
+                continue;
+            }
+
+            $pk = $this->relation($this->newModel(), $relation)->getRelated()->getKeyName();
+            foreach ($body[$field] as $i => $row) {
+                $key = is_array($row) ? ($row[$pk] ?? null) : null;
+                if ($key !== null && isset($byKey[(string) $key])) {
+                    $body[$field][$i]['ignored'] = $byKey[(string) $key];
+                }
+            }
+        }
+
+        return $body;
     }
 
     // ─── Query / filtros / ordenação ──────────────────────────────────────────
@@ -319,6 +423,78 @@ abstract class ApiResourceController
         }
 
         return $query;
+    }
+
+    /** Operadores do DSL de filtros (os mesmos do applyFilter()). */
+    protected const FILTER_OPERATORS = [
+        '=', 'eq', '!=', 'ne', 'not', '>', 'gt', '>=', 'gte', '<', 'lt', '<=', 'lte',
+        'like', 'like_start', 'like_end', 'ilike', 'ilike_start', 'ilike_end',
+        'in', 'not in', 'not_in', 'between',
+        'is null', 'is_null', 'is not null', 'is_not_null',
+    ];
+
+    /**
+     * Os filtros do pedido no formato `coluna => [operador => valor]`, venham
+     * eles como array (`filters[status][eq]=open`, ou o objeto de um corpo
+     * JSON) ou como TEXTO JSON na query string
+     * (`filters={"status":{"eq":"open"}}` — a forma do
+     * `curl --data-urlencode` da documentação). Antes o texto virava
+     * `[0 => '{…}']`, era descartado, e a API devolvia todas as linhas.
+     *
+     * Texto que não é um objeto JSON é recusado (422): seguir sem ele
+     * devolveria todas as linhas a quem pediu só algumas.
+     */
+    protected function requestFilters(Request $request): array
+    {
+        $filters = $request->input('filters', []);
+
+        if ($filters === null) {
+            return [];
+        }
+        if (is_array($filters)) {
+            return $filters;
+        }
+
+        $text = trim((string) $filters);
+        if ($text === '') {
+            return [];
+        }
+
+        $decoded = json_decode($text, true);
+        if (!is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+            throw ValidationException::withMessages([
+                'filters' => __('rest.filters_invalid_json'),
+            ]);
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * O que veio em `filters` e o applyFilters() não aplica: coluna fora de
+     * `$searchable` ou sem operador (`coluna`) e operador desconhecido
+     * (`coluna[operador]`). Volta em `meta.ignored_filters` — a resposta
+     * continua 200, como antes, para não quebrar quem manda filtro a mais.
+     *
+     * @return list<string>
+     */
+    protected function ignoredFilters(array $filters): array
+    {
+        $ignored = [];
+        foreach ($filters as $field => $conditions) {
+            if (!in_array($field, $this->searchable, true) || !is_array($conditions)) {
+                $ignored[] = (string) $field;
+                continue;
+            }
+
+            foreach (array_keys($conditions) as $operator) {
+                if (!in_array((string) $operator, static::FILTER_OPERATORS, true)) {
+                    $ignored[] = $field . '[' . $operator . ']';
+                }
+            }
+        }
+
+        return $ignored;
     }
 
     /**

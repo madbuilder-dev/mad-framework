@@ -255,13 +255,26 @@ use Mad\View\MadBlade;
  * │  Aceita <mad-act />, <mad-nav /> e <mad-del />; outra tag é ignorada, com   │
  * │  aviso. Vale no <mad-grid self> e no <mad-grid model="…">.                  │
  * │                                                                              │
- * │  <mad-del> — Atalho para exclusão (a embutida do <mad-grid model="…">)      │
+ * │  <mad-del> — Atalho para exclusão embutida (sem método na tela)             │
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  <mad-del confirm="Excluir este registro?" />                               │
  * │  Aceita as mesmas condições do <mad-act>: display-condition, when-* e       │
- * │  disabled-*. Numa listagem <mad-grid self> a exclusão é um método da tela:  │
- * │  use <mad-act method="onDelete" … danger /> (ali o <mad-del> não tem o      │
- * │  método embutido e o clique é recusado).                                    │
+ * │  disabled-*. Vale no <mad-grid model="…"> e no <mad-grid self> (só exclui   │
+ * │  linha que a listagem mostra). Excluir com regra própria: <mad-act          │
+ * │  method="onDelete" … danger /> com o método na tela.                        │
+ * │                                                                              │
+ * │  <mad-row-highlights> — Destaque da linha (ou da célula) por condição       │
+ * │  ──────────────────────────────────────────────────────────────────────────  │
+ * │  <mad-row-highlights>                                                       │
+ * │      <mad-row-highlight when-field="status" when-value="atrasada"           │
+ * │                         tone="danger" />                                    │
+ * │      <mad-row-highlight when-field="estoque" when-op="lt" when-value="10"   │
+ * │                         tone="warning" cell="estoque" />                    │
+ * │  </mad-row-highlights>                                                      │
+ * │  Condição: as when-* do <mad-act> (when-op também gt/gte/lt/lte) ou         │
+ * │  display-condition="Cls::metodo". tone: danger|warning|success|info;        │
+ * │  color="#hex" livre. cell="campo" pinta só a célula. Vale a primeira        │
+ * │  regra que casar; a exportação não leva cor.                                │
  * │                                                                              │
  * │  Diferença mad-nav vs mad-act:                                              │
  * │  ┌────────────┬──────────────────────┬──────────────────────┐               │
@@ -737,6 +750,29 @@ class MadGridCompiler
             $inner
         );
 
+        // Destaque por condição (<mad-row-highlights>, builder#247): extraído
+        // antes do match genérico de filhos, como o filtro avançado. Vários
+        // containers somam as regras, na ordem em que aparecem.
+        $hlConfigs = [];
+        $inner = preg_replace_callback(
+            '/<mad-row-highlights(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-row-highlights') . '/s',
+            function (array $m) use (&$hlConfigs): string {
+                foreach (static::buildRowHighlightConfigs((string) ($m[2] ?? '')) as $cfg) {
+                    $hlConfigs[] = $cfg;
+                }
+                return '';
+            },
+            $inner
+        );
+        $inner = preg_replace_callback(
+            '/<mad-row-highlight(?![\w-])' . self::ATTR_RUN_SC . static::pairOrSelfClose('mad-row-highlight', '[\s\S]*?') . '/s',
+            function (): string {
+                static::$_actionNotes[] = '<mad-row-highlight> fora de <mad-row-highlights> — ignorado.';
+                return '';
+            },
+            $inner
+        );
+
         // Pré-processa <mad-col attrs>...</mad-col> ou <mad-column attrs>...</mad-column>
         // → extrai <mad-col-filter> e <mad-col-edit> do corpo e converte em atributos
         // Regex: atributos permitem '>' dentro de aspas (ex: field="{rel->campo}")
@@ -992,6 +1028,10 @@ class MadGridCompiler
 
         if ($customFiltersCfg !== null) {
             $configParts[] = "'customFilters' => {$customFiltersCfg}";
+        }
+
+        if (!empty($hlConfigs)) {
+            $configParts[] = "'rowHighlights' => [\n        " . implode(",\n        ", $hlConfigs) . "\n    ]";
         }
 
         // Tela DONA do grid — quem manda nas permissões das ações dele.
@@ -2328,7 +2368,7 @@ class MadGridCompiler
 
     // ── Action configs ────────────────────────────────────────────────────────
 
-    protected static function buildNavConfig(array $a): string
+    protected static function buildNavConfig(array $a, string $tag = 'mad-nav'): string
     {
         $c = [];
         $c[] = "'isNav' => true";
@@ -2357,9 +2397,23 @@ class MadGridCompiler
             $c[] = static::kv('navMethod', static::qs(static::str($a, 'method') ?: 'show'));
         }
 
-        // :params="{'id': '{id}', 'modo': 'edit'}" — tem prioridade sobre inline
+        // Parâmetros: `:params="['id' => '{id}', 'modo' => 'edit']"` (PHP) ou
+        // `params="{modo: ver, os: {id}}"` (o formato do painel) — têm
+        // prioridade sobre os inline. O formato do painel ia como TEXTO e a
+        // tela destino recebia uma chave só, com a string inteira (fw#229):
+        // agora vira chave => valor, como no <mad-act> com método.
         if (isset($a['params'])) {
-            $c[] = "'navParams' => " . static::emit($a['params']);
+            if ($a['params']['type'] === 'php') {
+                $c[] = "'navParams' => " . static::emit($a['params']);
+            } else {
+                $arrayCode = static::parseInlineParamsToPhp((string) $a['params']['value']);
+                if ($arrayCode === null) {
+                    static::$_actionNotes[] = static::actName($tag, $a) . ': params em formato não reconhecido ("' . static::str($a, 'params') . '") — ignorado.'
+                        . ' Use {chave: valor, outra: {campo}}.';
+                } elseif ($arrayCode !== '[]') {
+                    $c[] = "'navParams' => " . $arrayCode;
+                }
+            }
         }
 
         if (static::has($a, 'drawer'))      $c[] = "'navDrawer' => true";
@@ -2466,17 +2520,86 @@ class MadGridCompiler
         return $c;
     }
 
+    /** Tons do `<mad-row-highlight>` — espelha {@see MadDataGrid::ROW_HIGHLIGHT_TONES}. */
+    protected const ROW_HIGHLIGHT_TONES = ['danger', 'warning', 'success', 'info'];
+
+    /** Operadores do `when-op` que o runtime avalia ({@see MadDataGrid::_evalCond()}). */
+    protected const WHEN_OPS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'];
+
+    /**
+     * Regras do `<mad-row-highlights>` (builder#247) → configs
+     * `['when' => …, 'tone' => …, 'color' => …, 'cell' => …]`.
+     *
+     * A condição é a MESMA das ações da linha ({@see actConditionParts()}):
+     * `when-field` + `when-value`/`when-in`/`when-nin`/`when-op`, ou
+     * `display-condition`. Regra sem condição não entra (pintaria toda linha)
+     * e vira aviso, como a ação sem método.
+     *
+     * @return list<string>
+     */
+    protected static function buildRowHighlightConfigs(string $body): array
+    {
+        $out = [];
+        preg_match_all(
+            '/<mad-row-highlight(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-row-highlight', '[\s\S]*?') . '/s',
+            $body, $rules, PREG_SET_ORDER
+        );
+        foreach ($rules as $i => $r) {
+            $a    = static::parseAttrs($r[1] ?? '');
+            $name = '<mad-row-highlight> nº ' . ($i + 1);
+
+            $hasFn    = trim(static::str($a, 'display-condition')) !== '';
+            $hasField = trim(static::str($a, 'when-field')) !== '';
+            if (!$hasFn && !$hasField) {
+                static::$_actionNotes[] = $name . ' sem condição (when-field ou display-condition): a regra foi ignorada.';
+                continue;
+            }
+            if ($hasFn && $hasField) {
+                static::$_actionNotes[] = $name . ' tem display-condition e when-field: vale o display-condition.';
+            }
+            $condAttrs = $hasFn
+                ? ['display-condition' => $a['display-condition']]
+                : array_intersect_key($a, array_flip(['when-field', 'when-value', 'when-in', 'when-nin', 'when-op']));
+            $op = strtolower(trim(static::str($a, 'when-op')));
+            if (!$hasFn && $op !== '' && !isset($a['when-in']) && !isset($a['when-nin']) && !in_array($op, self::WHEN_OPS, true)) {
+                static::$_actionNotes[] = $name . ' when-op="' . $op . '" não existe (use ' . implode(', ', self::WHEN_OPS) . ' ou when-in/when-nin): a regra nunca casa.';
+            }
+            $when = '';
+            foreach (static::actConditionParts($condAttrs) as $part) {
+                if (str_starts_with($part, "'when' =>")) {
+                    $when = $part;
+                }
+            }
+
+            $tone  = strtolower(trim(static::str($a, 'tone')));
+            $color = trim(static::str($a, 'color'));
+            if ($tone !== '' && !in_array($tone, self::ROW_HIGHLIGHT_TONES, true)) {
+                static::$_actionNotes[] = $name . ' tone="' . $tone . '" não existe (use ' . implode(', ', self::ROW_HIGHLIGHT_TONES) . '): vale o aviso (amarelo).';
+                $tone = $color === '' ? 'warning' : '';
+            }
+
+            $out[] = '[' . $when
+                . ", 'tone' => " . static::qs($tone)
+                . ", 'color' => " . static::qs($color)
+                . ", 'cell' => " . static::qs(trim(static::str($a, 'cell')))
+                . ']';
+        }
+
+        return $out;
+    }
+
     /**
      * Variante visual de uma ação de linha (`<mad-act>`/`<mad-nav>`) → flags do
      * GridAction. Aceita a flag booleana (`danger`, `primary`) E `variant="…"` —
      * o gerador de listagens da plataforma emite `variant="danger"` no botão de
      * excluir, e só a flag era lida: o ícone saía neutro em vez de vermelho.
      *
-     * O GridAction só pinta `danger` e `primary`; os demais valores (`success`,
-     * `info`, `warning`, `default`…) continuam no botão neutro, como antes.
+     * `success`, `warning`, `info` e `ghost` (as outras opções do painel da
+     * Ação Grid) vão como `'variant' => '…'`: antes saíam no botão neutro, sem
+     * aviso. Outro valor (`default`, vazio) continua neutro.
      * Ordem primary→danger preservada (é a ordem histórica das duas flags).
      *
-     * @return list<string> pares `'chave' => true` prontos para o array config
+     * @return list<string> pares prontos para o array config
      */
     protected static function actVariantFlags(array $a): array
     {
@@ -2484,6 +2607,7 @@ class MadGridCompiler
         $flags   = [];
         if (static::has($a, 'primary') || $variant === 'primary') $flags[] = "'primary' => true";
         if (static::has($a, 'danger')  || $variant === 'danger')  $flags[] = "'danger' => true";
+        if (in_array($variant, GridAction::VARIANTS, true))       $flags[] = "'variant' => " . static::qs($variant);
         return $flags;
     }
 
@@ -2528,7 +2652,7 @@ class MadGridCompiler
         // antes virava uma ação sem método, descartada sem aviso.
         $navigate = trim(static::str($a, 'navigate'));
         if ($method === '' && $navigate !== '') {
-            return static::buildNavConfig($a);
+            return static::buildNavConfig($a, 'mad-act');
         }
         if ($method === '') {
             static::$_actionNotes[] = static::actName('mad-act', $a) . ' sem method (On Click) nem navigate: a ação não tem o que executar e não é desenhada.';
@@ -2703,7 +2827,7 @@ class MadGridCompiler
 
         // ── Montar tag <x-field-list /> ──────────────────────────────────────
         $tag  = '<x-field-list';
-        $tag .= ' name="' . addslashes($name) . '"';
+        $tag .= static::xAttr('name', $name);
         $tag .= " :columns=\"\$_field_list_{$safeName}_cols\"";
         $tag .= " :actions=\"\$_field_list_{$safeName}_actions\"";
         $tag .= " :rows=\"{$rowsExpr}\"";
@@ -2718,20 +2842,19 @@ class MadGridCompiler
         // Strings passthrough
         foreach (['label', 'hint', 'add-label', 'class', 'error', 'on-add', 'on-remove', 'on-totalize'] as $prop) {
             if (isset($attrs[$prop])) {
-                $val  = static::str($attrs, $prop);
-                $tag .= ' ' . $prop . '="' . addslashes($val) . '"';
+                $tag .= static::xAttr($prop, static::str($attrs, $prop));
             }
         }
 
         // model, foreign-key, database → auto-save/load de details
         if (isset($attrs['model'])) {
-            $tag .= ' model="' . addslashes(static::str($attrs, 'model')) . '"';
+            $tag .= static::xAttr('model', static::str($attrs, 'model'));
         }
         if (isset($attrs['foreign-key'])) {
-            $tag .= ' foreignKey="' . addslashes(static::str($attrs, 'foreign-key')) . '"';
+            $tag .= static::xAttr('foreignKey', static::str($attrs, 'foreign-key'));
         }
         if (isset($attrs['database'])) {
-            $tag .= ' database="' . addslashes(static::str($attrs, 'database')) . '"';
+            $tag .= static::xAttr('database', static::str($attrs, 'database'));
         }
 
         // max-rows → maxRows
@@ -2758,6 +2881,27 @@ class MadGridCompiler
         }
 
         return $diag . $php . $tag;
+    }
+
+    /**
+     * Atributo string da tag `<x-…>` emitida para o MadBlade, com o valor como
+     * foi ESCRITO. Quem lê a tag (`MadBladeCompiler::parseParams`) pega o texto
+     * entre as aspas e ele mesmo o escapa para a string PHP: um `addslashes()`
+     * aqui escapava duas vezes — `model="App\Models\X"` chegava ao componente
+     * como `App\\Models\\X` e a lista abria vazia (fw#155); um apóstrofo no
+     * rótulo aparecia como `\'`. As aspas do valor escolhem o delimitador.
+     */
+    protected static function xAttr(string $name, string $value): string
+    {
+        if (!str_contains($value, '"')) {
+            return ' ' . $name . '="' . $value . '"';
+        }
+        if (!str_contains($value, "'")) {
+            return ' ' . $name . "='" . $value . "'";
+        }
+        // As duas aspas no mesmo valor (não sai do parseAttrs, só de quem
+        // chamar à mão): a dupla vira entidade, como num atributo HTML.
+        return ' ' . $name . '="' . str_replace('"', '&quot;', $value) . '"';
     }
 
     /**

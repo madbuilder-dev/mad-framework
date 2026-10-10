@@ -35,6 +35,10 @@
         $selected = \Mad\Component\MadRenderContext::loadPivotSelected($pivotModel, $foreignKey, $itemKey, $database, $name);
         $__pivotNotice = \Mad\Component\MadRenderContext::pivotLoadNotice($name);
     }
+    // "Valor padrão" (`default`, lista separada pelo separador do campo): só no
+    // cadastro novo e com a seleção vazia — ANTES de anotar o que vai marcado
+    // para o navegador, que é a base do Salvar.
+    $selected = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, \Mad\Form\MadForm::selectionKeys($selected, ','), $default ?? null);
     // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
     if ($mode === 'table' && $pivotModel && $itemKey) {
         \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys((array) $options), $pivotModel, $foreignKey, $itemKey);
@@ -54,6 +58,11 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // As opções que a tela oferece: a marca nova tem de ser uma delas (ou das
+        // que o código trocou com setItems()) — só vai para o estado da tela. Com
+        // "Cadastrar novo"/"Adicionar" a opção nasce no navegador: não há lista a conferir.
+        'optionsSource' => ($mode !== 'manual' && empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction))
+            ? ['offered' => array_keys((array) $options)] : '',
     ]);
 
     $noResultsAttrs = \Mad\Form\MadNoResultsHelper::buildAttrs([

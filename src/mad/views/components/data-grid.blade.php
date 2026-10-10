@@ -25,6 +25,7 @@
     $rows         = $rows         ?? [];
     $actions      = $actions      ?? [];
     $actionGroups = $actionGroups ?? [];
+    $rowHighlightRules = $rowHighlightRules ?? [];
     $totals       = $totals       ?? [];
     // Colunas cujo total soma só a página exibida (o banco não calcula o
     // total geral delas) — a célula do rodapé avisa. Ver _footerTotals().
@@ -1112,8 +1113,8 @@
                     </tr>
                     @else
                     {{-- ── Linha de dado ── --}}
-                    @php $row=$item['data']; $rowId=$row[$rowIdField]??$row['id']??$rowCounter; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowCounter%2===0; $rowCounter++; $rowDepth=$item['level']??0; @endphp
-                    <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ $rowDepth>0?' mad-dg-row-depth-'.$rowDepth:'' }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
+                    @php $row=$item['data']; $rowId=$row[$rowIdField]??$row['id']??$rowCounter; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowCounter%2===0; $rowCounter++; $rowDepth=$item['level']??0; $_hl=\Mad\Grid\MadDataGrid::rowHighlightFor($rowHighlightRules, $row); $_hlStyle=\Mad\Grid\MadDataGrid::rowHighlightStyle($_hl); @endphp
+                    <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ $rowDepth>0?' mad-dg-row-depth-'.$rowDepth:'' }}{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
                         @if($selectable)@include('components.data-grid-select-cell', ['rowId' => $rowId])@endif
                         @if($hasActions && $actionSide === 'left')
                         <td class="mad-dg-cell mad-dg-actions-cell">
@@ -1152,7 +1153,7 @@
                                     </button>
                                     <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                                         @foreach($_grpActs as $act)
-                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls=$act->menuClass(); @endphp
                                         @if($act->isNav)
                                         <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                                                 @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
@@ -1198,7 +1199,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
+                        <td class="mad-dg-cell{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1302,7 +1303,7 @@
                                     </button>
                                     <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                                         @foreach($_grpActs as $act)
-                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls=$act->menuClass(); @endphp
                                         @if($act->isNav)
                                         <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                                                 @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
@@ -1347,8 +1348,8 @@
                 @else
                     @php $_lastRow = null; @endphp
                     @foreach($rows as $rowIdx => $row)
-                    @php $rowId=$row[$rowIdField]??$row['id']??$rowIdx; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowIdx%2===0; @endphp
-                    <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
+                    @php $rowId=$row[$rowIdField]??$row['id']??$rowIdx; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowIdx%2===0; $_hl=\Mad\Grid\MadDataGrid::rowHighlightFor($rowHighlightRules, $row); $_hlStyle=\Mad\Grid\MadDataGrid::rowHighlightStyle($_hl); @endphp
+                    <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
                         @if($selectable)@include('components.data-grid-select-cell', ['rowId' => $rowId])@endif
                         @if($hasActions && $actionSide === 'left')
                         <td class="mad-dg-cell mad-dg-actions-cell">
@@ -1387,7 +1388,7 @@
                                     </button>
                                     <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                                         @foreach($_grpActs as $act)
-                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls=$act->menuClass(); @endphp
                                         @if($act->isNav)
                                         <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                                                 @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
@@ -1434,7 +1435,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
+                        <td class="mad-dg-cell{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1539,7 +1540,7 @@
                                     </button>
                                     <template x-teleport="body"><div class="mad-dg-dropdown" x-show="open" x-cloak @click.outside="open=false" :style="'position:fixed;top:'+pos.top+';right:'+pos.right+';z-index:var(--mad-z-float,9999);'">
                                         @foreach($_grpActs as $act)
-                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls='mad-dg-dropdown-item'.($act->isDanger?' mad-dg-dropdown-danger':''); @endphp
+                                        @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls=$act->menuClass(); @endphp
                                         @if($act->isNav)
                                         <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                                                 @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
@@ -1649,8 +1650,8 @@
              inserir o 1o card numa lista vazia em card-view. --}}
         <div class="mad-dg-cards">
             @foreach($rows as $rowIdx => $row)
-            @php $rowId = $row[$rowIdField] ?? $row['id'] ?? $rowIdx; $rowIdJs = \Mad\Grid\MadDataGrid::rowIdJs($rowId); @endphp
-            <div class="mad-dg-card" data-card-id="{{ $_rowPrefix }}{{ $rowId }}"@if($selectable) :class="{ 'mad-dg-card-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
+            @php $rowId = $row[$rowIdField] ?? $row['id'] ?? $rowIdx; $rowIdJs = \Mad\Grid\MadDataGrid::rowIdJs($rowId); $_hl = \Mad\Grid\MadDataGrid::rowHighlightFor($rowHighlightRules, $row); $_hlStyle = \Mad\Grid\MadDataGrid::rowHighlightStyle($_hl); @endphp
+            <div class="mad-dg-card{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-card-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($selectable) :class="{ 'mad-dg-card-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
                 @if($selectable)
                 <label class="mad-dg-card-select" @click.stop>
                     <input type="checkbox" class="mad-dg-select" aria-label="{{ __('grid.select_row') }}"
@@ -1692,9 +1693,9 @@
                     @if(!empty($cardBody))
                     <div class="mad-dg-card-fields">
                         @foreach($cardBody as $col)
-                        @php $cellVal = $row[$col->field] ?? ''; @endphp
+                        @php $cellVal = $row[$col->field] ?? ''; $_hlCellStyle = ltrim(\Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col), ';'); @endphp
                         @if($cellVal !== '' && $cellVal !== null)
-                        <div class="mad-dg-card-field" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }">
+                        <div class="mad-dg-card-field{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($_hlCellStyle !== '') style="{{ $_hlCellStyle }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }">
                             <span class="mad-dg-card-field-label">{{ $col->label }}</span>
                             <span class="mad-dg-card-field-value">{!! $col->renderValue($cellVal, $row) !!}</span>
                         </div>
@@ -1721,7 +1722,7 @@
                             $dis = ($dis !== '' ? ' ' . $dis : '')
                                  . ($act->denyTitle() !== '' ? ' title="' . e($act->denyTitle()) . '"' : '');
                             $ico = $act->icon ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:14px;height:14px;"></i>' : '';
-                            $cls = 'mad-dg-card-action' . ($act->isDanger ? ' mad-dg-card-action-danger' : '');
+                            $cls = $act->cardClass();
                         @endphp
                         @if($act->isNav)
                         <button type="button" class="{{ $cls }}"{!! $dis !!} {!! $act->getNavAttr($aId, $row) !!}>
@@ -1761,7 +1762,7 @@
                                     $gaIdJs = \Mad\Grid\MadDataGrid::rowIdJs($gaId);
                                     $gep  = !empty($gAct->params) ? ', ' . json_encode($gAct->rowParams($row)) : '';
                                     $gAct = $gAct->getTransformed($row);
-                                    $gCls = 'mad-dg-dropdown-item' . ($gAct->isDanger ? ' mad-dg-dropdown-danger' : '');
+                                    $gCls = $gAct->menuClass();
                                     $gDis = $gAct->stateAttrs($row);
                                     $gDis = ($gDis !== '' ? ' ' . $gDis : '')
                                           . ($gAct->denyTitle() !== '' ? ' title="' . e($gAct->denyTitle()) . '"' : '');

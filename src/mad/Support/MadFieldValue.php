@@ -3,6 +3,7 @@
 namespace Mad\Support;
 
 use Mad\Component\MadRenderContext;
+use Mad\Form\MadForm;
 
 /**
  * MadFieldValue — ponto ÚNICO de resolução do valor inicial de um campo.
@@ -161,6 +162,43 @@ final class MadFieldValue
         }
 
         return $value;
+    }
+
+    /**
+     * "Valor padrão" (`default` da tag) dos campos de MÚLTIPLA escolha, aplicado
+     * por último: só no CADASTRO NOVO e com a seleção ainda vazia (nem a prop
+     * da tag nem o registro marcaram nada).
+     *
+     * Diferente de `withDefault()`, o registro aberto com a seleção vazia NÃO
+     * recebe o padrão: numa lista, nada marcado é o que o usuário gravou
+     * (desmarcou tudo e salvou) — mostrar o padrão de novo faria o próximo
+     * Salvar regravar as marcas que ele tirou. "Cadastro novo" é a mesma
+     * resposta do auto-load das tabelas de ligação (MadRenderContext::recordId).
+     * Pelo mesmo motivo, no cadastro novo a seleção que já voltou do navegador
+     * (`[]`, o usuário desmarcou tudo e a tela foi redesenhada) é dele: o
+     * padrão só vale enquanto o campo não veio (ausente, NULL ou '').
+     *
+     * @param string[] $current   Seleção já resolvida (prop > registro), [] = nenhuma
+     * @param mixed    $default   Prop `default` da tag: lista separada por
+     *                            `$separator`, array ou JSON (`["1","2"]`)
+     * @return string[]
+     */
+    public static function withDefaultSelection(string $name, array $current, $default = null, string $separator = ','): array
+    {
+        if ($current !== [] || $default === null || is_bool($default) || is_object($default)) {
+            return $current;
+        }
+        if ($name !== '') {
+            if (MadRenderContext::recordId() !== null) {
+                return $current;
+            }
+            $ctx = MadRenderContext::current();
+            if (array_key_exists($name, $ctx) && $ctx[$name] !== null && $ctx[$name] !== '') {
+                return $current;
+            }
+        }
+
+        return MadForm::selectionKeys($default, $separator);
     }
 
     /**

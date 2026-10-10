@@ -362,6 +362,9 @@ window._madFindSeek = function (name, scope) {
     return hit ? hit.closest('.mad-dbseek-field') : null;
 };
 
+// Aviso guardado para a próxima página (Mad._flashBeforeLeaving / _replayFlash).
+const MAD_FLASH_KEY = 'mad:flash';
+
 // ─── Namespace principal ─────────────────────────────────────────────────────
 
 const Mad = {
@@ -864,12 +867,7 @@ const Mad = {
             document.body.appendChild(container);
 
             // Executa scripts (o wrapper drawer/modal tem <script> que move para o body e abre)
-            container.querySelectorAll('script').forEach(old => {
-                const s = document.createElement('script');
-                [...old.attributes].forEach(a => s.setAttribute(a.name, a.value));
-                s.textContent = old.textContent;
-                old.replaceWith(s);
-            });
+            this._rerunScripts(container);
 
             // Inicializa componentes (sequencia unica — ver _madEnergizeFields em mad-ui.js)
             if (window.Alpine) try { Alpine.initTree(container); } catch {}
@@ -1068,12 +1066,7 @@ const Mad = {
                 const container = document.createElement('div');
                 container.innerHTML = html;
                 document.body.appendChild(container);
-                container.querySelectorAll('script').forEach(old => {
-                    const s = document.createElement('script');
-                    [...old.attributes].forEach(a => s.setAttribute(a.name, a.value));
-                    s.textContent = old.textContent;
-                    old.replaceWith(s);
-                });
+                this._rerunScripts(container);
                 if (window.Alpine) try { Alpine.initTree(container); } catch {}
                 if (typeof _madLucide === 'function') _madLucide();
                 if (typeof _madEnergizeFields === 'function') _madEnergizeFields(container);
@@ -1446,6 +1439,59 @@ const Mad = {
     },
 
     /**
+     * Aviso que sai junto de uma navegação completa.
+     *
+     * "Após salvar › Ir para outra página" (e "Tela inteira", que volta para a
+     * listagem) respondem `toast('Cliente salvo.')` + `redirect(...)` no mesmo
+     * lote: o aviso era desenhado e a página ia embora na hora, levando-o junto
+     * — nunca dava para ler. Quando o lote tem um `redirect` sem `delay`, os
+     * `toast`/`alert` dele são guardados na sessionStorage na SAÍDA da página
+     * (`pagehide`) e o próximo carregamento os mostra uma vez (_replayFlash).
+     * Só na saída: um redirect que não sai da página (download de arquivo) não
+     * deixa aviso pendurado para depois. Chamado pelo applyOps e pelo
+     * _applyWireOps do mad-livewire.js (que aplica as ops uma a uma).
+     */
+    _flashBeforeLeaving(ops) {
+        if (!Array.isArray(ops) || !ops.some(o => o && o.op === 'redirect' && !o.delay)) return;
+        const notes = ops.filter(o => o && (o.op === 'toast' || o.op === 'alert'));
+        if (!notes.length || typeof window === 'undefined' || !window.addEventListener) return;
+
+        const save = () => {
+            try {
+                window.sessionStorage.setItem(MAD_FLASH_KEY, JSON.stringify({ at: Date.now(), ops: notes }));
+            } catch (e) { /* sessionStorage indisponível: o aviso só aparece aqui */ }
+        };
+        window.addEventListener('pagehide', save, { once: true });
+        // Página que não saiu (o destino era um download): ninguém grava depois.
+        setTimeout(() => window.removeEventListener('pagehide', save), 30000);
+    },
+
+    /** Mostra, uma vez, o aviso guardado por _flashBeforeLeaving na página anterior. */
+    _replayFlash() {
+        let raw = null;
+        try {
+            raw = window.sessionStorage.getItem(MAD_FLASH_KEY);
+            if (raw !== null) window.sessionStorage.removeItem(MAD_FLASH_KEY);
+        } catch (e) { return; }
+        if (!raw) return;
+
+        let data = null;
+        try { data = JSON.parse(raw); } catch (e) { return; }
+        if (!data || !Array.isArray(data.ops) || !(Date.now() - (Number(data.at) || 0) < 60000)) return;
+        // Só aviso: nada que mexa na tela ou rode código vem da página anterior.
+        const notes = data.ops.filter(o => o && (o.op === 'toast' || o.op === 'alert'));
+        if (!notes.length) return;
+
+        // madToast/MadDialog moram no mad-ui.js, que pode carregar depois deste.
+        let tries = 0;
+        const run = () => {
+            if (!window.madToast && tries++ < 40) { setTimeout(run, 50); return; }
+            this.applyOps(notes);
+        };
+        run();
+    },
+
+    /**
      * Aplica uma lista de operações retornadas pelo MadResponse::send().
      *
      * `scope` (opcional) = wrapper [mad-component] de quem fez a requisição —
@@ -1453,6 +1499,7 @@ const Mad = {
      * componente (ver _opTarget).
      */
     async applyOps(ops, scope = null) {
+        if (typeof this._flashBeforeLeaving === 'function') this._flashBeforeLeaving(ops);
         for (const op of ops) {
             const el = op.target ? this._opTarget(op.target, scope) : null;
 
@@ -1473,6 +1520,7 @@ const Mad = {
                 case 'val':
                     if (el) {
                         if (op.onlyEmpty && el.value) break;
+                        const valBefore = el.value;
                         // MAD Select: o widget só re-projeta pelo setValue (o
                         // `change` não sincroniza). Com `el.value` cru, o
                         // form->set('uf', 'PR') gravava no <select> nativo e a
@@ -1482,7 +1530,11 @@ const Mad = {
                         else el.value = op.content;
                         this._syncMaskedDisplay(el);
                         el.dispatchEvent(new Event('input', { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        // Mesmo valor: os ouvintes de `change` recebem o evento,
+                        // o On Change do campo (`mad:change`) não — fw#139.
+                        const valEv = new Event('change', { bubbles: true });
+                        if (String(el.value) === String(valBefore)) valEv.madSameValue = true;
+                        el.dispatchEvent(valEv);
                     }
                     break;
 
@@ -1634,6 +1686,7 @@ const Mad = {
                 }
 
                 case 'fl_rows':
+                case 'fl_drop':
                 case 'df_add':
                 case 'df_delete':
                 case 'df_display':
@@ -1665,6 +1718,7 @@ const Mad = {
                 case 'reload_combo': {
                     const sel = _madFindSelect(op.name, op.scope);
                     if (!sel) break;
+                    const comboBefore = sel.value;
                     // Limpa options atuais
                     sel.innerHTML = '';
                     // Placeholder (opcional)
@@ -1684,8 +1738,14 @@ const Mad = {
                         }
                         sel.appendChild(o);
                     });
-                    // Notifica listeners (Alpine mad:model, depends-on, etc)
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Notifica listeners (Alpine mad:model, depends-on, etc). O
+                    // On Change do combo (`mad:change`) só quando o VALOR mudou:
+                    // trocar a lista com o técnico ainda vazio chamava o método
+                    // do combo à toa, e a resposta dele redesenhava a tela
+                    // (fw#139).
+                    const comboEv = new Event('change', { bubbles: true });
+                    if (sel.value === comboBefore) comboEv.madSameValue = true;
+                    sel.dispatchEvent(comboEv);
                     // MAD Select (mad-dbcombo/unique-search): re-projeta a UI a partir
                     // do <select> nativo (já reconstruído acima — fonte da verdade).
                     if (sel._madSelect) {
@@ -2675,13 +2735,30 @@ const Mad = {
 
     // ── Reinicialização após injeção de HTML ──────────────────────────────────
 
-    _reinit(root) {
-        // Reexecuta scripts no HTML injetado. SO scripts JS reais: pula
-        // templates/JSON (type custom) e conteudo que claramente nao e JS
-        // (comeca com '<'). Sem esse guard, inserir um script desses dispara a
-        // execucao e lanca "SyntaxError: Unexpected token '<'", poluindo o
-        // console (e abortando o resto do reinit).
-        root.querySelectorAll('script').forEach(old => {
+    /**
+     * Reexecuta os <script> de um HTML que chegou por innerHTML: o navegador
+     * marca todo script criado assim como "ja iniciado" e nao o roda. Unico
+     * caminho para abrir cortina/modal (overlay, go), navegar (_reinit) e
+     * redesenhar um componente (morph do mad-livewire.js).
+     *
+     *  - copia TODOS os atributos: recriar so com `type` + texto transformava
+     *    `<script src="..." defer data-x>` num `<script></script>` vazio;
+     *  - SO scripts JS reais: pula modelos/JSON (type proprio) e conteudo que
+     *    claramente nao e JS (comeca com '<'). Sem esse guard, inserir um
+     *    script desses dispara a execucao e lanca "SyntaxError: Unexpected
+     *    token '<'", poluindo o console (e abortando o resto do reinit);
+     *  - desce no conteudo dos <template> (o x-teleport da cortina, x-if): o
+     *    querySelectorAll nao enxerga la dentro, e o clone que o Alpine leva
+     *    para o <body> herdava a marca de "ja iniciado" — o script escrito no
+     *    formulario de uma tela em cortina lateral nunca rodava, sem erro. O
+     *    script novo nao roda dentro do <template> (fora do documento): roda
+     *    quando o Alpine poe o clone na pagina, como numa pagina carregada
+     *    direto. Os <template> vem ANTES porque o script do wrapper da
+     *    cortina (que chama o Alpine.initTree) e um dos de fora.
+     */
+    _rerunScripts(root) {
+        if (!root || !root.querySelectorAll) return;
+        const recreate = (old) => {
             const type = (old.type || '').toLowerCase();
             const isJs = type === '' || type === 'text/javascript'
                 || type === 'application/javascript' || type === 'module';
@@ -2689,11 +2766,23 @@ const Mad = {
             if ((old.textContent || '').replace(/^\s+/, '').charAt(0) === '<') return;
             try {
                 const script = document.createElement('script');
-                if (old.type) script.type = old.type;
+                [...old.attributes].forEach(a => script.setAttribute(a.name, a.value));
                 script.textContent = old.textContent;
                 old.replaceWith(script);
             } catch (e) { /* script invalido no fragmento — ignora p/ nao poluir o console */ }
+        };
+        const intoTemplates = (node) => node.querySelectorAll('template').forEach(t => {
+            if (!t.content) return;
+            intoTemplates(t.content);
+            t.content.querySelectorAll('script').forEach(recreate);
         });
+        intoTemplates(root);
+        root.querySelectorAll('script').forEach(recreate);
+    },
+
+    _reinit(root) {
+        // Reexecuta scripts no HTML injetado (ver _rerunScripts).
+        this._rerunScripts(root);
 
         // Reesconde [data-mad-loading] no fragmento injetado — innerHTML nunca
         // passa pelo morph/_setLoading da mad-livewire, entao sem isso o botao
@@ -3420,18 +3509,102 @@ const MadOverlayEsc = {
         window.dispatchEvent(new CustomEvent(kind, { detail: { name, action: 'close' } }));
     },
 
+    // ── Confirmar antes de fechar com alteração não salva (fw#142) ─────────
+    // Opt-in: `confirm-close` no <mad-drawer>/<mad-modal>, ou
+    // `protected static bool $confirmDiscard = true;` na tela com $wrapper
+    // DRAWER/MODAL, marcam o overlay com data-mad-confirm-close="1". Esc, X e
+    // clique fora passam por dismiss(): com algo mudado, pergunta antes. O
+    // fechamento que vem do servidor (closeDrawer() depois de salvar), o
+    // Voltar e o Cancelar chamam close() e fecham direto.
+    //
+    // "Mudado" = os campos da camada diferem do retrato tirado no PRIMEIRO
+    // toque do usuário nela (tecla ou clique). Retrato no toque, e não na
+    // abertura: máscara, combo e valor padrão ainda se arrumam por código
+    // logo depois que a camada abre — nada disso é do usuário.
+
+    /** Valor de cada campo com `name` da camada (fora os de controle do wire). */
+    snapshot(el) {
+        const parts = [];
+        el.querySelectorAll('input[name], select[name], textarea[name], [contenteditable="true"]').forEach((f) => {
+            const name = f.getAttribute('name') || '';
+            if (name.startsWith('__mad') || name === '_token' || name === 'mad_state') return;
+            const type = (f.getAttribute('type') || '').toLowerCase();
+            let v;
+            if (!name) v = f.innerHTML;
+            else if (type === 'checkbox' || type === 'radio') v = f.checked ? 'on:' + f.value : '';
+            else if (type === 'file') v = [...(f.files || [])].map((x) => x.name + ':' + x.size).join('|');
+            else if (f.multiple && f.options) v = [...f.options].filter((o) => o.selected).map((o) => o.value).join('|');
+            else v = f.value;
+            parts.push(name + '=' + v);
+        });
+        return parts.join('\u0001');
+    },
+
+    /** Alguma alteração desde o primeiro toque do usuário nesta camada? */
+    isDirty(el) {
+        return !!el && typeof el._madBaseline === 'string' && this.snapshot(el) !== el._madBaseline;
+    },
+
+    /**
+     * Fechamento pedido pelo USUÁRIO (Esc, X, clique fora): com
+     * `confirm-close` e alteração não salva, pergunta antes de fechar.
+     */
+    dismiss(el) {
+        if (!el) return;
+        if (el.getAttribute('data-mad-confirm-close') !== '1' || !this.isDirty(el)) { this.close(el); return; }
+        if (el._madAsking) return;   // Esc repetido com a pergunta aberta
+        el._madAsking = true;
+        const msg = el.getAttribute('data-mad-confirm-close-msg') || 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?';
+        const yes = el.getAttribute('data-mad-confirm-close-yes') || 'Descartar';
+        const no  = el.getAttribute('data-mad-confirm-close-no') || 'Continuar editando';
+        // Depois do despacho do Esc: o madConfirm escuta o Esc no document e o
+        // MESMO keydown ainda vai chegar lá — cancelaria a pergunta na hora.
+        setTimeout(() => {
+            const ask = typeof window.madConfirm === 'function'
+                ? window.madConfirm(msg, { danger: true, confirmText: yes, cancelText: no })
+                : Promise.resolve(window.confirm(msg));
+            Promise.resolve(ask).then((ok) => {
+                el._madAsking = false;
+                if (ok) MadOverlayEsc.close(el);
+            });
+        }, 0);
+    },
+
+    /** Primeiro toque do usuário numa camada com confirm-close: retrato dos campos. */
+    onTouch(e) {
+        if (!e.isTrusted || !e.target || !e.target.closest) return;
+        const el = e.target.closest('[data-mad-overlay]');
+        if (!el || el.getAttribute('data-mad-confirm-close') !== '1' || typeof el._madBaseline === 'string') return;
+        el._madBaseline = MadOverlayEsc.snapshot(el);
+    },
+
+    /** <mad-drawer>/<mad-modal> reaberto (o DOM fica): retrato novo no próximo toque. */
+    onOpen(e) {
+        const d = e.detail || {};
+        if (d.action !== 'open') return;
+        document.querySelectorAll('[data-mad-confirm-close="1"]').forEach((el) => {
+            if ((el.getAttribute('data-mad-overlay-name') || '') === (d.name || '')) delete el._madBaseline;
+        });
+    },
+
     onKeydown(e) {
         if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
         const el = MadOverlayEsc.target(e);
         if (!el) return;
         e.preventDefault();
-        MadOverlayEsc.close(el);
+        MadOverlayEsc.dismiss(el);
     },
 
     bind() {
         if (window.__madOverlayEscBound) return;
         window.__madOverlayEscBound = true;
+        // O retrato vem ANTES do Esc (os dois no capture do window, nesta
+        // ordem): Esc como primeiro toque compara o retrato com ele mesmo.
+        window.addEventListener('keydown', MadOverlayEsc.onTouch, true);
+        window.addEventListener('pointerdown', MadOverlayEsc.onTouch, true);
         window.addEventListener('keydown', MadOverlayEsc.onKeydown, true);
+        window.addEventListener('maddrawer', MadOverlayEsc.onOpen);
+        window.addEventListener('madmodal', MadOverlayEsc.onOpen);
     },
 };
 MadOverlayEsc.bind();
@@ -3482,7 +3655,7 @@ const MadOverlayBackdrop = {
         const el = MadOverlayBackdrop._down;
         const close = !!el && MadOverlayBackdrop._up === el && e.target === el;
         MadOverlayBackdrop._down = MadOverlayBackdrop._up = null;
-        if (close) MadOverlayEsc.close(el);
+        if (close) MadOverlayEsc.dismiss(el);
     },
 
     bind() {
@@ -3502,6 +3675,14 @@ MadOverlayBackdrop.bind();
 // precisam dessa atribuicao explicita.
 window.Mad = Mad;
 window.MadLoader = MadLoader;
+
+// Aviso que a página anterior mandou junto de uma navegação completa (o toast
+// "Cliente salvo." de Após salvar › Ir para outra página): aparece agora.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => Mad._replayFlash(), { once: true });
+} else {
+    Mad._replayFlash();
+}
 
 // ── number_format global (ex-builder.js, legado) ──────────────────────────
 // Usado por formatters de chart (EChart emite chamadas number_format(...) no

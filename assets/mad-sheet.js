@@ -26,15 +26,32 @@
     var WINDOW_EXTRA  = 10;   // linhas extras render além do viewport
     var UNDO_CAP      = 50;
 
+    // Sem resposta do servidor no Salvar: nada foi gravado, e as linhas ficam.
+    var LOST_TEXT = {
+        pt: 'As linhas não foram salvas: o servidor não respondeu. O que você digitou continua na planilha; confira a conexão e tente de novo.',
+        en: 'The rows were not saved: the server did not respond. What you typed is still in the sheet; check your connection and try again.',
+        es: 'Las filas no fueron guardadas: el servidor no respondió. Lo que escribió sigue en la planilla; revise la conexión e inténtelo de nuevo.',
+    };
+
+    function lostNotice() {
+        var html = (typeof document !== 'undefined' && document.documentElement) || null;
+        var lang = String((html && html.lang) || '').slice(0, 2).toLowerCase();
+        var text = LOST_TEXT[lang] || LOST_TEXT.pt;
+        if (typeof root.madToast === 'function') root.madToast({ message: text, type: 'danger', duration: 8000 });
+        else if (typeof root.__mad_warning === 'function') root.__mad_warning('', text);
+        else console.warn('[MadSheet] ' + text);
+    }
+
     // ── MadWire bridge (mesma sonda do mad-gantt.js) ─────────────────────
-    function wireCall(componentEl, method, payload) {
+    // `options` vai ao MadWire.call (quietNetwork: a planilha dá o aviso dela).
+    function wireCall(componentEl, method, payload, options) {
         var MW = null;
         try { MW = (typeof MadWire !== 'undefined') ? MadWire : null; } catch (_) {}
         if (!MW && root.MadWire) MW = root.MadWire;
         if (MW && typeof MW.call === 'function') {
             try {
                 var wrapper = (componentEl && componentEl.closest && componentEl.closest('[mad-component]')) || componentEl;
-                return Promise.resolve(MW.call(wrapper, method, payload));
+                return Promise.resolve(MW.call(wrapper, method, payload, {}, options || {}));
             } catch (e) { console.warn('[MadSheet] MadWire.call failed', e); }
         }
         return Promise.resolve(null);
@@ -207,7 +224,7 @@
                 },
 
                 clearRow(r) {
-                    if (!this.rows[r]) return;
+                    if (!this.rows[r] || this.saving) return;
                     this.pushUndo();
                     this.rows[r] = this._blankRow();
                     this._clearRowErrors(r);
@@ -439,6 +456,7 @@
 
                 // ── Teclado ──────────────────────────────────────────────
                 onKey(e) {
+                    if (this.saving) return; // linhas travadas até o Salvar responder
                     var t = e.target;
                     if (!t || !t.dataset || t.dataset.r == null) return;
                     var r = parseInt(t.dataset.r, 10);
@@ -551,6 +569,7 @@
 
                 // ── Paste TSV (Excel) ────────────────────────────────────
                 onPaste(e) {
+                    if (this.saving) return;
                     var t = e.target;
                     if (!t || !t.dataset || t.dataset.r == null) return;
                     var text = (e.clipboardData || root.clipboardData);
@@ -621,6 +640,7 @@
                 },
 
                 undo() {
+                    if (this.saving) return;
                     var snapshot = this.undoStack.pop();
                     if (!snapshot) return;
                     try {
@@ -673,8 +693,15 @@
                     var self = this;
                     var payload = this._collect();
                     if (!Object.keys(payload).length || this.saving) return;
+                    // `saving` trava as linhas (inert no <tbody>) até a resposta:
+                    // o `mad-sheet:saved` limpa a planilha inteira, e o que fosse
+                    // digitado nesse intervalo — fora do lote enviado — sumia sem
+                    // ter sido gravado.
                     this.saving = true;
-                    wireCall(this.$el, 'onSaveBatch', [JSON.stringify(payload)])
+                    wireCall(this.$el, 'onSaveBatch', [JSON.stringify(payload)], { quietNetwork: true })
+                        .then(function (res) {
+                            if (res && res.ok === false && res.reason === 'network') lostNotice();
+                        })
                         .finally(function () { self.saving = false; });
                 },
 

@@ -76,6 +76,25 @@ if (!function_exists('mad_upload_is_file')) {
     }
 }
 
+if (!function_exists('mad_upload_data_uri')) {
+    /**
+     * Imagem de upload como data URI, para `<img>` em documento PDF (o Dompdf
+     * não lê o disco de uploads nem busca URL). Aceita a chave gravada pelo
+     * campo Upload/Imagem, base64 com ou sem `data:` e URL http(s) (buscada
+     * pelo app, sem rede interna). '' quando não é imagem legível.
+     */
+    function mad_upload_data_uri(mixed $value): string
+    {
+        try {
+            $src = \Mad\Doc\MadDocImage::src($value);
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return str_starts_with($src, 'data:image/') ? $src : '';
+    }
+}
+
 if (!function_exists('mad_blob_url')) {
     /**
      * URL para baixar um BLOB base64 guardado no banco (rota mad.blob).

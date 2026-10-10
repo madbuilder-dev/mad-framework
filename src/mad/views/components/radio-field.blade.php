@@ -20,9 +20,20 @@
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     $breakItems = (int) $breakItems;
 
-    // Boolean mode — atalho para Sim/Nao com visual button + inline
+    // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
+    // que o reload_radio mostrou. Sem isto o redesenho da tela voltava a lista
+    // do Blade (fw#228). A forma de objeto do próprio radio (value, label,
+    // disabled, description) passa inteira; outra lista de objetos vira mapa.
+    $__codeItems = \Mad\Support\MadItems::fromForm((string) $name);
+    if ($__codeItems !== null) {
+        $options = (isset($__codeItems[0]['value'], $__codeItems[0]['label']) && is_array($__codeItems[0]))
+            ? $__codeItems
+            : \Mad\Support\MadItems::normalize($__codeItems);
+    }
+
+    // Boolean mode — atalho para Sim/Não com visual button + inline
     if ($boolean && empty($options)) {
-        $options = ['1' => 'Sim', '2' => 'Nao'];
+        $options = ['1' => 'Sim', '2' => 'Não'];
         if (!$as)     $as = 'button';
         $inline = true;
     }

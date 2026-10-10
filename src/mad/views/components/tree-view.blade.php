@@ -193,9 +193,13 @@
         $html .= '</div>'; // end node-content
 
         if ($nodeMenu) {
-            $html .= '<div class="mad-context-menu" x-show="open" x-cloak x-transition:enter="mad-context-enter" x-transition:enter-start="mad-context-enter-start" x-transition:enter-end="mad-context-enter-end" x-transition:leave="mad-context-leave" x-transition:leave-start="mad-context-leave-start" x-transition:leave-end="mad-context-leave-end" :style="menuStyle()" @click="close()" role="menu">';
+            // Teleportado para o <body> e em position:fixed (madContextMenu): na
+            // árvore dentro de uma barra lateral com rolagem, o menu de um nó
+            // perto da borda saía cortado pelo overflow (fw#133).
+            $html .= '<template x-teleport="body">';
+            $html .= '<div class="mad-context-menu mad-ui" x-ref="menu" x-show="open" x-cloak x-transition:enter="mad-context-enter" x-transition:enter-start="mad-context-enter-start" x-transition:enter-end="mad-context-enter-end" x-transition:leave="mad-context-leave" x-transition:leave-start="mad-context-leave-start" x-transition:leave-end="mad-context-leave-end" :style="menuStyle()" @click="close()" role="menu">';
             $html .= $nodeMenu;
-            $html .= '</div></div>';
+            $html .= '</div></template></div>';
         }
 
         // Children

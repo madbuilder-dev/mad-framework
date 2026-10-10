@@ -218,6 +218,27 @@ class MadFormRegistry
         MadVarRegistry::register($name, 'val');
     }
 
+    /**
+     * As chaves das opções que um campo de seleção múltipla com consulta
+     * própria (`:query`) carregou ao ser desenhado — depois do register(), que
+     * acontece antes de a consulta rodar. O Salvar só aceita marca nova que
+     * esteja entre elas (MadForm::declareOptionsSource). Vai só para o estado
+     * da tela, nunca para o formulário `__mad_form`.
+     *
+     * @internal chamado pelas views dos campos
+     *
+     * @param array<int|string,mixed> $keys
+     */
+    public static function offered(string $name, array $keys): void
+    {
+        if ($name === '') {
+            return;
+        }
+        foreach (self::screenForms() as $form) {
+            $form->declareOptionsSource($name, ['offered' => array_values($keys)], (string) (self::$fields[$name]['separator'] ?? ''));
+        }
+    }
+
     // ── A tela que está declarando ────────────────────────────────────────────
 
     /** Tela cuja ação está rodando nesta requisição do wire (fora do render não há MadRenderContext). */
@@ -1096,7 +1117,7 @@ class MadFormRegistry
             'checklist',
             'multi-search',
             'db-multi-search',
-            'db-checkbox-group' => self::_transformMultiSelect($value),
+            'db-checkbox-group' => self::_transformMultiSelect($value, (string) ($props['separator'] ?? '')),
             default     => $value,
         };
 
@@ -1160,9 +1181,12 @@ class MadFormRegistry
     /**
      * Transforma valor de campo multi-select (checklist, multi-search, db-checkbox-group).
      * Aceita: array PHP, JSON string '["1","2"]', ou string CSV '1,2,3'.
-     * Retorna: string CSV '1,2,3' (para persistência comma mode).
+     * Retorna: string CSV '1,2,3' (para persistência comma mode), unida pelo
+     * `separator` do campo quando ele declara outro (`separator=";"` → '1;2;3').
+     * O campo LÊ a coluna com esse separador: gravar com vírgula fazia a tela
+     * seguinte ler a lista inteira como um item só (nada aparecia marcado).
      */
-    private static function _transformMultiSelect(mixed $value): string
+    private static function _transformMultiSelect(mixed $value, string $separator = ''): string
     {
         if (is_array($value)) {
             $arr = $value;
@@ -1171,7 +1195,7 @@ class MadFormRegistry
         } else {
             return (string) $value;
         }
-        return implode(',', array_filter(array_map('trim', array_map('strval', $arr)), fn($v) => $v !== ''));
+        return implode($separator !== '' ? $separator : ',', array_filter(array_map('trim', array_map('strval', $arr)), fn($v) => $v !== ''));
     }
 
     /**

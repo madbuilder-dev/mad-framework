@@ -347,6 +347,37 @@ class MadRenderContext
     }
 
     /**
+     * Um checklist que o código da tela grava (`saveChecklist()`; fora do
+     * `mode="table"`) terminou de montar a tela: `$selected` é o que ele
+     * mostra marcado, `$drawn` as chaves dos itens que desenhou, `$label` o
+     * rótulo e `$source` o Model das opções. Ver MadForm::checklistDrawn.
+     *
+     * @param iterable<mixed> $drawn
+     */
+    public static function checklistRendered(string $field, mixed $selected, iterable $drawn, string $label = '', mixed $source = null): void
+    {
+        if ($field !== '') {
+            self::getForm()?->checklistDrawn($field, $selected, $drawn, $label, $source);
+        }
+    }
+
+    /** Uma aba (`<mad-tab>`) foi desenhada com o texto `$label` (ver MadForm::tabRendered). */
+    public static function tabRendered(string $tab, string $label): void
+    {
+        if ($tab !== '') {
+            self::getForm()?->tabRendered($tab, $label);
+        }
+    }
+
+    /** O painel de uma aba foi desenhado com `$html` (ver MadForm::tabPanelRendered). */
+    public static function tabPanelRendered(string $tab, string $html): void
+    {
+        if ($tab !== '' && str_contains($html, 'data-mad-checklist=')) {
+            self::getForm()?->tabPanelRendered($tab, $html);
+        }
+    }
+
+    /**
      * Um campo de arquivo ÚNICO gravado no disco terminou de montar a tela:
      * `$path` é o valor da coluna que ele mostra — o caminho do arquivo, ou ''
      * quando não há arquivo. Ver MadForm::fileShown.

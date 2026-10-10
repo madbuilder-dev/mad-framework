@@ -75,8 +75,15 @@
         'order_by' => $orderBy,
     ];
     // Carrega items do banco — :query (Builder) tem prioridade sobre model
+    // Lista posta pelo código (`$this->form->setItems()`, num On Change ou no
+    // mount/onEdit) vence a do Model: é a que o reload_sort_list mostrou. Sem isto qualquer
+    // redesenho da tela voltava a lista inteira, sem erro (fw#228; o
+    // <mad-dbcombo-field> já fazia assim, fw#139).
+    $__codeItems = \Mad\Support\MadItems::fromForm((string) $name);
     $items = [];
-    if (\Mad\Database\QuerySource::isQuery($query)) {
+    if ($__codeItems !== null) {
+        $items = \Mad\Support\MadItems::normalize($__codeItems);
+    } elseif (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $items = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
                 $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing

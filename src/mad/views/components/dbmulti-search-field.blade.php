@@ -110,6 +110,10 @@
     // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
     // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
     $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
+    // "Valor padrão" (`default`, lista separada por vírgula): só no
+    // cadastro novo e com a seleção vazia — ANTES de anotar o que vai marcado
+    // para o navegador, que é a base do Salvar.
+    $selected = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, $selected, $default ?? null);
 
     \Mad\Form\MadFormRegistry::register($name, 'db-multi-search', [
         'label'      => strip_tags($label),
@@ -120,10 +124,12 @@
         'itemKey'    => $itemKey,
         'database'   => $database,
         // De onde saem as opções: a marca nova é conferida, no Salvar, na consulta
-        // deste Model (só vai para o estado da tela). Com `:query` própria quem
-        // decide a lista é o código da tela, e não há o que conferir.
-        'optionsSource' => ($model && $mode !== 'manual' && !\Mad\Database\QuerySource::isQuery($query ?? null))
-            ? ['model' => $model, 'key' => $keyField] : '',
+        // deste Model — ou, com `:query` própria, na consulta do código da tela,
+        // como ela era ao desenhar o campo (só vai para o estado da tela). Com
+        // "Cadastrar novo"/"Adicionar", o item novo pode ficar fora da consulta própria.
+        'optionsSource' => $mode === 'manual' ? '' : (\Mad\Database\QuerySource::isQuery($query ?? null)
+            ? ((empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction)) ? ['query' => $query, 'key' => $keyField] : '')
+            : ($model ? ['model' => $model, 'key' => $keyField] : '')),
     ]);
 
     // Fonte do filtro → SEMPRE compila pra query_sql/query_bindings (parametrizado).

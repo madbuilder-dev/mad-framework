@@ -75,13 +75,21 @@ final class MadAppIdentity
         return rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
     }
 
-    /** Primeiro keyId do keystore do REST driver (paired_key_id), ou '' se não pareado. */
+    /**
+     * Primeiro keyId do keystore do REST driver (paired_key_id), ou '' se não
+     * pareado. Chave cujo segredo não dá para ler (cifrado com outra APP_KEY)
+     * não conta: pareada com ela, a nuvem receberia um segredo vazio.
+     */
     public static function pairedKeyId(): string
     {
         try {
-            $keys = array_keys((new RestDriverKeyStore())->all());
+            foreach ((new RestDriverKeyStore())->all() as $keyId => $entry) {
+                if ((string) ($entry['secret'] ?? '') !== '') {
+                    return (string) $keyId;
+                }
+            }
 
-            return (string) ($keys[0] ?? '');
+            return '';
         } catch (\Throwable $e) {
             return '';
         }

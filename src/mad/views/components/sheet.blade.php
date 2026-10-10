@@ -22,10 +22,10 @@
     {{-- Toolbar --}}
     <div class="mad-sheet-toolbar">
         <div class="mad-sheet-toolbar-left">
-            <button type="button" class="mad-sheet-btn" @click="addRows(10)">
+            <button type="button" class="mad-sheet-btn" @click="addRows(10)" :disabled="saving">
                 <i data-lucide="plus"></i> {{ mad_t('mad.sheet.add_rows', ['count' => 10]) }}
             </button>
-            <button type="button" class="mad-sheet-btn" @click="undo()" :disabled="!undoStack.length">
+            <button type="button" class="mad-sheet-btn" @click="undo()" :disabled="saving || !undoStack.length">
                 <i data-lucide="undo-2"></i> {{ mad_t('mad.sheet.undo') }}
             </button>
         </div>
@@ -68,9 +68,12 @@
             </thead>
             {{-- undo/limpeza de erro por delegação (focusin/focusout): os
                  cell-components escrevem em rows[r] por caminhos próprios
-                 (popup do date, máscara do money) — hooks por input não cobrem. --}}
+                 (popup do date, máscara do money) — hooks por input não cobrem.
+                 inert enquanto o Salvar não responde: a resposta limpa a
+                 planilha, e o que fosse digitado no intervalo sumia sem ser gravado. --}}
             <tbody @keydown="onKey($event)" @paste="onPaste($event)"
-                   @focusin="onFocusIn($event)" @focusout="onFocusOut($event)">
+                   @focusin="onFocusIn($event)" @focusout="onFocusOut($event)"
+                   :inert="saving">
                 <tr class="mad-sheet-spacer" aria-hidden="true"><td :colspan="cfg.columns.length + 1" :style="'height:' + padTop + 'px;padding:0;border:0;'"></td></tr>
                 {{-- :key inclui epoch: paste/undo/fill-down mutam rows por FORA
                      dos cell-components (madMoneyCell etc guardam estado próprio)

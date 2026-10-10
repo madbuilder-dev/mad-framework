@@ -104,6 +104,11 @@
         'foreignKey' => $foreignKey,
         'itemKey'    => $itemKey,
         'database'   => $database,
+        // As opções que a tela oferece: a marca nova tem de ser uma delas (ou das
+        // que o código trocou com setItems()) — só vai para o estado da tela. Com
+        // "Cadastrar novo"/"Adicionar" a opção nasce no navegador: não há lista a conferir.
+        'optionsSource' => ($mode !== 'manual' && empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction))
+            ? ['offered' => array_keys((array) $options)] : '',
     ]);
 
     $noResultsAttrs = \Mad\Form\MadNoResultsHelper::buildAttrs([

@@ -1,6 +1,7 @@
 <?php
 namespace Mad\Form;
 use Mad\Component\MadComponent;
+use Mad\Database\QuerySource;
 use Mad\Http\MadResponse;
 use Mad\Http\MadStateCrypt;
 use Mad\Ui\MadMessage;
@@ -55,6 +56,17 @@ trait MadDbBlocksTrait
         // id (tela aberta em branco e preenchida depois). Reresolve contra ESTE
         // componente — nunca contra input do cliente.
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
+
+        // O PHP recusou o arquivo (acima do limite de envio do servidor, envio
+        // interrompido): o item era gravado SEM ele, com toast de sucesso.
+        // Nada é gravado — nem o item, nem o gancho on-add roda — e o aviso
+        // diz o arquivo e o limite.
+        $refused = self::_blockRefusedFile($cfg);
+        if ($refused !== null) {
+            return MadMessage::warning(MadUploadRules::oversizedTitle(), $refused)
+                ->fieldError((string) $cfg['fileField'], $refused);
+        }
+
         $pivot = null;
         try {
             $resp = DB::connection($cfg['database'])->transaction(function () use ($cfg, &$pivot) {
@@ -79,11 +91,20 @@ trait MadDbBlocksTrait
                 // addAttribute(), só essas colunas são atribuídas; modelos sem
                 // whitelist mantêm o comportamento anterior (aceitam tudo).
                 $allowed = method_exists($pivot, 'getFillable') ? $pivot->getFillable() : [];
+                $fixed   = self::_blockFixedColumns($pivot, $cfg);
+                $sent    = [];
                 foreach ($data as $k => $v) {
                     if (!empty($allowed) && !in_array($k, $allowed, true)) {
                         continue;
                     }
+                    // A chave do item e as colunas do escopo do bloco (a chave
+                    // do pai, as colunas dos filtros) não vêm do formulário: o
+                    // item novo ia para a lista de outro registro.
+                    if (in_array((string) $k, $fixed, true)) {
+                        continue;
+                    }
                     if (is_array($v)) $v = implode(',', $v);
+                    $sent[(string) $k] = $v;
                     // A coluna é descartada e o INSERT segue — o item grava
                     // incompleto e o usuário ainda recebe toast de sucesso. Cast
                     // json/decimal recusando o valor, mutator que lança, ou prop
@@ -95,6 +116,14 @@ trait MadDbBlocksTrait
                         error_log('[MadDbBlocks::blockAdd] coluna "' . $k . '" de '
                             . get_class($pivot) . ' descartada do insert: ' . $e->getMessage());
                     }
+                }
+
+                // Chave para outro cadastro (cliente, categoria, usuário) passa
+                // pelas regras de referência do Model, como nas linhas filhas do
+                // formulário: a de outra unidade, ou que não existe, é recusada.
+                $refused = self::_blockRefusedReferences($pivot, $cfg, $sent);
+                if ($refused !== null) {
+                    return $refused;
                 }
 
                 // Hook on-add
@@ -190,11 +219,15 @@ trait MadDbBlocksTrait
         if (!$cfg) {
             return MadMessage::error('Erro', 'Estado inválido');
         }
+        $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
         $pivot   = null;
         $removed = false;
         try {
             $resp = DB::connection($cfg['database'])->transaction(function () use ($cfg, $id, &$pivot, &$removed) {
-                $pivot = self::_blockFind($cfg['pivotModel'], $id);
+                $pivot = self::_blockFind($cfg, $id);
+                if ($pivot === null) {
+                    return self::_blockNotHere($cfg, $id, 'remover');
+                }
 
                 $hook = $cfg['onRemove'] ?? '';
                 if ($hook && method_exists($this, $hook)) {
@@ -249,9 +282,24 @@ trait MadDbBlocksTrait
         if (!$cfg) {
             return MadMessage::error('Erro', 'Estado inválido');
         }
+        $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
         try {
             return DB::connection($cfg['database'])->transaction(function () use ($cfg, $id, $field, $value) {
-                $pivot = self::_blockFind($cfg['pivotModel'], $id);
+                $pivot = self::_blockFind($cfg, $id);
+                if ($pivot === null) {
+                    return self::_blockNotHere($cfg, $id, 'alterar');
+                }
+
+                // O nome do campo vem da requisição: só o que o bloco edita
+                // (`edit-fields`; na falta, o `$fillable` do Model), e nunca a
+                // chave do item nem as colunas do escopo do bloco.
+                if (!self::_blockEditable($pivot, $cfg, $field)) {
+                    error_log(sprintf('[MadDbBlocks::blockUpdate] campo "%s" recusado no bloco "%s" (%s): fora de edit-fields/$fillable, '
+                        . 'ou chave/escopo do bloco. Declare o campo em edit-fields se a tela o edita.',
+                        $field, (string) ($cfg['name'] ?? ''), get_class($pivot)));
+
+                    return MadMessage::error('Erro', 'O campo "' . $field . '" não pode ser alterado neste bloco.');
+                }
 
                 $hook = $cfg['onUpdate'] ?? '';
                 if ($hook && method_exists($this, $hook)) {
@@ -265,6 +313,10 @@ trait MadDbBlocksTrait
                 }
 
                 $pivot->{$field} = $value;
+                $refused = self::_blockRefusedReferences($pivot, $cfg, [$field => $value]);
+                if ($refused !== null) {
+                    return $refused;
+                }
                 self::_blockSave($pivot);
 
                 // Re-render a lista inteira (consistente com blockAdd/blockRemove).
@@ -305,24 +357,24 @@ trait MadDbBlocksTrait
         if (!$cfg) {
             return MadMessage::error('Erro', 'Estado inválido');
         }
+        $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
 
         try {
             return DB::connection($cfg['database'])->transaction(function () use ($cfg, $id) {
-                $pivot = self::_blockFind($cfg['pivotModel'], $id);
-
-                // Escopo: em modo pivot o item TEM que pertencer ao pai atual
-                // (senão um id forjado editaria filho de outro registro).
-                if ((($cfg['mode'] ?? 'pivot') !== 'flat') && !empty($cfg['foreignKey'])) {
-                    $fk = $cfg['foreignKey'];
-                    if ((string) ($pivot->$fk ?? '') !== (string) ($cfg['recordId'] ?? '')) {
-                        return MadMessage::error('Erro', 'Item não pertence a este registro.');
-                    }
+                // Escopo: o item TEM que estar na lista do bloco — filho do pai
+                // atual (modo pivot) e dentro dos filtros da tag. Senão um id
+                // forjado editaria filho de outro registro.
+                $pivot = self::_blockFind($cfg, $id);
+                if ($pivot === null) {
+                    return self::_blockNotHere($cfg, $id, 'editar');
                 }
 
                 $data = self::_blockPayload($this->form ?? null);
 
                 $allowed = method_exists($pivot, 'getFillable') ? $pivot->getFillable() : [];
                 $editable = (array) ($cfg['editFields'] ?? []);
+                $fixed    = self::_blockFixedColumns($pivot, $cfg);
+                $sent     = [];
                 foreach ($data as $k => $v) {
                     if (!empty($allowed) && !in_array($k, $allowed, true)) {
                         continue;
@@ -330,7 +382,13 @@ trait MadDbBlocksTrait
                     if ($editable !== [] && !in_array($k, $editable, true)) {
                         continue;
                     }
+                    // A chave do item e as do escopo (o pai, os filtros) não se
+                    // trocam pelo formulário: a edição levaria o item embora.
+                    if (in_array((string) $k, $fixed, true)) {
+                        continue;
+                    }
                     if (is_array($v)) $v = implode(',', $v);
+                    $sent[(string) $k] = $v;
                     // Igual ao blockAdd, e pior no UPDATE: a coluna que falhou
                     // mantém o valor ANTIGO no banco enquanto a tela mostra o
                     // novo, então a edição "salva" divergente sem nada indicar.
@@ -339,6 +397,11 @@ trait MadDbBlocksTrait
                             . get_class($pivot) . ' descartada do update (valor antigo '
                             . 'preservado no banco): ' . $e->getMessage());
                     }
+                }
+
+                $refused = self::_blockRefusedReferences($pivot, $cfg, $sent);
+                if ($refused !== null) {
+                    return $refused;
                 }
 
                 $hook = $cfg['onUpdate'] ?? '';
@@ -473,6 +536,21 @@ trait MadDbBlocksTrait
     }
 
     /**
+     * O aviso do arquivo do campo `fileField` que o PHP não recebeu — ou null.
+     * Mesma condição do {@see _blockIngestFiles()}: sem `pathColumn` o bloco
+     * não grava arquivo nenhum, e não há o que avisar.
+     */
+    private static function _blockRefusedFile(array $cfg): ?string
+    {
+        $field = (string) ($cfg['fileField'] ?? '');
+        if ($field === '' || (string) ($cfg['pathColumn'] ?? '') === '') {
+            return null;
+        }
+
+        return \Mad\Service\MadUploadIngest::refused($field);
+    }
+
+    /**
      * Novo pivot com os mesmos campos do original (menos a PK) — 1 arquivo por
      * item. ⚠️ Zera path + metadados: o `replicate()` traz os do PRIMEIRO
      * arquivo e o `fillMeta` só escreve em coluna VAZIA — sem isto o 2º item
@@ -518,9 +596,101 @@ trait MadDbBlocksTrait
         return array_merge($base, is_array($posted) ? $posted : []);
     }
 
-    private static function _blockFind(string $model, $id): object
+    /**
+     * O item `$id` como a lista do bloco o mostra — filho do registro aberto
+     * (modo pivot) e dentro dos filtros da tag — ou `null`. O número vem da
+     * requisição; procurar só pela chave deixava editar e remover a linha de
+     * qualquer outro registro da tabela.
+     */
+    private static function _blockFind(array $cfg, $id): ?object
     {
-        return $model::findOrFail($id);
+        $filters = MadDbBlocks::scopeFilters($cfg);
+        if ($filters === null || empty($cfg['pivotModel'])) {
+            return null;
+        }
+
+        $model = ModelOptionsLoader::resolveModelClass((string) $cfg['pivotModel']);
+        $query = $model::query();
+        QuerySource::applyArrayFilters($query, $filters);
+
+        return $query->where($query->getModel()->getQualifiedKeyName(), $id)->first();
+    }
+
+    /** Item fora da lista do bloco (de outro registro, ou removido): nada é feito. */
+    private static function _blockNotHere(array $cfg, $id, string $acao): MadResponse
+    {
+        error_log(sprintf('[MadDbBlocks] %s recusado: o item %s não está na lista do bloco "%s" (%s) — de outro registro, '
+            . 'fora dos filtros da tag ou já removido.', $acao, (string) $id, (string) ($cfg['name'] ?? ''), (string) ($cfg['pivotModel'] ?? '')));
+
+        return MadMessage::error('Erro', 'Item não pertence a este registro.');
+    }
+
+    /**
+     * Colunas que o formulário do bloco não grava: a chave do item e as do
+     * escopo (a chave do pai, as colunas dos filtros da tag).
+     *
+     * @return list<string>
+     */
+    private static function _blockFixedColumns(object $pivot, array $cfg): array
+    {
+        $fixed = MadDbBlocks::scopeColumns($cfg);
+        if (method_exists($pivot, 'getKeyName')) {
+            $fixed[] = (string) $pivot->getKeyName();
+        }
+
+        return $fixed;
+    }
+
+    /**
+     * O campo que o `blockUpdate` pode gravar: um dos `edit-fields` do bloco
+     * ou, sem eles, do `$fillable` do Model — Model sem lista nenhuma só
+     * aceita o que ele mesmo libera (`$guarded`). Nunca a chave do item nem
+     * as colunas do escopo.
+     */
+    private static function _blockEditable(object $pivot, array $cfg, string $field): bool
+    {
+        if ($field === '' || in_array($field, self::_blockFixedColumns($pivot, $cfg), true)) {
+            return false;
+        }
+        $editable = array_map('strval', (array) ($cfg['editFields'] ?? []));
+        if ($editable !== []) {
+            return in_array($field, $editable, true);
+        }
+        $fillable = method_exists($pivot, 'getFillable') ? $pivot->getFillable() : [];
+        if ($fillable !== []) {
+            return in_array($field, $fillable, true);
+        }
+
+        return method_exists($pivot, 'isFillable') && $pivot->isFillable($field);
+    }
+
+    /**
+     * As regras de referência (`exists`) do `rules()` do Model sobre o que o
+     * formulário do bloco mandou e MUDA na linha — a chave que o item já
+     * tinha gravada não é conferida de novo. `null` = pode gravar; senão, a
+     * resposta com o motivo (e nada é gravado).
+     *
+     * @param array<string,mixed> $sent coluna => valor que veio da requisição
+     */
+    private static function _blockRefusedReferences(object $pivot, array $cfg, array $sent): ?MadResponse
+    {
+        if ($sent === [] || !($pivot instanceof \Illuminate\Database\Eloquent\Model)) {
+            return null;
+        }
+        $changed = $pivot->exists ? array_intersect_key($pivot->getDirty(), $sent) : array_intersect_key($pivot->getAttributes(), $sent);
+        if ($changed === []) {
+            return null;
+        }
+
+        $errors = ReferenceGuard::check(get_class($pivot), $pivot->exists ? $pivot->getKey() : null, $changed, [], $pivot->getAttributes());
+        if ($errors === []) {
+            return null;
+        }
+        foreach (array_keys($errors) as $column) {
+            ReferenceGuard::logRefused(sprintf('a coluna "%s" de um item do bloco "%s"', $column, (string) ($cfg['name'] ?? '')));
+        }
+
+        return MadMessage::error('Erro', implode("\n", array_values($errors)));
     }
 
     private static function _blockSave(object $pivot): void

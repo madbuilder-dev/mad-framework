@@ -94,19 +94,26 @@ class MadDbBlocks
         return MadStateCrypt::decrypt($token);
     }
 
-    /** Carrega as linhas do pivot — via QuerySource (Eloquent/Query Builder). */
-    public static function loadItems(array $cfg): array
+    /**
+     * As condições que definem QUAIS linhas o bloco mostra: a chave do pai
+     * (modo pivot) e os filtros da tag (`:filters`). `null` = o bloco não
+     * mostra linha nenhuma (pivot sem registro aberto).
+     *
+     * É o escopo da lista e também o das ações de item: editar ou remover só
+     * alcança uma linha que esta consulta devolve — o número do item vem da
+     * requisição.
+     *
+     * @return list<array{0:string,1:string,2:mixed}>|null
+     */
+    public static function scopeFilters(array $cfg): ?array
     {
-        if (empty($cfg['pivotModel'])) {
-            return [];
-        }
         $flatMode = (($cfg['mode'] ?? 'pivot') === 'flat');
         if (!$flatMode && empty($cfg['recordId'])) {
-            return [];
+            return null;
         }
 
         $filters = [];
-        if (!$flatMode) {
+        if (!$flatMode && !empty($cfg['foreignKey'])) {
             $filters[] = [$cfg['foreignKey'], '=', $cfg['recordId']];
         }
 
@@ -117,6 +124,44 @@ class MadDbBlocks
                     $filters[] = [$f[0], $f[1], $f[2]];
                 }
             }
+        }
+
+        return $filters;
+    }
+
+    /**
+     * As colunas que o escopo do bloco fixa (a chave do pai e as colunas dos
+     * filtros): gravar outro valor nelas tiraria o item da lista — ou o
+     * levaria para a lista de outro registro.
+     *
+     * @return list<string>
+     */
+    public static function scopeColumns(array $cfg): array
+    {
+        $columns = [];
+        foreach (self::scopeFilters($cfg) ?? [] as $f) {
+            $column = (string) $f[0];
+            if ($column !== '') {
+                // `tabela.coluna` num filtro: o que se grava é a coluna
+                $columns[] = str_contains($column, '.') ? substr($column, strrpos($column, '.') + 1) : $column;
+            }
+        }
+        if (($cfg['mode'] ?? 'pivot') !== 'flat' && !empty($cfg['foreignKey'])) {
+            $columns[] = (string) $cfg['foreignKey'];
+        }
+
+        return array_values(array_unique($columns));
+    }
+
+    /** Carrega as linhas do pivot — via QuerySource (Eloquent/Query Builder). */
+    public static function loadItems(array $cfg): array
+    {
+        if (empty($cfg['pivotModel'])) {
+            return [];
+        }
+        $filters = self::scopeFilters($cfg);
+        if ($filters === null) {
+            return [];
         }
 
         $orderBy  = $cfg['orderBy']  ?? 'id';

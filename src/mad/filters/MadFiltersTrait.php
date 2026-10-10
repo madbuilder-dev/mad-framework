@@ -821,6 +821,11 @@ trait MadFiltersTrait
      * Host sem `$exportMeta` (dashboards) não exporta — o método existe pra
      * todos os hosts da trait, mas só a grade tem exportação.
      *
+     * O período (`daterange`) vai em palavras — "de 01/01/2026 a 31/12/2026",
+     * "a partir de …", "até …" —, como o `{PERIOD}`: o chip da tela usa `→`,
+     * `≥` e `≤`, e o PDF da grade desenha numa fonte que não tem esses sinais
+     * (saíam como "?").
+     *
      * @param array<int,array<string,mixed>> $fields metadata dos campos
      */
     public function declareFilterFields(array $fields): void
@@ -832,14 +837,39 @@ trait MadFiltersTrait
         }
 
         $parts = [];
-        foreach ($this->activeFiltersSummary($fields) as $chip) {
-            $value = trim((string) ($chip['value'] ?? ''));
+        foreach ($fields as $f) {
+            $chip = $this->activeFiltersSummary([$f])[0] ?? null;
+            if ($chip === null) continue;
+            $value = ($f['type'] ?? '') === 'daterange'
+                ? $this->_exportDateRangeLabel($f)
+                : trim((string) ($chip['value'] ?? ''));
             if ($value === '') continue;
             $label = trim((string) ($chip['label'] ?? ''));
             $parts[] = $label !== '' ? ($label . ': ' . $value) : $value;
         }
 
         $this->exportMeta['filters'] = implode('  ·  ', $parts);
+    }
+
+    /**
+     * O período de um `daterange` em palavras, para o texto da exportação:
+     * as mesmas frases do `{PERIOD}` (`grid.period_range`,
+     * `grid.filter_range_from`, `grid.filter_range_to`).
+     */
+    private function _exportDateRangeLabel(array $field): string
+    {
+        [$ini, $fim] = $this->_dateRangeEnds($field);
+        if ($ini !== '' && $fim !== '') {
+            return (string) __('grid.period_range', ['from' => $ini, 'to' => $fim]);
+        }
+        if ($ini !== '') {
+            return (string) __('grid.filter_range_from', ['from' => $ini]);
+        }
+        if ($fim !== '') {
+            return (string) __('grid.filter_range_to', ['to' => $fim]);
+        }
+
+        return '';
     }
 
     /**
@@ -1251,6 +1281,39 @@ trait MadFiltersTrait
     // CHIPS / LABELS / SUMMARY (consumidos por dash-filters-*.blade)
     // ───────────────────────────────────────────────────────────────────
 
+    /**
+     * As duas pontas de um `daterange` como texto de exibição: o hook
+     * `filterValueLabel` do host vence; senão `Y-m-d` vira `d/m/Y`.
+     *
+     * @return array{0:string,1:string} [início, fim] ('' = ponta vazia)
+     */
+    private function _dateRangeEnds(array $field): array
+    {
+        $fmt = function (string $prop): string {
+            if ($prop === '' || !property_exists($this, $prop)) {
+                return '';
+            }
+            $v = (string) $this->$prop;
+            if ($v === '') {
+                return '';
+            }
+            if (method_exists($this, 'filterValueLabel')) {
+                try {
+                    $custom = $this->filterValueLabel($prop, $v);
+                    if (is_string($custom) && $custom !== '') {
+                        return $custom;
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
+            return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)
+                ? "{$m[3]}/{$m[2]}/{$m[1]}"
+                : $v;
+        };
+
+        return [$fmt($field['attrs']['name_start'] ?? ''), $fmt($field['attrs']['name_end'] ?? '')];
+    }
+
     /** Resolve label exibivel pro valor atual de um filter field metadata. */
     public function resolveFilterLabel(array $field): string
     {
@@ -1258,29 +1321,7 @@ trait MadFiltersTrait
         // vence a formatação default de cada ponta; um lado só = "a partir de"
         // / "até").
         if (($field['type'] ?? '') === 'daterange') {
-            $fmt = function (string $prop): string {
-                if ($prop === '' || !property_exists($this, $prop)) {
-                    return '';
-                }
-                $v = (string) $this->$prop;
-                if ($v === '') {
-                    return '';
-                }
-                if (method_exists($this, 'filterValueLabel')) {
-                    try {
-                        $custom = $this->filterValueLabel($prop, $v);
-                        if (is_string($custom) && $custom !== '') {
-                            return $custom;
-                        }
-                    } catch (\Throwable $e) {
-                    }
-                }
-                return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)
-                    ? "{$m[3]}/{$m[2]}/{$m[1]}"
-                    : $v;
-            };
-            $ini = $fmt($field['attrs']['name_start'] ?? '');
-            $fim = $fmt($field['attrs']['name_end'] ?? '');
+            [$ini, $fim] = $this->_dateRangeEnds($field);
             if ($ini !== '' && $fim !== '') {
                 return "{$ini} → {$fim}";
             }

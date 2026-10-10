@@ -194,9 +194,14 @@
     // SÓ json_encode — o {{ }} já faz o escape HTML (uma vez). htmlspecialchars
     // aqui dobrava o escape (&quot; -> &amp;quot;), o browser decodificava só um
     // nível e o Alpine via `&` solto no x-data -> "Unexpected token '&'".
+    // `targets`: os campos do formulário que esta consulta preenche (só os
+    // nomes — o mapa vai cifrado no token). Quando outra consulta (o CNPJ)
+    // escreve o CEP e já mapeou todos eles, a busca automática não repete a
+    // consulta para reescrever o endereço (ver _tryAutoLookup no mad-ui.js).
     $xDataCfg = json_encode([
-        'token' => $cepToken,
-        'auto'  => (bool)$auto,
+        'token'   => $cepToken,
+        'auto'    => (bool)$auto,
+        'targets' => array_values(array_map('strval', array_keys(is_array($fillFields) ? $fillFields : []))),
     ], JSON_UNESCAPED_UNICODE);
     $width    = $width ?? '';
     $maxWidth = $maxWidth ?? '';

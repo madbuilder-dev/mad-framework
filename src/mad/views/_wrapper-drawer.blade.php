@@ -7,10 +7,13 @@
     // que foi digitado). X, Esc, Voltar e Salvar continuam fechando. Opt-in
     // por tela: protected static bool $closeOnBackdrop = true.
     $closeOnBackdrop = (bool) ($closeOnBackdrop ?? false);
+    // Esc/X/clique fora perguntam antes de fechar com alteração não salva
+    // (opt-in por tela: protected static bool $confirmDiscard = true).
+    $confirmClose = (bool) ($confirmClose ?? false);
     $wrapId  = 'madwrap-' . preg_replace('/[^a-z0-9]/', '-', strtolower($id));
 @endphp
 <div id="{{ $wrapId }}" data-mad-wrapper="drawer">
-    <mad-drawer :name="$id" :title="$title" :size="$size" :side="$side" :close-on-backdrop="$closeOnBackdrop">
+    <mad-drawer :name="$id" :title="$title" :size="$size" :side="$side" :close-on-backdrop="$closeOnBackdrop" :confirm-close="$confirmClose">
         {!! $content !!}
     </mad-drawer>
 </div>

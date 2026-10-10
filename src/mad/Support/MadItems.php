@@ -83,6 +83,32 @@ final class MadItems
     }
 
     /**
+     * A lista que o código da tela pôs no campo com
+     * `$this->form->setItems($name, …)` (num On Change, no mount/onEdit), CRUA;
+     * null = o código não mexeu na lista desse campo.
+     *
+     * O campo de escolha desenhado mostra ESSA lista, no lugar das opções do
+     * Blade ou do Model — é a que a op `reload_*` mostrou no navegador. Sem isto
+     * qualquer redesenho da tela devolvia a lista inteira, sem erro (fw#139 no
+     * combo, fw#228 no radio, checkbox-group, multi-entry, sort-list e nas
+     * versões de banco).
+     *
+     * @return array<array-key, mixed>|null
+     */
+    public static function fromForm(string $name): ?array
+    {
+        if ($name === '') {
+            return null;
+        }
+        $form = \Mad\Component\MadRenderContext::getForm();
+        if (! $form || ! isset($form->items[$name]) || ! is_array($form->items[$name])) {
+            return null;
+        }
+
+        return $form->items[$name];
+    }
+
+    /**
      * @param array<array-key, mixed> $item
      * @param list<string>            $keys
      */

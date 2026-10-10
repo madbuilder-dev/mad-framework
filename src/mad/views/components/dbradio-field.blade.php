@@ -115,8 +115,15 @@
         'order_by' => $orderBy,
     ];
     // Carrega options (não carrega se tem depends-on — será carregado via AJAX quando o pai mudar)
+    // Lista posta pelo código (`$this->form->setItems()`, num On Change ou no
+    // mount/onEdit) vence a do Model: é a que o reload_radio mostrou. Sem isto qualquer
+    // redesenho da tela voltava a lista inteira, sem erro (fw#228; o
+    // <mad-dbcombo-field> já fazia assim, fw#139).
+    $__codeItems = \Mad\Support\MadItems::fromForm((string) $name);
     $options = [];
-    if (\Mad\Database\QuerySource::isQuery($query)) {
+    if ($__codeItems !== null) {
+        $options = \Mad\Support\MadItems::normalize($__codeItems);
+    } elseif (\Mad\Database\QuerySource::isQuery($query)) {
         try {
             $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
                 $query, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing

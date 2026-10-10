@@ -10,8 +10,12 @@
     $attrs      = $attrs      ?? '';
         $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $size       = \Mad\Support\CssUnits::length((string) ($size ?? ''), '96px');
-    $accept     = $accept     ?? 'image/png,image/jpeg';
-    $maxSize    = $maxSize    ?? '5MB';
+    // O que foi escrito na tag (painel: Tamanho máximo / Tipos aceitos) também
+    // vale no servidor; o padrão do campo continua sendo só do navegador.
+    $_maxDeclared    = (string) ($maxSize ?? $max_size ?? '');
+    $_acceptDeclared = trim((string) ($accept ?? ''));
+    $accept     = $_acceptDeclared !== '' ? $_acceptDeclared : 'image/png,image/jpeg';
+    $maxSize    = $_maxDeclared !== '' ? $_maxDeclared : '5MB';
     $btnText    = $btnText    ?? 'Trocar foto';
     $btnRemove  = $btnRemove  ?? 'Remover';
     $removable  = !empty($removable ?? true);
@@ -54,14 +58,12 @@
     $hasError = !empty($error);
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
-    // Parse max-size to bytes
-    $maxBytes = 5 * 1024 * 1024;
-    if (preg_match('/^(\d+)\s*(MB|KB|GB)$/i', $maxSize, $_sm)) {
-        $_n = (int)$_sm[1];
-        $_u = strtoupper($_sm[2]);
-        if ($_u === 'KB')      $maxBytes = $_n * 1024;
-        elseif ($_u === 'MB')  $maxBytes = $_n * 1024 * 1024;
-        elseif ($_u === 'GB')  $maxBytes = $_n * 1024 * 1024 * 1024;
+    // Tamanho máximo em bytes ("2MB", "500KB", "2,5 MB"). Texto que não é um
+    // tamanho cai no padrão de 5 MB — e a dica mostra o que vale de fato.
+    $_declaredBytes = \Mad\Form\MadUploadRules::bytes($_maxDeclared);
+    $maxBytes       = $_declaredBytes ?: \Mad\Form\MadUploadRules::bytes($maxSize) ?: 5 * 1024 * 1024;
+    if ($_declaredBytes === 0 && \Mad\Form\MadUploadRules::bytes($maxSize) === 0) {
+        $maxSize = '5MB';
     }
 
     // Hint de formatos (ex.: "PNG ou JPEG")
@@ -79,6 +81,9 @@
         'storage'    => $storage,
         'folder'     => $folder,
         'nameColumn' => $nameColumn,
+        // Só o que a tag declarou: o servidor confere no Salvar (MadUploadRules::check).
+        'accept'     => $_acceptDeclared,
+        'maxBytes'   => $_declaredBytes ?: '',
     ]);
 
     $_jsonConfig = json_encode([
@@ -89,6 +94,7 @@
         'accept'          => $accept,
         'madChangeAction' => $madChangeAction,
         'removable'       => $removable,
+        'storage'         => $storage,
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp

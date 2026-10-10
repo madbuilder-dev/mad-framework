@@ -4,6 +4,10 @@
     // alias: o editor visual grava :items — aceitar os dois nomes
     // (drift editor-runtime, auditoria 14/jul/2026)
     $options   = $options   ?? ($items ?? []);
+    // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
+    // que o reload_checkbox_group mostrou. Sem isto o redesenho da tela voltava
+    // a lista inteira (fw#228).
+    $options   = \Mad\Support\MadItems::fromForm((string) $name) ?? $options;
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] (\Mad\Support\MadItems).
     if (is_array($options)) { $options = \Mad\Support\MadItems::normalize($options); }
     $selected  = $selected  ?? [];
@@ -62,6 +66,10 @@
     // Normaliza para lista de strings. O MadWire devolve a seleção como JSON
     // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
     $selected = \Mad\Form\MadForm::selectionKeys($selected, $separator);
+    // "Valor padrão" (`default`, lista separada pelo separador do campo): só no
+    // cadastro novo e com a seleção vazia — ANTES de anotar o que vai marcado
+    // para o navegador, que é a base do Salvar.
+    $selected = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, $selected, $default ?? null, $separator);
     // mode=table: o que vai MARCADO para o navegador é a base do Salvar.
     if ($mode === 'table' && $pivotModel && $itemKey) {
         \Mad\Component\MadRenderContext::pivotRendered($name, $selected, array_keys((array) $options), $pivotModel, $foreignKey, $itemKey);
@@ -83,6 +91,9 @@
         'database'   => $database,
         // Só quando não é a vírgula: o Salvar lê a coluna com o mesmo separador.
         'separator'  => $separator === ',' ? '' : $separator,
+        // As opções que a tela oferece: a marca nova tem de ser uma delas (ou das
+        // que o código trocou com setItems()) — só vai para o estado da tela.
+        'optionsSource' => $mode !== 'manual' ? ['offered' => array_keys((array) $options)] : '',
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp

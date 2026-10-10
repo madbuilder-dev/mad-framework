@@ -766,16 +766,22 @@ class MadComponentHandler
                     $type = $schema[$field]['type'] ?? '';
                     $selected = $depois[$field] ?? null;
 
+                    // A seleção dos campos de seleção múltipla, como o campo a
+                    // entrega: o MadWire a devolve em JSON (`'["1","3"]'`), o código
+                    // da tela pode pô-la em lista ou separada pelo `separator` do
+                    // campo. Com explode(',') o JSON virava `['["1"', '"3"]']`, que
+                    // não casa com item nenhum: o campo voltava sem marca nenhuma.
+                    $selectedKeys = \Mad\Form\MadForm::selectionKeys($selected, (string) ($schema[$field]['separator'] ?? ''));
+
                     // setItems() com lista de objetos [['value' => …, 'label' => …]]
                     // vira mapa antes (\Mad\Support\MadItems) — senão cada item saía
-                    // como "Array" na op. Checklist fica de fora: lá o item É registro.
-                    $mapItems = $type === 'checklist'
-                        ? (array) $fieldItems
-                        : \Mad\Support\MadItems::normalize((array) $fieldItems);
-
+                    // como "Array" na op. Checklist fica de fora: lá o item É registro
+                    // (vai inteiro na op, e não vira par valor/texto).
                     $normalized = [];
-                    foreach ($mapItems as $k => $lbl) {
-                        $normalized[] = ['value' => (string) $k, 'label' => (string) $lbl];
+                    if ($type !== 'checklist') {
+                        foreach (\Mad\Support\MadItems::normalize((array) $fieldItems) as $k => $lbl) {
+                            $normalized[] = ['value' => (string) $k, 'label' => (string) $lbl];
+                        }
                     }
 
                     switch ($type) {
@@ -800,8 +806,7 @@ class MadComponentHandler
 
                         case 'checkbox-group':
                         case 'db-checkbox-group':
-                            $sel = is_array($selected) ? array_map('strval', $selected)
-                                 : (is_string($selected) && $selected !== '' ? array_map('strval', explode(',', $selected)) : []);
+                            $sel = $selectedKeys;
                             $bindOps[] = [
                                 'op'       => 'reload_checkbox_group',
                                 'name'     => $field,
@@ -811,8 +816,7 @@ class MadComponentHandler
                             break;
 
                         case 'multi-entry':
-                            $sel = is_array($selected) ? array_map('strval', $selected)
-                                 : (is_string($selected) && $selected !== '' ? array_map('strval', explode(',', $selected)) : []);
+                            $sel = $selectedKeys;
                             $bindOps[] = [
                                 'op'       => 'reload_multi_entry',
                                 'name'     => $field,
@@ -822,8 +826,7 @@ class MadComponentHandler
                             break;
 
                         case 'sort-list':
-                            $sel = is_array($selected) ? array_map('strval', $selected)
-                                 : (is_string($selected) && $selected !== '' ? array_map('strval', explode(',', $selected)) : []);
+                            $sel = $selectedKeys;
                             $bindOps[] = [
                                 'op'       => 'reload_sort_list',
                                 'name'     => $field,
@@ -833,8 +836,7 @@ class MadComponentHandler
                             break;
 
                         case 'checklist':
-                            $sel = is_array($selected) ? array_map('strval', $selected)
-                                 : (is_string($selected) && $selected !== '' ? array_map('strval', explode(',', $selected)) : []);
+                            $sel = $selectedKeys;
                             $bindOps[] = [
                                 'op'       => 'reload_checklist',
                                 'name'     => $field,
@@ -901,13 +903,17 @@ class MadComponentHandler
         }
         // Pending fl_combo ops geradas por setItems('campo[]')
         $pendingFlOps = [];
+        // Mensagem de erro de campo que passou neste request: sai ANTES das ops
+        // da resposta, para não apagar o erro que a própria resposta pinta.
+        $clearedErrorOps = [];
         foreach (get_object_vars($component) as $_propVal) {
             if ($_propVal instanceof \Mad\Form\MadForm) {
+                $clearedErrorOps = array_merge($clearedErrorOps, $_propVal->takePassedFieldClears());
                 $pendingFlOps = array_merge($pendingFlOps, $_propVal->getPendingFlOps());
             }
         }
 
-        $allOps = array_merge($explicitOps, $bindOps, $dumpOps, $pendingFlOps);
+        $allOps = array_merge($clearedErrorOps, $explicitOps, $bindOps, $dumpOps, $pendingFlOps);
 
         // O que a resposta leva além do render (trecho de HTML, linhas de uma
         // lista) passa a ser o que o servidor entregou a esta tela.

@@ -168,6 +168,43 @@ class ModelOptionsLoader
     }
 
     /**
+     * Rótulos de registros JÁ escolhidos — o texto que o combo do campo mostra
+     * para cada chave. Usado por quem só exibe o valor (`<mad-display-field
+     * model display>`, a etapa Resumo do passo a passo). Uma consulta para
+     * todas as chaves, com os escopos globais do model: chave de registro
+     * apagado ou de fora do escopo fica sem rótulo (o caller mostra a chave).
+     *
+     * @param  string        $model   FQCN, token ou nome curto do model
+     * @param  string        $key     Coluna da chave ('' = a chave do model)
+     * @param  string        $display Coluna do rótulo OU máscara '{col} ...'
+     * @param  list<scalar>  $keys
+     * @return array<string, string>  chave => rótulo (só as que existem)
+     */
+    public static function labelsFor(string $model, string $key, string $display, array $keys): array
+    {
+        $keys = array_values(array_unique(array_filter(
+            array_map(fn ($k) => trim((string) $k), $keys),
+            fn (string $k) => $k !== '',
+        )));
+        $key = trim($key);
+        if ($keys === [] || trim($display) === '' || str_contains($key, '->')) {
+            return [];
+        }
+
+        $query = self::resolveModelClass($model)::query();
+        if ($key === '') {
+            $key = $query->getModel()->getKeyName();
+        }
+
+        $labels = [];
+        foreach (self::itemsFromQuery($query->whereIn($key, $keys), $key, $display) as $k => $label) {
+            $labels[(string) $k] = (string) $label;
+        }
+
+        return $labels;
+    }
+
+    /**
      * Resolve o nome do model para FQCN via {@see \Mad\Database\ModelRegistry}.
      *
      * Aceita FQCN explícito ('App\Models\Iam\User'), token DomainEntity

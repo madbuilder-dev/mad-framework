@@ -5,10 +5,12 @@
     // Igual à gaveta: tela em modal não fecha no clique fora (opt-in por tela:
     // protected static bool $closeOnBackdrop = true).
     $closeOnBackdrop = (bool) ($closeOnBackdrop ?? false);
+    // Igual à gaveta: opt-in por tela com protected static bool $confirmDiscard = true.
+    $confirmClose = (bool) ($confirmClose ?? false);
     $wrapId  = 'madwrap-' . preg_replace('/[^a-z0-9]/', '-', strtolower($id));
 @endphp
 <div id="{{ $wrapId }}" data-mad-wrapper="modal">
-    <mad-modal :name="$id" :title="$title" :size="$size" :close-on-backdrop="$closeOnBackdrop">
+    <mad-modal :name="$id" :title="$title" :size="$size" :close-on-backdrop="$closeOnBackdrop" :confirm-close="$confirmClose">
         {!! $content !!}
     </mad-modal>
 </div>

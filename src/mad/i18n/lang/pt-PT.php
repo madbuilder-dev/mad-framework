@@ -18,6 +18,8 @@ return [
             'not_stored_field_many'  => 'O que foi introduzido em :fields não foi gravado: os campos não estão ligados a nenhuma coluna da tabela :table.',
             'not_stored_column_one'  => 'Na lista :list, o que foi introduzido em :columns não foi gravado: a coluna não existe na tabela :table.',
             'not_stored_column_many' => 'Na lista :list, o que foi introduzido em :columns não foi gravado: as colunas não existem na tabela :table.',
+            'not_stored_guarded_one'  => 'O que foi introduzido em :fields não foi gravado: a tabela :table não aceita esta alteração a partir deste ecrã.',
+            'not_stored_guarded_many' => 'O que foi introduzido em :fields não foi gravado: a tabela :table não aceita estas alterações a partir deste ecrã.',
             'not_stored_tail'        => 'O restante foi guardado. Avise o administrador do sistema.',
             // Linha de uma lista (ou marca de uma checklist) com a chave de um registo que quem guarda não vê: o Guardar é recusado.
             'row_invalid'            => 'Na lista :list, linha :row: :message',
@@ -232,10 +234,18 @@ return [
             'changed_title'      => 'Alterado noutro separador ou por outra pessoa',
             'marked_elsewhere'   => 'Outro separador ou outra pessoa marcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
             'unmarked_elsewhere' => 'Outro separador ou outra pessoa desmarcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'marked_elsewhere_in'   => 'Em :list, outro separador ou outra pessoa marcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'unmarked_elsewhere_in' => 'Em :list, outro separador ou outra pessoa desmarcou :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'changed_elsewhere'     => 'Outro separador ou outra pessoa alterou os dados de :items enquanto este ecrã estava aberto. Isso foi mantido.',
+            'changed_elsewhere_in'  => 'Em :list, outro separador ou outra pessoa alterou os dados de :items enquanto este ecrã estava aberto. Isso foi mantido.',
             'changed_tail'       => 'Atualize o ecrã para ver a situação atual.',
             'items_one'          => '1 item',
             'items_many'         => ':count itens',
             'more'               => 'mais :count',
+            // Campo Checklist: o contador conta só as marcas da lista no ecrã; as gravadas em itens que ela não mostra aparecem à parte.
+            'counter'            => ':n de :total selecionados',
+            'counter_outside'    => 'mais :n fora da lista',
+            'only_checked'       => 'Mostrar apenas selecionados',
         ],
 
         // Campo de tabela (DB Combo, DB Select, DB Radio, DB Unique Search): a

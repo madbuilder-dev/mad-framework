@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => '', 'model' => '', 'display' => '', 'key' => '', 'attrs' => ''])
 @php
     $copyable   = !empty($copyable);
     $expandable = !empty($expandable);
@@ -7,6 +7,23 @@
     if ($value === null && $name) {
         $_ctx = \Mad\Component\MadRenderContext::current();
         $value = array_key_exists($name, $_ctx) ? $_ctx[$name] : '';
+    }
+    // Chave de outra tabela (`model` + `display`, como no combo): mostra o
+    // rótulo do registro, não o código — um valor ou vários (seleção múltipla:
+    // lista, JSON ou vírgula), numa consulta só. Registro que não existe mais
+    // mostra a chave; model que não carrega não derruba a tela.
+    if ($model !== '' && $display !== '' && $value !== null && $value !== '' && $value !== []) {
+        $_keys = \Mad\Form\MadForm::selectionKeys($value);
+        if ($_keys !== []) {
+            try {
+                $_labels = \Mad\Form\ModelOptionsLoader::labelsFor($model, (string) $key, $display, $_keys);
+            } catch (\Throwable $e) {
+                $_labels = [];
+                \Illuminate\Support\Facades\Log::warning('[mad-display-field] rótulo de "' . $name . '" não carregou: '
+                    . \Mad\Ui\MadErrorRedactor::message($e));
+            }
+            $value = implode(', ', array_map(fn ($k) => $_labels[$k] ?? $k, $_keys));
+        }
     }
     // Selo de coluna boolean: `(string) false` é '' — o campo saía "—" em vez
     // do "0:danger:Inativo" do mapa. Com selo, boolean vira '1'/'0'.
@@ -48,26 +65,36 @@
         switch ($fmtType) {
             case 'money':
                 $prefix = $fmtParam ?: 'R$';
-                $num = (float) str_replace(['.', ','], ['', '.'], $rawValue);
+                // O campo de dinheiro manda o número cru ("1234.56"), como o
+                // banco guarda; só texto no padrão brasileiro ("1.234,56") é
+                // convertido. Antes "1234.56" virava R$ 123.456,00.
+                $num = is_numeric($rawValue)
+                    ? (float) $rawValue
+                    : (float) str_replace(['.', ','], ['', '.'], $rawValue);
                 $displayHtml = htmlspecialchars($prefix, ENT_QUOTES) . ' ' . number_format($num, 2, ',', '.');
                 break;
 
             case 'date':
-                try {
-                    $dt = new \DateTime($rawValue);
-                    $displayHtml = $dt->format('d/m/Y');
-                } catch (\Throwable $e) {
-                    $displayHtml = htmlspecialchars($rawValue, ENT_QUOTES);
-                }
-                break;
-
             case 'datetime':
-                try {
-                    $dt = new \DateTime($rawValue);
-                    $displayHtml = $dt->format('d/m/Y H:i');
-                } catch (\Throwable $e) {
-                    $displayHtml = htmlspecialchars($rawValue, ENT_QUOTES);
+                // Dia primeiro quando vem com barra/ponto/hífen antes do ano
+                // ("05/10/2026", como o campo de data manda): o DateTime lia
+                // como mês/dia e trocava os dois até o dia 12.
+                $dt = null;
+                if (preg_match('#^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$#', trim($rawValue), $_dm)) {
+                    $dt = checkdate((int) $_dm[2], (int) $_dm[1], (int) $_dm[3])
+                        ? (new \DateTime())->setDate((int) $_dm[3], (int) $_dm[2], (int) $_dm[1])
+                            ->setTime((int) ($_dm[4] ?? 0), (int) ($_dm[5] ?? 0), (int) ($_dm[6] ?? 0))
+                        : null;
+                } else {
+                    try {
+                        $dt = new \DateTime($rawValue);
+                    } catch (\Throwable $e) {
+                        $dt = null;
+                    }
                 }
+                $displayHtml = $dt
+                    ? $dt->format($fmtType === 'date' ? 'd/m/Y' : 'd/m/Y H:i')
+                    : htmlspecialchars($rawValue, ENT_QUOTES);
                 break;
 
             case 'email':
@@ -120,7 +147,7 @@
     $copyVal = htmlspecialchars($rawValue, ENT_QUOTES);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle('', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
 @endphp
-<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif {!! $attrs !!}>
     @if($label)
     <div class="mad-display-field-header">
         @if($icon)

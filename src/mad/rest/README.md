@@ -10,12 +10,15 @@ Casa com `Route::apiResource` — a subclasse só declara configuração; as act
 ## Uso mínimo
 
 ```php
-// app/control/api/OrderApiController.php  (classmap, namespace global)
+// app/Http/Controllers/Api/OrderApiController.php
+namespace App\Http\Controllers\Api;
+
+use App\Models\Order;
 use Mad\Rest\ApiResourceController;
 
 class OrderApiController extends ApiResourceController
 {
-    protected string $model      = \App\Models\Order::class;
+    protected string $model      = Order::class;
     protected array  $searchable = ['status', 'customer_id'];
     protected array  $sortable   = ['created_at', 'total'];
     protected array  $with       = ['customer'];
@@ -24,12 +27,32 @@ class OrderApiController extends ApiResourceController
 }
 ```
 
+O controller fica em `app/Http/Controllers/` (PSR-4 `App\`), nunca em
+`app/control/`: lá o autoload é `App\Control\` e só guarda telas — uma classe
+de namespace global nessa pasta não carrega.
+
 ```php
-// routes/web.php  (ou api.php)
-Route::middleware('mad.auth')->prefix('api')->group(function () {
-    Route::apiResource('orders', OrderApiController::class);
-});
+// routes/api.php — o arquivo JÁ ganha o prefixo /api e não tem sessão nem
+// CSRF. Não repita ->prefix('api') aqui (a rota viraria /api/api/orders).
+use App\Http\Controllers\Api\OrderApiController;
+
+Route::middleware('mad.api')->apiResource('orders', OrderApiController::class);
 ```
+
+`mad.api` autentica pelo token: `Authorization: Bearer mad_api_…` (emita com
+`php artisan mad:api-token {login} {unit_id}` ou na tela **Tokens de API**). Para
+restringir por permissão do token, declare-a na rota:
+
+```php
+Route::middleware('mad.api:orders.read')->apiResource('orders', OrderApiController::class)->only(['index', 'show']);
+Route::middleware('mad.api:orders.write')->apiResource('orders', OrderApiController::class)->except(['index', 'show']);
+```
+
+Só para chamadas feitas pelas próprias telas do app (no navegador, com a
+sessão de quem está logado e o token CSRF), registre em `routes/web.php` /
+`routes/modules/*.php`, que não têm prefixo: aí sim
+`Route::middleware('mad.auth')->prefix('api')->group(...)` — é o caso de
+`App\Http\Controllers\Sys\ImportTemplateApiController`.
 
 O model precisa declarar as relações `hasMany` usadas em `$details` e,
 opcionalmente, `public static function rules($id = null): array`.
@@ -80,6 +103,25 @@ Request: `filters = { coluna: { operador: valor } }`. Só colunas em `$searchabl
 passam; valores vazios são ignorados (exceto `0`/`'0'` e os operadores de
 presença/range).
 
+`filters` vale em três formas, com o mesmo resultado:
+
+```bash
+# texto JSON na query string
+curl -G https://app/api/orders -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'filters={"status":{"eq":"open"},"total":{"gte":100}}'
+
+# forma de array (use os nomes dos operadores: o `=` de `[=]` quebra no --data-urlencode)
+curl -G https://app/api/orders -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'filters[status][eq]=open' --data-urlencode 'filters[total][gte]=100'
+
+# corpo JSON: { "filters": { "status": { "eq": "open" } } }
+```
+
+Texto que não é um objeto JSON (JSON quebrado, lista, número) → `422` com o erro em
+`errors.filters`. Coluna fora de `$searchable`, coluna sem operador e operador
+desconhecido NÃO filtram — e voltam listados em `meta.ignored_filters`
+(`["senha", "status[==]"]`), para quem integra perceber que o filtro não valeu.
+
 | Operador (aliases) | SQL gerado |
 |---|---|
 | `=`, `eq` | `coluna = ?` |
@@ -112,6 +154,8 @@ Params (query ou body JSON): `filters`, `sort`, `direction` (`asc`/`desc`),
 }
 ```
 
+`meta.ignored_filters` só aparece quando algum filtro não foi aplicado.
+
 ### Show — `GET /orders/{id}`
 
 Corpo = o item (projeção `$showFields` + `$appends` + detalhes). `404` →
@@ -134,7 +178,8 @@ Sync de detalhes: linha **sem PK** → cria; **com PK existente sob o master** �
 atualiza; **ausente do payload** → apaga (diff). A FK vem da relação (ignora FK
 no payload). Resposta = o master recarregado com eager-load.
 
-Validação falha → `422` (Laravel `ValidationException`, corpo `{message, errors}`).
+Validação falha → `422` (Laravel `ValidationException`, corpo `{message, errors}`),
+com as mensagens no idioma do app (`APP_LOCALE`; arquivos `lang/<idioma>/validation.php`).
 
 ### Delete — `DELETE /orders/{id}`
 
@@ -176,6 +221,16 @@ protected function authorize(string $action, Request $request): void
 - **FK do payload é ignorada.** No sync, `detail.{fk} = master.getKey()` sempre
   sobrescreve qualquer FK vinda no payload; e um `id` de detalhe que pertence a
   outro master não é "sequestrado" (a relação é escopada pelo master corrente).
+
+- **Chave do corpo que não é gravada volta em `ignored`.** O `fill()` descarta
+  em silêncio o que está fora do `$fillable` (nome antigo de uma coluna
+  renomeada, erro de digitação). O store/update não recusa — integração que
+  manda campo a mais continua funcionando —, mas a resposta lista essas chaves:
+  `"ignored": ["ordem_antiga"]` no registro e em cada linha de detalhe
+  (`"items": [{"id": 7, …, "ignored": ["qtd"]}]`). Não entram a PK, a FK do
+  detalhe nem a chave que um hook gravou por conta própria; sem nada ignorado
+  a resposta sai como antes. Hook que consome uma chave sem coluna (ex.:
+  `senha` → hash em `password`) sobrescreve `ignoredKeys()` para tirá-la da lista.
 
 - **Validação antes de escrever.** Master e todas as linhas de detalhe são
   validados (via `Model::rules()`) antes de qualquer `save()` — falha não deixa

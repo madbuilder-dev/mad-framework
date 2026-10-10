@@ -5,6 +5,9 @@
     $class    = $class    ?? '';
     $disabled = $disabled ?? false;
     $_isHidden = $name && \Mad\Component\MadRenderContext::isHidden($name, 'tab');
+    // O texto da aba nomeia, no aviso das marcas mudadas por fora, o checklist
+    // sem rótulo que estiver no painel dela.
+    \Mad\Component\MadRenderContext::tabRendered((string) $name, (string) ($slot ?? ''));
 @endphp
 <button
     type="button"

@@ -50,6 +50,8 @@
 @elseif($col->editType === 'date')
     @php
         $eid = 'dgct_' . preg_replace('/[^a-z0-9_]/i', '_', $col->field) . '_' . mt_rand(1000, 9999);
+        // A mesma chave que o startEdit() desta célula recebeu (ver x-effect abaixo).
+        $dpRowJs = $rowIdJs ?? \Mad\Grid\MadDataGrid::rowIdJs($rowId ?? '');
         $iso = !empty($cellVal) ? (string)$cellVal : '';
         $dpCfg = [
             'displayMask'  => 'dd/mm/yyyy',
@@ -66,6 +68,11 @@
                 }
             }
          }))"
+         {{-- O calendário abre com o valor EM EDIÇÃO (editValue do grid), não com o
+              initialValue embutido no HTML da linha: reaberto antes de a resposta
+              do salvamento anterior chegar, ele mostrava a data antiga; depois de
+              um Esc, a data digitada e descartada. --}}
+         x-effect="isEditing({{ $dpRowJs }},'{{ $col->field }}') && setValue(editValue)"
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
@@ -80,6 +87,7 @@
 @elseif($col->editType === 'datetime')
     @php
         $eid = 'dgct_' . preg_replace('/[^a-z0-9_]/i', '_', $col->field) . '_' . mt_rand(1000, 9999);
+        $dpRowJs = $rowIdJs ?? \Mad\Grid\MadDataGrid::rowIdJs($rowId ?? '');
         $iso = !empty($cellVal) ? (string)$cellVal : '';
         $dpCfg = [
             'displayMask'  => 'dd/mm/yyyy hh:ii',
@@ -96,6 +104,11 @@
                 }
             }
          }))"
+         {{-- O calendário abre com o valor EM EDIÇÃO (editValue do grid), não com o
+              initialValue embutido no HTML da linha: reaberto antes de a resposta
+              do salvamento anterior chegar, ele mostrava a data antiga; depois de
+              um Esc, a data digitada e descartada. --}}
+         x-effect="isEditing({{ $dpRowJs }},'{{ $col->field }}') && setValue(editValue)"
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"

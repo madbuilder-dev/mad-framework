@@ -375,7 +375,9 @@ final class MadUploadRules
      *    arquivo novo" e o registro era gravado sem o anexo, calado;
      *  - extensão que nenhum upload grava;
      *  - `maxBytes` (Tamanho máximo), `accept` (Tipos aceitos) e `maxFiles`
-     *    (Máximo de arquivos) do campo — só quando o campo os declara.
+     *    (Máximo de arquivos) do campo — só quando o campo os declara;
+     *  - nas células de arquivo da Lista de itens, o Tamanho máximo da coluna
+     *    (erro em `mad_fl_files`).
      *
      * @param array<string,mixed> $schema  campos do formulário (nome => props)
      * @param array<string,mixed> $fields  valores do formulário (a Imagem sem `storage` vem aqui, em base64)
@@ -431,17 +433,61 @@ final class MadUploadRules
             }
         }
 
-        // Arquivos das células de uma Lista de itens: só o que o PHP recusou
-        // (o limite da coluna é conferido pela própria lista).
-        foreach (self::entries($_FILES['mad_fl_files'] ?? null) as $file) {
-            $problem = self::phpProblem((int) $file['error'], (string) $file['name']);
-            if ($problem !== null) {
-                $errors['mad_fl_files'] = $problem;
-                break;
+        // Arquivos das células de uma Lista de itens (`mad_fl_files[parte][célula][i]`):
+        // o que o PHP recusou e o Tamanho máximo da coluna (`max-size` de
+        // <mad-field-list-column>), que antes só o navegador conferia.
+        $cells = $_FILES['mad_fl_files'] ?? null;
+        foreach (is_array($cells) && is_array($cells['error'] ?? null) ? array_keys($cells['error']) : [] as $cell) {
+            $part = [];
+            foreach (['name', 'type', 'tmp_name', 'error', 'size'] as $key) {
+                $part[$key] = is_array($cells[$key] ?? null) ? ($cells[$key][$cell] ?? null) : null;
+            }
+            $max = self::cellMaxBytes((string) $cell);
+            foreach (self::entries($part) as $file) {
+                $problem = self::phpProblem((int) $file['error'], (string) $file['name']);
+                if ($problem === null && $max > 0 && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
+                    $problem = self::fileProblem($file, $max, '', false);
+                }
+                if ($problem !== null) {
+                    $errors['mad_fl_files'] = $problem;
+                    break 2;
+                }
             }
         }
 
         return $errors;
+    }
+
+    /**
+     * Tamanho máximo (bytes) da coluna de arquivo de uma célula — a chave é
+     * `<detalhe>__<linha>__<coluna>` — ou 0 quando a coluna não declara.
+     *
+     * As colunas são as que a lista registrou e que o formulário recebido traz
+     * (MadFormRegistry::getDetailFileColumns). O limite faz parte da
+     * impressão delas que o estado da tela guarda (detailFilesPrint): um
+     * formulário recebido sem ele não grava as linhas.
+     */
+    private static function cellMaxBytes(string $cell): int
+    {
+        // O nome da lista, a chave da linha e a coluna podem ter `__`: o nome
+        // da lista é o primeiro prefixo registrado; a coluna, o maior sufixo
+        // que ela tem.
+        $parts = explode('__', $cell);
+        $count = count($parts);
+        for ($i = 1; $i < $count - 1; $i++) {
+            $columns = MadFormRegistry::getDetailFileColumns(implode('__', array_slice($parts, 0, $i)));
+            if ($columns === []) {
+                continue;
+            }
+            for ($j = $i + 1; $j < $count; $j++) {
+                $column = implode('__', array_slice($parts, $j));
+                if (is_array($columns[$column] ?? null)) {
+                    return max(0, (int) ($columns[$column]['maxBytes'] ?? 0));
+                }
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -500,6 +546,26 @@ final class MadUploadRules
         return preg_match('/^[\x00-\x20]*data:/i', $value) === 1;
     }
 
+    /**
+     * A Imagem guardada na própria coluna, com os limites que a tela anotou
+     * (`inlineImageLimits`: `a` = Tipos aceitos, `b` = Tamanho máximo): o
+     * motivo da recusa, ou null. Só o valor — sem olhar `$_FILES` —, para a
+     * imagem de uma LINHA (editor de um Detail Form), cujo campo não é um
+     * campo da requisição.
+     *
+     * @param array{a?: string, b?: int} $limits
+     */
+    public static function inlineImageProblem(mixed $value, array $limits): ?string
+    {
+        $max    = max(0, (int) ($limits['b'] ?? 0));
+        $accept = (string) ($limits['a'] ?? '');
+        if (!is_string($value) || ($max === 0 && $accept === '') || !self::isDataUrl($value)) {
+            return null;
+        }
+
+        return self::dataUrlProblem($value, $max, $accept);
+    }
+
     private static function dataUrlProblem(string $value, int $max, string $accept): ?string
     {
         if (preg_match('#^[\x00-\x20]*data:([a-z0-9.+/-]+)?((?:;[^,]*)?),#i', $value, $m)) {
@@ -512,11 +578,11 @@ final class MadUploadRules
             [$type, $payload, $base64] = ['', $value, false];
         }
 
-        if ($accept !== '' && $type !== '') {
-            $extension = (string) (array_search(self::TYPE_ALIASES[$type] ?? $type, self::EXTENSION_TYPES, true) ?: '');
-            if (!self::accepts($accept, 'imagem.' . ($extension !== '' ? $extension : 'bin'), '', $type)) {
-                return self::text('form.upload_image_type', ['accept' => self::acceptLabel($accept)], 'A imagem não é de um tipo aceito neste campo (:accept).');
-            }
+        // Tipos aceitos: o tipo que o endereço DECLARA e o que o conteúdo É.
+        // O endereço é quem envia que escreve — um JPEG declarado como PNG, ou
+        // um endereço sem tipo (`data:;base64,…`), passava pela conferência.
+        if ($accept !== '' && self::dataUrlTypeRefused($accept, $type, $payload, $base64)) {
+            return self::text('form.upload_image_type', ['accept' => self::acceptLabel($accept)], 'A imagem não é de um tipo aceito neste campo (:accept).');
         }
         if ($max > 0) {
             // Em base64 cada 4 letras são 3 bytes; fora dele o texto é o conteúdo.
@@ -527,6 +593,77 @@ final class MadUploadRules
         }
 
         return null;
+    }
+
+    /**
+     * O tipo de uma imagem em endereço `data:` fica fora do que `accept`
+     * aceita?
+     *
+     *  - endereço sem tipo: recusado (não há o que conferir);
+     *  - o tipo declarado tem de ser aceito, como sempre foi;
+     *  - o conteúdo de PNG, JPEG, GIF e WebP é reconhecido pelos primeiros
+     *    bytes: tem de ser de um tipo aceito também, e o endereço que se diz
+     *    de um desses quatro tem de trazer um deles. JPEG dentro de um
+     *    endereço PNG passa quando os dois são aceitos (o navegador mostra a
+     *    imagem pelo conteúdo — é o arquivo renomeado de quem usa o campo).
+     *
+     * Outros tipos (BMP, AVIF…) seguem conferidos só pelo que declaram.
+     */
+    private static function dataUrlTypeRefused(string $accept, string $type, string $payload, bool $base64): bool
+    {
+        if ($type === '') {
+            return true;
+        }
+        $type = self::TYPE_ALIASES[$type] ?? $type;
+        if (!self::acceptsType($accept, $type)) {
+            return true;
+        }
+
+        $content = self::imageSignature(self::dataUrlHead($payload, $base64));
+        if ($content !== '') {
+            return !self::acceptsType($accept, $content);
+        }
+
+        return in_array($type, self::SIGNED_IMAGE_TYPES, true);
+    }
+
+    /** Tipos de imagem que {@see imageSignature()} reconhece pelo conteúdo. */
+    private const SIGNED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+    /** `accept` aceita o tipo `$type` (ex.: `image/png`)? Pela extensão do tipo, como um arquivo com esse nome. */
+    private static function acceptsType(string $accept, string $type): bool
+    {
+        $extension = (string) (array_search($type, self::EXTENSION_TYPES, true) ?: '');
+
+        return self::accepts($accept, 'imagem.' . ($extension !== '' ? $extension : 'bin'), '', $type);
+    }
+
+    /**
+     * Os primeiros bytes do conteúdo de um endereço `data:`, lidos como o
+     * navegador lê: o texto passa pelo `%xx` e, em base64, os espaços e as
+     * quebras de linha não contam.
+     */
+    private static function dataUrlHead(string $payload, bool $base64): string
+    {
+        $head = rawurldecode(substr($payload, 0, 96));
+        if (!$base64) {
+            return substr($head, 0, 16);
+        }
+        $head = substr((string) preg_replace('/[\t\n\f\r ]+/', '', $head), 0, 24);
+
+        return (string) base64_decode(substr($head, 0, intdiv(strlen($head), 4) * 4));
+    }
+
+    /** `image/png`, `image/jpeg`, `image/gif` ou `image/webp` pelos primeiros bytes — ou '' quando não é nenhum deles. */
+    private static function imageSignature(string $bytes): string
+    {
+        return match (true) {
+            str_starts_with($bytes, "\x89PNG\r\n\x1a\n")                             => 'image/png',
+            str_starts_with($bytes, "\xFF\xD8\xFF")                                   => 'image/jpeg',
+            str_starts_with($bytes, 'GIF87a'), str_starts_with($bytes, 'GIF89a')      => 'image/gif',
+            str_starts_with($bytes, 'RIFF') && substr($bytes, 8, 4) === 'WEBP'        => 'image/webp',
+            default                                                                    => '',
+        };
     }
 
     // ── Requisição acima do post_max_size ─────────────────────────────────────

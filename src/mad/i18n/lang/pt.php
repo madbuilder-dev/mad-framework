@@ -279,6 +279,8 @@ return [
             'not_stored_field_many'  => 'O que foi digitado em :fields não foi gravado: os campos não estão ligados a nenhuma coluna da tabela :table.',
             'not_stored_column_one'  => 'Na lista :list, o que foi digitado em :columns não foi gravado: a coluna não existe na tabela :table.',
             'not_stored_column_many' => 'Na lista :list, o que foi digitado em :columns não foi gravado: as colunas não existem na tabela :table.',
+            'not_stored_guarded_one'  => 'O que foi digitado em :fields não foi gravado: a tabela :table não aceita essa alteração por esta tela.',
+            'not_stored_guarded_many' => 'O que foi digitado em :fields não foi gravado: a tabela :table não aceita essas alterações por esta tela.',
             'not_stored_tail'        => 'O restante foi salvo. Avise o administrador do sistema.',
             // Linha de uma lista (ou marca de um checklist) com a chave de um cadastro que quem salva não enxerga: o Salvar é recusado.
             'row_invalid'            => 'Na lista :list, linha :row: :message',
@@ -293,12 +295,19 @@ return [
             'gone_title'      => 'Itens já removidos',
             'gone_rows_one'   => 'A linha :rows da lista já tinha sido removida em outra aba ou por outra pessoa e não foi gravada de novo.',
             'gone_rows_many'  => 'As linhas :rows da lista já tinham sido removidas em outra aba ou por outra pessoa e não foram gravadas de novo.',
+            'gone_rows_edits_one'  => 'Se você tinha alterado essa linha nesta tela, a alteração também não foi gravada.',
+            'gone_rows_edits_many' => 'Se você tinha alterado essas linhas nesta tela, as alterações também não foram gravadas.',
             'gone_files_one'  => 'O anexo :files já tinha sido removido em outra aba ou por outra pessoa.',
             'gone_files_many' => 'Os anexos :files já tinham sido removidos em outra aba ou por outra pessoa.',
             // Seleção múltipla em outra tabela (checkbox, multi busca, checklist em mode=table).
             'gone_options_one'  => 'Em :field, uma opção que esta tela ainda mostrava marcada já tinha sido desmarcada em outra aba ou por outra pessoa e não foi marcada de novo.',
             'gone_options_many' => 'Em :field, :count opções que esta tela ainda mostrava marcadas já tinham sido desmarcadas em outra aba ou por outra pessoa e não foram marcadas de novo.',
             'gone_tail'       => 'O restante foi salvo. Atualize a tela para ver a situação atual.',
+            // Salvar que não gravou as linhas de uma lista (o formulário recebido a descreve de outro jeito).
+            'not_saved_title' => 'Linhas não gravadas',
+            'not_saved_named' => 'As linhas de :lists não foram gravadas: recarregue a tela e tente de novo.',
+            'not_saved' => 'As linhas da lista não foram gravadas: recarregue a tela e tente de novo.',
+            'not_saved_tail' => 'O restante foi salvo.',
             'and'             => 'e',
         ],
 
@@ -309,10 +318,18 @@ return [
             'changed_title'      => 'Alterado em outra aba ou por outra pessoa',
             'marked_elsewhere'   => 'Outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.',
             'unmarked_elsewhere' => 'Outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'marked_elsewhere_in'   => 'Em :list, outra aba ou outra pessoa marcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'unmarked_elsewhere_in' => 'Em :list, outra aba ou outra pessoa desmarcou :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'changed_elsewhere'     => 'Outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
+            'changed_elsewhere_in'  => 'Em :list, outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
             'changed_tail'       => 'Atualize a tela para ver a situação atual.',
             'items_one'          => '1 item',
             'items_many'         => ':count itens',
             'more'               => 'mais :count',
+            // Campo Checklist: o contador conta só as marcas da lista na tela; as gravadas em itens que ela não mostra aparecem à parte.
+            'counter'            => ':n de :total selecionados',
+            'counter_outside'    => 'mais :n fora da lista',
+            'only_checked'       => 'Mostrar somente selecionados',
         ],
 
         // Campo de tabela (DB Combo, DB Select, DB Radio, DB Unique Search): a

@@ -3,6 +3,9 @@
     // alias: o editor visual grava :items — aceitar os dois nomes
     // (drift editor-runtime, auditoria 14/jul/2026)
     if (empty($options) && !empty($items)) { $options = $items; }
+    // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
+    // que o reload_multi_entry mostrou (fw#228).
+    $options = \Mad\Support\MadItems::fromForm((string) $name) ?? $options;
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] (\Mad\Support\MadItems).
     if (is_array($options)) { $options = \Mad\Support\MadItems::normalize($options); }
     $required = !empty($required);
@@ -11,11 +14,20 @@
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $max      = (int)$max;
-    // Normalize value to array of strings
-    if (is_string($value)) {
-        $value = $value !== '' ? explode(',', $value) : [];
+    // Sem `value` na tag, vale o registro aberto (MadForm fill), como nos
+    // outros campos de seleção múltipla — antes a edição abria vazia.
+    if (empty($value) && $name) {
+        $_ctx = \Mad\Component\MadRenderContext::current();
+        if (array_key_exists($name, $_ctx)) {
+            $value = $_ctx[$name];
+        }
     }
-    $value  = array_map('strval', (array)$value);
+    // Lista de strings: a coluna por vírgula, a lista JSON que o navegador
+    // devolve ('["pt","es"]') ou um array.
+    $value  = \Mad\Form\MadForm::selectionKeys($value, ',');
+    // "Valor padrão" (`default`, lista separada por vírgula): só no cadastro
+    // novo e sem `value` escrito na tag.
+    $value  = \Mad\Support\MadFieldValue::withDefaultSelection((string) $name, $value, $default ?? null);
     $create = empty($options); // criação livre se não houver opções fixas
     \Mad\Form\MadFormRegistry::register($name, 'multi-entry', [
         'label'    => strip_tags($label),

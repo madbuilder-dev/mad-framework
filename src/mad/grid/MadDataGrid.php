@@ -297,6 +297,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public array $exportGroupConfig = [];
 
     /**
+     * O Blade da listagem (`<mad-grid self>`) declarou `<mad-del>`, na linha ou
+     * num grupo: libera a exclusão embutida ({@see onMadGridDelete()}).
+     *
+     * Escrita SÓ no render, a partir do config compilado, e viaja no estado
+     * criptografado; o navegador não a escreve (`mad:model` recusa, ver
+     * MadComponent::_MODEL_STRUCTURAL_BLOCKED). Sem ela, toda listagem teria um
+     * Excluir chamável por requisição — mesmo a que não desenha o botão.
+     */
+    public bool $gridDeleteDeclared = false;
+
+    /**
      * ORDER BY declarativo do Blade (<mad-grid order-by="data_venda desc">).
      * Substitui o :query closure em grids paginados: closure não serializa no
      * mad_state e era silenciosamente ignorada. Público → serializado (o state é
@@ -1862,6 +1873,173 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return max(100, (int) $declared, (int) ($cfg['perPage'] ?? 0));
     }
 
+    // ── Excluir embutido (<mad-del>) ─────────────────────────────────────
+
+    /**
+     * O Excluir do `<mad-del>` numa listagem `<mad-grid self>`.
+     *
+     * Antes só o `<mad-grid model>` (MadGrid) tinha este método: na listagem o
+     * botão aparecia e o clique respondia "Método não permitido". Agora ela
+     * exclui como o `<mad-grid model>` — mas só quando o Blade declarou o
+     * `<mad-del>` ({@see $gridDeleteDeclared}). O método é público em toda
+     * listagem; sem a marca, uma requisição montada à mão excluiria numa tela
+     * que nem desenha o botão.
+     *
+     * A permissão é a de Excluir da tela (ActionVocab: onMadGridDelete →
+     * delete), conferida pelo handler antes de chegar aqui.
+     */
+    public function onMadGridDelete(int|string $id): mixed
+    {
+        if (!$this->gridDeleteDeclared) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: onMadGridDelete recusado — ' . static::class . ' não declara <mad-del> '
+                . '(registro ' . static::_logSafe((string) $id) . ', usuario ' . static::_logUser() . ').'
+            );
+
+            return \Mad\Ui\MadToast::danger(mad_t('mad.error.bad_request'));
+        }
+
+        return $this->_deleteVisibleRow($id);
+    }
+
+    /**
+     * Exclui UMA linha que a listagem mostra e diz o que aconteceu — o corpo do
+     * Excluir embutido, do `<mad-grid self>` e do `<mad-grid model>` (MadGrid).
+     *
+     * O id vem do navegador. A busca é pela consulta da própria listagem
+     * (_visibleRecord): só se exclui linha que ela mostra — com `find()`, uma
+     * requisição com o id de outra pessoa passava por cima do filtro fixo.
+     *
+     * "Excluído com sucesso" só quando o registro saiu do banco: linha que não
+     * está mais na listagem (outra pessoa excluiu, mudou de dono) e exclusão que
+     * o Model recusou no evento `deleting` avisam isso, e a listagem recarregada
+     * mostra o que ficou.
+     */
+    protected function _deleteVisibleRow(int|string $id): mixed
+    {
+        $found   = false;
+        $deleted = false;
+        $blocked = false;   // a linha não tem o Excluir: escondido ou desabilitado pela condição
+        try {
+            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, &$found, &$deleted, &$blocked) {
+                $record = $this->_visibleRecord($id);
+                if (!$record) {
+                    return;
+                }
+                $found = true;
+                if (!$this->_gridDeleteAllowedFor($record)) {
+                    $blocked = true;
+                    return;
+                }
+                // delete() devolve false quando um `deleting` cancela. O estado
+                // do registro confirma (um delete() sobrescrito pode não devolver
+                // nada): sumiu do banco, ou foi para a lixeira (SoftDeletes).
+                $result  = $record->delete();
+                $deleted = $result !== false
+                    && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
+            });
+        } catch (\Throwable $e) {
+            // Erro técnico (ex.: registro em uso — violação de FK) não vai cru
+            // pra tela: o toast mostrava o SQL e o caminho do banco.
+            return \Mad\Ui\MadUserError::isTechnical($e)
+                ? \Mad\Ui\MadToast::danger(\Mad\Ui\MadUserError::message($e, mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
+                : \Mad\Ui\MadToast::danger('Erro ao excluir: ' . $e->getMessage());
+        }
+
+        $this->loadData();
+        if (!$found) {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.delete_gone'));
+        }
+        if ($blocked) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: onMadGridDelete recusado — a condição do <mad-del> não vale para o registro '
+                . static::_logSafe((string) $id) . ' (' . static::class . ', usuario ' . static::_logUser() . ').'
+            );
+        }
+        if ($blocked || !$deleted) {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.delete_refused'));
+        }
+
+        return \Mad\Ui\MadToast::success('Registro excluído com sucesso.');
+    }
+
+    /**
+     * O config compilado do `<mad-grid>` tem o Excluir embutido — na linha
+     * (`actConfigs`, já com os `@if` resolvidos) ou num `<mad-action-group>`?
+     */
+    protected static function _declaresGridDelete(array $config): bool
+    {
+        return static::_gridDeleteConfigs($config) !== [];
+    }
+
+    /**
+     * Os `<mad-del>` do config compilado: os da linha e os dos grupos.
+     *
+     * @return list<array<string,mixed>>
+     */
+    protected static function _gridDeleteConfigs(array $config): array
+    {
+        $acoes = (array) ($config['actConfigs'] ?? []);
+        foreach ((array) ($config['actGroupConfigs'] ?? []) as $grupo) {
+            if (is_array($grupo)) {
+                array_push($acoes, ...array_values((array) ($grupo['actions'] ?? [])));
+            }
+        }
+
+        return array_values(array_filter(
+            $acoes,
+            static fn ($a): bool => is_array($a) && ($a['method'] ?? '') === 'onMadGridDelete',
+        ));
+    }
+
+    /**
+     * O Excluir que a tela desenhou vale para ESTA linha?
+     *
+     * As condições do `<mad-del>` — `display-condition`, `when-*` (exibir) e
+     * `disabled-*` — só escondiam ou desabilitavam o botão: uma requisição
+     * montada à mão (ou o clique numa tela aberta antes de a linha mudar)
+     * excluía a linha mesmo assim. Aqui elas são avaliadas de novo, como no
+     * render — mesma ação, mesma linha (`toArray()` + `decorateRow()` + o
+     * registro em `__record`) —, com o registro como está AGORA no banco.
+     * Basta um dos `<mad-del>` (na linha ou num grupo) aparecer habilitado.
+     *
+     * Config: o selado do `<mad-grid model>` (gridConfig) ou o do último render
+     * da listagem `<mad-grid self>` (a cópia na sessão, como no manageRow). Sem
+     * `<mad-del>` nele — `actions()` escrito à mão, config fora de alcance —
+     * nada muda aqui.
+     */
+    protected function _gridDeleteAllowedFor(object $record): bool
+    {
+        $config = $this->_bladeGridConfig();
+        if ($config === []) {
+            $cached = session(static::class . '_dg_cfg');
+            $config = is_array($cached) ? $cached : [];
+        }
+        $dels = static::_gridDeleteConfigs($config);
+        if ($dels === []) {
+            return true;
+        }
+
+        $decorated = $this->decorateRow($record);
+        $subject   = is_object($decorated) ? $decorated : $record;
+        $row       = method_exists($subject, 'toArray') ? (array) $subject->toArray() : get_object_vars($subject);
+        if (is_array($decorated)) {
+            $row = $decorated + $row;
+        }
+        $row['__record'] = $subject;
+
+        $dono  = $this->_permOwnerClass();
+        $hosts = $this->_actionHosts();
+        foreach ($dels as $a) {
+            $act = static::_actFromConfig($a, $dono)?->resolveIn(...$hosts);
+            if ($act !== null && $act->isVisible($row) && !$act->isDisabled($row)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Edição na célula: grava UMA coluna de UMA linha.
      *
@@ -2117,13 +2295,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /** Texto vindo do navegador que vai para o log: curto e sem quebra de linha. */
-    private static function _logSafe(string $value): string
+    protected static function _logSafe(string $value): string
     {
         return (string) preg_replace('/[^A-Za-z0-9_\-.:{}>]/', '?', substr($value, 0, 64));
     }
 
     /** Usuário da sessão para o log ("-" sem sessão). */
-    private static function _logUser(): string
+    protected static function _logUser(): string
     {
         try {
             $quem = function_exists('session') ? session('userid') : null;
@@ -3331,6 +3509,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                                 : 1,
             'actions'      => $this->_effectiveActions(),
             'actionGroups' => $this->_effectiveActionGroups(),
+            // Nome próprio na view: o contexto da tela achata o gridConfig do
+            // <mad-grid model> em variáveis e um 'rowHighlights' cru (sem os
+            // métodos resolvidos) passaria por cima destas regras.
+            'rowHighlightRules' => $this->_effectiveRowHighlights(),
             'totals'       => $this->_footerTotals($columns),
             'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
@@ -3390,6 +3572,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         // Cache para renderSingleRow (manageRow) poder reconstruir colunas/ações
         session([static::class . '_dg_cfg' => $config]);
+
+        // A marca do Excluir embutido acompanha o que ESTE render desenha: um
+        // <mad-del> dentro de @if que deixou de valer deixa de excluir.
+        $this->gridDeleteDeclared = static::_declaresGridDelete($config);
 
         // Volta de formulário: estado de navegação ANTES de qualquer carga — o
         // config abaixo ainda precisa entrar (model, per-page, filtro avançado)
@@ -3563,6 +3749,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                                 : 1,
             'actions'      => $this->_effectiveActions(),
             'actionGroups' => $this->_effectiveActionGroups(),
+            // Nome próprio na view: o contexto da tela achata o gridConfig do
+            // <mad-grid model> em variáveis e um 'rowHighlights' cru (sem os
+            // métodos resolvidos) passaria por cima destas regras.
+            'rowHighlightRules' => $this->_effectiveRowHighlights(),
             'totals'       => $this->_footerTotals($columns),
             'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
@@ -4055,6 +4245,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($a['color']))   $act->color((string) $a['color']);
         if (!empty($a['danger']))  $act->danger();
         if (!empty($a['primary'])) $act->primary();
+        // success/warning/info/ghost do painel (danger e primary têm flag própria).
+        if (!empty($a['variant'])) $act->variant((string) $a['variant']);
         if (!empty($a['idField'])) $act->idField($a['idField']);
         if (!empty($a['params']))  $act->params($a['params']);
 
@@ -4120,8 +4312,196 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'neq' => $fv !== (string)$val,
             'in'  => in_array($fv, (array)$val, true),
             'nin' => !in_array($fv, (array)$val, true),
+            // Comparação de grandeza (destaque "estoque abaixo de 10"): número
+            // com número; senão texto — data ISO (AAAA-MM-DD) compara certo.
+            // Campo vazio nunca casa (vazio não é "menor que 10").
+            'gt', 'gte', 'lt', 'lte' => $fv !== '' && static::_cmpOp($cond['op'], static::_cmpValues($fv, (string)$val)),
             default => true,
         };
+    }
+
+    /** -1/0/1 entre o valor do campo e o da regra (número se os dois forem). */
+    protected static function _cmpValues(string $a, string $b): int
+    {
+        $a = trim($a);
+        $b = trim($b);
+        if (is_numeric($a) && is_numeric($b)) {
+            return (float)$a <=> (float)$b;
+        }
+
+        return strcmp($a, $b) <=> 0;
+    }
+
+    protected static function _cmpOp(string $op, int $cmp): bool
+    {
+        return match ($op) {
+            'gt'  => $cmp > 0,
+            'gte' => $cmp >= 0,
+            'lt'  => $cmp < 0,
+            'lte' => $cmp <= 0,
+            default => false,
+        };
+    }
+
+    // ── Destaque da linha por condição (<mad-row-highlights>) ─────────────
+
+    /** Tons do destaque — classes `mad-dg-hl--<tom>` com tokens --mad-* (claro e escuro). */
+    public const ROW_HIGHLIGHT_TONES = ['danger', 'warning', 'success', 'info'];
+
+    /**
+     * Regras de destaque de uma listagem escrita à mão (builder#247). Mesmo
+     * formato do `<mad-row-highlights>` compilado:
+     *
+     *     return [
+     *         ['when' => ['field' => 'status', 'op' => 'eq', 'value' => 'atrasada'], 'tone' => 'danger'],
+     *         ['when' => ['field' => 'estoque', 'op' => 'lt', 'value' => '10'], 'tone' => 'warning', 'cell' => 'estoque'],
+     *         ['when' => 'podeDestacar', 'color' => '#fde68a'],   // método public static da tela
+     *     ];
+     *
+     * Vale a primeira regra que casar. `cell` pinta só a célula da coluna.
+     */
+    protected function rowHighlights(): array
+    {
+        return [];
+    }
+
+    /** Regras efetivas: as do `<mad-grid self>` (config inline) ou as de rowHighlights(). */
+    protected function _effectiveRowHighlights(): array
+    {
+        $raw = $this->_inlineConfig !== null
+            ? (array) ($this->_inlineConfig['rowHighlights'] ?? [])
+            : (array) $this->rowHighlights();
+
+        return $raw === [] ? [] : static::_normalizeRowHighlights($raw, $this->_actionHosts());
+    }
+
+    /**
+     * Saneia as regras: condição obrigatória (string 'Classe::metodo' ou só o
+     * nome do método da tela; ou array when-*), tom conhecido, cor livre só se
+     * for cor de verdade (vai para um atributo style), `cell` aparado.
+     *
+     * @return list<array{when: string|array, tone: string, color: string, cell: string}>
+     */
+    public static function _normalizeRowHighlights(array $raw, array $hosts = []): array
+    {
+        $out = [];
+        foreach ($raw as $r) {
+            if (!is_array($r)) continue;
+            $when = $r['when'] ?? null;
+            if (is_string($when)) {
+                $when = trim($when);
+                if ($when === '') continue;
+                $when = GridAction::hostCallable($when, $hosts);
+            } elseif (!is_array($when) || trim((string) ($when['field'] ?? '')) === '') {
+                continue;
+            }
+            $tone = strtolower(trim((string) ($r['tone'] ?? '')));
+            if (!in_array($tone, self::ROW_HIGHLIGHT_TONES, true)) $tone = '';
+            $color = static::_safeHighlightColor((string) ($r['color'] ?? ''));
+            if ($tone === '' && $color === '') $tone = 'warning';
+            $out[] = [
+                'when'  => $when,
+                'tone'  => $color !== '' ? '' : $tone,
+                'color' => $color,
+                'cell'  => trim(str_replace(['{', '}'], '', (string) ($r['cell'] ?? ''))),
+            ];
+        }
+
+        return $out;
+    }
+
+    /** Cor livre aceita: #hex, nome, rgb()/hsl()/oklch() ou var(--x). Qualquer outra coisa some. */
+    protected static function _safeHighlightColor(string $c): string
+    {
+        $c = trim($c);
+
+        return preg_match('/^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgba?|hsla?|oklch)\([0-9.,%\s\/-]+\)|var\(--[\w-]+\))$/', $c) ? $c : '';
+    }
+
+    /** A primeira regra que casa com a linha, ou null. */
+    public static function rowHighlightFor(array $rules, array $row): ?array
+    {
+        foreach ($rules as $r) {
+            if (static::_rowHighlightMatches($r['when'] ?? null, $row)) {
+                return $r;
+            }
+        }
+
+        return null;
+    }
+
+    protected static function _rowHighlightMatches(mixed $when, array $row): bool
+    {
+        $record = isset($row['__record']) && is_object($row['__record']) ? $row['__record'] : null;
+        if (is_array($when)) {
+            return static::_evalCond($record ?? $row, $when);
+        }
+        if (!is_string($when) || !is_callable($when)) {
+            static $warned = [];
+            $key = is_string($when) ? $when : get_debug_type($when);
+            if (!isset($warned[$key])) {
+                $warned[$key] = true;
+                error_log('[MadGrid] destaque de linha: display-condition "' . $key . '" não é chamável — a regra foi ignorada. Use um método public static da tela (só o nome) ou Classe::metodo.');
+            }
+            return false;
+        }
+        try {
+            return (bool) GridAction::callRowCallback($when, $record, $row);
+        } catch (\Throwable $e) {
+            error_log('[MadGrid] destaque de linha: "' . $when . '" falhou — ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Classes da <tr> (e do cartão) — vazio quando a regra pinta só a célula. */
+    public static function rowHighlightClass(?array $hl): string
+    {
+        if ($hl === null || ($hl['cell'] ?? '') !== '') return '';
+
+        return ' ' . static::_highlightToneClasses($hl);
+    }
+
+    /** `style` da <tr>/cartão (cor livre) — vazio quando não há. */
+    public static function rowHighlightStyle(?array $hl): string
+    {
+        if ($hl === null || ($hl['cell'] ?? '') !== '' || ($hl['color'] ?? '') === '') return '';
+
+        return '--mad-dg-hl-color:' . $hl['color'];
+    }
+
+    /** Classes da célula da coluna `cell` da regra. */
+    public static function cellHighlightClass(?array $hl, GridColumn $col): string
+    {
+        if (!static::_highlightHitsCell($hl, $col)) return '';
+
+        return ' mad-dg-hl-cell ' . static::_highlightToneClass($hl);
+    }
+
+    /** Trecho de `style` da célula (cor livre), já com o `;` na frente. */
+    public static function cellHighlightStyle(?array $hl, GridColumn $col): string
+    {
+        if (!static::_highlightHitsCell($hl, $col) || ($hl['color'] ?? '') === '') return '';
+
+        return ';--mad-dg-hl-color:' . $hl['color'];
+    }
+
+    protected static function _highlightHitsCell(?array $hl, GridColumn $col): bool
+    {
+        $cell = $hl['cell'] ?? '';
+        if ($cell === '') return false;
+        $field = trim(str_replace(['{', '}'], '', (string) $col->field));
+
+        return $cell === $field || $cell === (string) $col->fieldKey;
+    }
+
+    protected static function _highlightToneClasses(array $hl): string
+    {
+        return 'mad-dg-hl ' . static::_highlightToneClass($hl);
+    }
+
+    protected static function _highlightToneClass(array $hl): string
+    {
+        return ($hl['color'] ?? '') !== '' ? 'mad-dg-hl--color' : 'mad-dg-hl--' . ($hl['tone'] ?: 'warning');
     }
 
     // ── Internals ────────────────────────────────────────────────────────
@@ -6332,20 +6712,25 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         [$editComboOptions, $editSearchToken, $editSearchPreloaded]
             = static::_buildEditCaches($visibleColumns, [$row]);
 
+        // Destaque por condição: a linha redesenhada recalcula a regra (o
+        // registro pode ter acabado de mudar de situação).
+        $rowHighlight = static::rowHighlightFor($grid->_effectiveRowHighlights(), $row);
+
         $rowHtml = static::_buildRowHtml(
             $row, $rowId, $_rowPrefix,
             $visibleColumns, $actions, $actionGroups, $hasActions, $grid->actionSide,
             $editComboOptions, $editSearchToken, $editSearchPreloaded,
             // Linha nova num grid com seleção ganha a célula do checkbox —
             // sem ela a <tr> entraria com uma coluna a menos.
-            !empty($cfg['selectable']) || $grid->selectable
+            !empty($cfg['selectable']) || $grid->selectable,
+            $rowHighlight
         );
 
         // Se card view está habilitado, gera card HTML também
         $cardHtml = '';
         if (!empty($cfg['cardView'])) {
             $cardHtml = static::_buildCardHtml($row, $rowId, $_rowPrefix, $visibleColumns, $actions, $actionGroups,
-                !empty($cfg['selectable']) || $grid->selectable);
+                !empty($cfg['selectable']) || $grid->selectable, $rowHighlight);
         }
 
         return $cardHtml ? $rowHtml . '<!-- CARD_HTML -->' . $cardHtml : $rowHtml;
@@ -6400,13 +6785,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         array $visibleColumns,
         array $actions,
         array $actionGroups,
-        bool $selectable = false
+        bool $selectable = false,
+        ?array $rowHighlight = null
     ): string {
         $rid   = htmlspecialchars($_rowPrefix . $rowId, ENT_QUOTES);
         $roles = static::_assignCardRoles($visibleColumns);
         extract($roles); // cardTitle, cardSubtitle, cardBadge, cardImage, cardHighlight, cardBody
 
-        $html = '<div class="mad-dg-card" data-card-id="' . $rid . '">';
+        $hlStyle = static::rowHighlightStyle($rowHighlight);
+        $html = '<div class="mad-dg-card' . static::rowHighlightClass($rowHighlight) . '" data-card-id="' . $rid . '"'
+              . ($hlStyle !== '' ? ' style="' . htmlspecialchars($hlStyle, ENT_QUOTES) . '"' : '') . '>';
         // <mad-grid selectable>: mesmo checkbox do card do primeiro render.
         if ($selectable) {
             $sid   = htmlspecialchars(json_encode((string) $rowId, JSON_UNESCAPED_UNICODE), ENT_QUOTES);
@@ -6451,7 +6839,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             foreach ($cardBody as $col) {
                 $cellVal = $row[$col->field] ?? '';
                 if ($cellVal === '' || $cellVal === null) continue;
-                $html .= '<div class="mad-dg-card-field"'
+                $hlCellStyle = ltrim(static::cellHighlightStyle($rowHighlight, $col), ';');
+                $html .= '<div class="mad-dg-card-field' . static::cellHighlightClass($rowHighlight, $col) . '"'
+                        . ($hlCellStyle !== '' ? ' style="' . htmlspecialchars($hlCellStyle, ENT_QUOTES) . '"' : '')
                         . " :class=\"{ 'mad-dg-col-hidden': isColHidden('" . $col->fieldKey . "') }\">"
                         . '<span class="mad-dg-card-field-label">' . htmlspecialchars($col->label, ENT_QUOTES) . '</span>'
                         . '<span class="mad-dg-card-field-value">' . $col->renderValue($cellVal, $row) . '</span>'
@@ -6940,7 +7330,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         array $editComboOptions = [],
         array $editSearchToken = [],
         array $editSearchPreloaded = [],
-        bool $selectable = false
+        bool $selectable = false,
+        ?array $rowHighlight = null
     ): string {
         // Reusa o partial Blade da row (mesmo render do primeiro paint)
         // — assim o manage_row tem os mesmos editores inline / click / dblclick.
@@ -6961,6 +7352,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 'isEven'              => false,
                 'rowDepth'            => 0,
                 '_lastRow'            => null,
+                '_hl'                 => $rowHighlight,
             ]);
         } catch (\Throwable $e) {
             // Fallback minimo — texto cru sem editores. Nao deveria acontecer em

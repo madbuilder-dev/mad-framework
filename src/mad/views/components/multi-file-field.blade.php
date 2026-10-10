@@ -78,9 +78,10 @@
                 // que consta aqui e que o usuário removeu. No redesenho só vale
                 // se o HTML for entregue (o render de uma resposta parcial é
                 // descartado, e o campo continua mostrando o que mostrava).
+                // Com o nome exibido: é por ele que o aviso de anexo já removido o cita.
                 $_src
-                    ? $_form->rememberUploadFiles($name, $_pid, array_column($existingFiles, 'path'))
-                    : $_form->noteUploadFiles($name, $_pid, array_column($existingFiles, 'path'));
+                    ? $_form->rememberUploadFiles($name, $_pid, array_column($existingFiles, 'path'), array_column($existingFiles, 'name', 'path'))
+                    : $_form->noteUploadFiles($name, $_pid, array_column($existingFiles, 'path'), array_column($existingFiles, 'name', 'path'));
             } catch (\Throwable $e) {
                 // Tabela ausente / sem conexão no render: o campo abre SEM os
                 // anexos. Não é inofensivo — "nenhum anexo mantido" no Salvar
@@ -234,7 +235,7 @@
                 <iframe x-show="ftype === 'pdf'" :src="src" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>
                 <div x-show="ftype === 'other'" style="padding:60px 20px;color:var(--mad-text-muted);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
-                    <p>Preview nao disponivel para este tipo de arquivo.</p>
+                    <p>Preview não disponível para este tipo de arquivo.</p>
                 </div>
             </div>
         </div>

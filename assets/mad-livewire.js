@@ -903,6 +903,12 @@ const MadWire = (() => {
             // a master field that shares the same name (ex.: master e item com "descricao").
             if (_closestAcross(el, '[data-mad-df-name]') || _closestAcross(el, '[data-mad-fl-name]')) return;
 
+            // Campo desabilitado por "Desabilitar quando" (`disabled-when`) não
+            // vai no Salvar — é o que a dica do painel e o changelog 5.89
+            // prometem, e o servidor trata chave ausente como "não mexer". O
+            // `disabled` fixo do HTML não tem voto e continua indo.
+            if (_whenDisabled(el)) return;
+
             // Skip models de MadComponents ANINHADOS (ex.: panes de dashboard
             // injetados dentro de um container): pertencem ao wire do filho,
             // não ao do wrapper que está submetendo.
@@ -982,6 +988,17 @@ const MadWire = (() => {
         return result;
     }
 
+    // Voto de disabled-when (x-mad-when:disabled, mad-ui.js) no controle — ou,
+    // num grupo (rádio, checkbox, checklist), no primeiro controle de dentro.
+    // Mesmo critério de _madWhen.disabledByWhen; repetido aqui para a coleta
+    // não depender da ordem em que os scripts carregam.
+    function _whenDisabled(el) {
+        const voted = (c) => !!(c && c._madWhen && c._madWhen.disabled && c._madWhen.disabled.enforcing);
+        if (voted(el)) return true;
+        if (el.matches && el.matches('input, select, textarea')) return false;
+        return voted(el.querySelector ? el.querySelector('input, select, textarea') : null);
+    }
+
     // ── Executa scripts contidos em HTML (ex: erros do código legado) ─────────────
 
     function _execHtmlScripts(html) {
@@ -1015,7 +1032,7 @@ const MadWire = (() => {
     // ── Ops de lista (field-list / detail-form) ──────────────────────────────
 
     /**
-     * fl_rows, df_add, df_delete, df_display e df_field_error — implementação
+     * fl_rows, fl_drop, df_add, df_delete, df_display e df_field_error — implementação
      * ÚNICA para os dois caminhos da resposta: o parcial (aqui no _requestNow)
      * e o redesenho completo (Mad.applyOps, em mad.js, depois do morph).
      *
@@ -1052,6 +1069,30 @@ const MadWire = (() => {
                         ad.rows = rows;
                     }
                 } catch(e) { console.error('[MadWire] fl_rows error:', e); }
+            }
+        } else if (op.op === 'fl_drop') {
+            // Tira da Lista de itens / Detail Form as linhas que o Salvar não
+            // regravou porque outra aba (ou outra pessoa) já as tinha removido.
+            // Casadas por __id. Sem isto a linha ficava na tela até o F5, e cada
+            // Salvar repetia o aviso "Itens já removidos".
+            const el = _ownedNode(wrapper, `[data-mad-fl-name="${op.target}"]`)
+                    || _ownedNode(wrapper, `[data-mad-df-name="${op.target}"]`);
+            if (el && window.Alpine) {
+                try {
+                    const ad  = Alpine.$data(el);
+                    const ids = new Set((op.ids || []).map(String));
+                    if (ad && Array.isArray(ad.rows) && ids.size) {
+                        // Detail Form: a linha aberta no editor é seguida pelo __id.
+                        const hasEdit   = typeof ad.editIndex === 'number' && ad.editIndex >= 0;
+                        const editingId = hasEdit && ad.rows[ad.editIndex] ? ad.rows[ad.editIndex].__id : null;
+                        ad.rows = ad.rows.filter(r => !(r && ids.has(String(r.__id))));
+                        if (hasEdit) {
+                            const at = ad.rows.findIndex(r => r && r.__id === editingId);
+                            if (at >= 0) ad.editIndex = at;
+                            else if (typeof ad._resetForm === 'function') ad._resetForm();
+                        }
+                    }
+                } catch(e) { console.error('[MadWire] fl_drop error:', e); }
             }
         } else if (op.op === 'df_add') {
             // Insere/atualiza uma row no detail-form (resposta do before-add)
@@ -1144,6 +1185,9 @@ const MadWire = (() => {
      */
     function _applyWireOps(ops, wrapper, componentId = '') {
         const data = { id: componentId || (wrapper && wrapper.getAttribute ? wrapper.getAttribute('mad-id') : '') };
+        // As ops vão uma a uma para o Mad.applyOps: o lote inteiro (toast +
+        // redirect do Após salvar) só é visto aqui.
+        if (typeof Mad !== 'undefined' && Mad._flashBeforeLeaving) Mad._flashBeforeLeaving(ops);
         (ops || []).forEach(op => {
             if (op.op === 'bind') {
                 // Atualiza só o span gerado por @madBind('prop')
@@ -1543,13 +1587,41 @@ const MadWire = (() => {
         } catch (err) {
             console.error('[MadWire] Erro de rede:', err);
             _setLoading(wrapper, false, sourceForm);
+            if (!_answered && !opts.quietNetwork) _networkNotice();
             return { ok: false, reason: _answered ? 'client' : 'network' };
+        }
+    }
+
+    // Queda de rede numa ação (Salvar, clique de botão, filtro): o erro ia só
+    // para o console e o usuário ficava sem saber se a ação valeu. Um aviso
+    // por vez — as ações que estavam na fila caem juntas. Quem já avisa do seu
+    // jeito (edição na célula da listagem, Planilha) chama com quietNetwork.
+    const _NETWORK_TEXT = {
+        pt: ['Sem resposta do servidor', 'Não foi possível falar com o servidor. Confira a conexão e tente de novo.'],
+        en: ['No answer from the server', 'Could not reach the server. Check your connection and try again.'],
+        es: ['Sin respuesta del servidor', 'No fue posible comunicarse con el servidor. Revise la conexión e inténtelo de nuevo.'],
+    };
+    let _networkNoticeAt = 0;
+
+    function _networkNotice() {
+        const now = Date.now();
+        if (now - _networkNoticeAt < 5000) return;
+        _networkNoticeAt = now;
+        const lang = String((document.documentElement && document.documentElement.lang) || '').slice(0, 2).toLowerCase();
+        const [title, text] = _NETWORK_TEXT[lang] || _NETWORK_TEXT.pt;
+        if (typeof window.madToast === 'function') {
+            window.madToast({ message: text, type: 'danger', duration: 6000 });
+        } else if (typeof __mad_warning === 'function') {
+            __mad_warning(title, text);
         }
     }
 
     // ── DOM Morph ────────────────────────────────────────────────────────────
 
     function _execScripts(el) {
+        // Mesmo caminho da navegacao (Mad._rerunScripts): copia todos os
+        // atributos e desce no <template> de uma cortina teleportada.
+        if (typeof Mad !== 'undefined' && Mad._rerunScripts) return Mad._rerunScripts(el);
         el.querySelectorAll('script').forEach(old => {
             const s = document.createElement('script');
             [...old.attributes].forEach(a => s.setAttribute(a.name, a.value));
@@ -1669,6 +1741,11 @@ const MadWire = (() => {
         if (!wrapper) return;
         e.preventDefault();
         e.stopPropagation();
+        // Obrigatório (`required` e `required-when`) vazio segura o Salvar e
+        // avisa no próprio campo — o form é `novalidate`, então sem isto o
+        // asterisco era só desenho (mad-ui.js, _madWhen.blockSubmit).
+        if (window._madWhen && typeof window._madWhen.blockSubmit === 'function'
+            && window._madWhen.blockSubmit(form)) return;
         const { action, params } = _parseAction(raw);
         await _request(wrapper, action, params, {}, form);
     });
@@ -1677,6 +1754,10 @@ const MadWire = (() => {
         const el  = e.target;
         const raw = el.dataset.madChange || '';
         if (!raw) return;
+        // Op do servidor que reescreveu o campo com o MESMO valor (lista do
+        // combo trocada por setItems, `val` repetido): depends-on e Alpine
+        // recebem o `change`, o On Change não — o valor não mudou (fw#139).
+        if (e.madSameValue) return;
         const wrapper = _getWrapper(el);
         if (!wrapper) return;
         const { action, params } = _parseAction(raw);
@@ -1710,7 +1791,8 @@ const MadWire = (() => {
 
     function _initAll() {
         document.querySelectorAll('[mad-component]').forEach(_initLoadingElements);
-        // Forms MAD não usam validação HTML nativa (validação é server-side)
+        // Forms MAD não usam validação HTML nativa: o servidor valida, e o
+        // obrigatório vazio é segurado no submit (_madWhen.blockSubmit)
         document.querySelectorAll('form[data-mad-submit]').forEach(f => f.setAttribute('novalidate', ''));
     }
 
@@ -1774,13 +1856,17 @@ const MadWire = (() => {
          *
          * Resolve com o desfecho da chamada (`{ ok, reason }`, ver _requestNow)
          * depois que a resposta foi aplicada; `undefined` sem componente.
+         *
+         * Sem resposta do servidor o wire avisa o usuário; `options.quietNetwork`
+         * cala esse aviso para quem dá o seu próprio a partir do desfecho.
          */
-        async call(idOrEl, action = '', params = [], models = {}) {
+        async call(idOrEl, action = '', params = [], models = {}, options = {}) {
             const wrapper = typeof idOrEl === 'string'
                 ? document.querySelector(`[mad-id="${idOrEl}"]`)
                 : (_getWrapper(idOrEl) || idOrEl);
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
-            if (wrapper) return await _request(wrapper, action, params, extra);
+            const opts  = options && options.quietNetwork ? { quietNetwork: true } : {};
+            if (wrapper) return await _request(wrapper, action, params, extra, null, opts);
         },
 
         /**

@@ -24,6 +24,14 @@ class GridAction
     public string  $title     = '';
     /** Cor livre do botão (o "Cor custom" do painel), no lugar da variante. */
     public string  $color     = '';
+    /**
+     * Variante do painel além de `danger`/`primary` (que têm flag própria):
+     * uma de {@see VARIANTS}; '' = botão neutro.
+     */
+    public string  $variant   = '';
+
+    /** Variantes que o botão da linha pinta além de danger e primary. */
+    public const VARIANTS = ['success', 'warning', 'info', 'ghost'];
 
     // Navegação (nav action — sem AJAX no grid)
     public bool    $isNav      = false;
@@ -61,6 +69,17 @@ class GridAction
     public function confirm(string $message): self
     {
         $this->confirm = $message;
+        return $this;
+    }
+
+    /**
+     * `success`, `warning`, `info` ou `ghost` — as variantes do painel da Ação
+     * Grid além de `danger()`/`primary()`. Outro valor deixa o botão neutro.
+     */
+    public function variant(string $variant): self
+    {
+        $variant       = strtolower(trim($variant));
+        $this->variant = in_array($variant, self::VARIANTS, true) ? $variant : '';
         return $this;
     }
 
@@ -175,6 +194,7 @@ class GridAction
         if (array_key_exists('title',   $override)) $clone->title    = (string)$override['title'];
         if (array_key_exists('danger',  $override)) $clone->isDanger  = (bool)$override['danger'];
         if (array_key_exists('primary', $override)) $clone->isPrimary = (bool)$override['primary'];
+        if (array_key_exists('variant', $override)) $clone->variant((string)$override['variant']);
         return $clone;
     }
 
@@ -185,17 +205,23 @@ class GridAction
     }
 
     /**
-     * Os parâmetros extras PARA UMA LINHA, na ordem em que foram declarados:
-     * `{campo}` vira o valor da coluna naquela linha; o resto vai como está.
-     * É o que segue para o método depois do id — `metodo($id, array $extras)`.
-     * Campo que a linha não tem fica como foi escrito.
+     * Os parâmetros extras PARA UMA LINHA, com as chaves com que foram
+     * declarados: `{campo}` vira o valor da coluna naquela linha; o resto vai
+     * como está. É o que segue para o método depois do id —
+     * `metodo($id, array $extras)`. Campo que a linha não tem fica como foi
+     * escrito.
      *
-     * @return list<mixed>
+     * As chaves do painel (`params="{origem: lista, cliente: {cliente}}"`)
+     * chegam ao método: `$extras['cliente']`. Antes chegava uma lista na ordem
+     * declarada, e o método tinha de saber a posição de cada valor. Lista
+     * escrita em código (`->params(['a', 'b'])`) continua lista.
+     *
+     * @return array<int|string, mixed>
      */
     public function rowParams(array $row): array
     {
         $out = [];
-        foreach ($this->params as $val) {
+        foreach ($this->params as $key => $val) {
             if (is_string($val) && str_contains($val, '{')) {
                 $val = preg_replace_callback(
                     '/\{(\w+)\}/',
@@ -205,7 +231,7 @@ class GridAction
                     $val
                 );
             }
-            $out[] = $val;
+            $out[$key] = $val;
         }
 
         return $out;
@@ -541,6 +567,29 @@ class GridAction
     {
         if ($this->isDanger)  return 'mad-dg-action-btn mad-dg-action-danger';
         if ($this->isPrimary) return 'mad-dg-action-btn mad-dg-action-primary';
+        if ($this->variant !== '') return 'mad-dg-action-btn mad-dg-action-' . $this->variant;
         return 'mad-dg-action-btn';
+    }
+
+    /**
+     * Classe do item no menu de um grupo de ações: o texto vermelho do
+     * `danger` e, agora, verde/amarelo/azul de `success`/`warning`/`info`
+     * (`ghost` e `primary` ficam como o item neutro, como no histórico).
+     */
+    public function menuClass(): string
+    {
+        if ($this->isDanger) return 'mad-dg-dropdown-item mad-dg-dropdown-danger';
+        if (in_array($this->variant, ['success', 'warning', 'info'], true)) {
+            return 'mad-dg-dropdown-item mad-dg-dropdown-' . $this->variant;
+        }
+        return 'mad-dg-dropdown-item';
+    }
+
+    /** Classe do botão da ação no modo cartão (mesmas variantes do botão da linha). */
+    public function cardClass(): string
+    {
+        if ($this->isDanger) return 'mad-dg-card-action mad-dg-card-action-danger';
+        if ($this->variant !== '') return 'mad-dg-card-action mad-dg-card-action-' . $this->variant;
+        return 'mad-dg-card-action';
     }
 }
