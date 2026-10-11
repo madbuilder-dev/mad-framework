@@ -281,7 +281,9 @@ final class AgentConsoleController
         }
 
         $tool = $pending['tool'];
-        $args = array_merge($pending['args'], $values);
+        // So os campos que o cartao declarou editaveis (as system tools nao
+        // declaram nenhum): o cliente nao injeta nem troca argumento.
+        $args = ConfirmCoordinator::applyValues($pending['args'], $pending['editable'] ?? [], $values);
 
         $outcome = $executor->execute($tool, $args, $sink, $id);
 

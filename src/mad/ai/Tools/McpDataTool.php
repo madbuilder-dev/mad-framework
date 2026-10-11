@@ -89,18 +89,32 @@ final class McpDataTool implements Tool
     {
         $id = $this->confirms->newId();
 
-        $fields = [];
+        $fields   = [];
+        $editable = [];
         foreach ($args as $k => $v) {
             if ($k === 'confirm') {
                 continue;
             }
-            $fields[] = [
-                'k' => (string) $k,
+            $k     = (string) $k;
+            $field = [
+                'k' => $k,
                 'v' => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE),
             ];
+            // exclusão não tem o que corrigir: só confirma ou cancela
+            $spec = $this->isDestructive ? null : self::editableSpec($k, $v);
+            if ($spec !== null) {
+                $field['name']  = $k;
+                $field['input'] = $spec['input'];
+                if ($spec['input'] === 'select') {
+                    $field['v']       = $v ? '1' : '0';
+                    $field['options'] = [['value' => '1', 'label' => 'Sim'], ['value' => '0', 'label' => 'Não']];
+                }
+                $editable[$k] = $spec;
+            }
+            $fields[] = $field;
         }
 
-        $this->confirms->stash($id, $this->toolName, $args);
+        $this->confirms->stash($id, $this->toolName, $args, $editable);
 
         $this->sink->block([
             'type'   => 'confirm',
@@ -112,5 +126,37 @@ final class McpDataTool implements Tool
         ]);
 
         return 'Esta acao de escrita requer confirmacao do usuario. Um cartao de confirmacao foi exibido; aguarde a resposta antes de prosseguir.';
+    }
+
+    /**
+     * Quais argumentos da escrita o usuário pode corrigir no cartão, e como.
+     * Fica de fora o que identifica o registro (`id`, `*_id`, `key`) — trocar
+     * ali mudaria QUAL registro é escrito —, valor nulo (não dá para saber o
+     * tipo), data com hora e estruturas (array/objeto).
+     *
+     * @return array{input: string, options?: list<string>, cast?: string}|null
+     */
+    private static function editableSpec(string $key, mixed $value): ?array
+    {
+        if ($key === 'id' || $key === 'key' || str_ends_with($key, '_id')) {
+            return null;
+        }
+        if (is_bool($value)) {
+            return ['input' => 'select', 'options' => ['1', '0'], 'cast' => 'bool'];
+        }
+        if (is_int($value) || is_float($value)) {
+            return ['input' => 'number'];
+        }
+        if (! is_string($value)) {
+            return null;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+            return ['input' => 'date'];
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/', $value) === 1) {
+            return null;
+        }
+
+        return ['input' => (str_contains($value, "\n") || mb_strlen($value) > 120) ? 'textarea' : 'text'];
     }
 }

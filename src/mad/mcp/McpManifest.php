@@ -178,6 +178,34 @@ final class McpManifest
         return 'id';
     }
 
+    /**
+     * Tela de cadastro (formulário) que edita cada tabela exposta — o builder
+     * grava `forms: {tabela: Classe}`. É o que deixa o chat oferecer "Abrir no
+     * sistema" num registro. Classe com nome inválido é descartada.
+     *
+     * @return array<string,string>
+     */
+    public function forms(): array
+    {
+        $out = [];
+        foreach ((array) ($this->data['forms'] ?? []) as $table => $class) {
+            if (! is_string($table) || $table === '' || ! is_string($class)) {
+                continue;
+            }
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class) !== 1) {
+                continue;
+            }
+            $out[$table] = $class;
+        }
+
+        return $out;
+    }
+
+    public function formFor(string $table): ?string
+    {
+        return $this->forms()[$table] ?? null;
+    }
+
     /** @return array<string,mixed> matriz de permissoes por profile_id (mad_iam_group) */
     public function permissions(): array
     {

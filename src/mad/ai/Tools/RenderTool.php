@@ -6,6 +6,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Mad\Ai\BlockValidator;
+use Mad\Ai\ChatDashboards;
 use Mad\Ai\ConfirmCoordinator;
 use Mad\Ai\JsonSchemaBuilder;
 use Mad\Ai\ProvenanceTracker;
@@ -25,9 +26,13 @@ use Mad\Ai\WidgetDisplay;
  *
  * Provenance: blocos data-bearing ganham um id estavel (blk-…) + source (ultima
  * data-tool de leitura ok do turno) — habilita "salvar favorito" e o
- * show_dashboard por REFERENCIA (widgets {ref: blk-…}). O refresh deterministico
- * de filtros (DashboardRegistry/RenderSpecCompiler) fica para um slice posterior;
- * o dashboard ja renderiza por ref e por bloco inline.
+ * show_dashboard por REFERENCIA (widgets {ref: blk-…}). O filtro do dashboard
+ * volta como turno sintetico (EmbedChatController::dashboardRefreshMessage): o
+ * modelo reexecuta as consultas e reemite o dashboard com o mesmo id.
+ *
+ * "Abrir no sistema": `link` em detalhe/lista/tabela so sobrevive para tabela
+ * da allowlist `$linkable` (tabelas com tela de cadastro no manifesto). Sem
+ * allowlist (null — Command Center, testes) todo link sai.
  */
 final class RenderTool implements Tool
 {
@@ -44,6 +49,7 @@ final class RenderTool implements Tool
         private SseSink $sink,
         private ?ConfirmCoordinator $confirms = null,
         private ?ProvenanceTracker $trace = null,
+        private ?array $linkable = null,
     ) {
     }
 
@@ -97,6 +103,9 @@ final class RenderTool implements Tool
         }
 
         $block = BlockValidator::build($this->blockType, $input);
+        if ($block !== null) {
+            $block = $this->allowLinks($block);
+        }
         if ($block === null) {
             // Diagnostico: o input que o modelo mandou (truncado) — sem isso a
             // rejeicao e invisivel (so o modelo ve o erro e re-tenta as cegas).
@@ -141,11 +150,51 @@ final class RenderTool implements Tool
             $this->trace?->recordBlock($block);
         }
 
+        // Registro do dashboard (spec de cada widget): o filtro da tela
+        // atualiza o painel sem o modelo quando todos os widgets vieram de SQL.
+        if ($this->blockType === 'dashboard' && $this->trace !== null) {
+            $this->trace->rememberDashboard((string) $block['id'], ChatDashboards::entry($block, $this->trace));
+        }
+
         $this->sink->block($block);
 
         // O id volta ao modelo: e ele que permite referenciar o bloco num
         // show_dashboard posterior (widgets: [{ref: "<id>"}]).
         return isset($block['id']) ? 'rendered (id: ' . $block['id'] . ')' : 'rendered';
+    }
+
+    /**
+     * Tira `link` de tabela fora da allowlist (sem tela de cadastro, ou
+     * entidade inventada pelo modelo). Desce nos widgets do dashboard.
+     *
+     * @param array<string, mixed> $block
+     * @return array<string, mixed>
+     */
+    private function allowLinks(array $block): array
+    {
+        $ok = fn (mixed $l): bool => is_array($l)
+            && $this->linkable !== null
+            && in_array($l['entity'] ?? null, $this->linkable, true);
+
+        if (isset($block['link']) && ! $ok($block['link'])) {
+            unset($block['link']);
+        }
+        if (($block['type'] ?? null) === 'list') {
+            foreach ((array) ($block['items'] ?? []) as $i => $it) {
+                if (is_array($it) && isset($it['link']) && ! $ok($it['link'])) {
+                    unset($block['items'][$i]['link']);
+                }
+            }
+        }
+        if (($block['type'] ?? null) === 'dashboard') {
+            foreach ((array) ($block['widgets'] ?? []) as $i => $w) {
+                if (is_array($w['block'] ?? null)) {
+                    $block['widgets'][$i]['block'] = $this->allowLinks($w['block']);
+                }
+            }
+        }
+
+        return $block;
     }
 
     /**
@@ -319,7 +368,13 @@ final class RenderTool implements Tool
         }
 
         if ($this->confirms !== null) {
-            $this->confirms->stash((string) $block['id'], (string) $block['tool'], $args);
+            // allowlist: so os campos marcados editaveis no cartao (name + input)
+            $this->confirms->stash(
+                (string) $block['id'],
+                (string) $block['tool'],
+                $args,
+                ConfirmCoordinator::editableFromFields($block['fields']),
+            );
         }
 
         $this->sink->block($block);

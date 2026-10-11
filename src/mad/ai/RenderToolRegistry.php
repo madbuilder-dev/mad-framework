@@ -25,6 +25,22 @@ final class RenderToolRegistry
 
     private const COLOR = ['type' => 'string'];
 
+    /** "Abrir no sistema" num registro (detalhe / item de lista). */
+    private const RECORD_LINK = [
+        'type'        => 'object',
+        'description' => 'Só para tabela com tela de cadastro (lista no prompt): {entity: tabela, id: chave primária VINDA DA CONSULTA}. O usuário abre o registro no sistema.',
+        'properties'  => ['entity' => ['type' => 'string'], 'id' => ['type' => 'string']],
+        'required'    => ['entity', 'id'],
+    ];
+
+    /** "Abrir no sistema" por linha da tabela. */
+    private const TABLE_LINK = [
+        'type'        => 'object',
+        'description' => 'Só para tabela com tela de cadastro (lista no prompt): {entity: tabela, key: campo da LINHA com a chave primária}. A chave pode ficar fora de columns (não aparece). Cada linha ganha o botão de abrir.',
+        'properties'  => ['entity' => ['type' => 'string'], 'key' => ['type' => 'string']],
+        'required'    => ['entity', 'key'],
+    ];
+
     /**
      * Constroi as instancias de RenderTool ligadas ao sink/confirms.
      *
@@ -34,11 +50,12 @@ final class RenderToolRegistry
         SseSink $sink,
         ?ConfirmCoordinator $confirms = null,
         ?ProvenanceTracker $trace = null,
+        ?array $linkable = null,
     ): array {
         $defs = self::definitions();
         $out = [];
         foreach ($defs as $name => $def) {
-            $out[] = new RenderTool($name, $def['blockType'], $def['description'], $def['schema'], $sink, $confirms, $trace);
+            $out[] = new RenderTool($name, $def['blockType'], $def['description'], $def['schema'], $sink, $confirms, $trace, $linkable);
         }
 
         return $out;
@@ -403,6 +420,7 @@ final class RenderToolRegistry
                         'groupBy' => ['type' => 'string', 'description' => 'Key da coluna que AGRUPA as linhas (vira banda com contagem; some do corpo). Linhas na ordem desejada.'],
                         'totals'  => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Keys de colunas SOMADAS por grupo + Total geral. Células em number cru.'],
                         'grandTotal' => ['type' => 'boolean', 'description' => 'false → sem linha Total geral (default true com totals).'],
+                        'link'       => self::TABLE_LINK,
                     ],
                     'required'   => ['columns', 'rows'],
                 ],
@@ -420,7 +438,7 @@ final class RenderToolRegistry
                             'minItems' => 1,
                             'items'    => [
                                 'type'       => 'object',
-                                'properties' => ['title' => ['type' => 'string'], 'sub' => ['type' => 'string'], 'right' => ['type' => 'string'], 'badge' => $badgeItem],
+                                'properties' => ['title' => ['type' => 'string'], 'sub' => ['type' => 'string'], 'right' => ['type' => 'string'], 'badge' => $badgeItem, 'link' => self::RECORD_LINK],
                                 'required'   => ['title'],
                             ],
                         ],
@@ -517,6 +535,7 @@ final class RenderToolRegistry
                                 'required'   => ['label', 'value'],
                             ],
                         ],
+                        'link'  => self::RECORD_LINK,
                     ],
                     'required'   => ['items'],
                 ],
@@ -566,7 +585,7 @@ final class RenderToolRegistry
 
             'confirm_action' => [
                 'blockType'   => 'confirm',
-                'description' => 'Render a confirmation card for a WRITE/destructive MCP tool. Call this INSTEAD of executing the write; only run the write after the user confirms. Put the real write payload as a JSON string in "args".',
+                'description' => 'Render a confirmation card for a WRITE/destructive MCP tool. Call this INSTEAD of executing the write; only run the write after the user confirms. Put the real write payload as a JSON string in "args". To let the user correct a value before confirming (quantity, date, note, status), give that field "name" (its key in args) and "input" (text|number|date|select|textarea; select needs "options"). Never make the target record id editable.',
                 'schema'      => [
                     'type'       => 'object',
                     'properties' => [
@@ -577,7 +596,20 @@ final class RenderToolRegistry
                         'danger'       => ['type' => 'boolean'],
                         'fields'       => [
                             'type'  => 'array',
-                            'items' => ['type' => 'object', 'properties' => ['k' => ['type' => 'string'], 'v' => ['type' => 'string']], 'required' => ['k', 'v']],
+                            'items' => [
+                                'type'       => 'object',
+                                'properties' => [
+                                    'k'       => ['type' => 'string', 'description' => 'Rótulo exibido.'],
+                                    'v'       => ['type' => 'string', 'description' => 'Valor exibido (no campo editável, o valor inicial).'],
+                                    'name'    => ['type' => 'string', 'description' => 'Opcional: chave do argumento em args — torna o campo editável.'],
+                                    'input'   => ['type' => 'string', 'enum' => ['text', 'number', 'date', 'select', 'textarea'], 'description' => 'Opcional, junto com name: tipo do campo editável. date = AAAA-MM-DD.'],
+                                    'options' => [
+                                        'type'  => 'array',
+                                        'items' => ['type' => 'object', 'properties' => ['value' => ['type' => 'string'], 'label' => ['type' => 'string']], 'required' => ['value']],
+                                    ],
+                                ],
+                                'required'   => ['k', 'v'],
+                            ],
                         ],
                         'confirmLabel' => ['type' => 'string'],
                         'args'         => ['type' => 'string', 'description' => 'JSON do payload real da escrita (ex: {"id":5}); usado no servidor, nao exibido.'],

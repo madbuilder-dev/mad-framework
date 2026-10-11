@@ -1669,6 +1669,10 @@ class MadGridCompiler
         if (isset($a['export-title']))      $c[] = static::kv('exportTitle',     static::emit($a['export-title']));
         if (isset($a['export-subtitle']))   $c[] = static::kv('exportSubtitle',  static::emit($a['export-subtitle']));
         if (isset($a['export-filename']))   $c[] = static::kv('exportFilename',  static::emit($a['export-filename']));
+        // Separador do CSV (fórum #116). Atributo nu não diz qual: ignorado.
+        if (isset($a['csv-delimiter']) && $a['csv-delimiter']['type'] !== 'bool') {
+            $c[] = static::kv('csvDelimiter', static::emit($a['csv-delimiter']));
+        }
         // Texto ao lado do ícone do botão Exportar (fórum #74). Sem a prop o
         // botão é só o ícone, como sempre foi. Nua (ou "true") = texto
         // traduzido de grid.export; `export-label="false"` = só o ícone.

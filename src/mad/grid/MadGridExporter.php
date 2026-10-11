@@ -40,11 +40,14 @@ class MadGridExporter
     /**
      * @param GridColumn[] $columns
      * @param array $groupData Array achatado de _computeGroupData() (opcional)
+     * @param string $delimiter Separador (GridCsvWriter::delimiter — `;`, `,`, `|`, `tab`…)
      * @return string chave output/<uniqid>.csv no scratch (MadScratchStorage)
      */
-    public static function csv(array $columns, array $rows, string $title = 'export', array $groupData = [], array $grandTotals = []): string
-    {
-        $w = GridCsvWriter::open($columns);
+    public static function csv(
+        array $columns, array $rows, string $title = 'export', array $groupData = [], array $grandTotals = [],
+        string $delimiter = GridCsvWriter::DEFAULT_DELIMITER,
+    ): string {
+        $w = GridCsvWriter::open($columns, $delimiter);
         try {
             if (!empty($groupData)) {
                 $w->groupItems($groupData);

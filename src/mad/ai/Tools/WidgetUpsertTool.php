@@ -94,7 +94,7 @@ final class WidgetUpsertTool implements Tool
                 'args'  => ['type' => 'string', 'description' => 'Tool-source args as JSON string (e.g. {"fato":"recebimentos","dimensao":"forma_pagamento","mes":"7","ano":"2026"}). Dashboard filter params with the SAME name override these at render time.'],
                 'rows_path' => ['type' => 'string', 'description' => 'Dot-path to the rows inside the tool result (e.g. "result.linhas", "result.ranking", "result.distribuicao"). Map label=>value becomes rows {label,value}.'],
                 'map'   => ['type' => 'string', 'description' => self::MAP_DOC],
-                'style' => ['type' => 'string', 'description' => 'Optional style JSON: {"title","unit","horizontal","colors":[],"max","min","zones":[],"note","centerValue","centerLabel"}.'],
+                'style' => ['type' => 'string', 'description' => 'Optional style JSON: {"title","unit","horizontal","colors":[],"max","min","zones":[],"note","centerValue","centerLabel","link"}. link (table/list) = {"entity":"<tabela com tela de cadastro>","key":"<coluna da SQL com a chave primária>"} → botão Abrir no sistema por linha.'],
                 'params' => ['type' => 'string', 'description' => 'Optional dashboard-filter defs JSON: [{"name","label","kind":"search|select","options":[…],"default":""}]. Each name MUST appear as :name in the sql, written so empty value = no filter (e.g. WHERE (:busca = \'\' OR nome LIKE \'%\' || :busca || \'%\')).'],
             ],
             'required'   => $this->save ? ['title', 'type', 'map'] : ['type', 'map'],
@@ -161,6 +161,7 @@ final class WidgetUpsertTool implements Tool
         $this->trace?->recordRows($rows);
         $this->trace?->recordRows($sample['rows']); // forma mascarada que o modelo vê
         $this->trace?->recordBlock($block);         // referenciável num show_dashboard (ref: blk-…)
+        $this->trace?->recordSpec((string) $block['id'], $spec); // filtro do dashboard sem IA
 
         if (! $this->save) {
             $this->sink->toolUseEnd($this->name(), $params, $ms, ['total' => $built['rowCount'] ?? 0]);

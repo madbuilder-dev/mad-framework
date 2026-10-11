@@ -61,6 +61,8 @@ class MadGrid extends MadDataGrid
         // row-detail: 2ª linha descritiva. Protegida no MadDataGrid — sem
         // este mapeamento o atributo seria compilado e nunca lido.
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
+        // csv-delimiter: protegida no MadDataGrid; o render a congela no exportMeta.
+        if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
         // Seleção de linhas + ações em lote (<mad-grid model=... selectable>).
         if (!empty($cfg['selectable'])) $this->selectable = true;
         // row-click: protegida no MadDataGrid (só o template lê) — sem isto o
@@ -111,6 +113,7 @@ class MadGrid extends MadDataGrid
         // row-detail: 2ª linha descritiva. Protegida no MadDataGrid — sem
         // este mapeamento o atributo seria compilado e nunca lido.
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
+        if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
         if (!empty($cfg['rowClick']))   $this->rowClick   = true;
         if (!empty($cfg['orderBy'])) $this->baseOrder = (string) $cfg['orderBy'];
         if (!empty($cfg['filters']) && is_array($cfg['filters'])) {
@@ -429,6 +432,14 @@ class GridBuilder
     {
         $this->_flush();
         $this->options['rowDetail'] = $mask;
+        return $this;
+    }
+
+    /** Separador do CSV exportado — equivalente ao `csv-delimiter` do Blade (`;` `,` `|` `tab`…). */
+    public function csvDelimiter(string $delimiter): static
+    {
+        $this->_flush();
+        $this->options['csvDelimiter'] = $delimiter;
         return $this;
     }
 

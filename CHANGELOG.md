@@ -12,6 +12,33 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.154.0] — 2026-10-11
+
+### Novidades
+
+- **Listagens:** o separador do arquivo CSV exportado pode ser escolhido: ponto e vírgula (padrão), vírgula, barra vertical, tabulação ou outro caractere, com `csv-delimiter` no `<mad-grid>`. Sem a opção, o arquivo continua igual. Republique o projeto para aplicar.
+
+## [5.153.0] — 2026-10-10
+
+### Novidades
+
+- **Copilot IA:** fichas, listas e tabelas de registros mostradas pelo chat ganham o botão "Abrir no sistema", que leva à tela de edição do registro. O botão só aparece para as telas que a pessoa pode editar. Republique o projeto para aplicar.
+
+### Correções
+
+- **Copilot IA:** os filtros e a busca do painel montado pelo chat mostravam "Atualizando…" e o painel continuava igual. Agora o painel é atualizado; quando os dados vêm de consulta ao banco, na hora e sem nova resposta da IA. Republique o projeto para aplicar.
+- **Copilot IA:** ao reabrir uma conversa, o painel aparecia repetido, com os gráficos soltos e as versões anteriores do filtro.
+
+## [5.152.0] — 2026-10-10
+
+### Novidades
+
+- **Copilot IA:** no cartão de confirmação de uma alteração, a pessoa pode corrigir valores como quantidade, data, situação ou observação antes de confirmar. O registro que vai ser alterado nunca fica editável.
+
+### Correções
+
+- **Copilot IA:** a confirmação de uma alteração grava exatamente o que o cartão mostrou. Um valor que não estava no cartão é ignorado. Republique o projeto para aplicar.
+
 ## [5.151.1] — 2026-10-10
 
 ### Novidades

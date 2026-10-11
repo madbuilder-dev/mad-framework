@@ -208,6 +208,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected string $exportSubtitle = '';
 
     /**
+     * Separador do CSV exportado. `;` (padrão) abre direto no Excel em
+     * português; troque por `,`, `|`, `tab` ou outro caractere quando o arquivo
+     * vai para outro sistema. No Blade: `<mad-grid csv-delimiter="|">`, que
+     * vence esta prop. Formas aceitas: GridCsvWriter::delimiter().
+     */
+    protected string $csvDelimiter = GridCsvWriter::DEFAULT_DELIMITER;
+
+    /**
      * Texto ao lado do ícone do botão Exportar. '' = só o ícone (padrão, com
      * "Exportar" na dica). No Blade: `<mad-grid export-label="Exportar">`, ou
      * `export-label` nu para o texto traduzido — o atributo vence esta prop.
@@ -2591,6 +2599,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // mad_state criptografado e o cliente não o sobrescreve
             // (_MODEL_STRUCTURAL_BLOCKED).
             'noExport'      => !$this->exportable,
+            // csv-delimiter do Blade: mesmo motivo (o AJAX não re-renderiza).
+            'csvDelimiter'  => $this->csvDelimiter,
         ]);
     }
 
@@ -2785,6 +2795,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return trim($display);
     }
 
+    /** Separador do CSV: o do Blade, congelado no exportMeta, > prop PHP. */
+    private function _csvDelimiter(): string
+    {
+        return (string) ($this->exportMeta['csvDelimiter'] ?? $this->csvDelimiter);
+    }
+
     /** Título e nome-base do arquivo exportado (exportMeta > props > título da tela). */
     private function _exportNames(): array
     {
@@ -2917,7 +2933,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $args = [$data['columns'], $data['rows'], $data['exportTitle'], $data['groupData'] ?? [], $data['grandTotals'] ?? []];
 
         return [
-            'file'     => $format === 'xlsx' ? MadGridExporter::xlsx(...$args) : MadGridExporter::csv(...$args),
+            'file'     => $format === 'xlsx'
+                ? MadGridExporter::xlsx(...$args)
+                : MadGridExporter::csv(...[...$args, $this->_csvDelimiter()]),
             'filename' => $data['exportFilename'],
         ];
     }
@@ -2978,7 +2996,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             [$title, $filename] = $this->_exportNames();
             $writer = $format === 'xlsx'
                 ? GridXlsxWriter::open($visibleCols, $title)
-                : GridCsvWriter::open($visibleCols);
+                : GridCsvWriter::open($visibleCols, $this->_csvDelimiter());
 
             try {
                 $totals = $this->_streamExportRows($q, $columns, $visibleCols, $writer);
@@ -3635,6 +3653,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($config['exportTitle']))    $this->exportTitle    = (string)$config['exportTitle'];
         if (!empty($config['exportFilename'])) $this->exportFilename = (string)$config['exportFilename'];
         if (!empty($config['exportSubtitle'])) $this->exportSubtitle = (string)$config['exportSubtitle'];
+        if (isset($config['csvDelimiter']) && $config['csvDelimiter'] !== '') $this->csvDelimiter = (string)$config['csvDelimiter'];
 
         // Persiste a config de quebra pro AJAX de export (props de grupo são
         // protegidas e o handler de export não re-renderiza o Blade).

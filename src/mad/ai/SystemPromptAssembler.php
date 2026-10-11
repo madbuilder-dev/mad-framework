@@ -22,7 +22,10 @@ use Mad\Mcp\McpManifest;
 final class SystemPromptAssembler
 {
     /** @param array<string, \Mad\Mcp\McpManifestTool> $mcpTools name => tool permitida */
-    public static function assemble(?McpManifest $manifest, array $mcpTools = [], bool $widgets = false): string
+    /**
+     * @param list<string> $linkable tabelas com tela de cadastro no app ("Abrir no sistema")
+     */
+    public static function assemble(?McpManifest $manifest, array $mcpTools = [], bool $widgets = false, array $linkable = []): string
     {
         $parts = [
             $manifest !== null ? self::manifestPrompt($manifest) : '',
@@ -30,12 +33,35 @@ final class SystemPromptAssembler
             self::dataPrompt($widgets, $mcpTools !== []),
             self::accessPrompt($manifest, $widgets, $mcpTools !== []),
             self::renderPrompt(),
+            self::linkPrompt($linkable),
             $widgets ? self::widgetPrompt() : '',
             self::toolInventory($mcpTools, $manifest),
             self::writeRules($mcpTools),
         ];
 
         return implode("\n\n", array_filter($parts, static fn ($p) => trim((string) $p) !== ''));
+    }
+
+    /**
+     * "Abrir no sistema": quais tabelas têm tela de cadastro no app e como
+     * ligar o registro mostrado a ela.
+     *
+     * @param list<string> $linkable
+     */
+    private static function linkPrompt(array $linkable): string
+    {
+        if ($linkable === []) {
+            return '';
+        }
+
+        return "## Abrir no sistema\n"
+            . 'Tabelas com tela de cadastro no sistema: ' . implode(', ', $linkable) . ".\n"
+            . "Ao mostrar registros dessas tabelas com show_detail, show_list ou show_table, inclua `link` quando a\n"
+            . "chave primária veio na consulta: show_detail → link {entity, id}; show_list → link {entity, id} em cada item;\n"
+            . "show_table → link {entity, key}, com key = campo da linha que traz a chave (pode ficar fora de columns);\n"
+            . "preview_widget/save_widget de table ou list → style.link {entity, key}, key = coluna da SQL com a chave\n"
+            . "(selecione a chave na SQL).\n"
+            . 'O usuário abre o registro com um clique. Nunca invente id nem use tabela fora desta lista.';
     }
 
     /**
@@ -256,7 +282,7 @@ para os dados. Texto curto + blocos > texto longo.
 - Use quando o usuário pedir um dashboard/painel/visão geral — NÃO para uma única tabela ou gráfico.
 - FLUXO (rápido pro usuário): busque os dados (tools MCP) e emita CADA widget com a tool show_* normal — eles aparecem na tela na hora e cada chamada retorna "rendered (id: blk-…)". No FINAL, UMA chamada show_dashboard com `widgets: [{ref: "<id retornado>", span}]` — a moldura agrupa os blocos já exibidos. span:2 = linha inteira.
 - NUNCA repita o conteúdo dos widgets dentro do show_dashboard — use as refs. (Fallback legado: widget {block: "<STRING JSON do bloco>"}.)
-- Declare `filters` quando o recorte aceitar busca/filtro útil (ex.: busca por cliente, select de status). `key` = o campo que você vai filtrar nas tools MCP.
+- Declare `filters` quando o recorte aceitar busca/filtro útil (ex.: busca por cliente, select de status). `key` = o campo que você vai filtrar nas tools MCP. Com widgets de preview_widget, `key` = o nome do :placeholder da SQL (escrita para valor vazio = sem filtro) — aí o filtro atualiza o painel na hora, sem nova rodada sua.
 - Na TABELA do dashboard, células de texto ficam com o valor EXATO retornado pela tool (não abrevie nem reescreva — ex.: mantenha "provider/modelo" inteiro). Números podem ter separador pt-BR e data/hora pode truncar. É isso que mantém o filtro instantâneo (sem IA).
 - Gere um id único e estável (ex.: "dash-vendas-3f2").
 - REFRESH: ao receber uma mensagem de filtro aplicado num dashboard, re-execute as tools de dados com os filtros, re-emita os widgets (show_*) e o show_dashboard com o MESMO id, mesma composição (refs novas) e os `filters` ecoando os valores aplicados. Não escreva texto longo no refresh — 1 frase no máximo.
@@ -271,6 +297,7 @@ para os dados. Texto curto + blocos > texto longo.
 ## Escrita / confirmação (importante)
 - Para qualquer tool MCP de escrita (create_/update_/del_ ou marcada confirm), NÃO execute direto.
 - Primeiro chame `confirm_action` com { tool, title, fields (resumo do que muda), danger } e o payload real em args (JSON).
+- Valor que o usuário pode querer ajustar antes de confirmar (quantidade, data, observação, situação): no item de `fields`, informe `name` (a chave em args) e `input` (text, number, date, select com options, textarea). O cartão abre o campo para edição e o valor confirmado substitui o de args. Nunca deixe editável o id do registro alvo.
 - A escrita real só roda DEPOIS que o usuário confirmar — então sim, execute a tool MCP e responda com um show_badges de auditoria + 1 frase do efeito.
 - Se o usuário cancelar, não altere nada.
 

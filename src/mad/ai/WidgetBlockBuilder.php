@@ -86,7 +86,7 @@ final class WidgetBlockBuilder
      * @return list<array{name: string, label: string, kind: string, options: list<string>, default: string}>
      */
     /** Nomes de filtro CONSUMIDOS pela fonte (placeholders da SQL / args da tool). */
-    private static function consumedNames(array $spec): array
+    public static function consumedNames(array $spec): array
     {
         $out = [];
         $source = is_array($spec['source'] ?? null) ? $spec['source'] : null;
@@ -620,6 +620,9 @@ final class WidgetBlockBuilder
                 return $input;
 
             case 'table':
+                // style.link {entity, key}: "Abrir no sistema" por linha — a
+                // chave vai na linha mesmo fora das colunas visíveis.
+                $link    = self::linkSpec($style);
                 $cols = is_array($map['columns'] ?? null) ? $map['columns'] : [];
                 if ($cols === []) {
                     // fallback: todas as colunas da 1ª row viram colunas
@@ -643,6 +646,9 @@ final class WidgetBlockBuilder
                             $row[$k] = self::s($v) ?? '';
                         }
                     }
+                    if ($link !== null && ! array_key_exists($link['key'], $row) && isset($r[$link['key']])) {
+                        $row[$link['key']] = self::s($r[$link['key']]) ?? '';
+                    }
                     $outRows[] = $row;
                 }
                 // `format` é instrução do runtime, não do contrato do bloco
@@ -653,12 +659,16 @@ final class WidgetBlockBuilder
 
                     return $c;
                 }, $cols);
-                return [
+                $input = [
                     'columns' => $cols,
                     'rows'    => $outRows,
                     'title'   => self::s($style['title'] ?? null),
                     'note'    => self::s($style['note'] ?? null),
                 ];
+                if ($link !== null) {
+                    $input['link'] = $link;
+                }
+                return $input;
 
             case 'list':
                 $titleCol = self::col($map, 'titleCol');
@@ -668,6 +678,7 @@ final class WidgetBlockBuilder
                 $subCol   = self::col($map, 'subCol');
                 $rightCol = self::col($map, 'rightCol');
                 $rightFmt = self::fmt($map['rightFormat'] ?? null);
+                $link     = self::linkSpec($style);
                 $items    = [];
                 foreach ($rows as $r) {
                     $it = ['title' => self::s($r[$titleCol] ?? null) ?? ''];
@@ -680,6 +691,9 @@ final class WidgetBlockBuilder
                     }
                     if ($rightCol !== null && ($v = self::s($right)) !== null) {
                         $it['right'] = $v;
+                    }
+                    if ($link !== null && ($id = self::s($r[$link['key']] ?? null)) !== null) {
+                        $it['link'] = ['entity' => $link['entity'], 'id' => $id];
                     }
                     $items[] = $it;
                 }
@@ -737,6 +751,26 @@ final class WidgetBlockBuilder
      *
      * @return array{ok: true, block: array<string, string>, rowCount: 0, rows: array{}}
      */
+    /**
+     * style.link {entity, key} de tabela/lista ("Abrir no sistema").
+     *
+     * @param array<string, mixed> $style
+     * @return array{entity: string, key: string}|null
+     */
+    private static function linkSpec(array $style): ?array
+    {
+        $l = $style['link'] ?? null;
+        if (! is_array($l)) {
+            return null;
+        }
+        $entity = self::s($l['entity'] ?? null);
+        $key    = self::s($l['key'] ?? null);
+
+        return ($entity !== null && $entity !== '' && $key !== null && $key !== '')
+            ? ['entity' => $entity, 'key' => $key]
+            : null;
+    }
+
     private static function emptyResult(): array
     {
         return [

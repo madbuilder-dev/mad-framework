@@ -215,6 +215,10 @@ final class BlockValidator
                 if (($input['grandTotal'] ?? null) === false) {
                     $block['grandTotal'] = false;
                 }
+                $link = self::tableLink($input['link'] ?? null);
+                if ($link !== null) {
+                    $block['link'] = $link;
+                }
                 return $block;
 
             case 'list':
@@ -233,6 +237,10 @@ final class BlockValidator
                     $badge = self::badge($it['badge'] ?? null);
                     if ($badge !== null) {
                         $item['badge'] = $badge;
+                    }
+                    $link = self::recordLink($it['link'] ?? null);
+                    if ($link !== null) {
+                        $item['link'] = $link;
                     }
                     $items[] = $item;
                 }
@@ -269,7 +277,7 @@ final class BlockValidator
                     if ($k === null || $v === null) {
                         continue;
                     }
-                    $fields[] = ['k' => $k, 'v' => $v];
+                    $fields[] = self::confirmField($f, $k, $v);
                 }
                 $block = [
                     'type'   => 'confirm',
@@ -414,6 +422,10 @@ final class BlockValidator
                 }
                 $block = ['type' => 'detail', 'items' => $items];
                 self::opt($block, 'title', self::str($input['title'] ?? null));
+                $link = self::recordLink($input['link'] ?? null);
+                if ($link !== null) {
+                    $block['link'] = $link;
+                }
                 return $block;
 
             case 'bars':
@@ -662,6 +674,97 @@ final class BlockValidator
     private static function str(mixed $x): ?string
     {
         return is_string($x) ? $x : null;
+    }
+
+    /** Nome de tabela aceito num link (`cliente`, `vendas.pedido`). */
+    private const LINK_ENTITY = '/^[A-Za-z_][A-Za-z0-9_.]{0,63}$/';
+
+    /** Valor de chave primária aceito num link (número, código, UUID). */
+    private const LINK_ID = '/^[A-Za-z0-9_.:-]{1,64}$/';
+
+    /**
+     * "Abrir no sistema" de um registro: {entity, id}. Espelho de
+     * `recordLink()` no validate.ts. Se a tabela tem mesmo uma tela é o
+     * RenderTool que decide (allowlist do manifesto).
+     *
+     * @return array{entity: string, id: string}|null
+     */
+    public static function recordLink(mixed $x): ?array
+    {
+        if (! self::isObj($x)) {
+            return null;
+        }
+        $entity = self::str($x['entity'] ?? null);
+        $id     = $x['id'] ?? null;
+        if (is_int($id) || (is_float($id) && floor($id) === $id)) {
+            $id = (string) (int) $id;
+        }
+        if ($entity === null || ! is_string($id)
+            || preg_match(self::LINK_ENTITY, $entity) !== 1
+            || preg_match(self::LINK_ID, $id) !== 1) {
+            return null;
+        }
+
+        return ['entity' => $entity, 'id' => $id];
+    }
+
+    /**
+     * Link por linha da tabela: {entity, key}, `key` = campo da linha com a
+     * chave primária (pode não ser uma coluna visível).
+     *
+     * @return array{entity: string, key: string}|null
+     */
+    private static function tableLink(mixed $x): ?array
+    {
+        if (! self::isObj($x)) {
+            return null;
+        }
+        $entity = self::str($x['entity'] ?? null);
+        $key    = self::str($x['key'] ?? null);
+        if ($entity === null || $key === null || $key === ''
+            || preg_match(self::LINK_ENTITY, $entity) !== 1 || strlen($key) > 64) {
+            return null;
+        }
+
+        return ['entity' => $entity, 'key' => $key];
+    }
+
+    /**
+     * Campo do cartao de confirmacao. Editavel so com `name` (chave do
+     * argumento da escrita) + `input` conhecido; select leva `options`. Tipo
+     * desconhecido ou sem chave = linha so leitura. Espelho de
+     * `validate.ts` (case 'confirm') no front.
+     *
+     * @param  array<string, mixed> $f
+     * @return array<string, mixed>
+     */
+    private static function confirmField(array $f, string $k, string $v): array
+    {
+        $field = ['k' => $k, 'v' => $v];
+        $name  = self::str($f['name'] ?? null);
+        $input = self::str($f['input'] ?? null);
+        if ($name === null || $name === '' || $input === null || ! in_array($input, ConfirmCoordinator::INPUTS, true)) {
+            return $field;
+        }
+        $field['name']  = $name;
+        $field['input'] = $input;
+        if ($input === 'select') {
+            $options = [];
+            foreach (self::arr($f['options'] ?? null) as $o) {
+                if (! self::isObj($o)) {
+                    continue;
+                }
+                $value = $o['value'] ?? null;
+                if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+                    continue;
+                }
+                $label     = self::str($o['label'] ?? null);
+                $options[] = ['value' => (string) $value, 'label' => $label ?? (string) $value];
+            }
+            $field['options'] = $options;
+        }
+
+        return $field;
     }
 
     /**

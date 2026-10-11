@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Mad\Ai\AgentRunner;
+use Mad\Ai\ChatDashboards;
 use Mad\Ai\CodingPlanAgentRunner;
 use Mad\Ai\ConfirmCoordinator;
 use Mad\Ai\ConversationStore;
@@ -42,8 +43,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * F4: além das tools de dados (McpDataTool), o agente recebe as 15 render tools
  * (RenderToolRegistry: show_* + confirm_action) que emitem blocos visuais no SSE.
- * O refresh DETERMINÍSTICO de filtros de dashboard (sem LLM) fica para um slice
- * posterior; o dashboard já renderiza por ref e por bloco inline.
+ *
+ * Filtro do dashboard do chat: `dashboardAction {dashboardId, values}` (sem
+ * message). Widgets de SQL/tool salvos no registro da conversa são reexecutados
+ * aqui, sem o modelo; senão vira um turno sintético (ChatDashboards).
  */
 final class EmbedChatController
 {
@@ -70,6 +73,7 @@ final class EmbedChatController
         $payload = self::readPayload($request);
         $message = trim((string) ($payload['message'] ?? ''));
         $confirm = is_array($payload['confirm'] ?? null) ? $payload['confirm'] : null;
+        $dashAction = is_array($payload['dashboardAction'] ?? null) ? $payload['dashboardAction'] : null;
         $conversationId = trim((string) ($payload['conversationId'] ?? '')) ?: $sessionKey;
 
         // contexto de medição (best-effort)
@@ -96,6 +100,7 @@ final class EmbedChatController
             $conversationId,
             $message,
             $confirm,
+            $dashAction,
             $usageUserId,
             $usageTokenId,
             $usageTokenPrefix,
@@ -123,6 +128,7 @@ final class EmbedChatController
                 $confirms->seed($state['pending']);
                 $messages   = $state['messages'];
                 $transcript = $state['transcript'];
+                $dashboards = (array) ($state['dashboards'] ?? []);
 
                 // Aprovação/cancelamento de escrita pendente: determinístico,
                 // SEM chamar o modelo.
@@ -130,6 +136,44 @@ final class EmbedChatController
                     self::resolveConfirm($confirm, $confirms, $caller, $sink, $store, $conversationId, $userId, $messages, $transcript);
 
                     return;
+                }
+
+                // Filtro/busca do dashboard do chat. Turno sem bolha do usuário.
+                $hiddenTurn = false;
+                if ($dashAction !== null && $message === '') {
+                    $dashId = (string) ($dashAction['dashboardId'] ?? '');
+                    $entry  = is_array($dashboards[$dashId] ?? null) ? $dashboards[$dashId] : null;
+                    if ($entry === null) {
+                        $sink->textDelta('Não encontrei este painel na conversa. Peça para montá-lo de novo.');
+                        $sink->messageEnd();
+                        $sink->done();
+
+                        return;
+                    }
+                    $values = ChatDashboards::cleanValues((array) $entry['block'], $dashAction['values'] ?? []);
+                    $fresh  = ChatDashboards::canRefreshLocally($entry, $values)
+                        ? ChatDashboards::refresh($entry, $values, $db)
+                        : null;
+                    if ($fresh !== null) {
+                        $sink->block($fresh);
+                        $entry['block'] = $fresh;
+                        ChatDashboards::replaceIn($transcript, $fresh);
+                        $store->save(
+                            $conversationId,
+                            $userId,
+                            $messages,
+                            $confirms->all(),
+                            null,
+                            $transcript,
+                            ChatDashboards::merge($dashboards, [$dashId => $entry]),
+                        );
+                        $sink->messageEnd();
+                        $sink->done();
+
+                        return;
+                    }
+                    $message    = ChatDashboards::refreshMessage($entry, $values);
+                    $hiddenTurn = true;
                 }
 
                 if ($message === '') {
@@ -161,11 +205,16 @@ final class EmbedChatController
                     error_log('[mad-usage] quota check failed (fail-open): ' . $e->getMessage());
                 }
 
-                $tools  = self::buildTools($caller, $sink, $confirms, $manifest, $db);
-                $system = SystemPromptAssembler::assemble(
+                // enforce: bloco com dados só com dado consultado NESTE turno (anti-invenção)
+                $trace    = new ProvenanceTracker(enforce: true);
+                // "Abrir no sistema": tabelas com tela de cadastro no manifesto
+                $linkable = array_keys($manifest?->forms() ?? []);
+                $tools    = self::buildTools($caller, $sink, $confirms, $manifest, $db, $trace, $linkable);
+                $system   = SystemPromptAssembler::assemble(
                     $manifest,
                     $caller?->allowedTools() ?? [],
                     (bool) config('mad.ai.widgets_enabled', true),
+                    $linkable,
                 );
                 $history = self::toMessages($messages);
 
@@ -209,8 +258,14 @@ final class EmbedChatController
                 if (trim($finalText) !== '') {
                     $turnMsgs[] = ['role' => 'assistant', 'content' => $finalText];
                 }
-                $turnTrans   = [['role' => 'user', 'text' => $message]];
-                $turnTrans[] = ['role' => 'agent', 'items' => $sink->transcript()];
+                // Transcript como a tela mostra: refresh de dashboard sem bolha
+                // do usuário, dashboard reemitido troca o antigo no lugar e os
+                // widgets absorvidos pela moldura não se repetem soltos.
+                $turnTrans = $hiddenTurn ? [] : [['role' => 'user', 'text' => $message]];
+                $items     = ChatDashboards::fold($transcript, $sink->transcript());
+                if ($items !== []) {
+                    $turnTrans[] = ['role' => 'agent', 'items' => $items];
+                }
 
                 $store->save(
                     $conversationId,
@@ -219,6 +274,7 @@ final class EmbedChatController
                     $confirms->all(),
                     null,
                     array_merge($transcript, $turnTrans),
+                    ChatDashboards::merge($dashboards, $trace->dashboards()),
                 );
 
                 $sink->messageEnd();
@@ -240,14 +296,15 @@ final class EmbedChatController
     /**
      * @return array<int, \Laravel\Ai\Contracts\Tool>
      */
-    private static function buildTools(?McpToolCaller $caller, SseSink $sink, ConfirmCoordinator $confirms, ?McpManifest $manifest, string $db): array
+    private static function buildTools(?McpToolCaller $caller, SseSink $sink, ConfirmCoordinator $confirms, ?McpManifest $manifest, string $db, ?ProvenanceTracker $trace = null, array $linkable = []): array
     {
-        // Rastreia a última data-tool de leitura ok do turno — as render tools
-        // anexam isso como `source` do bloco (salvar favorito) e indexam os
-        // blocos por id (show_dashboard por ref).
         // enforce: bloco com dados só com dado consultado NESTE turno (anti-invenção)
-        $trace = new ProvenanceTracker(enforce: true);
+        $trace ??= new ProvenanceTracker(enforce: true);
 
+        // $trace rastreia a última data-tool de leitura ok do turno — as render
+        // tools anexam isso como `source` do bloco (salvar favorito), indexam os
+        // blocos por id (show_dashboard por ref) e guardam o spec dos widgets
+        // (filtro do dashboard sem IA).
         $tools = [];
 
         if ($caller !== null) {
@@ -270,7 +327,7 @@ final class EmbedChatController
         // os dados como markdown cru no texto. Independem do manifest (antes, app
         // sem manifesto perdia TODAS as tools de visualização); a proveniência
         // ($trace) barra bloco com dado que nenhuma consulta do turno devolveu.
-        foreach (RenderToolRegistry::tools($sink, $confirms, $trace) as $renderTool) {
+        foreach (RenderToolRegistry::tools($sink, $confirms, $trace, $linkable) as $renderTool) {
             $tools[] = $renderTool;
         }
 
@@ -380,7 +437,9 @@ final class EmbedChatController
         }
 
         $tool = $pending['tool'];
-        $args = array_merge($pending['args'], $values);
+        // So os campos que o cartao declarou editaveis, no tipo declarado: o
+        // cliente nao injeta argumento novo nem troca o registro alvo.
+        $args = ConfirmCoordinator::applyValues($pending['args'], $pending['editable'] ?? [], $values);
 
         // Re-gate: revalida no piso/matriz sob o McpCurrentUser DESTE request.
         $spec = $caller->spec($tool);

@@ -37,18 +37,18 @@ final class ConversationStore
     }
 
     /**
-     * @return array{messages: list<array{role: string, content: string}>, pending: array<string, mixed>, transcript: list<array<string, mixed>>, found: bool, title: string}
+     * @return array{messages: list<array{role: string, content: string}>, pending: array<string, mixed>, transcript: list<array<string, mixed>>, dashboards: array<string, mixed>, found: bool, title: string}
      */
     public function load(string $conversationId, int $userId): array
     {
-        $out = ['messages' => [], 'pending' => [], 'transcript' => [], 'found' => false, 'title' => ''];
+        $out = ['messages' => [], 'pending' => [], 'transcript' => [], 'dashboards' => [], 'found' => false, 'title' => ''];
 
         try {
             // Escopo de TENANT: além do user, a leitura filtra pelo tenant atual
             // (OR tenant_id IS NULL tolera linhas legadas sem tenant). Impede um
             // usuário multi-empresa de ler conversa de outro tenant.
             $st = $this->pdo()->prepare(
-                'SELECT messages_json, pending_json, transcript_json, title FROM mad_ai_conversation WHERE id = ? AND user_id = ? AND (tenant_id = ? OR tenant_id IS NULL)'
+                'SELECT messages_json, pending_json, transcript_json, dashboards_json, title FROM mad_ai_conversation WHERE id = ? AND user_id = ? AND (tenant_id = ? OR tenant_id IS NULL)'
             );
             $st->execute([$conversationId, $userId, TenantContext::id()]);
             $row = $st->fetch(PDO::FETCH_ASSOC);
@@ -57,9 +57,11 @@ final class ConversationStore
                 $m = json_decode((string) ($row['messages_json'] ?? '[]'), true);
                 $p = json_decode((string) ($row['pending_json'] ?? '{}'), true);
                 $t = json_decode((string) ($row['transcript_json'] ?? '[]'), true);
+                $d = json_decode((string) ($row['dashboards_json'] ?? '{}'), true);
                 $out['messages']   = is_array($m) ? $m : [];
                 $out['pending']    = is_array($p) ? $p : [];
                 $out['transcript'] = is_array($t) ? $t : [];
+                $out['dashboards'] = is_array($d) ? $d : [];
                 $out['title']      = (string) ($row['title'] ?? '');
                 $out['found']      = true;
             }
@@ -77,8 +79,9 @@ final class ConversationStore
      * @param list<array{role: string, content: string}> $messages
      * @param array<string, mixed>                       $pending
      * @param list<array<string, mixed>>|null            $transcript null = não toca na coluna
+     * @param array<string, mixed>|null                  $dashboards registro dos dashboards do chat ({@see ChatDashboards}); null = não toca
      */
-    public function save(string $conversationId, int $userId, array $messages, array $pending, ?string $title = null, ?array $transcript = null): void
+    public function save(string $conversationId, int $userId, array $messages, array $pending, ?string $title = null, ?array $transcript = null, ?array $dashboards = null): void
     {
         if (count($messages) > self::MAX_MESSAGES) {
             $messages = array_slice($messages, -self::MAX_MESSAGES);
@@ -105,6 +108,9 @@ final class ConversationStore
             $tj  = $transcript !== null
                 ? json_encode(array_values($transcript), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : null;
+            $dj  = $dashboards !== null
+                ? json_encode((object) $dashboards, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)
+                : null;
             $now = date('Y-m-d H:i:s');
 
             $tid = TenantContext::id();
@@ -121,6 +127,10 @@ final class ConversationStore
                     $sets[]   = 'transcript_json = ?';
                     $params[] = $tj;
                 }
+                if ($dj !== null) {
+                    $sets[]   = 'dashboards_json = ?';
+                    $params[] = $dj;
+                }
                 if ($title !== null && $title !== '') {
                     $sets[]   = 'title = ?';
                     $params[] = $title;
@@ -136,7 +146,7 @@ final class ConversationStore
                 $resolvedTitle = ($title !== null && $title !== '') ? $title : self::deriveTitle($messages);
                 $conn->prepare(
                     'INSERT INTO mad_ai_conversation (id, user_id, title, messages_json, pending_json, dashboards_json, transcript_json, created_at, updated_at, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                )->execute([$conversationId, $userId, $resolvedTitle, $mj, $pj, '{}', $tj ?? '[]', $now, $now, $tid]);
+                )->execute([$conversationId, $userId, $resolvedTitle, $mj, $pj, $dj ?? '{}', $tj ?? '[]', $now, $now, $tid]);
             }
         } catch (\Throwable $e) {
             error_log('[embed-store] save: ' . $e->getMessage());

@@ -257,6 +257,45 @@ final class ProvenanceTracker
         return array_keys($this->blocks);
     }
 
+    /** @var array<string, array<string, mixed>> spec de widget (SQL/tool) que gerou cada bloco, por id */
+    private array $specs = [];
+
+    /** @var array<string, array<string, mixed>> dashboards emitidos no turno (entrada do registro), por id */
+    private array $dashboards = [];
+
+    /**
+     * Guarda o spec do preview/save_widget que gerou o bloco — com ele o
+     * filtro do dashboard reexecuta o widget sem chamar o modelo.
+     *
+     * @param array<string, mixed> $spec
+     */
+    public function recordSpec(string $blockId, array $spec): void
+    {
+        if ($blockId !== '') {
+            $this->specs[$blockId] = $spec;
+        }
+    }
+
+    /** @return array<string, mixed>|null */
+    public function specFor(string $blockId): ?array
+    {
+        return $this->specs[$blockId] ?? null;
+    }
+
+    /** @param array<string, mixed> $entry {@see ChatDashboards::entry()} */
+    public function rememberDashboard(string $id, array $entry): void
+    {
+        if ($id !== '') {
+            $this->dashboards[$id] = $entry;
+        }
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public function dashboards(): array
+    {
+        return $this->dashboards;
+    }
+
     /**
      * Resultado da leitura correspondente a um source {tool, args} (match
      * exato) — permite compilar o spec do widget com a fonte CERTA.
