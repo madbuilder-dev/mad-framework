@@ -28,7 +28,10 @@
     $footerTags = (string) config('mad.general.footer_tags', '');
 
     $tituloPagina = trim((string) ($seo['title'] ?? ''));
-    $titulo       = $tituloPagina !== '' && $tituloPagina !== $brandName
+    // `title_suffix: false` (pageSeo): página com identidade própria — a
+    // vitrine de uma loja não leva o nome do site no título da aba.
+    $comSufixo    = (bool) ($seo['title_suffix'] ?? true);
+    $titulo       = $tituloPagina !== '' && $tituloPagina !== $brandName && $comSufixo
         ? $tituloPagina . ' · ' . $brandName
         : ($tituloPagina !== '' ? $tituloPagina : $brandName);
 

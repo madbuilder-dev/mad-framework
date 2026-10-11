@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.156.0] — 2026-10-11
+
+### Correções
+
+- **Formulários:** na lista de itens, o valor gravado num combo podia aparecer trocado ou em branco ao abrir o registro ou ao recarregar as linhas: a ficha com "Fermento 20 g" abria como "20 kg", e o campo obrigatório em branco barrava o Salvar. Agora a tela mostra o que foi salvo. Republique o projeto para aplicar.
+
+## [5.155.0] — 2026-10-11
+
+### Novidades
+
+- **Site:** a página do site pode tirar o nome do site do fim do título da aba, com `$this->pageSeo['title_suffix'] = false` no `mount()`. Serve para a vitrine de cada loja de um marketplace mostrar só a marca da loja. Sem a opção, o título continua igual. Republique o projeto para aplicar.
+
 ## [5.154.0] — 2026-10-11
 
 ### Novidades

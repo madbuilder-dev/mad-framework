@@ -78,6 +78,9 @@ abstract class MadSitePage extends MadComponent
      *   noindex   (bool)   pedir aos buscadores para não listar
      *   canonical (string) endereço canônico alternativo
      *   jsonld    (array)  dados estruturados extras (ex.: BlogPosting)
+     *   title_suffix (bool) acrescentar " · <nome do site>" ao <title>
+     *                      (true é o padrão; false numa página com identidade
+     *                      própria, ex.: a vitrine de cada loja de um marketplace)
      *
      * @var array<string, mixed>
      */
@@ -144,7 +147,7 @@ abstract class MadSitePage extends MadComponent
     /**
      * Cabeçalho de busca já resolvido (instância vence estático).
      *
-     * @return array{title: string, description: string, og_image: string, og_type: string, noindex: bool, canonical: string, jsonld: array}
+     * @return array{title: string, description: string, og_image: string, og_type: string, noindex: bool, canonical: string, jsonld: array, title_suffix: bool}
      */
     public function seo(): array
     {
@@ -160,6 +163,7 @@ abstract class MadSitePage extends MadComponent
             'noindex'     => (bool) ($extra['noindex'] ?? false),
             'canonical'   => trim((string) ($extra['canonical'] ?? '')),
             'jsonld'      => is_array($extra['jsonld'] ?? null) ? $extra['jsonld'] : [],
+            'title_suffix' => (bool) ($extra['title_suffix'] ?? true),
         ];
     }
 

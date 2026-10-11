@@ -1002,15 +1002,34 @@ document.addEventListener('alpine:init', () => {
         - fl_combo: popula um <select> na mesma row
         - fl_val:   define o value de um campo na mesma row
      3. Aplica os ops na row de origem
+
+   A carga do registro (auto-fire, Camada 2) chama o mesmo caminho com
+   `hydrate` — ver _madFlOnChange.
 */
 document.addEventListener('change', function(e) {
-    var el     = e.target;
+    _madFlOnChange(e.target);
+});
+
+/**
+ * on-change (método PHP) de uma coluna do field-list.
+ *
+ * `hydrate` = { rows: [...] }: chamada da CARGA do registro (auto-fire), não do
+ * usuário. A resposta vale para todas as linhas com aquele valor (o auto-fire
+ * faz um pedido só por valor) e não troca o que a linha trouxe do banco: a
+ * lista de opções entra mantendo o valor salvo, e o `form->set('col[]')` só
+ * preenche célula vazia. Sem isso a ficha técnica com "Fermento 20 g" abria em
+ * "20 kg" (o handler põe a unidade de controle do insumo) e o Salvar gravava
+ * 1000× a quantidade (fw#256).
+ */
+function _madFlOnChange(el, hydrate) {
     var action = el.getAttribute('data-mad-fl-change');
     if (!action) return;
 
     var wrapper = _madOwnerComponent(el);
     var row     = el.closest('.mad-fl-row');
     if (!wrapper || !row) return;
+    var rows = hydrate ? hydrate.rows : [row];
+    var keep = !!hydrate;
 
     var endpoint = wrapper.getAttribute('mad-endpoint');
     if (!endpoint) return;
@@ -1066,9 +1085,9 @@ document.addEventListener('change', function(e) {
             var others = [];
             ops.forEach(function(op) {
                 if (op.op === 'fl_combo') {
-                    _madFlApplyCombo(row, op.target, op.options);
+                    rows.forEach(function(r) { _madFlApplyCombo(r, op.target, op.options, keep); });
                 } else if (op.op === 'fl_val') {
-                    _madFlApplyVal(row, op.target, op.content);
+                    rows.forEach(function(r) { _madFlApplyVal(r, op.target, op.content, keep); });
                 } else {
                     others.push(op);
                 }
@@ -1079,15 +1098,42 @@ document.addEventListener('change', function(e) {
             console.error('[mad-fl-change] Erro de rede:', err);
         });
     });
-});
+}
+
+/**
+ * Valor da célula `name` da linha: o do campo na tela ou, quando ele não o
+ * mostra (combo sem a opção ainda), o da linha no Alpine — que é o que o
+ * Salvar envia.
+ */
+function _madFlCellValue(row, name, el) {
+    var v = (el && el.value !== undefined && el.value !== null) ? String(el.value) : '';
+    if (v !== '') return v;
+    try {
+        var d = (window.Alpine && Alpine.$data) ? Alpine.$data(row) : null;
+        var m = (d && d.row) ? d.row[name] : null;
+        if (m !== undefined && m !== null) return String(m);
+    } catch (e) {}
+    return '';
+}
 
 /**
  * Popula um <select> dentro de uma row do field-list.
  * Trata MAD Select (destroy/reinit) e sincroniza Alpine x-model.
  */
-function _madFlApplyCombo(row, targetName, options) {
+function _madFlApplyCombo(row, targetName, options, keepValue) {
     var target = row.querySelector('select[name="' + targetName + '[]"]');
     if (!target) return;
+
+    // Carga do registro (keepValue): a lista nova entra e o valor que a linha
+    // trouxe do banco fica — fora da lista nova, numa opção própria com o
+    // rótulo que o combo já mostrava (fw#256).
+    var keep = keepValue ? _madFlCellValue(row, targetName, target) : '';
+    var keepOpt = null;
+    if (keep !== '') {
+        for (var i = 0; i < target.options.length; i++) {
+            if (target.options[i].value === keep) { keepOpt = target.options[i]; break; }
+        }
+    }
 
     // Reconstrói as options no <select> nativo (fonte da verdade)
     target.innerHTML = '<option value="">Selecione...</option>';
@@ -1097,9 +1143,18 @@ function _madFlApplyCombo(row, targetName, options) {
         opt.textContent = options[k];
         target.appendChild(opt);
     });
+    if (keep !== '' && !Object.prototype.hasOwnProperty.call(options, keep)) {
+        if (!keepOpt) {
+            keepOpt = document.createElement('option');
+            keepOpt.value = keep;
+            keepOpt.textContent = keep;
+            keepOpt.setAttribute('data-mad-synthetic', '');
+        }
+        target.appendChild(keepOpt);
+    }
 
-    // Limpa o valor selecionado e sincroniza Alpine
-    target.value = '';
+    // Limpa o valor selecionado (ou repõe o salvo, na carga) e sincroniza Alpine
+    target.value = keep;
     target.dispatchEvent(new Event('input', { bubbles: true }));
 
     // MAD Select: re-projeta a UI; se ainda não montado, monta agora
@@ -1108,10 +1163,19 @@ function _madFlApplyCombo(row, targetName, options) {
 }
 
 /**
- * Registry global de options atualizadas por setItems('campo[]').
- * Usado pelo addRow() para aplicar options corretas em novas rows.
+ * Registry de options atualizadas por setItems('campo[]'), por componente
+ * (mad-id do [mad-component] dono — o mesmo id sobrevive ao redesenho).
+ * Usado pelo x-init de cada row para que linhas que nascem depois (addRow,
+ * setRows, redesenho) venham com a lista. A chave era só o nome da coluna: a
+ * lista de uma tela caía nas linhas de outra tela/registro com coluna de mesmo
+ * nome (fw#256).
  */
 var _madFlComboOptionsCache = {};
+
+function _madFlCacheScope(el) {
+    var w = _madOwnerComponent(el);
+    return (w && w.getAttribute && w.getAttribute('mad-id')) || '';
+}
 
 /**
  * Aplica fl_combo em TODAS as rows de field-lists dentro de um container,
@@ -1120,8 +1184,9 @@ var _madFlComboOptionsCache = {};
  * Usada pelo setItems('campo[]') via MadWire (global, diferente do on-change que é por row).
  */
 function _madFlApplyComboAll(container, targetName, options) {
-    // 1) Cacheia para novas rows
-    _madFlComboOptionsCache[targetName] = options;
+    // 1) Cacheia para novas rows (do componente)
+    var scope = _madFlCacheScope(container);
+    (_madFlComboOptionsCache[scope] = _madFlComboOptionsCache[scope] || {})[targetName] = options;
 
     // 2) Atualiza rows existentes
     container.querySelectorAll('.mad-fl-row').forEach(function(row) {
@@ -1135,8 +1200,14 @@ function _madFlApplyComboAll(container, targetName, options) {
  */
 function _madFlApplyCachedOptions(row) {
     if (typeof _madFlComboOptionsCache === 'undefined') return;
-    for (var field in _madFlComboOptionsCache) {
-        _madFlApplyCombo(row, field, _madFlComboOptionsCache[field]);
+    var cache = _madFlComboOptionsCache[_madFlCacheScope(row)];
+    if (!cache) return;
+    // A linha que NASCE traz o valor dela (salva no banco, setRows, redesenho):
+    // a lista guardada entra e o valor fica — como na carga do registro. Sem
+    // isso ela abria em "Selecione..." e, com a coluna obrigatória, o Salvar
+    // era barrado (fw#256). Linha nova (Adicionar) nasce vazia: igual a antes.
+    for (var field in cache) {
+        _madFlApplyCombo(row, field, cache[field], true);
     }
 }
 
@@ -1144,9 +1215,13 @@ function _madFlApplyCachedOptions(row) {
  * Define o valor de um campo (input/select/textarea) dentro de uma row do field-list.
  * Sincroniza com Alpine x-model via evento input.
  */
-function _madFlApplyVal(row, targetName, value) {
+function _madFlApplyVal(row, targetName, value, keepValue) {
     var target = row.querySelector('[name="' + targetName + '[]"]');
     if (!target) return;
+
+    // Carga do registro (keepValue): só preenche célula vazia — o valor que a
+    // linha trouxe do banco não é trocado pelo on-change (fw#256).
+    if (keepValue && _madFlCellValue(row, targetName, target) !== '') return;
 
     // Se tem MAD Select, usa a API dele
     if (target._madSelect) {
@@ -1273,11 +1348,18 @@ document.addEventListener('change', function(e) {
    FIELD-LIST auto-fire — Camada 2: dispara onChange em selects populados no init
    ═══════════════════════════════════════════════════════════════════
 
-   Após render de rows existentes (edição), auto-dispara o 'change' event
-   em selects que têm data-mad-fl-change e já possuem valor.
+   Após render de rows existentes (edição), chama o on-change dos selects
+   que têm data-mad-fl-change e já possuem valor.
    Útil quando o dev usa on-change sem depends-on para popular dependentes.
 
-   Otimização: agrupa por (método, valor) para evitar N requests iguais.
+   É CARGA, não edição (fw#256): a resposta traz as opções dos combos, mas não
+   troca o valor que a linha trouxe do banco (ver _madFlOnChange). Por isso o
+   on-change é chamado direto, sem disparar 'change' no campo: o evento
+   acordaria também a cascata (Camada 3) dos outros combos da linha, que
+   apagava o valor deles — as opções desses já vêm com a tela (Camada 1).
+
+   Otimização: agrupa por (método, valor) para evitar N requests iguais — a
+   resposta vale para todas as linhas do grupo.
    Usa MutationObserver para detectar quando rows são inseridas no DOM.
 */
 (function() {
@@ -1290,16 +1372,21 @@ document.addEventListener('change', function(e) {
         setTimeout(function() {
             // Coleta selects com onChange que já têm valor
             var selects = flContainer.querySelectorAll('.mad-fl-row select[data-mad-fl-change]');
-            var seen = {};
+            var groups = {}, order = [];
 
             selects.forEach(function(sel) {
                 if (!sel.value || sel.value === '') return;
-                // Se esse select também tem depends-on, a Camada 3 já cuida dele na mudança do pai.
-                // Mas no init, precisamos disparar o onChange para lógica extra (ex: setar preço).
                 var key = sel.getAttribute('data-mad-fl-change') + '::' + sel.value;
-                if (seen[key]) return;
-                seen[key] = true;
-                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                if (!groups[key]) { groups[key] = []; order.push(key); }
+                groups[key].push(sel);
+            });
+            order.forEach(function(key) {
+                var rows = [];
+                groups[key].forEach(function(sel) {
+                    var r = sel.closest('.mad-fl-row');
+                    if (r) rows.push(r);
+                });
+                _madFlOnChange(groups[key][0], { rows: rows });
             });
 
             _firing = false;
