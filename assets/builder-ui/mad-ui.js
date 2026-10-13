@@ -187,11 +187,39 @@ window._madOptionsError = _madOptionsError;
  * três. Se o foco já saiu do campo, não seleciona nada.
  */
 function madSelectOnFocus(e) {
-    var el = e && e.target;
+    madSelectAll(e && e.target);
+}
+
+/**
+ * Seleciona todo o texto do campo que acabou de receber o foco.
+ *
+ * AGORA e de novo na próxima volta do event loop (a do WebKit, acima) — mas a
+ * segunda só se ninguém digitou nesse meio tempo (fw#307). Só adiada, a tecla
+ * que chegava antes dela caía no meio/fim do valor antigo, e a seleção que
+ * vinha depois fazia a tecla seguinte apagar a primeira: "12" num campo com 8
+ * virava 812, e limpar e digitar "2500" virava 500. Só seleciona se o foco
+ * ainda está aqui (fw#132: no Chromium, select() num campo sem foco o toma).
+ */
+function madSelectAll(el) {
     if (!el || typeof el.select !== 'function') return;
+    if (document.activeElement === el) el.select();
+    var seen = el.value;
+    // Foco que veio de um clique: o WebKit põe o cursor onde o mouse caiu no
+    // mouseup e desfaz a seleção. Cancelar ESSE mouseup a mantém.
+    if (_madPointerDown && typeof el.addEventListener === 'function') {
+        el.addEventListener('mouseup', function keep(ev) {
+            el.removeEventListener('mouseup', keep);
+            if (el.value === seen) ev.preventDefault();
+        });
+    }
     setTimeout(function () {
-        if (document.activeElement === el) el.select();
+        if (document.activeElement === el && el.value === seen) el.select();
     }, 0);
+}
+var _madPointerDown = false;
+if (typeof document.addEventListener === 'function') {
+    document.addEventListener('mousedown', function () { _madPointerDown = true; }, true);
+    document.addEventListener('mouseup', function () { setTimeout(function () { _madPointerDown = false; }, 0); }, true);
 }
 
 /**
@@ -2126,8 +2154,16 @@ function _madSelectFactory() {
         },
 
         // ── interações ──
+        // Campo só de leitura: `readonly` da tag, `$this->form->readonly()` ou
+        // readonly-when desenham `.mad-readonly-select` no select. O CSS só
+        // barrava o mouse — Tab + seta ainda abria a lista e trocava o valor
+        // (fw#315). Lido na hora: o readonly-when liga e desliga a classe.
+        _readonly() {
+            var el = this._native;
+            return !!el && !!el.classList && el.classList.contains('mad-readonly-select');
+        },
         onControlClick(e) {
-            if (this._locked || this._native.disabled) return;
+            if (this._locked || this._native.disabled || this._readonly()) return;
             if (e.target && (e.target.closest('.mad-sel-chip-x') || e.target.closest('.mad-sel-clear'))) return;
             this.openDropdown();
             this._focusControl();
@@ -2148,7 +2184,7 @@ function _madSelectFactory() {
             this.$nextTick(attempt);
         },
         openDropdown() {
-            if (this._locked || this.open) { if (this.open) this._measure(); return; }
+            if (this._locked || this.open || this._readonly()) { if (this.open) this._measure(); return; }
             this.open = true; this.activeIndex = this._currentIndex();
             this._measure(); this._attachOutside();
             if (this.ajax && this.minLen === 0 && !this.results.length) this._fetch('');
@@ -2245,11 +2281,12 @@ function _madSelectFactory() {
         },
         clearValue() {
             // O "×" pode estar à vista num campo que acabou de ser travado.
-            if (this._locked || this._native.disabled) return;
+            if (this._locked || this._native.disabled || this._readonly()) return;
             this.clear(false); this.closeDropdown();
         },
 
         onKeydown(e) {
+            if (this._readonly()) return;
             // Delete/Backspace com a lista fechada: o teclado do "×".
             if (!this.open && (e.key === 'Delete' || e.key === 'Backspace') && this.clearable) {
                 e.preventDefault(); this.clearValue(); return;
@@ -2447,7 +2484,7 @@ var _MAD_SEL_CONTROL_TPL =
     '<span class="mad-sel-chips">' +
       '<template x-for="item in displayItems" :key="item.value">' +
         '<span class="mad-sel-chip"><span x-text="item.text"></span>' +
-        '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="Remover" @mousedown.prevent.stop="removeItem(item.value)">&times;</span></span>' +
+        '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="Remover" @mousedown.prevent.stop="_readonly() || removeItem(item.value)">&times;</span></span>' +
       '</template>' +
     '</span>' +
   '</template>' +
@@ -2962,9 +2999,11 @@ var _madWhen = (function () {
     }
 
     // Campos obrigatórios vazios do formulário. Fora: linhas de Lista de
-    // itens / Detail Form (têm validação própria), campos de uma tela
-    // embutida e o wrapper de um campo composto (respondem os de dentro).
-    function pending(form) {
+    // itens / Detail Form (o editor delas tem a trava própria, blockEditor),
+    // campos de uma tela embutida e o wrapper de um campo composto
+    // (respondem os de dentro). `editor`: `form` é o editor de um Detail
+    // Form ([data-df-fields]) e só os campos DELE contam.
+    function pending(form, editor) {
         var out = [];
         if (!form || !form.querySelectorAll) return out;
         var comp = form.closest ? form.closest('[mad-component]') : null;
@@ -2972,7 +3011,7 @@ var _madWhen = (function () {
         for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
             if (f.querySelector('.mad-field')) continue;
-            if (f.closest(EDITORS)) continue;
+            if (editor ? f.closest(EDITORS) !== form : f.closest(EDITORS)) continue;
             if (comp && f.closest('[mad-component]') !== comp) continue;
             var ctl = missing(f, form);
             if (ctl) out.push({ field: f, control: ctl, name: fieldName(f, ctl) });
@@ -3047,13 +3086,30 @@ var _madWhen = (function () {
 
     // Salvar: marca os obrigatórios vazios e diz se o envio tem de parar.
     function blockSubmit(form) {
-        if (!form || !form.querySelectorAll) return false;
-        var old = form.querySelectorAll('[' + REQ_MARK + ']');
+        return block(form, false);
+    }
+
+    // "Adicionar" do Detail Form (modal, cortina ou na linha): mesma trava,
+    // só sobre os campos do editor. Sem ela a linha entrava em branco e o
+    // Salvar a descartava em silêncio (fw#305).
+    function blockEditor(scope) {
+        return block(scope, true);
+    }
+
+    // Tira todo erro de obrigatório marcado no escopo (editor reaberto limpo).
+    function clear(scope) {
+        if (!scope || !scope.querySelectorAll) return;
+        var old = scope.querySelectorAll('[' + REQ_MARK + ']');
         for (var i = 0; i < old.length; i++) unmark(old[i]);
-        var list = pending(form);
+    }
+
+    function block(form, editor) {
+        if (!form || !form.querySelectorAll) return false;
+        clear(form);
+        var list = pending(form, editor);
         for (var j = 0; j < list.length; j++) mark(list[j]);
         if (list.length && typeof api.onBlocked === 'function') {
-            try { api.onBlocked(list, form); } catch (e) { /* aviso é extra: o envio já está seguro */ }
+            try { api.onBlocked(list, form, editor); } catch (e) { /* aviso é extra: o envio já está seguro */ }
         }
         return list.length > 0;
     }
@@ -3178,7 +3234,9 @@ var _madWhen = (function () {
     api.disabledByWhen = disabledByWhen;
     api.pending = pending;
     api.blockSubmit = blockSubmit;
-    // api.onBlocked(list, form): aviso, aba e foco — ligado fora do núcleo.
+    api.blockEditor = blockEditor;
+    api.clear = clear;
+    // api.onBlocked(list, form, editor): aviso, aba e foco — ligado fora do núcleo.
     return api;
 })();
 // </madWhen:core>
@@ -3187,11 +3245,17 @@ window._madWhen = _madWhen;
 // Salvar segurado por obrigatório vazio: o mesmo aviso do servidor
 // (MadValidationException::asInline), a aba do primeiro campo aberta e o
 // cursor nele (o op `focus` espera a aba aparecer).
-_madWhen.onBlocked = function (list, form) {
+_madWhen.onBlocked = function (list, form, editor) {
     var first = list[0];
     var slot = first.field.querySelector('[data-field-error]') || first.field;
     if (window.Mad && typeof window.Mad._revealFieldError === 'function') window.Mad._revealFieldError(slot);
-    if (window.Mad && typeof window.Mad._madFocusField === 'function') {
+    // Editor de Detail Form: o cursor vai ao controle do modal. Procurar pelo
+    // nome no componente acharia o campo homônimo do formulário principal.
+    if (editor) {
+        if (typeof first.control.focus === 'function') {
+            try { first.control.focus(); } catch (e) { /* controle escondido */ }
+        }
+    } else if (window.Mad && typeof window.Mad._madFocusField === 'function') {
         window.Mad._madFocusField(first.name, form.closest('[mad-component]') || form);
     } else if (typeof first.control.focus === 'function') {
         try { first.control.focus(); } catch (e) { /* controle escondido */ }
@@ -3942,6 +4006,63 @@ function _madUploadWarn(message) {
     if (message && typeof madToast === 'function') madToast(message, 'warning');
 }
 
+// O arquivo recusado não some calado (fw#297). Antes só havia o toast, que
+// some sozinho: quem olhava a tela segundos depois não via nada, salvava, e a
+// tela dizia "salvo" com a foto antiga. Agora o aviso fica embaixo do campo até
+// a próxima escolha, e o Salvar leva `__mad_file_refused[campo]` (nome,
+// tamanho e tipo do arquivo): o servidor confere com as PRÓPRIAS regras e
+// recusa o Salvar com o erro no campo (MadUploadRules::check).
+function _madUploadRefused(root, name, file, problem) {
+    _madUploadWarn(problem);
+    if (!root || !name || typeof root.querySelector !== 'function' || !root.classList) return;
+    var slot = _madUploadSlot(root, name);
+    if (slot) {
+        if (slot._madHint === undefined) {
+            slot._madHint = slot.innerHTML;
+            slot._madHintErr = slot.classList.contains('mad-error');
+        }
+        slot.textContent = problem;
+        slot.classList.add('mad-error');
+    }
+    if (root._madHadErr === undefined) root._madHadErr = root.classList.contains('mad-field-error');
+    root.classList.add('mad-field-error');
+    var mark = root.querySelector('input[data-mad-refused]');
+    if (!mark) {
+        mark = document.createElement('input');
+        mark.type = 'hidden';
+        mark.name = '__mad_file_refused[' + name + ']';
+        mark.setAttribute('data-mad-refused', '');
+        root.appendChild(mark);
+    }
+    mark.value = JSON.stringify({ name: String((file && file.name) || ''), size: Number(file && file.size) || 0, type: String((file && file.type) || '') });
+}
+
+// O campo recebeu outro arquivo (ou foi esvaziado): sai o aviso do recusado.
+function _madUploadCleared(root, name) {
+    if (!root || typeof root.querySelector !== 'function' || !root.classList) return;
+    var mark = root.querySelector('input[data-mad-refused]');
+    if (mark) mark.remove();
+    var slot = name ? _madUploadSlot(root, name) : null;
+    if (slot && slot._madHint !== undefined) {
+        slot.innerHTML = slot._madHint;
+        slot.classList.toggle('mad-error', !!slot._madHintErr);
+        slot._madHint = undefined;
+    }
+    if (root._madHadErr !== undefined) {
+        root.classList.toggle('mad-field-error', !!root._madHadErr);
+        root._madHadErr = undefined;
+    }
+}
+
+function _madUploadSlot(root, name) {
+    if (typeof root.querySelectorAll !== 'function') return null;
+    var list = root.querySelectorAll('[data-field-error]');
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].getAttribute('data-field-error') === name) return list[i];
+    }
+    return null;
+}
+
 document.addEventListener('alpine:init', () => {
 
     /* madSpinnerField — TSpinner */
@@ -4421,6 +4542,7 @@ document.addEventListener('alpine:init', () => {
         onSelect(e) {
             var f = e.target.files[0];
             if (f && this._refuse(f, e.target)) return;
+            if (f) _madUploadCleared(this.$root || this.$el, this.fieldName);
             this.file    = f ? this._newFile(f) : null;
             this.removed = false;
             if (f) { this._autoFillName(f); this._fireMadChange(); }
@@ -4431,6 +4553,7 @@ document.addEventListener('alpine:init', () => {
             if (dt && dt.files && dt.files.length) {
                 // Arrastar e soltar não passa pelo `accept` do <input>: confere aqui.
                 if (this._refuse(dt.files[0], null)) return;
+                _madUploadCleared(this.$root || this.$el, this.fieldName);
                 input.files = dt.files;
                 this.file    = this._newFile(dt.files[0]);
                 this.removed = false;
@@ -4445,7 +4568,7 @@ document.addEventListener('alpine:init', () => {
         _refuse(f, input) {
             var problem = _madUploadProblem(f, { accept: cfg.accept, maxBytes: cfg.maxBytes, serverMax: cfg.serverMax, stored: cfg.stored });
             if (!problem) return false;
-            _madUploadWarn(problem);
+            _madUploadRefused(this.$root || this.$el, this.fieldName, f, problem);
             if (input) {
                 input.value = '';
                 var previous = this.file && !this.file.existing ? this.file.raw : null;
@@ -4513,6 +4636,7 @@ document.addEventListener('alpine:init', () => {
             this.removed = !!(this.file && this.file.existing);
             this.file    = null;
             input.value  = '';
+            _madUploadCleared(this.$root || this.$el, this.fieldName);
         },
         openPreview() {
             if (!this.file) return;
@@ -6690,7 +6814,13 @@ document.addEventListener('alpine:init', () => {
         // ── Ações com dispatch (usado pelo confirmAction) ────────────
         handleCall(e) {
             const w = this._wrapper || this.$el.closest('[mad-component]');
-            if (w) MadWire.call(w, e.detail.method, e.detail.params || []);
+            if (!w) return;
+            // Botão da linha guardado pelo confirmAction: fica ocupado até a
+            // ação responder (fw#314) — o OK do diálogo não pode virar silêncio.
+            const btn = this._busyBtn;
+            this._busyBtn = null;
+            const run = MadWire.call(w, e.detail.method, e.detail.params || []);
+            if (btn && typeof MadWire.busy === 'function') MadWire.busy(btn, run);
         },
 
         // ── Inline editing ───────────────────────────────────────────
@@ -7077,12 +7207,22 @@ document.addEventListener('alpine:init', () => {
         // ── Confirm helper ───────────────────────────────────────────
         confirmAction(message, callback, event, type) {
             var opts = { danger: true };
+            // O botão é lido AGORA: depois do diálogo o evento já não tem
+            // currentTarget. O handleCall o marca ocupado (fw#314).
+            var src = event ? (event.currentTarget || event.target) : null;
+            var btn = src && typeof src.closest === 'function' ? src.closest('button') : null;
+            var self = this;
+            var go = function () {
+                if (typeof callback !== 'function') return;
+                self._busyBtn = btn;
+                try { callback(); } finally { self._busyBtn = null; }
+            };
             if (type === 'popover' && event) {
-                madConfirmPopover(event.currentTarget || event.target, message, opts)
-                    .then(ok => { if (ok && typeof callback === 'function') callback(); });
+                madConfirmPopover(src, message, opts)
+                    .then(ok => { if (ok) go(); });
             } else {
                 madConfirm(message, opts)
-                    .then(ok => { if (ok && typeof callback === 'function') callback(); });
+                    .then(ok => { if (ok) go(); });
             }
         },
         }; // fim do return
@@ -8524,13 +8664,14 @@ document.addEventListener('alpine:init', () => {
                 el.value = this.rawValue === ''
                     ? ''
                     : String(this.rawValue).replace('.', ',');
-                // Só seleciona se o foco ainda está aqui (fw#132). No Chromium,
-                // select() num campo sem foco DEVOLVE o foco para ele: com o foco
-                // indo deste campo para outro numérico antes do $nextTick, os
-                // dois passavam a tomar o foco um do outro sem parar (a fila do
-                // $nextTick nunca esvaziava) e a aba travava. Mesma guarda do
-                // madSelectOnFocus.
-                this.$nextTick(() => { if (document.activeElement === el) el.select(); });
+                // Seleciona JÁ (e de novo na próxima volta, se nada foi
+                // digitado): trocar o texto acima tira a seleção, e só com o
+                // select() adiado a tecla que chegava antes dele caía no fim do
+                // número ("12" sobre 8 virava 812 — fw#307). Só seleciona se o
+                // foco ainda está aqui (fw#132): no Chromium, select() num campo
+                // sem foco DEVOLVE o foco para ele e dois campos tomavam o foco
+                // um do outro sem parar. Ver madSelectAll.
+                madSelectAll(el);
             },
 
             // Valor vindo de FORA (op `val` do $this->form->set(), _syncFormInputs
@@ -9030,9 +9171,9 @@ document.addEventListener('alpine:init', () => {
                 } else {
                     e.target.value = '';
                 }
-                // Só seleciona se o foco ainda está aqui — ver madNumericField.onFocus (fw#132).
-                var el = e.target;
-                this.$nextTick(() => { if (document.activeElement === el) el.select(); });
+                // Seleciona já e só re-seleciona se nada foi digitado — ver
+                // madNumericField.onFocus (fw#132, fw#307).
+                madSelectAll(e.target);
             },
 
             _onBlur(e) {
@@ -9910,6 +10051,10 @@ document.addEventListener('alpine:init', () => {
             },
 
             _resetForm() {
+                // Aviso de obrigatório da tentativa anterior não volta com o
+                // editor limpo (cancelar e abrir "Adicionar" de novo).
+                const fields = this._getFieldsContainer();
+                if (fields && window._madWhen && typeof window._madWhen.clear === 'function') window._madWhen.clear(fields);
                 this.formData = {};
                 this.columns.forEach(c => {
                     const k = _dataKey(c.field);
@@ -9997,6 +10142,13 @@ document.addEventListener('alpine:init', () => {
                     c.querySelectorAll('.mad-input-error').forEach(el => el.classList.remove('mad-input-error'));
                     c.querySelectorAll('.mad-error[data-field-error]').forEach(el => { el.textContent = ''; el.classList.remove('mad-error'); });
                 });
+
+                // Obrigatório vazio no sub-formulário segura a linha aqui, com o
+                // aviso no campo — antes ela entrava em branco e o Salvar a
+                // descartava em silêncio (fw#305). Vale também com before-add.
+                const fields = this._getFieldsContainer();
+                if (fields && window._madWhen && typeof window._madWhen.blockEditor === 'function'
+                    && window._madWhen.blockEditor(fields)) return;
 
                 this._collectFormData();
                 const row = { ...this.formData };
@@ -11182,10 +11334,11 @@ document.addEventListener('alpine:init', () => {
             // Imagem: o arquivo recusado não fica no <input> que vai no Salvar.
             var problem = _madUploadProblem(file, { accept: this._accept, maxBytes: this._maxBytes, stored: !!cfg.storage });
             if (problem) {
-                _madUploadWarn(problem);
+                _madUploadRefused(this.$root || this.$el, this._name, file, problem);
                 e.target.value = '';
                 return;
             }
+            _madUploadCleared(this.$root || this.$el, this._name);
 
             // Preview
             var self = this;
@@ -11203,6 +11356,7 @@ document.addEventListener('alpine:init', () => {
             this.removed = true;
             var input = this.$el.querySelector('input[type="file"]');
             if (input) input.value = '';
+            _madUploadCleared(this.$root || this.$el, this._name);
         },
 
         _fireMadChange() {
@@ -11272,9 +11426,10 @@ document.addEventListener('alpine:init', () => {
             // campo; com storage, também o limite do servidor.
             const problem = _madUploadProblem(file, { accept: this._accept, maxBytes: this._maxSize, serverMax: cfg.serverMax, stored: !!cfg.storage });
             if (problem) {
-                _madUploadWarn(problem);
+                _madUploadRefused(this.$root || this.$el, this._name, file, problem);
                 return false;
             }
+            _madUploadCleared(this.$root || this.$el, this._name);
             const reader = new FileReader();
             reader.onload = (ev) => {
                 this.previewSrc = ev.target.result;
@@ -11450,6 +11605,7 @@ document.addEventListener('alpine:init', () => {
             this.cropping = false;
             // Limpa o file input
             if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+            _madUploadCleared(this.$root || this.$el, this._name);
             this._syncHidden();
         },
 

@@ -454,7 +454,9 @@
                     @foreach($visibleCols as $col)
                     @php
                         $fld = $col->field;
-                        $ph  = htmlspecialchars($col->placeholder, ENT_QUOTES);
+                        // Cru: os atributos que o usam já escapam no echo do Blade — escapar
+                        // aqui também mostrava `&quot;` na tela (fw#302).
+                        $ph  = $col->placeholder;
 
                         // Condições por-row compiladas ({campo} → row['campo']).
                         $dw = $col->disabledWhen !== '' ? \Mad\Form\FieldListColumn::compileCondition($col->disabledWhen) : '';
@@ -472,10 +474,14 @@
                             && !str_contains($col->onChange, ' ');
                     @endphp
                     {{-- hint também na célula: no mobile (<=640px) o header e a
-                         banda somem, e só o data-label sobrevive via ::before. --}}
+                         banda somem, e só o data-label sobrevive via ::before.
+                         visible-when falso esconde o CONTEÚDO e a célula fica na
+                         grade (.mad-fl-cell-off = visibility:hidden; no cartão do
+                         celular, display:none). Com x-show (display:none) as
+                         células da direita andavam uma casa (fw#316). --}}
                     <div class="mad-fl-cell" data-label="{{ $col->label }}"
                          @if($col->hint !== '') title="{{ $col->hint }}" @endif
-                         @if($vw !== '') x-show="{{ $vw }}" @endif>
+                         @if($vw !== '') :class="{ 'mad-fl-cell-off': !({{ $vw }}) }" :aria-hidden="!({{ $vw }}) ? 'true' : null" @endif>
 
                         @if($col->type === 'select' || $col->type === 'dbcombo')
                         @php
@@ -603,12 +609,12 @@
                             $mMax      = $col->max;
                         @endphp
                             <div class="mad-fl-money"
-                                 x-data="madMoneyCell({ decimals: {{ $mDecimals }}, min: {{ $mMin !== null ? $mMin : 'null' }}, max: {{ $mMax !== null ? $mMax : 'null' }}, field: '{{ $fld }}', row: row })">
+                                 x-data="madMoneyCell({ decimals: {{ $mDecimals }}, min: {{ $mMin !== null ? $mMin : 'null' }}, max: {{ $mMax !== null ? $mMax : 'null' }}, fillDirection: 'left', field: '{{ $fld }}', row: row })">
                                 @if($mPrefix)
                                     <span class="mad-fl-money-prefix">{{ $mPrefix }}</span>
                                 @endif
                                 <input type="text"
-                                       inputmode="numeric"
+                                       inputmode="decimal"
                                        class="mad-input mad-input-sm"
                                        x-ref="input"
                                        :value="display"

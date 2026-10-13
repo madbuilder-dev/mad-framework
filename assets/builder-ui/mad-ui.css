@@ -567,6 +567,20 @@ body.mad-quick-popover-open { --mad-z-float: 10060; }
 
   /* alias: texto sobre warning-subtle escuro (ver bloco de aliases no :root) */
   --mad-warning-text:   #fbbf24;
+  /* texto de erro (aviso do campo): o --mad-danger fica em 3,5:1 no fundo escuro */
+  --mad-danger-text:    #f87171;
+  /* texto dos avisos e destaques (alert/callout) sobre o fundo *-subtle escuro */
+  --mad-alert-info-text:    #93c5fd;
+  --mad-alert-success-text: #86efac;
+  --mad-alert-warning-text: #fcd34d;
+  --mad-alert-danger-text:  #fca5a5;
+  /* tinta dos selos (.mad-badge-*) sobre o fundo *-subtle escuro */
+  --mad-badge-success-fg: #86efac;
+  --mad-badge-warning-fg: #fcd34d;
+  --mad-badge-danger-fg:  #fca5a5;
+  --mad-badge-info-fg:    #93c5fd;
+  /* filtro ativo da barra: o azul do destaque clareia em vez de escurecer */
+  --mad-dashf-ink: #fff;
 
   --mad-shadow-sm: 0 1px 2px 0 rgba(0,0,0,.3);
   --mad-shadow:    0 1px 3px 0 rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.04);
@@ -577,6 +591,56 @@ body.mad-quick-popover-open { --mad-z-float: 10060; }
   --mad-ring-danger: rgba(239,68,68,.25);
 
   color-scheme: dark;
+}
+
+/* Tema escuro do app gerado (html[data-theme="dark"], tema Notch): tem
+   tokens próprios, mas o vermelho de erro é o mesmo #dc2626 — 3,5:1 sobre o
+   fundo do formulário. O texto de erro usa o vermelho claro (fw#297). */
+html[data-theme="dark"],
+html[data-theme="dark"] .mad-ui {
+  --mad-danger-text: #f87171;
+  /* Avisos e destaques: o texto escuro fixo dava 1,3–1,7:1 no fundo escuro (fw#299). */
+  --mad-alert-info-text:    #93c5fd;
+  --mad-alert-success-text: #86efac;
+  --mad-alert-warning-text: #fcd34d;
+  --mad-alert-danger-text:  #fca5a5;
+  /* Selos: a cor cheia dava 3,3:1 (vermelho) no fundo escuro (fw#295). */
+  --mad-badge-success-fg: #86efac;
+  --mad-badge-warning-fg: #fcd34d;
+  --mad-badge-danger-fg:  #fca5a5;
+  --mad-badge-info-fg:    #93c5fd;
+  /* Filtro ativo da barra: o azul puro dava 2,7:1 no fundo escuro (fw#310). */
+  --mad-dashf-ink: #fff;
+}
+
+/* Trilha e cabeçalho da grade no escuro do app: o cinza #71717a (fixo na trilha;
+   no cabeçalho, vindo do tema do app com !important) dava 3,4–3,5:1 (fw#295).
+   A regra do cabeçalho vence a do tema já instalado nos apps, que só muda
+   quando o app é gerado de novo. */
+html[data-theme="dark"] .mad-page-breadcrumb {
+  color: var(--mad-text-muted);
+}
+html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th {
+  color: var(--mad-text-muted) !important;
+}
+
+/* Aviso de erro e borda do campo com erro no escuro do app: o tema do app
+   pinta toda dica de campo de cinza e a borda de todo campo, com !important,
+   e o "O campo X é obrigatório." saía cinza num campo sem borda (fw#305). */
+html[data-theme="dark"] .mad-field-hint.mad-error {
+  color: var(--mad-danger-text) !important;
+}
+/* Dica sem erro: o tema do app a pinta com #71717a !important (3,5:1) (fw#295). */
+html[data-theme="dark"] .mad-field-hint:not(.mad-error) {
+  color: var(--mad-text-muted) !important;
+}
+html[data-theme="dark"] .mad-input.mad-input-error,
+html[data-theme="dark"] .mad-select.mad-input-error,
+html[data-theme="dark"] .mad-textarea.mad-input-error,
+html[data-theme="dark"] .mad-input.mad-input-error:focus,
+html[data-theme="dark"] .mad-select.mad-input-error:focus,
+html[data-theme="dark"] .mad-textarea.mad-input-error:focus {
+  border-color: var(--mad-danger-text) !important;
 }
 
 /* ── Dark: Default page layout ── */
@@ -597,7 +661,7 @@ body.mad-quick-popover-open { --mad-z-float: 10060; }
   background: var(--mad-border);
 }
 .mad-dark .mad-page-breadcrumb {
-  color: var(--mad-text-subtle);
+  color: var(--mad-text-muted);
 }
 .mad-dark .mad-page-title {
   color: var(--mad-text);
@@ -1574,7 +1638,7 @@ textarea.mad-textarea:read-only:focus {
 }
 .mad-label-required::after { content: ' *'; color: var(--mad-danger); }
 .mad-hint    { font-size: var(--mad-text-xs); color: var(--mad-text-subtle); line-height: 1.5; }
-.mad-error   { font-size: var(--mad-text-xs); color: var(--mad-danger); }
+.mad-error   { font-size: var(--mad-text-xs); color: var(--mad-danger-text, var(--mad-danger)); }
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1669,10 +1733,12 @@ textarea.mad-textarea:read-only:focus {
 .mad-badge-secondary { background: var(--mad-bg-muted); color: var(--mad-text-muted); border-color: var(--mad-border); }
 .mad-badge-outline   { background: transparent; color: var(--mad-text); border-color: var(--mad-border-strong); }
 .mad-badge-primary   { background: var(--mad-primary-subtle); color: var(--mad-text-muted); border-color: var(--mad-border); }
-.mad-badge-info      { background: var(--mad-info-subtle); color: var(--mad-info); border-color: rgba(74,144,217,.3); }
-.mad-badge-success   { background: var(--mad-success-subtle); color: var(--mad-success); border-color: rgba(22,163,74,.3); }
-.mad-badge-warning   { background: var(--mad-warning-subtle); color: var(--mad-warning); border-color: rgba(217,119,6,.3); }
-.mad-badge-danger    { background: var(--mad-danger-subtle);  color: var(--mad-danger);  border-color: rgba(220,38,38,.3); }
+.mad-badge-info      { background: var(--mad-info-subtle); color: var(--mad-badge-info-fg, #1e40af); border-color: rgba(74,144,217,.3); }
+/* Tinta do selo por token: a cor cheia (--mad-success…) dava 3,1:1 no fundo
+   claro e o vermelho 3,3:1 no escuro (fw#295). Os escuros definem tons claros. */
+.mad-badge-success   { background: var(--mad-success-subtle); color: var(--mad-badge-success-fg, #166534); border-color: rgba(22,163,74,.3); }
+.mad-badge-warning   { background: var(--mad-warning-subtle); color: var(--mad-badge-warning-fg, #92400e); border-color: rgba(217,119,6,.3); }
+.mad-badge-danger    { background: var(--mad-danger-subtle);  color: var(--mad-badge-danger-fg, #991b1b);  border-color: rgba(220,38,38,.3); }
 
 .mad-badge-dot::before {
   content: '';
@@ -1701,10 +1767,12 @@ textarea.mad-textarea:read-only:focus {
 .mad-alert-title { font-weight: 700; margin-bottom: 2px; }
 .mad-alert-desc  { color: var(--mad-text-muted); line-height: 1.5; }
 
-.mad-alert-info    { border-color: rgba(74,144,217,.35); background: var(--mad-info-subtle); color: #1a3a5c; }
-.mad-alert-success { border-color: rgba(22,163,74,.35);  background: var(--mad-success-subtle); color: #14532d; }
-.mad-alert-warning { border-color: rgba(217,119,6,.35);  background: var(--mad-warning-subtle); color: #78350f; }
-.mad-alert-danger  { border-color: rgba(220,38,38,.35);  background: var(--mad-danger-subtle);  color: #7f1d1d; }
+/* Texto por token: a cor escura fixa sumia no fundo escuro (fw#299). Os
+   dois temas escuros definem --mad-alert-*-text; o claro usa a reserva. */
+.mad-alert-info    { border-color: rgba(74,144,217,.35); background: var(--mad-info-subtle); color: var(--mad-alert-info-text, #1a3a5c); }
+.mad-alert-success { border-color: rgba(22,163,74,.35);  background: var(--mad-success-subtle); color: var(--mad-alert-success-text, #14532d); }
+.mad-alert-warning { border-color: rgba(217,119,6,.35);  background: var(--mad-warning-subtle); color: var(--mad-alert-warning-text, #78350f); }
+.mad-alert-danger  { border-color: rgba(220,38,38,.35);  background: var(--mad-danger-subtle);  color: var(--mad-alert-danger-text, #7f1d1d); }
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -3043,10 +3111,12 @@ textarea.mad-textarea:read-only:focus {
    31. COMPONENTE — FIELD helpers (aliases)
    ═══════════════════════════════════════════════════════════════════ */
 
-.mad-field-hint { font-size: var(--mad-text-xs); color: var(--mad-text-subtle); line-height: 1.5; }
+/* Texto secundário, não o cinza mais fraco: --mad-text-subtle dava 2,6:1 no
+   claro (fw#295). */
+.mad-field-hint { font-size: var(--mad-text-xs); color: var(--mad-text-muted); line-height: 1.5; }
 /* .mad-error e .mad-field-hint tem a mesma especificidade e o hint vem depois
    no arquivo: sem esta regra a mensagem de validacao sai cinza de hint. */
-.mad-field-hint.mad-error { color: var(--mad-danger); }
+.mad-field-hint.mad-error { color: var(--mad-danger-text, var(--mad-danger)); }
 [data-field-error]:empty { display: none; }
 .mad-required   { color: var(--mad-danger); margin-left: 2px; }
 
@@ -3102,10 +3172,10 @@ textarea.mad-textarea:read-only:focus {
 .mad-callout-body  { color: var(--mad-text-muted); line-height: 1.6; margin-left: 24px; }
 .mad-callout-footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; margin-left: 24px; }
 
-.mad-callout-info    { border-color: rgba(74,144,217,.35);  background: var(--mad-info-subtle);    color: #1a3a5c; }
-.mad-callout-success { border-color: rgba(22,163,74,.35);   background: var(--mad-success-subtle); color: #14532d; }
-.mad-callout-warning { border-color: rgba(217,119,6,.35);   background: var(--mad-warning-subtle); color: #78350f; }
-.mad-callout-danger  { border-color: rgba(220,38,38,.35);   background: var(--mad-danger-subtle);  color: #7f1d1d; }
+.mad-callout-info    { border-color: rgba(74,144,217,.35);  background: var(--mad-info-subtle);    color: var(--mad-alert-info-text, #1a3a5c); }
+.mad-callout-success { border-color: rgba(22,163,74,.35);   background: var(--mad-success-subtle); color: var(--mad-alert-success-text, #14532d); }
+.mad-callout-warning { border-color: rgba(217,119,6,.35);   background: var(--mad-warning-subtle); color: var(--mad-alert-warning-text, #78350f); }
+.mad-callout-danger  { border-color: rgba(220,38,38,.35);   background: var(--mad-danger-subtle);  color: var(--mad-alert-danger-text, #7f1d1d); }
 
 
 /* ── Code block (documentação) ────────────────────────────────────── */
@@ -3640,25 +3710,27 @@ textarea.mad-textarea:read-only:focus {
 }
 
 /* ── Rich colors ── */
+/* Texto na mesma matiz, mais escuro: o amarelo dava 2,6:1 na descrição e os
+   outros 3,4–4,4:1 (fw#295). Título e descrição (opacidade .85) ≥ 4,5:1. */
 [data-rich-colors="true"][data-type="success"] {
   background: hsl(143, 85%, 96%);
   border-color: hsl(145, 92%, 87%);
-  color: hsl(140, 100%, 27%);
+  color: #166534;
 }
 [data-rich-colors="true"][data-type="danger"] {
   background: hsl(359, 100%, 97%);
   border-color: hsl(359, 100%, 94%);
-  color: hsl(360, 100%, 45%);
+  color: #991b1b;
 }
 [data-rich-colors="true"][data-type="warning"] {
   background: hsl(49, 100%, 97%);
   border-color: hsl(49, 91%, 84%);
-  color: hsl(31, 92%, 45%);
+  color: #92400e;
 }
 [data-rich-colors="true"][data-type="info"] {
   background: hsl(208, 100%, 97%);
   border-color: hsl(221, 91%, 93%);
-  color: hsl(210, 92%, 45%);
+  color: #1e40af;
 }
 
 /* Rich colors — close button inherits */
@@ -4151,6 +4223,36 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-btn-secondary.mad-btn-loading-active::after {
   border-color: rgba(0, 0, 0, 0.18);
   border-top-color: rgba(0, 0, 0, 0.65);
+}
+
+/* Botão sem .mad-btn (ação da linha da grade, ícone) enquanto a ação dele roda
+   no servidor — aplicado por mad-livewire.js (_markBusy, fw#314). A tinta do
+   spinner segue o texto do tema (claro e escuro). */
+.mad-click-busy {
+  position: relative;
+  cursor: progress;
+  pointer-events: none;
+}
+/* O wire desabilita os mad:click do componente durante o pedido; o botão que
+   está trabalhando não desbota com os outros (o .4 do :disabled apagava o spinner). */
+.mad-click-busy[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.mad-click-busy > * {
+  visibility: hidden;
+}
+.mad-click-busy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--mad-text, #0f172a) 22%, transparent);
+  border-top-color: var(--mad-text, #0f172a);
+  border-radius: 50%;
+  animation: mad-spin .65s linear infinite;
 }
 
 /* color-field — input hex + swatch nativo colado à direita */
@@ -5415,7 +5517,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-layout-dock .mad-page-breadcrumb {
   font-size: 11px;
   font-weight: 500;
-  color: var(--mad-text-subtle, #a1a1aa);
+  color: var(--mad-text-muted, #52525b); /* subtle dava 2,3–2,6:1 no claro (fw#295) */
 }
 .mad-layout-dock .mad-page-title {
   font-size: var(--mad-page-title-size, 16px);
@@ -5544,7 +5646,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-layout-border .mad-page-breadcrumb {
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--mad-text-subtle, #a1a1aa);
+  color: var(--mad-text-muted, #52525b); /* subtle dava 2,3–2,6:1 no claro (fw#295) */
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -5674,7 +5776,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-layout-float .mad-page-breadcrumb {
   font-size: 12px;
   font-weight: 500;
-  color: var(--mad-text-subtle, #a1a1aa);
+  color: var(--mad-text-muted, #52525b); /* subtle dava 2,3–2,6:1 no claro (fw#295) */
   gap: 4px;
   margin-bottom: 3px;
 }
@@ -5938,7 +6040,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-dark .mad-dg-th {
   background: var(--mad-bg-muted);
-  color: var(--mad-text-subtle);
+  color: var(--mad-text-muted);
   border-bottom-color: var(--mad-border-strong);
 }
 .mad-dark .mad-dg-head {
@@ -6383,6 +6485,12 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 
 /* Body (scroll) */
 .mad-checklist-body { overflow-y: auto; }
+/* Barra própria, sempre visível: a sobreposta do macOS some e a lista cortada
+   parecia completa (fw#302 — perfis escondidos abaixo da dobra). */
+.mad-checklist-body::-webkit-scrollbar { width: 8px; }
+.mad-checklist-body::-webkit-scrollbar-track { background: transparent; }
+.mad-checklist-body::-webkit-scrollbar-thumb { background: var(--mad-border-strong, var(--mad-border)); border-radius: 4px; }
+.mad-checklist-body::-webkit-scrollbar-thumb:hover { background: var(--mad-text-muted); }
 
 /* Table */
 .mad-checklist-table {
@@ -8937,6 +9045,12 @@ textarea.mad-dg-inline-input {
 .mad-fl-cell {
   min-width: 0;
 }
+/* visible-when falso: some o conteúdo, a casa fica — as colunas seguintes
+   continuam sob o próprio cabeçalho (fw#316). visibility também tira os
+   campos do Tab. No cartão do celular vira display:none (abaixo). */
+.mad-fl-cell.mad-fl-cell-off {
+  visibility: hidden;
+}
 
 .mad-fl-cell .mad-input,
 .mad-fl-cell select.mad-input,
@@ -9336,10 +9450,18 @@ textarea.mad-dg-inline-input {
   .mad-fl-header,
   .mad-fl-group-band { display: none; }
 
+  /* No cartão não há colunas a alinhar: a célula escondida por visible-when
+     sai inteira, sem deixar a etiqueta de um campo invisível. */
+  .mad-fl-cell.mad-fl-cell-off { display: none; }
+
   /* Cada linha vira um card */
   .mad-fl-row {
     display: flex !important;
     flex-direction: column;
+    /* A linha em grade centraliza na vertical (align-items:center); na coluna
+       do cartão isso virava centro HORIZONTAL — campos estreitos com um vão à
+       esquerda (fw#317). No cartão cada campo ocupa a largura toda. */
+    align-items: stretch;
     gap: var(--mad-s3);
     padding: var(--mad-s3);
     border: 1px solid var(--mad-border) !important;
@@ -13561,17 +13683,19 @@ textarea.mad-dg-inline-input {
     font-family: inherit;
 }
 .mad-dashf-mini:hover { background: var(--mad-bg-muted, #f3f4f6); }
+/* Texto sobre o fundo do destaque: o azul puro (#3b82f6) dava 3,4:1 no claro e o
+   rótulo, com opacity .7, 2,2:1 (fw#310). A tinta escurece no claro e clareia no
+   escuro (--mad-dashf-ink), seguindo a cor do destaque: ≥6:1 nos dois. */
 .mad-dashf-mini.active {
     background: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 10%, transparent);
-    color: var(--mad-dashf-accent, #3b82f6);
+    color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 65%, var(--mad-dashf-ink, #000));
 }
 .mad-dashf-mini-lbl {
     color: var(--mad-text-muted, #6b7280);
     font-weight: 400;
 }
 .mad-dashf-mini.active .mad-dashf-mini-lbl {
-    color: var(--mad-dashf-accent, #3b82f6);
-    opacity: .7;
+    color: inherit;
 }
 .mad-dashf-mini-chev {
     font-size: 10px;
@@ -13582,7 +13706,7 @@ textarea.mad-dg-inline-input {
     font-size: 11px;
     padding: 3px 8px;
     background: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 10%, transparent);
-    color: var(--mad-dashf-accent, #3b82f6);
+    color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 65%, var(--mad-dashf-ink, #000));
     border-radius: 99px;
     font-weight: 600;
 }
@@ -13616,7 +13740,7 @@ textarea.mad-dg-inline-input {
     border: 1px solid color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 30%, transparent);
     border-radius: 6px;
     font-size: 13px;
-    color: var(--mad-dashf-accent, #3b82f6);
+    color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 65%, var(--mad-dashf-ink, #000));
     font-weight: 500;
 }
 .mad-dashf-chip-cat {

@@ -1,11 +1,15 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => 'R$','suffix' => '', 'placeholder' => '', 'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => ',', 'thousandSep' => '.', 'fillDirection' => 'right', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => 'R$','suffix' => '', 'placeholder' => '', 'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => ',', 'thousandSep' => '.', 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
     $readonly  = !empty($readonly);
     $decimals  = (int)$decimals;
     $allowNegative = !empty($allowNegative);
-    $fillDirection = strtolower((string)$fillDirection) === 'left' ? 'left' : 'right';
+    // Padrão = digitar como o <mad-numeric-field>: inteiro, vírgula opcional
+    // ("10" = 10,00). A calculadora ("10" = 0,10) é `fill-direction="right"`.
+    // Antes era o padrão, e no mesmo formulário um campo de moeda e um
+    // numérico gravavam valores 100× diferentes para o mesmo "10" (fw#307).
+    $fillDirection = strtolower((string)$fillDirection) === 'right' ? 'right' : 'left';
     // Sanitiza separadores — single char (ou string vazia para thousandSep)
     $decimalSep  = $decimalSep !== '' ? mb_substr((string)$decimalSep, 0, 1) : ',';
     $thousandSep = mb_substr((string)$thousandSep, 0, 1);
@@ -61,7 +65,7 @@
         <input
             id="{{ $id }}"
             type="text"
-            inputmode="{{ $allowNegative ? 'text' : 'numeric' }}"
+            inputmode="{{ $allowNegative ? 'text' : ($fillDirection === 'left' ? 'decimal' : 'numeric') }}"
             class="mad-input{{ $alignCls }}{{ $hasError ? ' mad-input-error' : '' }}"
             placeholder="{{ $ph }}"
             x-ref="input"

@@ -1366,6 +1366,12 @@ trait MadFiltersTrait
 
         $type = $field['type'] ?? '';
 
+        // Liga/desliga: ligado lê "Sim", não o valor gravado ("1", "S"...).
+        $toggle = self::_toggleValues($field);
+        if ($toggle !== null && !is_array($value) && (string) $value === $toggle[0]) {
+            return mad_t('mad.gridcf.yes');
+        }
+
         // Multi-valor (ex. select multiple): rótulo de cada item; até 2 itens
         // lista os nomes, acima disso mostra a contagem.
         if (is_array($value)) {
@@ -1477,7 +1483,44 @@ trait MadFiltersTrait
             return false;
         }
         $value = $this->$name;
-        return !($value === '' || $value === null || $value === []);
+        if ($value === '' || $value === null || $value === [] || $value === false) {
+            return false;
+        }
+        // Liga/desliga desligado manda o valor "desligado" (`value-off`, "0"):
+        // isso é "sem filtro", não um filtro por 0 (fw#310). O chip aparecia
+        // destacado com "…: 0" e o contador dizia "1 filtro" sem a lista filtrar.
+        $toggle = self::_toggleValues($field);
+        if ($toggle !== null && !is_array($value) && (string) $value === $toggle[1]) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * [ligado, desligado] de um filtro liga/desliga, ou null para os demais.
+     * Mesmos atributos e padrões dos campos: `<mad-switch-field value-on
+     * value-off>` e `<mad-checkbox-field value value-off>` ("1" / "0").
+     *
+     * @return array{0:string,1:string}|null
+     */
+    private static function _toggleValues(array $field): ?array
+    {
+        $type  = $field['type'] ?? '';
+        $attrs = $field['attrs'] ?? [];
+        $pick  = static function (string $key, string $default) use ($attrs): string {
+            $v = $attrs[$key] ?? null;
+
+            return is_string($v) || is_int($v) ? (string) $v : $default;
+        };
+        if ($type === 'switch') {
+            return [$pick('value-on', '1'), $pick('value-off', '0')];
+        }
+        if ($type === 'checkbox') {
+            return [$pick('value', '1'), $pick('value-off', '0')];
+        }
+
+        return null;
     }
 
     /** Count active filters across a list of field metadata. */

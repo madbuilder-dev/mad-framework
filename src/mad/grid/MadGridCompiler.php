@@ -2836,9 +2836,18 @@ class MadGridCompiler
         $tag .= " :actions=\"\$_field_list_{$safeName}_actions\"";
         $tag .= " :rows=\"{$rowsExpr}\"";
 
-        // Flags booleanas
+        // Flags booleanas: nu ou verdadeiro liga; "false"/"0" desliga;
+        // :flag="expr" vale o que a expressão der. Antes bastava a PRESENÇA —
+        // `:removable="false"` mostrava o "×" de remover (fw#317).
         foreach (['addable', 'removable', 'sortable'] as $flag) {
-            if (static::has($attrs, $flag)) {
+            if (!isset($attrs[$flag])) {
+                continue;
+            }
+            $a = $attrs[$flag];
+            if ($a['type'] === 'php') {
+                $tag .= " :{$flag}=\"(bool) (" . static::emit($a) . ")\"";
+            } elseif ($a['type'] === 'bool'
+                || !in_array(strtolower(trim((string) $a['value'])), ['false', '0'], true)) {
                 $tag .= " {$flag}=\"1\"";
             }
         }

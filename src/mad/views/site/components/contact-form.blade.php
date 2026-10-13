@@ -46,7 +46,9 @@
         try { $__bag = session('errors'); } catch (\Throwable $e) { $__bag = null; }
     }
     $__error = function (string $field) use ($__bag): string {
-        if ($__bag === null || ! is_object($__bag) || ! method_exists($__bag, 'has')) {
+        // `is_callable`, não `method_exists`: a ViewErrorBag do redirect só
+        // repassa has()/first() para a bag padrão por __call (fw#296).
+        if ($__bag === null || ! is_object($__bag) || ! is_callable([$__bag, 'has'])) {
             return '';
         }
         try {

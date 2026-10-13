@@ -139,7 +139,7 @@ trait MadFieldListTrait
                 if ($each) {
                     ($each)($instance, $row);
                 }
-                $instance->save();
+                $this->_saveDetailItemRow($instance, $form, $fieldList, $model, $fk, $parentId, $position + 1);
                 $saved[]    = $instance;
                 $savedIds[] = $instance->getKey();
             }
@@ -158,7 +158,7 @@ trait MadFieldListTrait
             $__m = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             $this->_deleteDetailItemRows($__m::query()->where($fk, '=', $parentId));
 
-            foreach ($rows as $row) {
+            foreach ($rows as $position => $row) {
                 $instance = new $model();
                 foreach ($row as $k => $v) {
                     if (str_starts_with($k, '__')) continue;
@@ -169,7 +169,7 @@ trait MadFieldListTrait
                 if ($each) {
                     ($each)($instance, $row);
                 }
-                $instance->save();
+                $this->_saveDetailItemRow($instance, $form, $fieldList, $model, $fk, $parentId, $position + 1);
                 $saved[] = $instance;
             }
         }
@@ -294,6 +294,21 @@ trait MadFieldListTrait
 
         foreach ($orphans as $orphan) {
             $orphan->delete();
+        }
+    }
+
+    /**
+     * Grava uma linha. A recusa do banco (obrigatório sem valor, texto grande
+     * demais…) vira a frase da linha, com o rótulo da coluna da lista, e não
+     * a do campo homônimo do formulário (fw#306).
+     */
+    private function _saveDetailItemRow(object $instance, ?MadForm $form, ?string $fieldList, string $model, string $fk, mixed $parentId, int $position): void
+    {
+        try {
+            $instance->save();
+        } catch (\Illuminate\Database\QueryException $e) {
+            $labels = $form ? $form->rowLabels($fieldList, $model, $fk, $parentId) : ['list' => '', 'columns' => []];
+            throw MadForm::rowDbRefusal($e, $labels, (string) $fieldList, $position) ?? $e;
         }
     }
 

@@ -31,6 +31,7 @@
      *   required    bool
      *   empty-as    string   Em branco grava: 'null' (padrão), 'zero' ou 'empty' ('' — comportamento antigo)
      *   disabled    bool
+     *   readonly    bool     Trava o combo (o valor continua no POST); aceita :readonly="expr"
      *   attrs       string   Attrs extras: 'x-model="clienteId" @change="onCliente()"'
      *   depends-on  string   Campo pai para cascata automática (ex: 'familia_produto_id')
      *   depends-column string  Coluna do model filho a filtrar (default: igual a depends-on)
@@ -140,7 +141,10 @@
     $required      = !empty($required);
     $disabled      = !empty($disabled);
     $_isHidden     = $name && \Mad\Component\MadRenderContext::isHidden($name);
-    $_isReadonly   = $name && \Mad\Component\MadRenderContext::isReadonly($name);
+    // `readonly` / `:readonly` da tag trava como o readonly do formulário
+    // (fw#315: antes só o `$this->form->readonly()` travava; o da tag morria).
+    $_isReadonly   = !empty($readonly ?? false)
+        || ($name && \Mad\Component\MadRenderContext::isReadonly($name));
     $dependsOn     = $dependsOn     ?? '';     // nome do campo pai
     $dependsColumn = $dependsColumn ?? '';     // coluna do model (default: dependsOn)
     if ($dependsOn && !$dependsColumn) $dependsColumn = $dependsOn;

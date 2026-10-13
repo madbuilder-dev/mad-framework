@@ -1272,6 +1272,28 @@ const MadWire = (() => {
         });
     }
 
+    /**
+     * O botão que disparou a ação fica "ocupado" até a resposta ser aplicada
+     * (fw#314): spinner no lugar do conteúdo + aria-busy. A ida e volta ao
+     * servidor podia levar segundos (ação da grade que devolve um
+     * MadMessage::confirm) sem nada na tela — a pessoa clicava de novo ou
+     * achava que o clique não tinha pegado. O `mad-btn` usa o "carregando"
+     * que já tem (o do submit); os demais (ação da linha da grade, ícone) o
+     * `.mad-click-busy`. Devolve a mesma promessa.
+     */
+    function _markBusy(el, run) {
+        if (!el || !el.classList || typeof el.classList.add !== 'function' || typeof el.setAttribute !== 'function') return run;
+        const cls = el.classList.contains('mad-btn') ? 'mad-btn-loading-active' : 'mad-click-busy';
+        el.classList.add(cls);
+        el.setAttribute('aria-busy', 'true');
+        const done = () => {
+            el.classList.remove(cls);
+            el.removeAttribute('aria-busy');
+        };
+        Promise.resolve(run).then(done, done);
+        return run;
+    }
+
     function _initLoadingElements(wrapper) {
         wrapper.querySelectorAll('[data-mad-loading]').forEach(el => {
             el.style.display = 'none';
@@ -1730,7 +1752,7 @@ const MadWire = (() => {
         // $this->form os campos do master, e a linha digitada não chegava.
         // Fora do editor _dfEditScope devolve null e nada muda.
         const { action, params } = _parseAction(raw);
-        await _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el) });
+        await _markBusy(el, _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el) }));
     });
 
     document.addEventListener('submit', async (e) => {
@@ -1860,6 +1882,13 @@ const MadWire = (() => {
          * Sem resposta do servidor o wire avisa o usuário; `options.quietNetwork`
          * cala esse aviso para quem dá o seu próprio a partir do desfecho.
          */
+        /**
+         * Mostra `el` ocupado (spinner + aria-busy) até `run` terminar — para
+         * quem chama o wire por conta própria a partir de um botão (ação da
+         * grade com `confirm=`, fw#314). Devolve `run`.
+         */
+        busy(el, run) { return _markBusy(el, run); },
+
         async call(idOrEl, action = '', params = [], models = {}, options = {}) {
             const wrapper = typeof idOrEl === 'string'
                 ? document.querySelector(`[mad-id="${idOrEl}"]`)

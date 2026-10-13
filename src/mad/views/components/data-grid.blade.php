@@ -101,8 +101,10 @@
     }
     $colCount       = count($visibleColumns) + ($hasActions ? 1 : 0) + ($selectable ? 1 : 0);
 
-    $pgStart  = $total > 0 ? (($page - 1) * $perPage + 1) : 0;
-    $pgEnd    = min($page * $perPage, $total);
+    // per-page 0 = sem paginação: todas as linhas na tela. O "até" saía
+    // page × 0 = 0 e o rodapé dizia "1–0 de 5" (fw#311).
+    $pgStart  = $total > 0 ? ($perPage > 0 ? ($page - 1) * $perPage + 1 : 1) : 0;
+    $pgEnd    = $perPage > 0 ? min($page * $perPage, $total) : $total;
 
     // Card view
     $cardView    = $cardView ?? false;
@@ -1810,16 +1812,24 @@
         <span class="mad-dg-info" data-range-tpl="{{ __('grid.range', ['from' => '__F__', 'to' => '__T__', 'total' => '__N__']) }}">
             @if($total > 0){{ __('grid.range', ['from' => $pgStart, 'to' => $pgEnd, 'total' => $total]) }}@elseif($deferred)@else {{ __('grid.no_records') }} @endif
         </span>
+        {{-- Sem paginação (per-page 0) não há "Por página": escolher 10 ali
+             paginaria uma grade declarada sem paginação (fw#311). --}}
+        @if($perPage > 0)
         <div class="mad-dg-per-page">
             <label class="mad-dg-per-page-label">{{ __('grid.per_page') }}</label>
             <select class="mad-select mad-select-sm"
                     @change="$dispatch('mad-dg-call',{method:'onPerPage',params:[parseInt($event.target.value)||15]})"
                     >
-                @foreach([10,15,20,50,100] as $opt)
+                {{-- O per-page da grade entra na lista: `per-page="30"` trazia 30
+                     linhas com o seletor em 10, porque nenhuma opção batia (fw#300). --}}
+                @php($__perPageOpts = array_values(array_unique(array_merge([10, 15, 20, 50, 100], $perPage > 0 ? [$perPage] : []))))
+                @php(sort($__perPageOpts))
+                @foreach($__perPageOpts as $opt)
                 <option value="{{ $opt }}" {{ $perPage==$opt?'selected':'' }}>{{ $opt }}</option>
                 @endforeach
             </select>
         </div>
+        @endif
 
         @if($totalPages > 1)
         <nav class="mad-pagination" aria-label="Paginação">

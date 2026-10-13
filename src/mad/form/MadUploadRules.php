@@ -409,6 +409,14 @@ final class MadUploadRules
                 }
             }
 
+            // O navegador recusou um arquivo neste campo e o tirou do envio
+            // (fw#297): sem isto o Salvar gravava o resto e a tela dizia
+            // "salvo", com o arquivo antigo no lugar.
+            if ($sent === 0 && ($problem = self::refusedInBrowser($name, $max, $accept, $storage !== '')) !== null) {
+                $errors[$name] = $problem;
+                continue;
+            }
+
             $maxFiles = max(0, (int) ($props['maxFiles'] ?? 0));
             if ($maxFiles > 0 && $sent > 0) {
                 $kept  = $_POST['__mad_existing_files'][$name] ?? [];
@@ -516,6 +524,74 @@ final class MadUploadRules
         error_log('[MadUploadRules] o PHP não recebeu o arquivo "' . $file . '" (UPLOAD_ERR ' . $error . ').');
 
         return self::text('form.upload_server_failed', ['file' => $file], 'O servidor não conseguiu receber o arquivo :file. Tente de novo; se continuar, avise o suporte.');
+    }
+
+    /**
+     * Só os arquivos que o navegador recusou (`__mad_file_refused`), para quem
+     * valida sem passar pelo Salvar do formulário — a tela que grava o arquivo
+     * à mão depois do `validate()`. Campo que mandou arquivo novo não conta: o
+     * arquivo que chegou é que vale (e o Salvar o confere).
+     *
+     * @param array<string,mixed> $schema campos do formulário (nome => props)
+     * @return array<string,string>
+     */
+    public static function refused(array $schema): array
+    {
+        $errors = [];
+        foreach ($schema as $name => $props) {
+            $name = (string) $name;
+            if (!is_array($props) || !in_array((string) ($props['type'] ?? ''), self::UPLOAD_TYPES, true)) {
+                continue;
+            }
+            foreach (self::entries($_FILES[$name] ?? null) as $file) {
+                if ((int) $file['error'] !== UPLOAD_ERR_NO_FILE) {
+                    continue 2;
+                }
+            }
+            $problem = self::refusedInBrowser(
+                $name,
+                max(0, (int) ($props['maxBytes'] ?? 0)),
+                (string) ($props['accept'] ?? ''),
+                (string) ($props['storage'] ?? '') !== '',
+            );
+            if ($problem !== null) {
+                $errors[$name] = $problem;
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * O arquivo que o navegador recusou neste campo (`__mad_file_refused[campo]`:
+     * nome, tamanho e tipo, em JSON) — conferido aqui pelas regras do campo,
+     * não pela mensagem do navegador. Null quando não houve recusa, ou quando
+     * as regras do servidor deixariam o arquivo passar.
+     */
+    private static function refusedInBrowser(string $name, int $max, string $accept, bool $stored): ?string
+    {
+        $raw = $_POST['__mad_file_refused'][$name] ?? null;
+        if (!is_string($raw) || $raw === '' || strlen($raw) > 2048) {
+            return null;
+        }
+        $info = json_decode($raw, true);
+        if (!is_array($info)) {
+            return null;
+        }
+        $file = [
+            'name'     => mb_substr(trim((string) ($info['name'] ?? '')), 0, 255) ?: 'arquivo',
+            'type'     => mb_substr((string) ($info['type'] ?? ''), 0, 120),
+            'tmp_name' => '',
+            'error'    => UPLOAD_ERR_OK,
+            'size'     => max(0, (int) ($info['size'] ?? 0)),
+        ];
+
+        $problem = self::fileProblem($file, $max, $accept, $stored);
+        if ($problem === null && $stored && ($limit = self::serverFileBytes()) > 0 && $file['size'] > $limit) {
+            $problem = self::phpProblem(UPLOAD_ERR_INI_SIZE, $file['name']);
+        }
+
+        return $problem;
     }
 
     /** @param array{name:string,type:string,tmp_name:string,error:int,size:int} $file */

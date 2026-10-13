@@ -87,7 +87,9 @@
         try { $__bag = session('errors'); } catch (\Throwable $e) { $__bag = null; }
     }
     $__error = function (string $field) use ($__bag): string {
-        if ($__bag === null || ! is_object($__bag) || ! method_exists($__bag, 'has')) {
+        // `is_callable`, não `method_exists`: a ViewErrorBag do redirect só
+        // repassa has()/first() para a bag padrão por __call (fw#296).
+        if ($__bag === null || ! is_object($__bag) || ! is_callable([$__bag, 'has'])) {
             return '';
         }
         try {
@@ -132,6 +134,12 @@
                 <input type="hidden" name="plan_id" value="{{ $__planId }}">
                 <input type="hidden" name="cycle" value="{{ $__cycle }}">
 
+                {{-- Aviso que não é de um campo: limite de tentativas, envio
+                     rápido demais, falha ao criar a conta. --}}
+                @if($__error('form') !== '')
+                    <p class="site-form__error" role="alert">{{ $__error('form') }}</p>
+                @endif
+
                 <div style="{{ $__trapStyle }}" aria-hidden="true">
                     <label for="site-signup-website">Website</label>
                     <input type="text" id="site-signup-website" name="website" value="" tabindex="-1" autocomplete="off">
@@ -140,6 +148,7 @@
                 <div class="site-form__field">
                     <label for="site-signup-company">{{ mad_t('mad.site_field_company') }}</label>
                     <input type="text" id="site-signup-company" name="company" value="{{ $__old('company') }}"
+                           @if($__error('company') !== '') aria-invalid="true" @endif
                            required maxlength="120" autocomplete="organization">
                     @if($__error('company') !== '')
                         <p class="site-form__error">{{ $__error('company') }}</p>
@@ -149,6 +158,7 @@
                 <div class="site-form__field">
                     <label for="site-signup-name">{{ mad_t('mad.site_field_name') }}</label>
                     <input type="text" id="site-signup-name" name="name" value="{{ $__old('name') }}"
+                           @if($__error('name') !== '') aria-invalid="true" @endif
                            required maxlength="120" autocomplete="name">
                     @if($__error('name') !== '')
                         <p class="site-form__error">{{ $__error('name') }}</p>
@@ -158,6 +168,7 @@
                 <div class="site-form__field">
                     <label for="site-signup-email">{{ mad_t('mad.site_field_email') }}</label>
                     <input type="email" id="site-signup-email" name="email" value="{{ $__old('email') }}"
+                           @if($__error('email') !== '') aria-invalid="true" @endif
                            required maxlength="180" autocomplete="email">
                     @if($__error('email') !== '')
                         <p class="site-form__error">{{ $__error('email') }}</p>
@@ -167,6 +178,7 @@
                 <div class="site-form__field">
                     <label for="site-signup-password">{{ mad_t('mad.site_field_password') }}</label>
                     <input type="password" id="site-signup-password" name="password"
+                           @if($__error('password') !== '') aria-invalid="true" @endif
                            required autocomplete="new-password">
                     @if($__error('password') !== '')
                         <p class="site-form__error">{{ $__error('password') }}</p>
@@ -176,6 +188,7 @@
                 <div class="site-form__field">
                     <label for="site-signup-password-confirm">{{ mad_t('mad.site_field_password_confirm') }}</label>
                     <input type="password" id="site-signup-password-confirm" name="password_confirmation"
+                           @if($__error('password_confirmation') !== '') aria-invalid="true" @endif
                            required autocomplete="new-password">
                     @if($__error('password_confirmation') !== '')
                         <p class="site-form__error">{{ $__error('password_confirmation') }}</p>
@@ -184,7 +197,8 @@
 
                 <div class="site-form__field">
                     <label for="site-signup-terms">
-                        <input type="checkbox" id="site-signup-terms" name="terms" value="1" required>
+                        <input type="checkbox" id="site-signup-terms" name="terms" value="1" required
+                               @if($__old('terms') !== '') checked @endif>
                         <span>{{ mad_t('mad.site_accept_terms') }}</span>
                     </label>
                     @if($__terms !== '' || $__privacy !== '')
@@ -205,8 +219,9 @@
                 @if($__captchaKey !== '')
                     <div class="site-form__field">
                         <div class="g-recaptcha" data-sitekey="{{ $__captchaKey }}"></div>
-                        @if($__error('g-recaptcha-response') !== '')
-                            <p class="site-form__error">{{ $__error('g-recaptcha-response') }}</p>
+                        @php $__captchaError = $__error('captcha') ?: $__error('g-recaptcha-response'); @endphp
+                        @if($__captchaError !== '')
+                            <p class="site-form__error">{{ $__captchaError }}</p>
                         @endif
                     </div>
                     <script src="https://www.google.com/recaptcha/api.js" async defer></script>

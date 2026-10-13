@@ -12,6 +12,41 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.157.0] — 2026-10-13
+
+### Atenção
+
+- **Campos:** o campo de moeda (`<mad-money-field>`) e a coluna de moeda da lista de itens agora digitam como o campo numérico: digitar "10" grava 10,00 e a vírgula separa os centavos. Antes "10" virava 0,10. Para manter o modo calculadora, use `fill-direction="right"`. Republique o projeto para aplicar.
+- **Permissões:** em unidade com plano, o perfil dado na aba Perfis do usuário passa a respeitar o plano: telas de módulos que o plano não inclui somem do menu e ficam bloqueadas. Para liberar, inclua o módulo no plano ou na licença da unidade. Unidade sem plano não muda.
+- **Permissões:** o vínculo de uma pessoa com uma unidade precisa ter ao menos um perfil (ou "Administrador da unidade"). Vínculos já gravados sem perfil passam a ser cobrados no próximo Salvar do usuário.
+
+### Melhorias
+
+- **Permissões:** o campo Página Inicial do usuário lista as telas do menu pelo título que o menu mostra, em vez do nome técnico de todas as telas do sistema.
+- **Listagens:** o botão de uma ação da linha mostra que está carregando enquanto a ação roda. Antes, uma ação que pedia confirmação levava alguns segundos para abrir o "Tem certeza?" sem nenhum sinal na tela.
+
+### Correções
+
+- **Usuários:** usuário cadastrado com Unidade Principal e perfil agora entra no sistema; antes ficava preso no login com "Unidade é obrigatória". Quem ainda não tem unidade liberada vê o que falta e a quem pedir. O usuário novo nasce com "Ativo" ligado.
+- **Usuários:** a dica do campo de perfis aparecia com `&quot;` na tela, e a lista de perfis por unidade escondia perfis sem barra de rolagem. Agora o texto sai certo e todos os perfis aparecem.
+- **Permissões:** botão que abre uma tela em cortina ou janela sem permissão para ela agora mostra "Você não tem acesso a esta tela". Antes o clique não fazia nada.
+- **App gerado:** abrir o endereço `/app/` mostrava "Forbidden" em inglês; agora leva quem já entrou para a sua tela inicial e quem não entrou para o login.
+- **Site:** no cadastro e no contato do site, o formulário recusado agora mostra a mensagem de cada campo, mantém os dados digitados e os termos marcados. Antes voltava sem nenhum aviso.
+- **Site:** errar a senha ou o e-mail no cadastro do site não bloqueia mais a pessoa por 10 minutos; quando o limite de tentativas é atingido, o formulário diz em português quanto tempo esperar.
+- **Planos:** com a cobrança desligada, plano novo não aparece mais sozinho na vitrine do site como "Sob consulta" com o botão "Assinar". Plano sem preço e sem teste grátis mostra "Falar com vendas".
+- **Campos:** campo numérico e de moeda gravavam outro valor quando se digitava logo depois de clicar ou de limpar (ex.: "12" virava 812 ou 2); agora gravam exatamente o que foi digitado.
+- **Campos:** arquivo acima do limite ou de tipo não aceito deixa o aviso embaixo do campo e o Salvar é recusado com essa mensagem. Antes o aviso sumia em segundos e a tela dizia "salvo" com o arquivo antigo.
+- **Campos:** `readonly` no combo e no select agora trava o campo, também pelo teclado. Antes a lista abria e o valor podia ser trocado.
+- **Formulários:** campo do formulário com o mesmo nome de uma propriedade da tela agora chega à tela ao Buscar ou Salvar. Antes o valor digitado sumia.
+- **Formulários:** no sub-formulário em modal, cortina ou na linha, "Adicionar" com campo obrigatório vazio não põe mais uma linha em branco: o campo mostra "O campo X é obrigatório." até ser preenchido.
+- **Formulários:** quando uma linha da lista não pode ser gravada, o aviso diz a lista, a linha e a coluna ("Na lista Tamanhos, linha 2: O campo Tamanho é obrigatório."). Antes citava o campo do formulário com o mesmo nome.
+- **Formulários:** coluna da lista escondida por condição não desalinha mais as colunas seguintes.
+- **Formulários:** no celular, cada campo da lista de itens ocupa a largura do cartão, em vez de ficar estreito e centralizado; e `:removable="false"` (ou `addable`/`sortable` falsos) agora desliga de fato o botão correspondente.
+- **Listagens:** com uma quantidade por página fora das opções padrão (por exemplo 30), o seletor "Por página" mostrava 10; agora mostra o valor usado. Listagem sem paginação mostra "1–5 de 5" em vez de "1–0 de 5".
+- **Listagens:** filtro liga/desliga desligado não aparece mais como filtro ativo ("…: 0" e "1 filtro"); ligado, mostra "Sim".
+- **Tema:** no modo escuro, os avisos de informação, sucesso, atenção e erro ficavam com o texto quase invisível, e a mensagem de erro embaixo do campo saía cinza. Agora são legíveis.
+- **Tema:** selos coloridos, avisos flutuantes, dicas dos campos, a trilha do topo e os títulos das colunas da listagem ficaram mais legíveis nos temas claro e escuro.
+
 ## [5.156.0] — 2026-10-11
 
 ### Correções

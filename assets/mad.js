@@ -818,6 +818,10 @@ const Mad = {
                 } catch (_) {}
             }
 
+            // Sem alvo, a resposta iria para o #mad_partial (fim da página):
+            // a recusa de acesso vira diálogo em vez de sumir (fw#308).
+            if (!target && this._deniedFragment(text, res)) return;
+
             if (target) {
                 const el = (target instanceof HTMLElement) ? target : document.querySelector(target);
                 if (el) {
@@ -860,6 +864,7 @@ const Mad = {
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
             if (this._errorFragment(html, res, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
+            if (this._deniedFragment(html, res)) return;
 
             // Cria container temporário no body
             const container = document.createElement('div');
@@ -922,6 +927,7 @@ const Mad = {
             if (this._offline(res)) return;
             const text = await res.text();
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.rowAttach' })) return;
+            if (this._deniedFragment(text, res)) return;
 
             // Envelope JSON de ops (erro/permissão/MadMessage) → applyOps, igual Mad.get
             if (text.trimStart().startsWith('[') || text.trimStart().startsWith('{')) {
@@ -2418,6 +2424,20 @@ const Mad = {
         return true;
     },
 
+    /**
+     * Recusa (4xx) de uma tela pedida para abrir em camada — cortina, janela,
+     * linha anexada (fw#308). O servidor manda a página "Você não tem acesso a
+     * esta tela"; quem abre camada a anexava fora da vista e o clique parecia
+     * morto. Mostra o título e o texto dela num diálogo e devolve true (o
+     * chamador aborta a injeção).
+     */
+    _deniedFragment(html, res) {
+        const m = _madDeniedMessage(res ? res.status : 0, html);
+        if (!m) return false;
+        MadDialog.show({ type: 'warning', title: m.title, message: m.message });
+        return true;
+    },
+
     _parsePartial(html, res = null, ctx = null) {
         if (this._errorFragment(html, res, ctx)) return;
         html = html.trim()
@@ -3141,6 +3161,37 @@ const MadLoader = {
 };
 
 // ─── Sistema de diálogos (substitui bootbox) ─────────────────────────────────
+
+/**
+ * Título e texto da recusa de uma tela aberta em camada, ou null (fw#308).
+ * Só 4xx: 5xx é do modal de erro, envelope JSON de ops segue o caminho dele.
+ * Com a página de erro pronta do servidor (MadErrorPage: título e texto já no
+ * idioma do usuário), usa a dela; sem, um aviso genérico — nunca silêncio.
+ */
+function _madDeniedMessage(status, html) {
+    if (!(status >= 400 && status < 500)) return null;
+    const body = String(html || '');
+    const head = body.trimStart().charAt(0);
+    if (head === '{' || head === '[') return null;
+    const text = function (s) {
+        return String(s || '').replace(/<[^>]*>/g, ' ')
+            .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+            .replace(/&#0?39;|&#x27;/gi, "'").replace(/&amp;/g, '&')
+            .replace(/\s+/g, ' ').trim();
+    };
+    const page = /class="[^"]*\bmad-error-page\b[^"]*"/.test(body);
+    const h = page ? /<h[12][^>]*>([\s\S]*?)<\/h[12]>/i.exec(body) : null;
+    const p = page ? /<p[^>]*>([\s\S]*?)<\/p>/i.exec(body) : null;
+    if (h && text(h[1]) !== '') {
+        return { title: text(h[1]), message: p ? text(p[1]) : '' };
+    }
+    return {
+        title: 'Não foi possível abrir a tela',
+        message: status === 403 || status === 401
+            ? 'Você não tem acesso a esta tela. Peça a liberação a quem administra o sistema.'
+            : 'A tela não respondeu como esperado (erro ' + status + '). Tente de novo.',
+    };
+}
 
 const MadDialog = {
     /**

@@ -1677,6 +1677,7 @@ abstract class MadComponent
 
         // ── Fase 2: aplica os valores ─────────────────────────────────────────
         $this->fill($values);
+        $this->_fillHomonymFormFields($values);
 
         // ── Fase 3: hooks updated (após alterar) ──────────────────────────────
         foreach ($values as $prop => $_) {
@@ -1689,6 +1690,43 @@ abstract class MadComponent
             $specific = 'updated' . ucfirst($prop);
             if (method_exists($this, $specific)) {
                 $this->$specific($current);
+            }
+        }
+    }
+
+    /**
+     * Campo de `<mad-form>` com o mesmo nome de uma propriedade pública da tela
+     * (fw#312): o `fill()` entrega o valor à PROPRIEDADE e o formulário ficava
+     * sem ele — `$this->form->get('busca')` voltava vazio, e o Salvar/Buscar que
+     * lia o formulário trabalhava com o campo em branco, sem aviso. O valor vai
+     * também para o formulário que desenhou o campo com uma tag `<mad-*-field>`
+     * (MadForm::declaresField); a propriedade continua recebendo como sempre.
+     * Propriedade ligada só por `mad:model` escrito à mão não é campo de
+     * formulário e não entra.
+     *
+     * @param array<string,mixed> $values já filtrados por _applyModelValues()
+     */
+    private function _fillHomonymFormFields(array $values): void
+    {
+        $forms = [];
+        foreach ($this->_getPublicPropNames() as $propName) {
+            if ($this->_isInitialized($propName) && $this->$propName instanceof MadForm && $this->$propName->declares()) {
+                $forms[] = $this->$propName;
+            }
+        }
+        if ($forms === []) {
+            return;
+        }
+
+        foreach ($values as $prop => $value) {
+            $prop = (string) $prop;
+            if (str_contains($prop, '.') || !$this->_isPublicProp($prop)) {
+                continue;
+            }
+            foreach ($forms as $form) {
+                if ($form->declaresField($prop)) {
+                    $form->fields[$prop] = $form->cleanFromBrowser($prop, $value);
+                }
             }
         }
     }

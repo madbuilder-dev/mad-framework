@@ -367,6 +367,9 @@ body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
   cursor: pointer;
 }
 
+/* `body.site .site-form__error`: o aviso é um <p>, e `body.site p` (cinza)
+   ganhava do seletor de classe sozinho — o erro saía como texto comum. */
+body.site .site-form__error,
 .site-form__error { color: #b42318; font-size: 14px; }
 .site-form__field input[aria-invalid="true"],
 .site-form__field textarea[aria-invalid="true"] { border-color: #b42318; }

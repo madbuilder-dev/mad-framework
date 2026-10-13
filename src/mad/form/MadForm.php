@@ -1587,6 +1587,18 @@ class MadForm
     }
 
     /**
+     * A tela desenhou `$field` com uma tag de campo (`<mad-input-field>`,
+     * `<mad-select-field>`…) neste formulário? O `mad:model` escrito à mão na
+     * marcação não conta: liga uma propriedade da tela, não um campo.
+     *
+     * @internal chamado por MadComponent::_applyModelValues() (campo homônimo de propriedade pública, fw#312)
+     */
+    public function declaresField(string $field): bool
+    {
+        return isset($this->_known[self::DECLARED]['t'][$field]);
+    }
+
+    /**
      * Libera campos que o navegador manda sem que o servidor os tenha
      * desenhado ligados ao formulário: campo criado por JavaScript, valor
      * enviado por `MadWire.call(el, 'acao', [], {campo: valor})` /
@@ -1667,6 +1679,12 @@ class MadForm
         }
         $this->_openDeclared();
         $this->_known[self::DECLARED]['k'][$name] = 1;
+        // Desenhado por uma tag de campo (`<mad-*-field>`), não só ligado por
+        // `mad:model` na marcação: é campo do formulário mesmo quando a tela tem
+        // propriedade com o mesmo nome — ver declaresField().
+        if ($type !== '') {
+            $this->_known[self::DECLARED]['t'][$name] = 1;
+        }
         if ($html) {
             $this->_known[self::DECLARED]['z'][$name] = 1;
         } elseif ($type !== '' && isset($this->_known[self::DECLARED]['z'][$name])) {
@@ -4999,6 +5017,24 @@ class MadForm
     }
 
     /**
+     * Campos do formulário recebido que ESTA tela desenhou do mesmo jeito.
+     *
+     * @param array<string,mixed>|null $schema null = o formulário da requisição
+     * @return array<string,array<string,mixed>>
+     */
+    private function _drawnUploads(?array $schema = null): array
+    {
+        $drawn = [];
+        foreach ($schema ?? (array) MadFormRegistry::fromRequest() as $fieldName => $props) {
+            if (is_array($props) && $this->_writesAsDrawn((string) $fieldName, $props, false)) {
+                $drawn[$fieldName] = $props;
+            }
+        }
+
+        return $drawn;
+    }
+
+    /**
      * Confere os uploads desta requisição contra o que os campos declaram
      * (MadUploadRules::check) e recusa o Salvar, com o erro no campo.
      *
@@ -5007,12 +5043,7 @@ class MadForm
      */
     private function _checkUploads(array $schema, ?object $record = null): void
     {
-        $drawn = [];
-        foreach ($schema as $fieldName => $props) {
-            if (is_array($props) && $this->_writesAsDrawn((string) $fieldName, $props, false)) {
-                $drawn[$fieldName] = $props;
-            }
-        }
+        $drawn = $this->_drawnUploads($schema);
         // Imagem guardada na própria coluna: valem os limites que a TELA
         // declarou (estado cifrado), e não o que o formulário recebido diz do
         // campo — nem a falta dele.
@@ -6003,6 +6034,11 @@ class MadForm
 
         $errors = MadValidator::validate($data, $parsedRules, $messages, $attrs);
 
+        // Arquivo que o navegador recusou e tirou do envio (fw#297): a tela que
+        // valida e grava o arquivo à mão também não pode seguir para "salvo".
+        $refused = MadUploadRules::refused($this->_drawnUploads());
+        $errors += $refused;
+
         // Passou: a mensagem que um Salvar recusado deixou nesses campos sai da
         // tela (a resposta de quem passa não dizia nada, e o erro corrigido
         // ficava embaixo do campo até o próximo F5). Recusou: quem pinta e
@@ -6018,7 +6054,7 @@ class MadForm
         if ($errors) {
             throw new MadValidationException(
                 $errors,
-                array_keys($parsedRules),
+                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused))])),
                 '',
                 $this->_knownFieldNames($data),
             );
@@ -8292,8 +8328,12 @@ class MadForm
             if ($known !== null && empty($touched['created'])) {
                 $cls::query()->where($fk, '=', $parentId)->delete();
             }
-            foreach ($lines as $i => [$row, $instance]) {
-                $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
+            foreach ($lines as $i => [$row, $instance, $at]) {
+                try {
+                    $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
+                } catch (\Illuminate\Database\QueryException $e) {
+                    throw self::rowDbRefusal($e, $this->rowLabels($detailName), $detailName, $at) ?? $e;
+                }
             }
             $this->_remember($detailName, $parentId, [], $mestre);
 
@@ -8402,10 +8442,14 @@ class MadForm
         // ── 3) Grava: atualiza as que já existem, insere as novas ───────────
         $saved   = [];   // chave => __id
         $pending = [];   // chaves criadas agora (ou ainda não confirmadas)
-        foreach ($plan as $i => [$row, $rowId, $instance]) {
+        foreach ($plan as $i => [$row, $rowId, $instance, $at]) {
             $isNew      = $instance === null;
             $instance ??= new $cls();
-            $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
+            try {
+                $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
+            } catch (\Illuminate\Database\QueryException $e) {
+                throw self::rowDbRefusal($e, $this->rowLabels($detailName), $detailName, $at) ?? $e;
+            }
 
             $key = method_exists($instance, 'getKey') ? $instance->getKey() : null;
             if ($key !== null && $key !== '') {
@@ -8658,6 +8702,42 @@ class MadForm
         if ($errors) {
             throw new ReferenceViolation($errors);
         }
+    }
+
+    /**
+     * Recusa do banco ao gravar UMA linha de lista (obrigatório sem valor,
+     * texto grande demais, formato, valor repetido) dita como recusa da linha:
+     * "Na lista Tamanhos, linha 2: O campo Tamanho é obrigatório.", com o
+     * rótulo da COLUNA da lista. Sem isto a exceção subia ao `onSave` e o
+     * aviso usava os rótulos do formulário: a coluna `nome` da lista virava
+     * "O campo Nome da categoria é obrigatório." (fw#306). `null` = recusa
+     * que não é de um campo: quem chama relança a original.
+     *
+     * @internal usado também por MadFieldListTrait::saveDetailItems()
+     *
+     * @param array{list?: string, columns?: array<string,string>} $labels rótulos da lista (rowLabels)
+     */
+    public static function rowDbRefusal(\Throwable $e, array $labels, string $name, int $position): ?ReferenceViolation
+    {
+        $found = \Mad\Ui\MadDbErrorMessage::classify($e);
+        $kinds = [
+            \Mad\Ui\MadDbErrorMessage::REQUIRED, \Mad\Ui\MadDbErrorMessage::TOO_LONG,
+            \Mad\Ui\MadDbErrorMessage::INVALID, \Mad\Ui\MadDbErrorMessage::UNIQUE,
+        ];
+        if ($found === null || !in_array($found['kind'], $kinds, true)) {
+            return null;
+        }
+        $message = \Mad\Ui\MadDbErrorMessage::for($e, (array) ($labels['columns'] ?? []));
+        if ($message === null) {
+            return null;
+        }
+
+        $list = (string) ($labels['list'] ?? '');
+        $text = $list !== ''
+            ? self::_text('mad.form.row_invalid', ['list' => $list, 'row' => $position, 'message' => $message], 'Na lista :list, linha :row: :message')
+            : self::_text('mad.form.row_invalid_unnamed', ['row' => $position, 'message' => $message], 'Linha :row: :message');
+
+        return new ReferenceViolation([$name . '.' . $position . '.' . (string) ($found['columns'][0] ?? 'row') => $text]);
     }
 
     /** "Na lista Itens, linha 2: <motivo>" (rótulos lidos uma vez só). */
