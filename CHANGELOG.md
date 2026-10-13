@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.157.1] — 2026-10-13
+
+### Atenção
+
+- **Permissões:** com a licença vencida ou inativa, só as telas de renovação continuam abertas, para o administrador da unidade. Antes, telas dadas direto no perfil ou por perfil global seguiam abertas. Unidade sem contrato não muda.
+
+### Correções
+
+- **Componentes:** o menu suspenso escrito com `label` e `icon` (`<mad-dropdown label="Exportar" icon="download">`) saía sem botão e não abria, e o item com `label` saía sem texto. Agora os dois aparecem.
+
 ## [5.157.0] — 2026-10-13
 
 ### Atenção

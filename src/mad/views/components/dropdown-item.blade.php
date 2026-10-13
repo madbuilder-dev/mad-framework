@@ -6,6 +6,10 @@
     $class    = $class    ?? '';
     $attrs    = $attrs    ?? '';
     $variantClass = $variant ? " mad-dropdown-item-{$variant}" : '';
+    // `label` é o texto quando o slot vem vazio (`<mad-dropdown-item label="CSV" />`,
+    // como o catálogo documenta) — antes o item saía sem texto (fw#319).
+    $label    = is_string($label ?? null) ? $label : '';
+    $_useLabel = $label !== '' && trim((string) ($slot ?? '')) === '';
 @endphp
 @if($href)
 <a href="{{ $href }}"
@@ -13,7 +17,7 @@
    @if($disabled) aria-disabled="true" style="opacity:.45;pointer-events:none;" @endif
    {!! $attrs !!}>
     @if($icon)<i data-lucide="{{ $icon }}" style="width:14px;height:14px;flex-shrink:0;"></i>@endif
-    {!! $slot !!}
+    @if($_useLabel){{ $label }}@else{!! $slot !!}@endif
 </a>
 @else
 <button type="button"
@@ -21,6 +25,6 @@
         @if($disabled) disabled @endif
         {!! $attrs !!}>
     @if($icon)<i data-lucide="{{ $icon }}" style="width:14px;height:14px;flex-shrink:0;"></i>@endif
-    {!! $slot !!}
+    @if($_useLabel){{ $label }}@else{!! $slot !!}@endif
 </button>
 @endif
