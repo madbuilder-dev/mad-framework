@@ -248,6 +248,12 @@ return [
             // Error técnico (base de datos/PHP) capturado en una acción: el detalle va solo al log (Mad\Ui\MadUserError).
             'friendly'      => 'No fue posible completar la operación. Inténtelo de nuevo o avise al administrador.',
             'delete_failed' => 'No fue posible eliminar el registro. Puede estar en uso en otro registro; si continúa, avise al administrador.',
+            // Registro en uso: la frase dice quién lo usa (Mad\Ui\MadRecordInUse).
+            'in_use'      => 'No es posible eliminar este registro: está en uso en :where. Elimine o cambie esos registros primero.',
+            'in_use_one'  => ':label (1 registro)',
+            'in_use_many' => ':label (:count registros)',
+            'in_use_and'  => ' y ',
+            'in_use_more' => ':count lugares más',
             'save_failed'   => 'No fue posible guardar. Inténtelo de nuevo o avise al administrador.',
             'load_failed'   => 'No fue posible cargar los datos. Inténtelo de nuevo o avise al administrador.',
             'duplicate'     => 'Ya existe un registro con estos datos.',

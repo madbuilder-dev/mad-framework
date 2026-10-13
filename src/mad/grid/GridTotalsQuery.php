@@ -102,6 +102,100 @@ final class GridTotalsQuery
     }
 
     /**
+     * O total geral de uma listagem com fonte por consulta (`sourceQuery()`):
+     * `$q` já é `select * from (<a consulta da tela>) as mad_src where <filtros>`.
+     * Aqui não há Model para dizer o tipo da coluna: soma-se a coluna com o
+     * nome do `field`; se o banco recusar (coluna de texto), quem chama fica
+     * com a soma da página.
+     *
+     * @param GridColumn[] $columns
+     * @return array<int, int|float> índice da coluna em `$columns` => número
+     */
+    public static function sourceTotals(QueryBuilder $q, array $columns): array
+    {
+        $conn    = $q->getConnection();
+        $plan    = [];
+        $selects = ['COUNT(*) AS mad_n'];
+        foreach ($columns as $i => $col) {
+            if (!($col instanceof GridColumn) || empty($col->totalFunc) || $col->isRunning()) {
+                continue;
+            }
+            $func = strtolower((string) $col->totalFunc);
+            if (!in_array($func, self::FUNCS, true)) {
+                continue;
+            }
+
+            $value = $col->evaluate !== ''
+                ? self::sourceEvaluateSql($conn, $col->evaluate)
+                : self::sourceColumnSql($conn, GridRenderHelpers::stripBraces($col->field), false);
+            if ($value === null && ($func !== 'count' || $col->evaluate === '')) {
+                continue;
+            }
+
+            $alias = 'mad_t' . count($plan);
+            if ($func !== 'count') {
+                $agg       = $func === 'min' ? 'MIN' : ($func === 'max' ? 'MAX' : 'SUM');
+                $selects[] = $agg . '(' . $value . ') AS ' . $alias;
+            }
+            $plan[$i] = [$func, $alias];
+        }
+        if ($plan === []) {
+            return [];
+        }
+
+        $base = clone $q;
+        $base->reorder();
+        $base->limit   = null;
+        $base->offset  = null;
+        $base->columns = null;
+        $row = $base->selectRaw(implode(', ', $selects))->get()->first();
+        if ($row === null) {
+            return [];
+        }
+        $row = (array) $row;
+        $n   = (int) ($row['mad_n'] ?? 0);
+
+        $out = [];
+        foreach ($plan as $i => [$func, $alias]) {
+            $v = isset($row[$alias]) && is_numeric($row[$alias]) ? (float) $row[$alias] : 0.0;
+            $out[$i] = match ($func) {
+                'sum'   => $v,
+                'avg'   => $n > 0 ? $v / $n : 0,
+                'count' => $n,
+                default => $n > 0 ? $v : 0,   // min | max
+            };
+        }
+
+        return $out;
+    }
+
+    /** A fórmula de uma coluna calculada como SQL sobre as colunas da fonte por consulta. */
+    public static function sourceEvaluateSql(\Illuminate\Database\ConnectionInterface $conn, string $expr): ?string
+    {
+        try {
+            return GridEvaluateSql::compile($expr, fn (string $name) => self::sourceColumnSql($conn, $name, true));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** O valor de UMA coluna da fonte por consulta como SQL, com nulo = 0. */
+    private static function sourceColumnSql(\Illuminate\Database\ConnectionInterface $conn, string $name, bool $float): ?string
+    {
+        $name = trim($name);
+        if (!preg_match(self::IDENT_RE, $name)) {
+            return null;
+        }
+        $wrapped = $conn->getQueryGrammar()->wrap($name);
+        if (!$float) {
+            return 'COALESCE(' . $wrapped . ', 0)';
+        }
+        $cast = self::floatCast($conn->getDriverName(), $wrapped);
+
+        return $cast === null ? null : 'COALESCE(' . $cast . ', 0)';
+    }
+
+    /**
      * A fórmula de uma coluna calculada como SQL sobre a tabela do Model —
      * serve ao total e ao ORDER BY. null = não há tradução fiel.
      */
@@ -155,15 +249,21 @@ final class GridTotalsQuery
             return 'COALESCE(' . $wrapped . ', 0)';
         }
 
-        $cast = match ($conn->getDriverName()) {
+        $cast = self::floatCast($conn->getDriverName(), $wrapped);
+
+        return $cast === null ? null : 'COALESCE(' . $cast . ', 0)';
+    }
+
+    /** A coluna convertida para ponto flutuante, na escrita do banco; null = banco sem a conversão. */
+    private static function floatCast(string $driver, string $wrapped): ?string
+    {
+        return match ($driver) {
             'pgsql'            => 'CAST(' . $wrapped . ' AS double precision)',
             'mysql', 'mariadb' => '(' . $wrapped . ' + 0E0)',
             'sqlite'           => 'CAST(' . $wrapped . ' AS REAL)',
             'sqlsrv'           => 'CAST(' . $wrapped . ' AS float)',
             default            => null,
         };
-
-        return $cast === null ? null : 'COALESCE(' . $cast . ', 0)';
     }
 
     /**

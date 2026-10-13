@@ -782,6 +782,37 @@ class GridColumn
     }
 
     /**
+     * Formatos built-in curtos, de largura previsível: a célula sai numa linha
+     * só. Texto livre e data por extenso continuam quebrando.
+     */
+    private const NOWRAP_FORMATS = [
+        'money', 'currency-usd', 'currency-eur', 'currency-gbp', 'currency-jpy',
+        'number', 'number-en', 'integer', 'percent', 'decimal-4',
+        'date', 'date-iso', 'date-month-year', 'datetime', 'datetime-seconds', 'time',
+        'cpf', 'cnpj', 'cep', 'phone-br',
+    ];
+
+    /**
+     * Classe (com o espaço na frente) da `<td>` cujo valor não pode quebrar no
+     * meio: valor, número, data e os formatos curtos. Numa grade que não cabe
+     * na tela cada coluna encolhe até a menor palavra e "R$ 6,00" virava duas
+     * linhas — a largura da coluna é só a preferida, não segura a quebra.
+     * Coluna com transformador próprio, selo ou HTML fica como estava: o
+     * conteúdo é de quem escreveu.
+     */
+    public function nowrapClass(): string
+    {
+        if ($this->hasTransform || $this->mediaFormat !== '' || $this->isBadge || $this->isHtml) {
+            return '';
+        }
+        if ($this->isMoney || $this->isNumber || $this->isDate) {
+            return ' mad-dg-cell-nowrap';
+        }
+
+        return in_array($this->builtinFormat, self::NOWRAP_FORMATS, true) ? ' mad-dg-cell-nowrap' : '';
+    }
+
+    /**
      * Renderiza o valor de uma célula aplicando as transformações configuradas.
      *
      * @param mixed      $value   Valor cru da coluna

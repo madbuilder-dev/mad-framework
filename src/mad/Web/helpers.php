@@ -180,24 +180,75 @@ if (!function_exists('url')) {
 
 if (!function_exists('site_url')) {
     /**
-     * Retorna uma URL *relativa* (path only) respeitando o basePath do deploy
-     * em subdiretorio. Ideal para href de links e action de forms dentro da
-     * mesma aplicacao.
+     * Endereço de um caminho do app, respeitando o deploy em subdiretório.
+     *
+     * Por padrão devolve o endereço *relativo* (só o caminho), ideal para href
+     * de links e action de forms dentro do próprio app:
      *
      *   - Dev subdir:  site_url('/public/login') → /meu-app/public/login
      *   - Prod root:   site_url('/public/login') → /public/login
      *
-     * Diferente de url() que retorna absoluta com scheme+host.
+     * Com `absolute: true` devolve o endereço COMPLETO, para tudo que sai do
+     * app (link enviado por e-mail ou WhatsApp, QR Code, texto copiado):
+     *
+     *   site_url('/loja/x', absolute: true) → https://dominio.com/loja/x
+     *
+     * Fora de uma requisição HTTP (comando, job de fila, agendador, script) a
+     * base vem do endereço configurado do app (APP_URL): ali o SCRIPT_NAME é o
+     * caminho do script em execução, não a base do app.
      */
-    function site_url(string $path = '/'): string
+    function site_url(string $path = '/', bool $absolute = false): string
     {
+        $suffix = '/' . ltrim($path, '/');
+
+        $app = function_exists('app') ? app() : null;
+        $console = is_object($app) && method_exists($app, 'runningInConsole')
+            ? (bool) $app->runningInConsole()
+            : in_array(PHP_SAPI, ['cli', 'phpdbg'], true);
+
+        if ($console) {
+            $root = '';
+            try {
+                $root = is_object($app) && $app->bound('config')
+                    ? rtrim(trim((string) $app->make('config')->get('app.url', '')), '/')
+                    : '';
+            } catch (\Throwable) {
+                $root = '';
+            }
+
+            if ($absolute) {
+                return ($root !== '' ? $root : 'http://localhost') . $suffix;
+            }
+
+            return rtrim((string) parse_url($root, PHP_URL_PATH), '/') . $suffix;
+        }
+
         $script = $_SERVER['SCRIPT_NAME'] ?? '';
         $dir = str_replace('\\', '/', dirname($script));
         if ($dir === '/' || $dir === '.' || $dir === '\\') {
             $dir = '';
         }
         $base = rtrim($dir, '/');
-        return $base . '/' . ltrim($path, '/');
+
+        if (! $absolute) {
+            return $base . $suffix;
+        }
+
+        // Esquema e domínio da requisição em curso (o Laravel já resolve o
+        // proxy confiável); sem ele, o que o servidor web informou.
+        try {
+            if (is_object($app) && $app->bound('request')) {
+                return $app->make('request')->getSchemeAndHttpHost() . $base . $suffix;
+            }
+        } catch (\Throwable) {
+            // cai no $_SERVER
+        }
+
+        $scheme = (($_SERVER['HTTPS'] ?? 'off') === 'on' || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+            ? 'https'
+            : 'http';
+
+        return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $base . $suffix;
     }
 }
 

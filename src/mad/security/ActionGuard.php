@@ -107,7 +107,7 @@ final class ActionGuard
         return [
             'mode'  => self::mode(),
             'key'   => $chave,
-            'title' => ActionVocab::denyTitle($chave),
+            'title' => ActionVocab::denyTitle($chave, $class),
         ];
     }
 

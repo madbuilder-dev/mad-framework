@@ -1066,7 +1066,7 @@
                             </div>
                         </td>
                         @foreach(array_slice($visibleColumns, $_gbSpan) as $col)
-                        <td class="mad-dg-cell mad-dg-total-cell" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
+                        <td class="mad-dg-cell mad-dg-total-cell{{ $col->nowrapClass() }}" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
                             @if(isset($item['totals'][$col->field])){!! $item['totals'][$col->field] !!}@endif
                         </td>
                         @endforeach
@@ -1201,7 +1201,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1437,7 +1437,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1605,7 +1605,7 @@
                     ])
                     @else
                     @foreach($visibleColumns as $col)
-                    <td class="mad-dg-cell mad-dg-total-cell" style="text-align:{{ $col->align }};"
+                    <td class="mad-dg-cell mad-dg-total-cell{{ $col->nowrapClass() }}" style="text-align:{{ $col->align }};"
                         :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }">
                         @if(isset($totals[$col->field]))<span class="mad-dg-total-value" data-mad-total="{{ $col->fieldKey }}">{!! \Mad\Grid\MadDataGrid::totalCellHtml($totals[$col->field], !empty($totalsPageOnly[$col->field])) !!}</span>@endif
                     </td>

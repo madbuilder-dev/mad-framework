@@ -21,7 +21,11 @@
         cfg: null,
         echo: null,
         echoBound: null,   // canal já assinado (evita assinatura dupla)
+        echoWait: null,    // espera do conteúdo da tela antes de conectar
     };
+
+    // Teto da espera pelo conteúdo da tela antes de abrir o canal ao vivo.
+    var ECHO_WAIT_MS = 2500;
 
     function refreshMenu() {
         if (typeof MadTemplate !== 'undefined' && MadTemplate.updateNotificationsMenu) {
@@ -38,7 +42,29 @@
         /** Chamado pelo auto-boot (idempotente). */
         init: function (cfg) {
             S.cfg = cfg || S.cfg || {};
-            this.setupEcho();
+            this.deferEcho();
+        },
+
+        /**
+         * Conecta o canal ao vivo quando o conteúdo da tela chegou
+         * (`mad:navigated`), ou em ECHO_WAIT_MS se a tela não avisar: autenticar
+         * o canal é um pedido ao servidor e não deve disputar a fila com o
+         * conteúdo que o usuário está esperando.
+         */
+        deferEcho: function () {
+            var rv = S.cfg && S.cfg.reverb;
+            if (!rv || !rv.key || S.echoBound || S.echoWait) return;
+
+            var self = this;
+            var go = function () {
+                if (!S.echoWait) return;
+                window.removeEventListener('mad:navigated', go);
+                clearTimeout(S.echoWait.timer);
+                S.echoWait = null;
+                self.setupEcho();
+            };
+            S.echoWait = { timer: setTimeout(go, ECHO_WAIT_MS) };
+            window.addEventListener('mad:navigated', go);
         },
 
         /** Abre o detalhe de uma notificação e reatualiza o sino (abrir = ler). */

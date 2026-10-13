@@ -986,6 +986,19 @@ class MadFormRegistry
         // field-list declara na coluna (FieldListColumn); detail-form herda do
         // campo do editor (`<mad-detail-fields>`) — ver registerDetailColMeta().
         $meta = self::$fieldLists[$name]['colMeta'] ?? self::$detailForms[$name]['colMeta'] ?? [];
+
+        return self::transformRowsWith((array) $meta, $rows);
+    }
+
+    /**
+     * A mesma transformação de transformFieldListRows(), com o metadado de
+     * coluna entregue por quem chama (a Lista de itens da linha de um detalhe
+     * guarda o dela no estado da tela — MadForm::declareNestedList).
+     *
+     * @param array<string,array<string,mixed>> $meta coluna => ['mask', 'stripMask', 'forceCase']
+     */
+    public static function transformRowsWith(array $meta, array $rows): array
+    {
         if (!$meta || !$rows) {
             return $rows;
         }

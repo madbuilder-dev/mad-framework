@@ -45,7 +45,7 @@
                 // — antes o badge contava a entrada mas nenhum chip aparecia.
                 $clearTarget = !empty($chip['clear_pair'])
                     ? '_period'
-                    : preg_replace('/[^\w\-]/', '', (string) ($chip['clear'] ?? ''));
+                    : preg_replace('/[^\w\-|]/', '', (string) ($chip['clear'] ?? ''));
                 $attrClear = 'data-mad-click="clearFilter(\'' . $clearTarget . '\')"';
             @endphp
             <span class="mad-dashf-chip">

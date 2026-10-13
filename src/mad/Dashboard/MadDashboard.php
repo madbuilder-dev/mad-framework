@@ -82,6 +82,14 @@ abstract class MadDashboard extends MadComponent implements MadFilterable
     /** Mes/ano atuais como default no mount(). */
     protected bool $defaultToCurrentPeriod = false;
 
+    /**
+     * Período em que a tela abre (e para o qual o "Limpar" volta), pelo nome
+     * do atalho: 'hoje', 'ontem', '7d', '30d', 'mes', 'mes_anterior',
+     * 'trimestre', 'ano', 'ano_anterior'. '' = não usa. Vence
+     * $defaultToCurrentPeriod.
+     */
+    protected string $defaultPeriod = '';
+
     /** Habilita dropdown de presets dentro do period-filter blade. */
     protected bool $usePresets = false;
 

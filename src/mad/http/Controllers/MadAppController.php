@@ -51,7 +51,7 @@ class MadAppController
             // permissão para excluir"); recusa da TELA mantém o recado de
             // sempre — e as três portas do wire respondem igual.
             return new JsonResponse(
-                MadForbidden::wirePayload(PermissionGate::deniedWireActionKey($_POST)),
+                MadForbidden::wireDenied($_POST),
                 403
             );
         }

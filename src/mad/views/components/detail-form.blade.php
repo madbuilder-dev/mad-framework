@@ -132,7 +132,7 @@
     }
 
     // ── Config JSON para Alpine ─────────────────────────────────────────────
-    $alpineCfg = json_encode([
+    $alpineCfg = [
         'name'      => $name,
         'mode'      => $mode,
         'rows'      => $normalizedRows,
@@ -144,7 +144,7 @@
         'perPage'   => $perPage,
         'beforeAdd'    => $beforeAdd ?: null,
         'beforeDelete' => $beforeDelete ?: null,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    ];
 
     // ── Registra no MadFormRegistry para acesso via $form->getDetailForm() ──
     \Mad\Form\MadFormRegistry::registerDetailForm($name, array_map(fn($c) => [
@@ -162,11 +162,27 @@
     // Os campos desenhados daqui até o fim do editor são colunas da LINHA: o
     // formulário da tela não os toma por campos do registro principal.
     \Mad\Form\MadFormRegistry::beginDetailEditor($name);
+    // ...e o valor inicial deles é o padrão da tag (`value`, `:checked`), não o
+    // que o registro principal tem numa coluna de mesmo nome: é desse HTML que
+    // a linha nova tira os padrões (mad-ui.js, _applyFieldDefaults).
+    preg_match_all('/\sname\s*=\s*"([^"{}$]+)"/', (string) $fieldSlot, $_dfSlotNames);
+    \Mad\Component\MadRenderContext::pushWithout($_dfSlotNames[1]);
     try {
         $formHtml = \Mad\View\MadBlade::renderString($fieldSlot, get_defined_vars());
     } finally {
+        \Mad\Component\MadRenderContext::pop();
         \Mad\Form\MadFormRegistry::endDetailEditor($formHtml ?? '');
     }
+    // Lista de itens da LINHA (fw#251): um <mad-field-list> com model e
+    // foreign-key dentro do editor. Cada linha do detalhe leva os itens dela,
+    // na chave com o nome da lista.
+    if (($_form = \Mad\Component\MadRenderContext::getForm()) && $_form->hasNestedLists($name)) {
+        $normalizedRows    = $_form->loadNestedRows($name, $normalizedRows);
+        $alpineCfg['rows'] = $normalizedRows;
+    }
+    unset($_form);
+    $alpineCfg = json_encode($alpineCfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
     $_dfFileCols = [];
     $_dfColMeta  = [];
     $_dfEditor   = [];   // campos do editor: colunas da LINHA, não do registro principal

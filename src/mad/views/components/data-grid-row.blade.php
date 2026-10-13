@@ -122,7 +122,7 @@
             if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
         }
     @endphp
-    <td class="mad-dg-cell{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+    <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
         @if($col->editable)
         @php
             $editInitVal = $cellVal;

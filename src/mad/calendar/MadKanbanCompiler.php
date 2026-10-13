@@ -17,9 +17,22 @@ namespace Mad\Calendar;
  * │  database="business"                 Conexão                                  │
  * │  stage-model="EstadoPedidoVenda"    Classe do model Eloquent das colunas              │
  * │  stage-field="estado_pedido_venda_id"  FK no card model                     │
+ * │  stage-key-field="codigo"           Coluna da tabela de etapas usada como chave │
+ * │                                     (padrão: a chave primária)               │
+ * │                                                                              │
+ * │  <mad-kanban-stage> — Etapas fixas, sem tabela (dispensa stage-model)        │
+ * │  ──────────────────────────────────────────────────────────────────────────  │
+ * │  value="novo"                       Valor gravado em stage-field (obrigatório)│
+ * │  label="Novo"                       Título da coluna (padrão: o value)        │
+ * │  color="#3B82F6"                    Cor da coluna e do selo de estado         │
+ * │                                                                              │
+ * │  <mad-kanban> — demais atributos do board                                    │
+ * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  card-order-field="ordem"           Coluna de ordenação (vazio = sem reorder)│
  * │  value-field="valor_total"          Campo p/ somar totais por coluna       │
  * │  cards-per-load="20"                Page size do scroll infinito            │
+ * │  auto-refresh="15"                  Atualiza sozinho a cada N s (mín. 5; 0 = off) │
+ * │  drag-autoscroll="false"            Não rola o quadro ao arrastar perto da borda  │
  * │  cards-draggable                    Habilita drag-drop (default true)      │
  * │  click-target="ClasseForm::onShow({id})"  Form que abre ao clicar no card  │
  * │  card-view="components.meu-card"    Override total do template do card     │
@@ -89,7 +102,7 @@ class MadKanbanCompiler
         // colocado <mad-kanban-badge>, <mad-kanban-meta>, etc fora de
         // <mad-kanban-card> — sem isso, BladeOne tentaria resolver como
         // componente <x-kanban-badge> e quebraria com "Template not found").
-        $orphans = ['badge', 'meta', 'meta-group', 'footer', 'action', 'card', 'stage-action', 'toolbar'];
+        $orphans = ['badge', 'meta', 'meta-group', 'footer', 'action', 'card', 'stage-action', 'stage', 'toolbar'];
         foreach ($orphans as $sub) {
             $tag = preg_quote('mad-kanban-' . $sub, '#');
             // Self-closing
@@ -120,6 +133,13 @@ class MadKanbanCompiler
                 '#<mad-kanban-toolbar(?=[\s/>])' . $A . '>[\s\S]*?</mad-kanban-toolbar\s*>#s',
                 '', $body
             );
+        }
+
+        // Etapas fixas: <mad-kanban-stage value label color> — o quadro não
+        // consulta tabela de etapas; as colunas saem na ordem declarada.
+        $stages = self::extractChildren($body, 'mad-kanban-stage', []);
+        if (!empty($stages)) {
+            $configParts[] = "'stages' => " . self::arrayLiteral($stages);
         }
 
         // Stage actions (renderiza no header de cada coluna).
@@ -372,6 +392,7 @@ class MadKanbanCompiler
         if (isset($a['database']))             $c[] = "'database' => "            . self::emit($a['database']);
         if (isset($a['stage-model']))          $c[] = "'stageModel' => "          . self::emit($a['stage-model']);
         if (isset($a['stage-field']))          $c[] = "'stageField' => "          . self::emit($a['stage-field']);
+        if (isset($a['stage-key-field']))      $c[] = "'stageKeyField' => "       . self::emit($a['stage-key-field']);
         if (isset($a['stage-title-field']))    $c[] = "'stageTitleField' => "     . self::emit($a['stage-title-field']);
         if (isset($a['stage-color-field']))    $c[] = "'stageColorField' => "     . self::emit($a['stage-color-field']);
         if (isset($a['stage-order-field']))    $c[] = "'stageOrderField' => "     . self::emit($a['stage-order-field']);
@@ -400,6 +421,19 @@ class MadKanbanCompiler
         // top-scroll boolean — duplica scrollbar horizontal no topo do board
         if (isset($a['top-scroll'])) {
             $c[] = "'topScroll' => " . self::emitBool($a['top-scroll']);
+        }
+
+        // auto-refresh="15" — o quadro se atualiza sozinho a cada N segundos.
+        if (isset($a['auto-refresh'])) {
+            $attr = $a['auto-refresh'];
+            $val  = $attr['type'] === 'php' ? '(int) (' . $attr['value'] . ')' : (int) $attr['value'];
+            $c[]  = "'autoRefresh' => {$val}";
+        }
+
+        // drag-autoscroll="false" — desliga a rolagem automática ao arrastar
+        // um cartão para perto da borda do quadro (ligada por padrão).
+        if (isset($a['drag-autoscroll'])) {
+            $c[] = "'dragAutoscroll' => " . self::emitBool($a['drag-autoscroll']);
         }
 
         return $c;

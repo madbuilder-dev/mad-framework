@@ -200,7 +200,7 @@ class MadSiteWireController
 
         if ($post !== null) {
             try {
-                $corpo = MadForbidden::wirePayload(PermissionGate::deniedWireActionKey($post));
+                $corpo = MadForbidden::wireDenied($post);
             } catch (\Throwable) {
                 $corpo = ['error' => 'forbidden'];
             }

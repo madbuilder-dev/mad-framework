@@ -417,6 +417,34 @@ class MadBladeCompiler extends BladeCompiler
     ];
 
     /**
+     * Expressão PHP que monta `data-mad-*="…"` de uma diretiva com `{{ }}` no
+     * valor (`mad:click="onStatus('{{ $st }}')"`), pedaço a pedaço:
+     *  - texto fixo vira string PHP — a aspa simples do argumento fechava a
+     *    string gerada e a tela nem compilava (fw#272);
+     *  - `{{ expr }}` sai escapado para o atributo, como todo `{{ }}` do Blade
+     *    (sem escapar de novo o que já veio de `e()`): valor com aspas não
+     *    corta o atributo no meio;
+     *  - `{!! expr !!}` continua cru.
+     */
+    private static function directiveAttrExpr(string $htmlKey, string $val): string
+    {
+        $parts = ["'" . $htmlKey . "=\"'"];
+        $segs  = preg_split('/(\{\{.*?\}\}|\{!!.*?!!\})/s', $val, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+        foreach ($segs ?: [] as $seg) {
+            if (preg_match('/^\{\{\s*(.+?)\s*\}\}$/s', $seg, $m)) {
+                $parts[] = "htmlspecialchars((string) ({$m[1]}), ENT_QUOTES, 'UTF-8', false)";
+            } elseif (preg_match('/^\{!!\s*(.+?)\s*!!\}$/s', $seg, $m)) {
+                $parts[] = "({$m[1]})";
+            } else {
+                $parts[] = "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], str_replace('"', '&quot;', $seg)) . "'";
+            }
+        }
+        $parts[] = "'\"'";
+
+        return '(' . implode(' . ', $parts) . ')';
+    }
+
+    /**
      * Converte kebab-case para camelCase (padrão Laravel Blade).
      * Ex: "group-by" → "groupBy", "legend-position" → "legendPosition"
      */
@@ -523,7 +551,7 @@ class MadBladeCompiler extends BladeCompiler
         'number-field', 'numeric-field', 'money-field', 'spinner-field', 'range-field',
         'date-field', 'datetime-field', 'time-field', 'color-field', 'html-editor-field',
         'cep-field', 'cnpj-field', 'otp-field', 'dbentry-field',
-        'select-field', 'radio-field', 'switch-field',
+        'select-field', 'radio-field', 'switch-field', 'hidden-field',
     ];
 
     /**
@@ -596,9 +624,7 @@ class MadBladeCompiler extends BladeCompiler
                     }
                     if (preg_match('/\{\{.*?\}\}|\{!!.*?!!\}/', $val)) {
                         // Contém expressões Blade — gerar como expressão PHP avaliada em runtime
-                        $phpExpr = preg_replace('/\{\{\s*(.+?)\s*\}\}/', '\' . ($1) . \'', $val);
-                        $phpExpr = preg_replace('/\{!!\s*(.+?)\s*!!\}/', '\' . ($1) . \'', $phpExpr);
-                        $rawPhpAttrs[] = "'{$htmlKey}=\"" . $phpExpr . "\"'";
+                        $rawPhpAttrs[] = self::directiveAttrExpr($htmlKey, $val);
                     } else {
                         $extraAttrs[] = $htmlKey . '="' . str_replace('"', '&quot;', $val) . '"';
                     }

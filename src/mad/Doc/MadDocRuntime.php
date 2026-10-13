@@ -384,6 +384,119 @@ final class MadDocRuntime
         }
     }
 
+    /**
+     * Linhas de um `<mad-doc-repeater>`: aceita o que o autor tiver em mãos e
+     * devolve sempre um array iterável sem erro.
+     *
+     *   - Collection / Traversable / array → as linhas;
+     *   - Builder / Relation (`$record->itens()`) → executa a consulta;
+     *   - texto JSON de uma lista (coluna JSON sem cast) → decodifica;
+     *   - null, vazio, escalar → nenhuma linha.
+     *
+     * Linha que é array associativo vira {@see MadDocRow}: o corpo do
+     * repetidor lê `$record->campo`, e a lista montada à mão traz arrays.
+     *
+     * @return array<int, mixed>
+     */
+    public static function rows(mixed $source): array
+    {
+        try {
+            $rows = self::plainRows($source);
+        } catch (\Throwable $e) {
+            self::warn('MadDocRuntime: rows falhou, retornando []', ['error' => $e->getMessage()]);
+            return [];
+        }
+        foreach ($rows as $i => $row) {
+            if (is_array($row) && $row !== [] && ! array_is_list($row)) {
+                $rows[$i] = new MadDocRow($row);
+            }
+        }
+        return $rows;
+    }
+
+    /** As linhas como vieram (sem a casca MadDocRow); texto JSON de lista decodificado. */
+    private static function plainRows(mixed $source): array
+    {
+        if (is_string($source)) {
+            $text = ltrim($source);
+            $source = $text !== '' && $text[0] === '[' ? json_decode($text, true) : null;
+        }
+        return self::toRows($source);
+    }
+
+    /**
+     * A lista que o REGISTRO do documento carrega com o nome dado em `model=`.
+     *
+     * O bloco de detalhe sai do Studio como `model="<nome do detalhe>"`. Quando
+     * o nome não é um model do app, ele é o nome de uma lista pendurada no
+     * registro — tipicamente no gancho do documento:
+     *
+     *   $record->setRelation('mfItens', collect([...]));   // ou
+     *   $record->mfItens = [...];
+     *
+     * Devolve null (e o bloco segue para a consulta de sempre) quando o nome
+     * resolve um model, quando não há registro ou quando ele não tem uma lista
+     * com esse nome. Lista vazia é resposta: devolve [].
+     *
+     * O nome é procurado como escrito, em camelCase e em snake_case
+     * (`MfItens` → `mfItens`, `mf_itens`).
+     *
+     * @return array<int, mixed>|null
+     */
+    public static function recordList(mixed $record, string $name): ?array
+    {
+        $name = trim($name);
+        if ($record === null || $name === '' || str_contains($name, '\\')) {
+            return null;
+        }
+        try {
+            if (self::modelQuery($name) !== null) {
+                return null;
+            }
+            $snake = strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', '_', $name));
+            foreach (array_unique([$name, lcfirst($name), $snake]) as $key) {
+                $value = self::recordValue($record, $key);
+                if (is_string($value)) {
+                    $text = ltrim($value);
+                    if ($text === '' || $text[0] !== '[' || ! is_array(json_decode($text, true))) {
+                        continue;
+                    }
+                } elseif (! is_iterable($value)) {
+                    continue;
+                }
+                // Sem a casca: a tabela lê array direto; o repetidor embrulha em rows().
+                return self::plainRows($value);
+            }
+        } catch (\Throwable $e) {
+            self::warn('MadDocRuntime: recordList falhou, seguindo para o model', [
+                'name'  => $name,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        return null;
+    }
+
+    /**
+     * Valor que o registro JÁ TEM sob a chave — sem disparar consulta: relação
+     * carregada ou atributo (Eloquent), chave (array) ou propriedade (objeto).
+     */
+    private static function recordValue(mixed $record, string $key): mixed
+    {
+        if ($record instanceof \Illuminate\Database\Eloquent\Model) {
+            if ($record->relationLoaded($key)) {
+                return $record->getRelation($key);
+            }
+            return array_key_exists($key, $record->getAttributes()) ? $record->getAttribute($key) : null;
+        }
+        if (is_array($record) || $record instanceof \ArrayAccess) {
+            return isset($record[$key]) ? $record[$key] : null;
+        }
+        if (is_object($record)) {
+            return isset($record->{$key}) ? $record->{$key} : null;
+        }
+        return null;
+    }
+
     /** Resolve $model (FQCN ou nome curto → App\Models\X) num query builder Eloquent. */
     private static function modelQuery(string $model): ?object
     {

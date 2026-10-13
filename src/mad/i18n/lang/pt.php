@@ -248,6 +248,12 @@ return [
             // Erro técnico (banco/PHP) capturado numa ação: o detalhe vai só pro log (Mad\Ui\MadUserError).
             'friendly'      => 'Não foi possível concluir a operação. Tente de novo ou avise o administrador.',
             'delete_failed' => 'Não foi possível excluir o registro. Ele pode estar em uso em outro cadastro; se continuar, avise o administrador.',
+            // Registro em uso: a frase diz quem o usa (Mad\Ui\MadRecordInUse).
+            'in_use'      => 'Não é possível excluir este registro: ele está em uso em :where. Exclua ou altere esses registros primeiro.',
+            'in_use_one'  => ':label (1 registro)',
+            'in_use_many' => ':label (:count registros)',
+            'in_use_and'  => ' e ',
+            'in_use_more' => 'mais :count lugares',
             'save_failed'   => 'Não foi possível salvar. Tente de novo ou avise o administrador.',
             'load_failed'   => 'Não foi possível carregar os dados. Tente de novo ou avise o administrador.',
             'duplicate'     => 'Já existe um registro com estes dados.',

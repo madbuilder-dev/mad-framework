@@ -206,7 +206,7 @@
         <div class="mad-kpi-top">
             {{-- help FORA do label: o label tem overflow:hidden (ellipsis)
                  e cliparia a tooltip absoluta do ⓘ --}}
-            <span style="display:inline-flex;align-items:center;min-width:0;gap:6px">
+            <span class="mad-kpi-head">
                 @if($icon)<i data-lucide="{{ $icon }}" class="mad-kpi-icon"></i>@endif
                 <span class="mad-kpi-label" title="{{ $label }}">{{ $label }}</span>@if($help)<span class="mad-kpi-help" tabindex="0">ⓘ<span class="mad-kpi-help-tip">{{ $help }}</span></span>@endif
             </span>

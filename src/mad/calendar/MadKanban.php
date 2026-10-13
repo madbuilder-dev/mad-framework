@@ -67,6 +67,21 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     /** Campo FK no card model que referencia o stage. Ex: 'etapa_negociacao_id' */
     protected string $stageField = '';
 
+    /**
+     * Coluna da tabela de etapas usada como CHAVE de cada coluna do quadro — o
+     * valor que `stageField` guarda no card (`stage-key-field="codigo"`).
+     * Vazio = a chave primária do model de etapas.
+     */
+    protected string $stageKeyField = '';
+
+    /**
+     * Etapas fixas, sem tabela (`<mad-kanban-stage value label color>` no Blade):
+     * `[['value' => 'novo', 'label' => 'Novo', 'color' => '#3B82F6'], …]`.
+     * Com pelo menos uma, o quadro não consulta `stageModel`; as colunas saem
+     * nesta ordem e `stageField` guarda o `value`.
+     */
+    protected array $fixedStages = [];
+
     /** Campo do stage usado como titulo (renderizado no header da coluna). */
     protected string $stageTitleField = 'nome';
 
@@ -105,6 +120,19 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
     /** Renderiza scrollbar horizontal duplicada no topo do board (alem da nativa do rodape). */
     protected bool $topScroll = false;
+
+    /**
+     * Atualização automática do quadro, em segundos (`auto-refresh="15"`).
+     * 0 = desligada (padrão). Mínimo 5. O quadro relê os dados sozinho; sem
+     * resposta do servidor, uma faixa fica na tela até a atualização voltar.
+     */
+    protected int $autoRefresh = 0;
+
+    /**
+     * Arrastar um cartão (ou coluna) para perto da borda rola o quadro e a
+     * lista de cartões sob o ponteiro. `drag-autoscroll="false"` desliga.
+     */
+    protected bool $dragAutoscroll = true;
 
     /**
      * Formato do totalizador da coluna (valueField). Usa MadChartFormatter.
@@ -179,6 +207,17 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * páginas/abas com a mesma classe sobrescreviam a config uma da outra.
      */
     public string $kbCfgKey = '';
+
+    /**
+     * Cartões que cada coluna tem na tela — JSON `{"<etapa>": n}` que o quadro
+     * manda em todo pedido (só as colunas que passaram da primeira carga). O
+     * redesenho devolve a coluna do mesmo tamanho: sem isto a atualização
+     * automática cortava a coluna de volta para `cards-per-load` (fw#285).
+     */
+    public string $kbLoaded = '';
+
+    /** Teto de cartões por coluna que um redesenho mantém. */
+    private const KEEP_LOADED_MAX = 500;
 
     /**
      * Config recebido do <mad-kanban> declarativo (MadKanbanCompiler).
@@ -654,6 +693,10 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      */
     protected function _stateBadgeConfig(): ?array
     {
+        // Etapas fixas: não há relação a navegar — o nome e a cor saem da lista.
+        if ($this->_hasFixedStages()) {
+            return ['type' => 'stage'];
+        }
         $stageRel = $this->_inferStageRelation();
         if (!$stageRel) {
             return null;
@@ -688,7 +731,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 if ($state === null) {
                     continue;
                 }
-                if (!empty($cfg['colorPath'])) {
+                if (!empty($cfg['colorPath']) && ($state['type'] ?? '') !== 'stage') {
                     $state['colorPath'] = (string) $cfg['colorPath'];
                 } elseif (!empty($cfg['color'])) {
                     unset($state['colorPath']);
@@ -708,6 +751,22 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
         if ($type === 'id') {
             return ['label' => '#' . $id, 'muted' => true];
+        }
+
+        // Etapa fixa do card: nome e cor declarados no <mad-kanban-stage>.
+        if ($type === 'stage') {
+            $stage = $this->_fixedStage((string) ($item->{$this->stageField} ?? ''));
+            if ($stage === null) {
+                return null;
+            }
+            $color = '#6b7280';
+            if (!empty($cfg['color'])) {
+                $color = $this->safeColor((string) $cfg['color'], $color);
+            } elseif ($stage['color'] !== '') {
+                $color = $this->safeColor($stage['color'], $color);
+            }
+
+            return ['label' => $stage['label'], 'color' => $color, 'muted' => false];
         }
 
         // Resolve label
@@ -1047,7 +1106,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // Carrega dados só se props criticas presentes. Quando o Blade tem
         // <mad-kanban model="..." stage-model="..." ...>, deixa o
         // _renderInlineKanban configurar e carregar (mount fica idempotente).
-        if ($this->model !== '' && $this->stageModel !== '') {
+        if ($this->model !== '' && $this->_hasStageSource()) {
             $this->loadData();
         }
     }
@@ -1081,10 +1140,31 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         }
         if (is_array($cfg)) {
             $this->_applyInlineKanbanConfig($cfg);
+        } elseif ($this->kbCfgKey !== '') {
+            $this->_recoverInlineConfig();
         }
 
-        if ($this->model !== '' && $this->stageModel !== '') {
+        if ($this->model !== '' && $this->_hasStageSource() && !$this->_dataLoaded) {
             $this->loadData();
+        }
+    }
+
+    /**
+     * Quadro declarativo cuja config sumiu da sessão: a tela ficou aberta e a
+     * sessão foi renovada (publicação do app, login de novo em outra aba). Sem
+     * model nem etapa, a ação seguinte parava em "stageField '' não é um
+     * identificador SQL válido" a cada atualização. O próprio Blade é a fonte:
+     * desenhá-lo passa pelo `<mad-kanban>`, que reaplica a config, a regrava na
+     * sessão e carrega os dados. O HTML é descartado — o render da resposta vem
+     * depois da ação, como sempre.
+     */
+    private function _recoverInlineConfig(): void
+    {
+        try {
+            $this->render();
+        } catch (\Throwable $e) {
+            // Blade que não desenha mais (ou não tem mais o quadro): segue sem
+            // config e a ação responde com o erro de configuração de sempre.
         }
     }
 
@@ -1119,8 +1199,75 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         $this->_dataLoaded = true;
     }
 
+    /** O quadro tem de onde tirar as colunas (tabela de etapas ou etapas fixas)? */
+    private function _hasStageSource(): bool
+    {
+        return $this->stageModel !== '' || $this->_hasFixedStages();
+    }
+
+    private function _hasFixedStages(): bool
+    {
+        return $this->_fixedStageList() !== [];
+    }
+
+    /**
+     * Etapas fixas normalizadas: `value` de texto não vazio e sem repetição;
+     * `label` cai no `value`; `color` é opcional.
+     *
+     * @return list<array{value:string,label:string,color:string}>
+     */
+    private function _fixedStageList(): array
+    {
+        $out = [];
+        foreach ($this->fixedStages as $s) {
+            if (!is_array($s) || !is_scalar($s['value'] ?? null) || (string) $s['value'] === '') {
+                continue;
+            }
+            $value = (string) $s['value'];
+            $label = is_scalar($s['label'] ?? null) && (string) $s['label'] !== '' ? (string) $s['label'] : $value;
+            $out[$value] ??= [
+                'value' => $value,
+                'label' => $label,
+                'color' => is_scalar($s['color'] ?? null) ? (string) $s['color'] : '',
+            ];
+        }
+
+        return array_values($out);
+    }
+
+    /** @return array{value:string,label:string,color:string}|null */
+    private function _fixedStage(string $value): ?array
+    {
+        foreach ($this->_fixedStageList() as $s) {
+            if ($s['value'] === $value) {
+                return $s;
+            }
+        }
+
+        return null;
+    }
+
     private function _loadStages(): void
     {
+        // Etapas fixas: cada uma vira um registro com as mesmas propriedades
+        // que a view lê de uma linha da tabela de etapas (chave, título, cor).
+        if ($this->_hasFixedStages()) {
+            $title = $this->getStageTitleField();
+            $color = $this->getStageColorField();
+            $this->_stages = array_map(static function (array $s) use ($title, $color): object {
+                $o = new \stdClass();
+                $o->{$title} = $s['label'];
+                $o->{$color} = $s['color'] !== '' ? $s['color'] : null;
+                $o->value    = $s['value'];
+                $o->label    = $s['label'];
+                $o->id       = $s['value'];
+
+                return $o;
+            }, $this->_fixedStageList());
+
+            return;
+        }
+
         $stageClass = $this->_resolveModelFqcn($this->stageModel);
         $field = $this->stageOrderField !== '' ? $this->stageOrderField : 'ordem';
         if (!$this->_modelHasColumn($stageClass, $field)) {
@@ -1161,7 +1308,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 $this->_buildBaseCardQuery($q);
                 $q->where($this->stageField, '=', $sid)
                   ->orderBy($orderField, 'asc')
-                  ->limit($this->cardsPerLoad);
+                  ->limit($this->_stageCardLimit($sid));
 
                 $this->_stageCards[$sid] = QuerySource::recordsFromQuery($q) ?: [];
             }
@@ -1172,6 +1319,28 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // eager load em lote (1 SELECT IN por relação pro board inteiro) em
         // vez de 1 SELECT por card × relação.
         $this->_eagerLoadCardRelations($modelClass);
+    }
+
+    /**
+     * Quantos cartões carregar na coluna: `cards-per-load`, ou o que ela já
+     * tinha na tela (`kbLoaded`), fechado na página cheia seguinte — assim o
+     * pedido que entrou numa coluna toda carregada aparece sem rolar de novo, e
+     * a conta é estável (40 continua 40 a cada atualização).
+     */
+    private function _stageCardLimit(string $sid): int
+    {
+        $per = $this->cardsPerLoad;
+        if ($per < 1 || $this->kbLoaded === '') {
+            return $per;
+        }
+        $onScreen = json_decode($this->kbLoaded, true);
+        $n = is_array($onScreen) && is_numeric($onScreen[$sid] ?? null) ? (int) $onScreen[$sid] : 0;
+        if ($n <= $per) {
+            return $per;
+        }
+        $n = min($n, max($per, self::KEEP_LOADED_MAX));
+
+        return min((int) (ceil($n / $per) * $per), max($per, self::KEEP_LOADED_MAX));
     }
 
     /** Eager load em lote das relações referenciadas pela config dos cards. */
@@ -1357,6 +1526,11 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
                 $changedStage = ($oldStageId !== $newStageId);
 
+                // Etapas fixas: só um valor declarado no quadro pode ser gravado.
+                if ($changedStage && $this->_hasFixedStages() && $this->_fixedStage($newStageId) === null) {
+                    throw new \Exception(mad_t('mad.kanban.stage_not_found', ['id' => $newStageId]));
+                }
+
                 // Atualizar stage se mudou de coluna
                 if ($changedStage) {
                     $record->{$this->stageField} = $newStageId;
@@ -1497,7 +1671,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     public function onStageMove(string $stageId, string $orderJson): MadResponse
     {
         try {
-            if (!$this->stagesReorderable) {
+            if (!$this->isStagesReorderable()) {
                 throw new \RuntimeException(mad_t('mad.kanban.stages_locked'));
             }
             $stageClass = $this->_resolveModelFqcn($this->stageModel);
@@ -1516,7 +1690,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
             // Só etapas DESTE quadro (o board lista a tabela inteira de etapas;
             // id de fora é recusado em vez de gravado às cegas).
-            $pk   = $this->_keyName($stageClass);
+            $pk   = $this->_stageKeyColumn($stageClass);
             $rows = $stageClass::query()->whereIn($pk, $ordered)->get()->keyBy(fn ($r) => (string) $r->{$pk});
             foreach ($ordered as $id) {
                 if (!isset($rows[$id])) {
@@ -1569,10 +1743,19 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * (default `ordem`), identificador válido, diferente da chave e existente
      * na tabela. null = o quadro ordena pela chave e não há o que gravar.
      */
+    /** Coluna que identifica a etapa: `stage-key-field` ou a chave primária. */
+    private function _stageKeyColumn(string $stageClass): string
+    {
+        $field = trim($this->stageKeyField);
+
+        return $field !== '' && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) ? $field : $this->_keyName($stageClass);
+    }
+
     private function _stageOrderColumn(string $stageClass): ?string
     {
         $field = trim($this->stageOrderField) !== '' ? trim($this->stageOrderField) : 'ordem';
-        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) || $field === $this->_keyName($stageClass)) {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) || $field === $this->_keyName($stageClass)
+            || $field === $this->_stageKeyColumn($stageClass)) {
             return null;
         }
 
@@ -1750,6 +1933,11 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      */
     public function stageId(object $stage): string
     {
+        // stage-key-field: outra coluna da tabela de etapas é a chave da coluna.
+        $field = trim($this->stageKeyField);
+        if ($field !== '' && !$this->_hasFixedStages() && isset($stage->{$field})) {
+            return (string) $stage->{$field};
+        }
         $key = method_exists($stage, 'getKey') ? $stage->getKey() : ($stage->id ?? null);
 
         return $key === null ? '' : (string) $key;
@@ -1817,6 +2005,18 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         return $this->cardsDraggable;
     }
 
+    /** O quadro rola sozinho ao arrastar perto da borda? */
+    public function isDragAutoscroll(): bool
+    {
+        return $this->dragAutoscroll;
+    }
+
+    /** Segundos entre as atualizações automáticas; 0 = desligada. Mínimo 5. */
+    public function getAutoRefresh(): int
+    {
+        return $this->autoRefresh > 0 ? max(5, $this->autoRefresh) : 0;
+    }
+
     public function hasTopScroll(): bool
     {
         return $this->topScroll;
@@ -1824,7 +2024,8 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
     public function getStageTitleField(): string { return $this->stageTitleField !== '' ? $this->stageTitleField : 'nome'; }
     public function getStageColorField(): string { return $this->stageColorField !== '' ? $this->stageColorField : 'cor';  }
-    public function isStagesReorderable(): bool  { return $this->stagesReorderable; }
+    /** Etapas fixas têm a ordem do Blade: não há o que reordenar. */
+    public function isStagesReorderable(): bool  { return $this->stagesReorderable && !$this->_hasFixedStages(); }
 
     /**
      * Formata um valor (total da coluna) conforme $valueFormat.
@@ -2020,7 +2221,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         $this->kbCfgKey = md5(static::class . '|' . json_encode(array_intersect_key($config, array_flip([
             'model', 'database', 'stageModel', 'stageField', 'cardOrderField',
             'valueField', 'valueFormat', 'cardView', 'card', 'clickTarget',
-            'stageActions', 'toolbar',
+            'stageActions', 'toolbar', 'stages', 'stageKeyField',
         ]))));
         session([
             'mad_kb_cfg.' . $this->kbCfgKey          => $config,
@@ -2044,7 +2245,12 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     {
         $needsReload = false;
 
-        foreach (['model', 'database', 'stageModel', 'stageField',
+        if (isset($config['stages']) && is_array($config['stages']) && $this->fixedStages !== $config['stages']) {
+            $this->fixedStages = $config['stages'];
+            $needsReload       = true;
+        }
+
+        foreach (['model', 'database', 'stageModel', 'stageField', 'stageKeyField',
                   'stageTitleField', 'stageColorField',
                   'stageOrderField', 'stageOrderDirection',
                   'cardOrderField', 'valueField'] as $k) {
@@ -2065,6 +2271,12 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         }
         if (isset($config['topScroll'])) {
             $this->topScroll = (bool) $config['topScroll'];
+        }
+        if (isset($config['autoRefresh'])) {
+            $this->autoRefresh = (int) $config['autoRefresh'];
+        }
+        if (isset($config['dragAutoscroll'])) {
+            $this->dragAutoscroll = (bool) $config['dragAutoscroll'];
         }
         if (isset($config['valueFormat']) && $config['valueFormat'] !== '') {
             $this->valueFormat = (string) $config['valueFormat'];

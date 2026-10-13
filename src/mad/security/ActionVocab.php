@@ -31,6 +31,14 @@ use Mad\I18n\MadLang;
  */
 final class ActionVocab
 {
+    /**
+     * Rótulos de `#[MadPermission]` já lidos, por `Classe::metodo` (null = a
+     * tela não batizou). O atributo é código: não muda entre requisições.
+     *
+     * @var array<string, string|null>
+     */
+    private static array $declared = [];
+
     /** As cinco chaves que a tela de Perfis marca, na ordem em que aparecem. */
     public const KEYS = ['view', 'insert', 'edit', 'delete', 'export'];
 
@@ -179,24 +187,117 @@ final class ActionVocab
     /**
      * Rótulo da chave, como o usuário a vê ("Excluir").
      *
-     * Chave fora do vocabulário é ação própria: vira nome legível a partir do
-     * método (`onAprovarOrcamento` → "Aprovar orcamento"), nunca o nome cru.
+     * Chave fora do vocabulário é ação própria. Com a tela em mãos, vale o nome
+     * que ela mesma deu ao método (`#[MadPermission('Cancelar comanda')]`) — é
+     * o que a tela de Perfis mostra, e a recusa tem de falar a mesma palavra.
+     * Sem tela, ou sem rótulo escrito, vira nome legível a partir do método
+     * (`onAprovarOrcamento` → "Aprovar orcamento"), nunca o nome cru.
+     *
+     * @param  string|list<string>|null  $owners  Classe(s) onde o método mora —
+     *                                            a tela e, num grid, também a
+     *                                            classe de ações. Responde a
+     *                                            primeira que batizou o método.
      */
-    public static function label(string $key): string
+    public static function label(string $key, string|array|null $owners = null): string
     {
         if (in_array($key, self::KEYS, true)) {
             return MadLang::t('mad.action_' . $key);
         }
 
+        if ($owners !== null) {
+            foreach ((array) $owners as $dono) {
+                $escrito = is_string($dono) ? self::declaredLabel($dono, $key) : null;
+                if ($escrito !== null) {
+                    return self::translated($escrito);
+                }
+            }
+        }
+
         return self::humanize($key);
     }
 
-    /** Dica do botão recusado: "Sem permissão para excluir". */
-    public static function denyTitle(string $key): string
+    /**
+     * Dica do botão recusado: "Sem permissão para excluir".
+     *
+     * @param  string|list<string>|null  $owners  ver {@see label()}
+     */
+    public static function denyTitle(string $key, string|array|null $owners = null): string
     {
         return MadLang::t('mad.no_permission_to', [
-            'action' => self::lcfirst(self::label($key)),
+            'action' => self::lcfirst(self::label($key, $owners)),
         ]);
+    }
+
+    /**
+     * O rótulo escrito pode ser uma CHAVE de tradução (`admin.action_clone`) —
+     * é o que as telas do próprio framework usam, para a palavra acompanhar o
+     * idioma do app. A tela de Perfis a traduz ao mostrar; a recusa também.
+     * Qualquer outro texto é literal e volta como veio.
+     *
+     * O formato (`grupo.chave`) é exigido antes de consultar o tradutor, para
+     * um rótulo comum ("Trocar plano") nunca casar com uma frase solta.
+     */
+    private static function translated(string $label): string
+    {
+        if (preg_match('/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/', $label) !== 1 || !function_exists('__')) {
+            return $label;
+        }
+
+        try {
+            $texto = __($label);
+        } catch (\Throwable $e) {
+            return $label;
+        }
+
+        return is_string($texto) && $texto !== '' ? $texto : $label;
+    }
+
+    /**
+     * O rótulo que a tela escreveu em `#[MadPermission('…')]` para o método, ou
+     * null quando não há (método ausente, sem atributo, atributo sem rótulo ou
+     * marcado `permission: false`).
+     *
+     * A mesma leitura que a tela de Perfis faz ao montar as caixinhas. Nunca
+     * estoura: rótulo é conforto, e a recusa não pode virar erro por causa dele.
+     */
+    private static function declaredLabel(string $class, string $method): ?string
+    {
+        $class = ltrim(trim($class), '\\');
+        if ($class === '' || $method === '') {
+            return null;
+        }
+
+        $chave = $class . '::' . $method;
+        if (array_key_exists($chave, self::$declared)) {
+            return self::$declared[$chave];
+        }
+
+        $rotulo = null;
+        try {
+            // O dono chega como classe completa (tela do wire) ou como
+            // identificador curto (`owner`/`handler` de um grid, destino de um
+            // botão): o registro das telas resolve o segundo.
+            $fqcn = class_exists($class) ? $class : null;
+            if ($fqcn === null && class_exists(\Mad\Registry\ControlRegistry::class)) {
+                $fqcn = \Mad\Registry\ControlRegistry::resolve($class);
+            }
+
+            if ($fqcn !== null && method_exists($fqcn, $method)) {
+                $atributos = (new \ReflectionMethod($fqcn, $method))->getAttributes(MadPermission::class);
+                foreach ($atributos as $atributo) {
+                    $declarado = $atributo->newInstance();
+                    $texto     = trim((string) $declarado->label);
+                    if ($declarado->permission && $texto !== '') {
+                        $rotulo = $texto;
+                    }
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            $rotulo = null; // atributo mal escrito / classe que não carrega
+        }
+
+        return self::$declared[$chave] = $rotulo;
     }
 
     /**
@@ -231,6 +332,11 @@ final class ActionVocab
 
     private static function lcfirst(string $texto): string
     {
+        // Sigla no começo ("PDF da comanda") fica como foi escrita.
+        if (preg_match('/^\p{Lu}{2}/u', $texto) === 1) {
+            return $texto;
+        }
+
         return mb_strtolower(mb_substr($texto, 0, 1, 'UTF-8'), 'UTF-8')
             . mb_substr($texto, 1, null, 'UTF-8');
     }

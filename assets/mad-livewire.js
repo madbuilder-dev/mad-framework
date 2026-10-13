@@ -599,6 +599,9 @@ function _madCollectFieldLists(wrapper, body) {
     _madListNodes(wrapper, '[data-mad-fl-name]').forEach(function(fl) {
         var name = fl.getAttribute('data-mad-fl-name');
         if (!name) return;
+        // Lista de itens da LINHA de um detalhe (fw#251): os itens vão dentro
+        // da linha, em mad_detail_forms — não é uma lista do formulário.
+        if (fl.hasAttribute('data-mad-fl-nested')) return;
         try {
             var alpineData = (window.Alpine && Alpine.$data) ? Alpine.$data(fl) : null;
             if (alpineData && alpineData.rows) {
@@ -1472,8 +1475,13 @@ const MadWire = (() => {
         // da listagem) usa isto para avisar quando o valor NÃO foi gravado.
         let _answered = false;
         try {
-            const res  = await fetch(endpoint, { method: 'POST', body, headers: _headers });
+            const _send = () => fetch(endpoint, { method: 'POST', body, headers: _headers });
+            let res = await _send();
             _answered = true;
+
+            // App fora do ar por instantes (publicação, manutenção): o pedido
+            // nem chegou a ele. Repete sozinho, com a faixa de aviso na tela.
+            if (res.status === 503 && !opts.background) res = await _retryWhileUpdating(res, _send);
 
             // Container do Teste Online em repouso: o nginx de fallback devolve a
             // pagina "em repouso" INTEIRA (200 + header X-Mad-Offline:1) para
@@ -1509,6 +1517,12 @@ const MadWire = (() => {
                     if (typeof __mad_warning === 'function') __mad_warning((notice && notice.title) || 'Envio acima do limite', tooBig);
                     else alert(tooBig);
                     return { ok: false, reason: 'error' };
+                }
+                // Servidor indisponível (publicação, reinício, manutenção): aviso
+                // curto ao usuário, nunca o visualizador de erro.
+                if (res.status === 502 || res.status === 503 || res.status === 504) {
+                    if (!opts.background) _downNotice();
+                    return { ok: false, reason: 'unavailable' };
                 }
                 const errCtx = _errContext(wrapper, action, params, models);
                 // Página de erro do Laravel/PHP (500 com HTML) — antes os scripts
@@ -1601,6 +1615,7 @@ const MadWire = (() => {
                 // Aplica ops — 'bind' é scoped ao wrapper; outros vão via Mad.applyOps
                 _applyWireOps(data.ops || [], wrapper, data.id);
                 _setLoading(wrapper, false, sourceForm);
+                _downBar.answered();
                 return { ok: true };
             }
 
@@ -1612,11 +1627,18 @@ const MadWire = (() => {
             if (Array.isArray(data.ops) && data.ops.length && typeof Mad !== 'undefined' && Mad.applyOps) {
                 try { await Mad.applyOps(data.ops, fresh); } catch (e) { console.error('[MadWire] ops error:', e); }
             }
+            _downBar.answered();
             return { ok: true };
         } catch (err) {
+            // Página saindo (recarga, link, aba fechada): o navegador aborta a
+            // chamada em voo. Não é queda de rede: nada no console, nenhum aviso.
+            if (!_answered && _pageLeaving(err)) {
+                _setLoading(wrapper, false, sourceForm);
+                return { ok: false, reason: 'unload' };
+            }
             console.error('[MadWire] Erro de rede:', err);
             _setLoading(wrapper, false, sourceForm);
-            if (!_answered && !opts.quietNetwork) _networkNotice();
+            if (!_answered && !opts.quietNetwork && !opts.background) _networkNotice();
             return { ok: false, reason: _answered ? 'client' : 'network' };
         }
     }
@@ -1643,6 +1665,213 @@ const MadWire = (() => {
         } else if (typeof __mad_warning === 'function') {
             __mad_warning(title, text);
         }
+    }
+
+    // ── Servidor indisponível ────────────────────────────────────────────────
+    // 502/503/504 sem JSON = o app saiu do ar por instantes (publicação,
+    // reinício, manutenção). Não é erro da tela: em vez do visualizador de erro
+    // (ferramenta de quem desenvolve), quem usa o app vê um aviso curto.
+    // No 503 o pedido nem chegou ao app, então o wire repete sozinho, com uma
+    // faixa na tela e o botão "Tentar agora". 502/504 podem ter chegado:
+    // repetir um Salvar por conta própria gravaria duas vezes — só avisa.
+    const _DOWN_TEXT = {
+        pt: { updating: 'Atualizando o sistema. Nova tentativa em {s} s.', updatingTrying: 'Atualizando o sistema. Tentando de novo…',
+              lost: 'Sem conexão com o servidor. Nova tentativa em {s} s.', lostTrying: 'Sem conexão com o servidor. Tentando reconectar…',
+              stale: 'Não foi possível atualizar a tela. Nova tentativa em {s} s.', staleTrying: 'Não foi possível atualizar a tela. Tentando de novo…',
+              now: 'Tentar agora', title: 'Sistema em atualização',
+              text: 'O sistema está sendo atualizado e a ação não foi concluída. Tente de novo em instantes.' },
+        en: { updating: 'Updating the system. Trying again in {s} s.', updatingTrying: 'Updating the system. Trying again…',
+              lost: 'No connection to the server. Trying again in {s} s.', lostTrying: 'No connection to the server. Reconnecting…',
+              stale: 'Could not refresh the screen. Trying again in {s} s.', staleTrying: 'Could not refresh the screen. Trying again…',
+              now: 'Try now', title: 'System update in progress',
+              text: 'The system is being updated and the action was not completed. Try again in a moment.' },
+        es: { updating: 'Actualizando el sistema. Nuevo intento en {s} s.', updatingTrying: 'Actualizando el sistema. Intentando de nuevo…',
+              lost: 'Sin conexión con el servidor. Nuevo intento en {s} s.', lostTrying: 'Sin conexión con el servidor. Reconectando…',
+              stale: 'No fue posible actualizar la pantalla. Nuevo intento en {s} s.', staleTrying: 'No fue posible actualizar la pantalla. Intentando de nuevo…',
+              now: 'Intentar ahora', title: 'Sistema en actualización',
+              text: 'El sistema se está actualizando y la acción no se completó. Inténtelo de nuevo en unos instantes.' },
+    };
+    // Segundos entre as tentativas do 503 (cerca de 1 minuto no total).
+    const _UPDATING_WAITS = [2, 3, 5, 5, 10, 15, 20];
+
+    function _downText() {
+        const lang = String((document.documentElement && document.documentElement.lang) || '').slice(0, 2).toLowerCase();
+        return _DOWN_TEXT[lang] || _DOWN_TEXT.pt;
+    }
+
+    function _injectDownCss() {
+        if (document.getElementById('mad-wire-down-css')) return;
+        // Par de cores próprio (fundo opaco + tinta da mesma matiz): lê igual
+        // no tema claro e no escuro.
+        const style = document.createElement('style');
+        style.id = 'mad-wire-down-css';
+        style.textContent = `
+.mad-wire-down{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147482000;
+ display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);box-sizing:border-box;
+ padding:8px 12px;border-radius:10px;background:#fef3c7;color:#78350f;border:1px solid #f59e0b;
+ box-shadow:0 6px 20px rgba(0,0,0,.18);
+ font:500 14px/1.35 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mad-wire-down-btn{flex:none;border:1px solid #b45309;background:#fff;color:#78350f;border-radius:7px;
+ padding:6px 10px;font:600 13px/1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+.mad-wire-down-btn:hover{background:#fffbeb}
+.mad-wire-down-btn[hidden]{display:none}
+@media (max-width:480px){.mad-wire-down{left:12px;right:12px;top:8px;transform:none;max-width:none}
+ .mad-wire-down-text{flex:1}}
+`;
+        document.head.appendChild(style);
+    }
+
+    /** Faixa "Atualizando o sistema…": uma só na página, some quando o servidor responde. */
+    const _downBar = {
+        el: null, label: null, btn: null, tick: null, onNow: null,
+
+        show(text) {
+            if (!this.el) {
+                _injectDownCss();
+                const el = document.createElement('div');
+                el.className = 'mad-wire-down';
+                el.setAttribute('role', 'status');
+                el.setAttribute('aria-live', 'polite');
+                const label = document.createElement('span');
+                label.className = 'mad-wire-down-text';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'mad-wire-down-btn';
+                btn.textContent = _downText().now;
+                btn.addEventListener('click', () => { if (this.onNow) this.onNow(); });
+                el.appendChild(label);
+                el.appendChild(btn);
+                document.body.appendChild(el);
+                this.el = el; this.label = label; this.btn = btn;
+            }
+            this.label.textContent = text;
+            this.btn.hidden = !this.onNow;
+        },
+
+        hide() {
+            clearInterval(this.tick);
+            this.tick = null; this.onNow = null;
+            if (this.el) { this.el.remove(); this.el = null; this.label = null; this.btn = null; }
+        },
+
+        /** O servidor respondeu a outra chamada: quem está esperando tenta já. */
+        answered() { if (this.onNow) this.onNow(); },
+
+        /** Conta `seconds` na faixa; resolve no fim da espera ou no "Tentar agora". */
+        wait(seconds, kind = 'updating') {
+            const t = _downText();
+            return new Promise(resolve => {
+                let left = seconds;
+                let timer = null;
+                const paint = () => this.show(t[kind].replace('{s}', left));
+                const done  = () => {
+                    clearTimeout(timer);
+                    clearInterval(this.tick);
+                    this.tick = null; this.onNow = null;
+                    this.show(t[kind + 'Trying']);
+                    resolve();
+                };
+                this.onNow = done;
+                paint();
+                clearInterval(this.tick);
+                this.tick = setInterval(() => { left = Math.max(0, left - 1); paint(); }, 1000);
+                timer = setTimeout(done, seconds * 1000);
+            });
+        },
+    };
+
+    /** 503 de "app fora do ar": sem JSON (a recusa do próprio app vem em JSON) e sem a marca de repouso. */
+    async function _isUpdating(res) {
+        if (!res || res.status !== 503 || res.headers.get('X-Mad-Offline') === '1') return false;
+        let text = '';
+        try { text = await res.clone().text(); } catch (_) {}
+        return !/^\s*[{[]/.test(text);
+    }
+
+    /** Repete o pedido enquanto o app responde 503; devolve a última resposta. */
+    async function _retryWhileUpdating(first, send) {
+        let res = first;
+        let shown = false;
+        for (const wait of _UPDATING_WAITS) {
+            if (!(await _isUpdating(res))) break;
+            shown = true;
+            await _downBar.wait(wait);
+            // Rede oscilando no meio da publicação: segue tentando.
+            try { res = await send(); } catch (_) {}
+        }
+        if (shown) _downBar.hide();
+        return res;
+    }
+
+    let _downNoticeAt = 0;
+
+    /** O servidor continua fora: a ação não foi concluída (um aviso por vez). */
+    function _downNotice() {
+        const now = Date.now();
+        if (now - _downNoticeAt < 5000) return;
+        _downNoticeAt = now;
+        const t = _downText();
+        if (typeof __mad_warning === 'function') {
+            __mad_warning(t.title, t.text);
+        } else if (typeof window.madToast === 'function') {
+            window.madToast({ message: t.text, type: 'warning', duration: 6000 });
+        }
+    }
+
+    // Tela que se atualiza sozinha (quadro com auto-refresh, fila da cozinha) e
+    // ficou sem resposta: a faixa fica na tela e `attempt()` é repetido com
+    // espera crescente ATÉ dar certo — só então a faixa some. Uma falha a mais
+    // não volta ao visual normal: a tela está com dados velhos e quem a usa
+    // precisa saber. `alive()` falso (a tela saiu, navegação) encerra.
+    const _reconnecting = new Map();
+
+    function _reconnect(attempt, options = {}) {
+        const key = options.key || attempt;
+        if (_reconnecting.has(key)) return _reconnecting.get(key);
+
+        const waits  = Array.isArray(options.waits) && options.waits.length ? options.waits : [15, 30, 60];
+        const alive  = typeof options.alive === 'function' ? options.alive : () => true;
+        const kindOf = (reason) => (reason === 'unavailable' ? 'updating' : (reason === 'network' ? 'lost' : 'stale'));
+
+        const run = (async () => {
+            let reason = options.reason || 'network';
+            for (let i = 0; ; i++) {
+                await _downBar.wait(waits[Math.min(i, waits.length - 1)], kindOf(reason));
+                if (!alive()) break;
+                let r = null;
+                try { r = await attempt(); } catch (_) {}
+                if (r && r.ok) { _downBar.hide(); return { ok: true }; }
+                if (r && r.reason === 'unload') return r;
+                if (!alive()) break;
+                reason = (r && r.reason) || 'network';
+            }
+            _downBar.hide();
+            return { ok: false, reason: 'gone' };
+        })();
+
+        _reconnecting.set(key, run);
+        const done = () => _reconnecting.delete(key);
+        run.then(done, done);
+        return run;
+    }
+
+    // ── Página saindo ────────────────────────────────────────────────────────
+    // Recarregar (ou sair de) uma tela com chamada em andamento rejeita o
+    // `fetch` com "Failed to fetch", igual a uma queda de rede. `beforeunload`
+    // pode ser cancelado ("Sair desta página?" → ficar), por isso vale só por
+    // alguns segundos; `pagehide` vale até a página voltar do cache do
+    // navegador (`pageshow`).
+    let _leavingAt = 0;
+    let _pageGone  = false;
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('beforeunload', () => { _leavingAt = Date.now(); });
+        window.addEventListener('pagehide',     () => { _pageGone = true; });
+        window.addEventListener('pageshow',     () => { _pageGone = false; _leavingAt = 0; });
+    }
+
+    function _pageLeaving(err) {
+        if (err && err.name === 'AbortError') return true;
+        return _pageGone || (Date.now() - _leavingAt < 5000);
     }
 
     // ── DOM Morph ────────────────────────────────────────────────────────────
@@ -1888,6 +2117,11 @@ const MadWire = (() => {
          *
          * Sem resposta do servidor o wire avisa o usuário; `options.quietNetwork`
          * cala esse aviso para quem dá o seu próprio a partir do desfecho.
+         *
+         * `options.background` marca a chamada AUTOMÁTICA (atualização
+         * periódica): sem resposta do servidor ela não abre aviso nem repete
+         * por conta própria — devolve o desfecho na hora, e quem chamou decide
+         * (ver `reconnect`).
          */
         /**
          * Mostra `el` ocupado (spinner + aria-busy) até `run` terminar — para
@@ -1902,8 +2136,24 @@ const MadWire = (() => {
                 : (_getWrapper(idOrEl) || idOrEl);
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
             const opts  = options && options.quietNetwork ? { quietNetwork: true } : {};
+            if (options && options.background) opts.background = true;
             if (wrapper) return await _request(wrapper, action, params, extra, null, opts);
         },
+
+        /**
+         * Tela que se atualiza sozinha e ficou sem resposta: mostra a faixa
+         * "Sem conexão com o servidor. Nova tentativa em N s." (com "Tentar
+         * agora") e repete `attempt()` até dar certo. `attempt` devolve o
+         * desfecho de um `MadWire.call(…, { background: true })`.
+         *
+         *   options.waits   segundos entre as tentativas (a última se repete); padrão [15, 30, 60]
+         *   options.reason  desfecho da falha que abriu a reconexão ('network', 'unavailable'…)
+         *   options.alive   () => bool — falso encerra (a tela saiu da página)
+         *   options.key     uma reconexão por chave
+         *
+         * Resolve `{ ok: true }` quando o servidor respondeu.
+         */
+        reconnect(attempt, options = {}) { return _reconnect(attempt, options); },
 
         /**
          * call() que não se repete: enquanto um pedido com a mesma `key` está

@@ -45,7 +45,7 @@ abstract class EChart extends BaseChart
 
     private function jsNumberFormatter(): string
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -56,7 +56,7 @@ abstract class EChart extends BaseChart
 
     private function jsAbbreviateFormatter(): string
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -73,7 +73,14 @@ abstract class EChart extends BaseChart
             ? $this->jsAbbreviateFormatter()
             : $this->jsNumberFormatter();
 
-        return ['type' => 'value', 'axisLabel' => ['formatter' => $formatter]];
+        $axis = ['type' => 'value', 'axisLabel' => ['formatter' => $formatter]];
+        // Sem casas no rótulo o eixo anda de 1 em 1: com marcas em 0,5 o
+        // rótulo repetiria "1", "1", "2", "2".
+        if ($this->displayPrecision() === 0) {
+            $axis['minInterval'] = 1;
+        }
+
+        return $axis;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -164,7 +171,7 @@ abstract class EChart extends BaseChart
 
     private function buildPieLikeFormatters(bool $hasTransformer): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -223,7 +230,7 @@ abstract class EChart extends BaseChart
 
     private function buildBarOptions(): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -388,7 +395,7 @@ abstract class EChart extends BaseChart
 
     private function buildLineOptions(): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -571,7 +578,7 @@ abstract class EChart extends BaseChart
 
     private function buildFunnelOptions(): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -642,7 +649,7 @@ abstract class EChart extends BaseChart
 
     private function buildTreemapOptions(): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -702,7 +709,7 @@ abstract class EChart extends BaseChart
 
     private function buildRadarOptions(): array
     {
-        $p   = $this->precision        ?? 2;
+        $p   = $this->displayPrecision();
         $dec = $this->decimalSeparator  ?? ',';
         $tho = $this->thousandSeparator ?? '.';
         $pre = $this->prefix            ?? '';
@@ -918,7 +925,7 @@ abstract class EChart extends BaseChart
             $option['legend'] = ['show' => (bool) $this->legend, 'top' => 0];
 
             // Tooltip do bar single só lê params[0]; com 2 séries usa o multi.
-            $p   = $this->precision        ?? 2;
+            $p   = $this->displayPrecision();
             $dec = $this->decimalSeparator  ?? ',';
             $tho = $this->thousandSeparator ?? '.';
             $pre = $this->prefix            ?? '';

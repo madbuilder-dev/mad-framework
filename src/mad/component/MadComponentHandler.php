@@ -568,7 +568,7 @@ class MadComponentHandler
             // isso parece defeito do sistema em vez de regra do perfil.
             $negada = PermissionGate::deniedActionKey($component, $action);
             if ($negada !== null) {
-                return MadForbidden::wirePayload($negada) + ['status' => 403];
+                return MadForbidden::wirePayload($negada, PermissionGate::actionOwners($component)) + ['status' => 403];
             }
 
             $params = [];
@@ -912,6 +912,12 @@ class MadComponentHandler
                 $pendingFlOps = array_merge($pendingFlOps, $_propVal->getPendingFlOps());
             }
         }
+
+        // Mensagem que esta mesma ação pintou antes (`fieldError()`) e agora não pinta.
+        $clearedErrorOps = array_merge(
+            $clearedErrorOps,
+            $component->_reconcilePaintedErrors((string) $action, array_merge($clearedErrorOps, $explicitOps)),
+        );
 
         $allOps = array_merge($clearedErrorOps, $explicitOps, $bindOps, $dumpOps, $pendingFlOps);
 

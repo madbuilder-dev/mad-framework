@@ -267,6 +267,30 @@ abstract class MadSitePage extends MadComponent
     }
 
     /**
+     * Página SEM ação pública não leva estado no HTML (fw#284).
+     *
+     * O estado (`mad-state`) existe para o canal reativo reconstruir a página
+     * numa ação — e esse canal recusa todo POST de uma página cujo
+     * {@see publicActions()} está vazio ({@see MadSiteWireController}). Sem
+     * leitor, ele era só peso: toda propriedade pública de novo, cifrada (não
+     * comprime), em cada visita. A vitrine de uma loja levava o cardápio
+     * inteiro duas vezes.
+     *
+     * Página com ação pública segue com o estado; o que nela só serve ao render
+     * sai por {@see MadComponent::_stateExcludedProps()}.
+     */
+    public function _encryptState(): string
+    {
+        try {
+            $semAcao = static::publicActions() === [];
+        } catch (\Throwable) {
+            $semAcao = false;
+        }
+
+        return $semAcao ? '' : parent::_encryptState();
+    }
+
+    /**
      * URL do endpoint reativo (mad-endpoint do wrapper). Subclasses podem
      * sobrescrever para apontar a outro handler.
      */

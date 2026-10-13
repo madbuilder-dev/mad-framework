@@ -54,6 +54,11 @@
             // Tenta display_mask (valor ja convertido pela view ou veio do wire)
             $dt = \DateTime::createFromFormat($maskToPhp($display_mask), $value);
         }
+        if (!$dt && str_starts_with($display_mask, 'dd/mm') && \Mad\Form\MadFormRegistry::isDisplayDate($value)) {
+            // Texto da tela com hora ou segundos a mais que a máscara: o strtotime()
+            // abaixo leria n/n/n como mês/dia/ano e trocaria dia e mês (fw#273).
+            $dt = \Mad\Form\MadForm::parseDate($value) ?? false;
+        }
         if (!$dt) {
             $ts = strtotime($value);
             if ($ts) { $dt = (new \DateTime())->setTimestamp($ts); }

@@ -5,7 +5,11 @@
  * payload); servidor tocado só no lookup e no finalize. Config vem do x-data
  * (montada por MadPdvComponent::getClientConfig — sem model/coluna/conexão).
  * Eventos do servidor (CustomEvent no container [data-mad-pdv]):
- *   mad-pdv:lookup-result | mad-pdv:sale-done | mad-pdv:sale-error
+ *   mad-pdv:lookup-result | mad-pdv:sale-done | mad-pdv:sale-error |
+ *   mad-pdv:compose-result
+ * Evento que o PDV DISPARA para a tela (sobe até document, cancelável):
+ *   mad-pdv:compose — item montável escolhido; a tela abre o montador dela e
+ *   chama detail.confirm(escolhas) ou detail.cancel().
  *
  * Contrato completo: docs/specs/mad-pdv-v1.md (Rev. 2) no monorepo.
  */
@@ -59,6 +63,8 @@
                 _reqChannel: {},     // requestId → 'scan' | 'picker'
                 _lastPicker: 0,      // out-of-order do modal, separado do scan
                 _searchTimer: null,
+                _composePending: {}, // requestId → {product, qty, lineUid|null}
+                composing: false,    // esperando o servidor dar o preço do item montado
 
                 // Catálogo navegável (Rev. 5). `stack` guarda o cursor keyset de
                 // cada página visitada — é o que permite voltar sem offset.
@@ -105,6 +111,8 @@
                     this._onLookup = function (e) { self._handleLookup(e.detail || {}); };
                     this._onDone   = function (e) { self._handleSaleDone(e.detail || {}); };
                     this._onError  = function (e) { self._handleSaleError(e.detail || {}); };
+                    this._onCompose = function (e) { self._handleCompose(e.detail || {}); };
+                    this.$el.addEventListener('mad-pdv:compose-result', this._onCompose);
                     this.$el.addEventListener('mad-pdv:lookup-result', this._onLookup);
                     this.$el.addEventListener('mad-pdv:sale-done', this._onDone);
                     this.$el.addEventListener('mad-pdv:sale-error', this._onError);
@@ -113,13 +121,31 @@
                         this.customerId = this.cfg.customer.defaultId;
                     }
                     this.saleDiscUnit = this.cfg.behavior.discountInput === 'percent' ? 'percent' : 'money';
+                    // Os ícones das linhas do carrinho nascem depois do load (x-for):
+                    // sem isto o `<i data-lucide>` nunca vira desenho e os botões
+                    // da linha (remover, montar de novo) ficam invisíveis.
+                    if (typeof this.$watch === 'function') {
+                        this.$watch('cart', function () {
+                            self.$nextTick(function () { self._reiconCart(); });
+                        });
+                    }
                     this._loadHeld();
                     this._tickClock();
                     this._clockTimer = setInterval(function () { self._tickClock(); }, 30000);
                     this.$nextTick(function () { self.focusScan(); });
                 },
 
+                /** Desenha os ícones (Lucide) das linhas novas do carrinho. */
+                _reiconCart() {
+                    var lib = root.lucide;
+                    if (!lib || !lib.createIcons || !this.$el || !this.$el.querySelectorAll) return;
+                    var nodes = this.$el.querySelectorAll('.mad-pdv-cart-table tbody i[data-lucide]');
+                    if (!nodes.length) return;
+                    try { lib.createIcons({ nameAttr: 'data-lucide', nodes: nodes }); } catch (e) {}
+                },
+
                 destroy() {
+                    this.$el.removeEventListener('mad-pdv:compose-result', this._onCompose);
                     this.$el.removeEventListener('mad-pdv:lookup-result', this._onLookup);
                     this.$el.removeEventListener('mad-pdv:sale-done', this._onDone);
                     this.$el.removeEventListener('mad-pdv:sale-error', this._onError);
@@ -521,19 +547,35 @@
                     var qty = mult || 1;
                     if (!this.cfg.behavior.allowFraction) qty = Math.max(1, Math.round(qty));
 
+                    // Item montável (pizza meio a meio, borda, adicionais): não
+                    // entra direto — a tela monta e o servidor dá o preço.
+                    if (p.composite && this.cfg.behavior.composite) {
+                        this._askCompose(p, qty, null);
+                        return;
+                    }
+
                     var priceC = this.toC(p.price);
                     // Linha candidata: mesmos id/preço e as colunas de entrada
                     // nos DEFAULTS (o estado de quem acabou de ser bipado).
                     var candKey = this._candidateMergeKey(p, priceC);
                     for (var i = 0; i < this.cart.length && this.cfg.behavior.mergeLines !== 'off'; i++) {
                         var l = this.cart[i];
+                        if (l.composite) continue;   // linha montada nunca funde
                         if (this._mergeKey(l) === candKey) {
                             this._setLineQty(l, l.qty + qty);
                             this.selLine = i;
                             return;
                         }
                     }
-                    var line = {
+                    var line = this._newLine(p, priceC);
+                    this.cart.push(line);
+                    this._setLineQty(line, qty);
+                    this.selLine = this.cart.length - 1;
+                },
+
+                /** Linha nova do carrinho a partir de um produto da busca. */
+                _newLine(p, priceC) {
+                    return {
                         // uuid, não sequencial: o contador zera no F5 e uma venda
                         // retomada do hold traz uids antigos — as chaves do x-for
                         // colidiam, e com coluna de entrada isso põe o valor
@@ -558,9 +600,106 @@
                         cols: Object.assign({}, p.cols || {}),
                         disp: Object.assign({}, p.disp || {}),
                     };
-                    this.cart.push(line);
-                    this._setLineQty(line, qty);
-                    this.selLine = this.cart.length - 1;
+                },
+
+                // ── Item composto ─────────────────────────────────────────
+                /**
+                 * Pede à TELA que monte o item. O PDV não tem montador: dispara
+                 * `mad-pdv:compose` e quem ouve (o montador da tela) chama
+                 * `preventDefault()` e depois `detail.confirm(escolhas)` ou
+                 * `detail.cancel()`. `line` = linha sendo remontada (ou null).
+                 */
+                _askCompose(p, qty, line) {
+                    var self = this;
+                    var done = false;
+                    var detail = {
+                        product: {
+                            id: p.id, name: p.name, code: p.code || '', barcode: p.barcode || '',
+                            unit: p.unit || '', image: p.image || '',
+                            price: p.price !== undefined ? p.price : (p.priceC || 0) / 100,
+                        },
+                        qty: qty,
+                        // Cópia: o montador mexe à vontade sem tocar a linha.
+                        choices: (line && line.choices) ? JSON.parse(JSON.stringify(line.choices)) : null,
+                        confirm: function (choices) {
+                            if (done) return;
+                            done = true;
+                            self._composeConfirm(p, qty, line, choices);
+                        },
+                        cancel: function () {
+                            if (done) return;
+                            done = true;
+                            self.focusScan();
+                        },
+                    };
+                    var ev = new CustomEvent('mad-pdv:compose', { bubbles: true, cancelable: true, detail: detail });
+                    var handled = !this.$el.dispatchEvent(ev);
+                    if (!handled) {
+                        // Ninguém assumiu: a tela não tem montador.
+                        done = true;
+                        if (typeof root.madToast === 'function') {
+                            root.madToast(this.cfg.i18n.compose_missing || '', 'warning');
+                        }
+                        this.focusScan();
+                    }
+                },
+
+                /** Escolhas confirmadas: o SERVIDOR dá preço e descrição. */
+                _composeConfirm(p, qty, line, choices) {
+                    var self = this;
+                    var id = ++this._reqSeq;
+                    this._composePending[id] = { product: p, qty: qty, lineUid: line ? line.uid : null };
+                    this.composing = true;
+                    wireCall(this.$el, this.cfg.wire.compose, [String(p.id), JSON.stringify(choices || {}), qty, id])
+                        .catch(function (err) {
+                            console.error('[mad-pdv] compose:', err);
+                            delete self._composePending[id];
+                            self.composing = false;
+                        });
+                },
+
+                _handleCompose(d) {
+                    var pend = this._composePending[d.requestId];
+                    if (!pend) return;
+                    delete this._composePending[d.requestId];
+                    this.composing = false;
+                    if (!d.ok) { this.focusScan(); return; }   // o servidor já avisou o motivo
+
+                    var priceC = this.toC(d.price);
+                    var line = null;
+                    if (pend.lineUid) {
+                        for (var i = 0; i < this.cart.length; i++) {
+                            if (this.cart[i].uid === pend.lineUid) { line = this.cart[i]; this.selLine = i; break; }
+                        }
+                        if (!line) { this.focusScan(); return; }   // removida enquanto montava
+                        line.priceC = priceC;
+                        // desconto digitado não pode passar do novo bruto
+                        line.discC = Math.min(line.discC || 0, Math.round(line.qty * priceC));
+                    } else {
+                        line = this._newLine(pend.product, priceC);
+                        this.cart.push(line);
+                        this._setLineQty(line, pend.qty);
+                        this.selLine = this.cart.length - 1;
+                        line = this.cart[this.selLine];
+                    }
+                    line.composite   = true;
+                    // preço do CADASTRO: é o que o montador recebe ao remontar
+                    if (!pend.lineUid) line.baseC = this.toC(pend.product.price);
+                    line.description = d.description || '';
+                    line.choices     = d.choices || {};
+                    // preço mudou → o que já foi lançado de pagamento não fecha mais
+                    if (pend.lineUid) this.payments = [];
+                    this.focusScan();
+                },
+
+                /** Botão "Montar de novo" da linha. */
+                recompose(i) {
+                    var l = this.cart[i];
+                    if (!l || !l.composite) return;
+                    this._askCompose({
+                        id: l.id, name: l.name, code: l.code, barcode: l.barcode, unit: l.unit, image: l.image,
+                        price: (l.baseC !== undefined ? l.baseC : l.priceC) / 100,
+                    }, l.qty, l);
                 },
 
                 _setLineQty(l, qty) {
@@ -592,6 +731,7 @@
                 setLinePrice(i, v) {
                     var l = this.cart[i];
                     if (!l || !this.cfg.behavior.allowPriceOverride) return;
+                    if (l.composite) return;   // preço do item montado é do servidor
                     var c = this.parseMoney(v);
                     if (c > 0) l.priceC = c;
                 },
@@ -825,6 +965,11 @@
                         items: this.cart.map(function (l) {
                             return {
                                 productId: l.id,
+                                // Identidade da linha: duas montagens do mesmo
+                                // produto dividem o productId.
+                                line: l.uid,
+                                // Só as ESCOLHAS viajam; o preço o servidor refaz.
+                                choices: l.composite ? (l.choices || {}) : undefined,
                                 qty: l.qty,
                                 unitPrice: l.priceC / 100,
                                 discount: (l.discC || 0) / 100,
@@ -902,7 +1047,8 @@
                     if (code === 'price-changed' && details.items) {
                         details.items.forEach(function (u) {
                             self.cart.forEach(function (l) {
-                                if (l.id === u.productId) l.priceC = self.toC(u.newPrice);
+                                // `line` aponta UMA linha (item montado); sem ele, vale o produto.
+                                if (u.line ? l.uid === u.line : l.id === u.productId) l.priceC = self.toC(u.newPrice);
                             });
                         });
                         // pagamentos podem ter ficado errados com o novo total
@@ -928,6 +1074,14 @@
                         var noPriceIds = details.items.map(function (u) { return u.productId; });
                         this.cart = this.cart.filter(function (l) { return noPriceIds.indexOf(l.id) === -1; });
                         this.payments = [];
+                        this.focusScan();
+                        return;
+                    }
+                    if (code === 'compose-failed' && details.items && details.items[0]) {
+                        // Mostra QUAL linha precisa ser remontada.
+                        for (var ci = 0; ci < this.cart.length; ci++) {
+                            if (this.cart[ci].uid === details.items[0].line) { this.selLine = ci; break; }
+                        }
                         this.focusScan();
                         return;
                     }

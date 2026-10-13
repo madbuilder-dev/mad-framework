@@ -645,10 +645,21 @@ html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th {
 html[data-theme="dark"] .mad-field-hint.mad-error {
   color: var(--mad-danger-text) !important;
 }
-/* Dica sem erro: o tema do app a pinta com #71717a !important (3,5:1) (fw#295). */
-html[data-theme="dark"] .mad-field-hint:not(.mad-error) {
-  color: var(--mad-text-muted) !important;
+/* Dica sem erro: o tema do app a pinta com #71717a !important (3,5:1) (fw#295).
+   O `body` no seletor vence também o tema da 5.157 (#a1a1aa !important, mesma
+   especificidade e carregado depois), para `--mad-hint-color` valer em app já
+   publicado (fw#293). */
+html[data-theme="dark"] body .mad-field-hint:not(.mad-error) {
+  color: var(--mad-hint-color, var(--mad-text-muted)) !important;
 }
+/* Caixa de seleção e opção (radio) sem classe, dentro do app: o tema dá a todo
+   `input` o padding de campo de texto, e a caixa de 15 px que ele mesmo desenha
+   saía com 32 px e sem a marca; no escuro a marca usava o #111 do tema claro
+   (fw#276). O tema novo já corrige as duas coisas: estas regras valem para o
+   app que atualiza o framework e continua com o tema que tinha. */
+input[type="checkbox"],
+input[type="radio"] { padding: 0; }
+html[data-theme="dark"] { --field-check-color: var(--main-color, #fafafa); }
 html[data-theme="dark"] .mad-input.mad-input-error,
 html[data-theme="dark"] .mad-select.mad-input-error,
 html[data-theme="dark"] .mad-textarea.mad-input-error,
@@ -1157,6 +1168,13 @@ html[data-theme="dark"] .mad-textarea.mad-input-error:focus {
 }
 .mad-btn:disabled,
 .mad-btn[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* Botão-link (<mad-btn href>) desabilitado por disabled-when: link não tem
+   `disabled`, a classe vem do mad-ui.js (fw#258). */
+a.mad-btn.mad-when-disabled {
   opacity: .45;
   cursor: not-allowed;
   pointer-events: none;
@@ -1709,7 +1727,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   color: var(--mad-label-color, var(--mad-text));
 }
 .mad-label-required::after { content: ' *'; color: var(--mad-danger); }
-.mad-hint    { font-size: var(--mad-text-xs); color: var(--mad-text-subtle); line-height: 1.5; }
+/* Dica é texto que se lê: texto secundário, não o cinza de placeholder (2,6:1, fw#292). */
+.mad-hint    { font-size: var(--mad-text-xs); color: var(--mad-hint-color, var(--mad-text-muted)); line-height: 1.5; }
 .mad-error   { font-size: var(--mad-text-xs); color: var(--mad-danger-text, var(--mad-danger)); }
 
 
@@ -3184,8 +3203,9 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    ═══════════════════════════════════════════════════════════════════ */
 
 /* Texto secundário, não o cinza mais fraco: --mad-text-subtle dava 2,6:1 no
-   claro (fw#295). */
-.mad-field-hint { font-size: var(--mad-text-xs); color: var(--mad-text-muted); line-height: 1.5; }
+   claro (fw#295). `--mad-hint-color` é do projeto: definida (na raiz ou no
+   .mad-ui, sem !important), troca a cor da dica nos dois temas (fw#293). */
+.mad-field-hint { font-size: var(--mad-text-xs); color: var(--mad-hint-color, var(--mad-text-muted)); line-height: 1.5; }
 /* .mad-error e .mad-field-hint tem a mesma especificidade e o hint vem depois
    no arquivo: sem esta regra a mensagem de validacao sai cinza de hint. */
 .mad-field-hint.mad-error { color: var(--mad-danger-text, var(--mad-danger)); }
@@ -3358,7 +3378,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   padding: 5px 10px 3px;
   font-size: var(--mad-text-xs);
   font-weight: 700;
-  color: var(--mad-text-subtle);
+  /* Texto secundário: o cinza de placeholder dava 2,6:1 no claro e 3,5:1 no escuro (fw#292). */
+  color: var(--mad-text-muted);
   text-transform: uppercase;
   letter-spacing: .5px;
 }
@@ -3632,6 +3653,9 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   list-style: none;
   outline: none;
   --border-radius: 8px;
+  /* A região só posiciona: quem recebe o ponteiro é o cartão do aviso. Sem isto
+     ela engolia o toque de tudo o que ficava embaixo dela (fw#278). */
+  pointer-events: none;
 }
 
 /* Container Y position */
@@ -3656,6 +3680,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   box-sizing: border-box;
   outline: none;
   overflow-wrap: anywhere;
+  pointer-events: auto;
 }
 
 .mad-toast[data-styled="true"] {
@@ -3894,11 +3919,22 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
     bottom: 16px;
     width: 100%;
   }
+  /* Região dos avisos do app (tem data-*-position): a 16 px de cada borda e com
+     a altura do conteúdo. Com `top` e `bottom` juntos ela cobria a tela (fw#278). */
+  .mad-toast-region[data-x-position] {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    transform: none;
+  }
+  .mad-toast-region[data-y-position="top"]    { top: 16px; bottom: auto; }
+  .mad-toast-region[data-y-position="bottom"] { bottom: 16px; }
   .mad-toast {
     left: 0;
     right: 0;
     width: calc(100% - 32px);
   }
+  .mad-toast[data-styled="true"] { width: 100%; }
 }
 
 
@@ -5445,6 +5481,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   flex-wrap: wrap;
 }
 .mad-page-body {}
+/* Faixa de indicadores e grades empilhadas no corpo da página não ficam
+   coladas: o bloco de baixo ganha em cima o mesmo espaço dos cartões. Margem em
+   fluxo de bloco de propósito — junta-se com um margin-bottom posto à mão no
+   bloco de cima (não dobra) e não alcança grade dentro de seção ou formulário. */
+.mad-page-body > :is(.mad-kpi-strip, .mad-form-grid) + :is(.mad-kpi-strip, .mad-form-grid) {
+  margin-top: var(--mad-dash-card-gap, var(--mad-s4));
+}
 
 /* ─────────────────────────────────────────────────────────
    DASHBOARD LAYOUT — gap por padrão
@@ -8239,6 +8282,22 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   overflow-x: auto;
   width: 100%;
 }
+/* Grade mais larga que a tela: a barra horizontal fica à vista. A barra do
+   sistema (macOS) some até alguém rolar e a última coluna parecia cortada. */
+.mad-dg-table-wrap::-webkit-scrollbar { height: 10px; }
+.mad-dg-table-wrap::-webkit-scrollbar-track { background: var(--mad-bg-muted); }
+.mad-dg-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--mad-border-strong, var(--mad-border));
+  border-radius: 5px;
+  border: 2px solid var(--mad-bg-muted);
+}
+.mad-dg-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--mad-text-muted); }
+@supports (-moz-appearance: none) {
+  .mad-dg-table-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: var(--mad-border-strong, var(--mad-border)) var(--mad-bg-muted);
+  }
+}
 .mad-dg-table {
   width: 100%;
   border-collapse: separate;
@@ -8471,6 +8530,9 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   color: var(--mad-text);
   border-bottom: 1px solid var(--mad-border);
 }
+/* Valor, número, data e formatos curtos (CPF, telefone…) numa linha só:
+   "R$ 6,00" não vira "R$" em cima e "6,00" embaixo quando a grade aperta. */
+.mad-dg-cell-nowrap { white-space: nowrap; }
 
 /* Empty state */
 .mad-dg-empty {
@@ -14480,7 +14542,10 @@ textarea.mad-dg-inline-input {
 /* ── <mad-kpi-card> ── */
 .mad-kpi-card { padding: 0; }
 .mad-kpi { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; }
-.mad-kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Rótulo e selo de variação lado a lado; no cartão estreito a linha QUEBRA e o
+   selo desce — antes era o rótulo que encolhia ("Vendas" virava "VEN…"). */
+.mad-kpi-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.mad-kpi-head { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .mad-kpi-label {
     font-size: .72rem; font-weight: 700; letter-spacing: .04em;
     text-transform: uppercase; color: var(--mad-text-muted);

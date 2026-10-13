@@ -6,6 +6,7 @@ use Mad\Component\MadComponent;
 use Mad\Form\FieldListColumn;
 use Mad\Form\ModelOptionsLoader;
 use Mad\Http\MadResponse;
+use Mad\Support\SessionClosure;
 
 /**
  * MadOrgChart — hierarquia visual em árvore (<mad-org-chart>).
@@ -158,10 +159,16 @@ class MadOrgChart extends MadComponent
         $cfgSession = $config;
         if (($config['where'] ?? null) instanceof \Closure) {
             $cfgSession['where'] = new SerializableClosure($config['where']);
-            $config['where']     = md5(serialize($cfgSession['where']));
+            // Resumo ESTÁVEL da closure: o do `serialize()` levava o número do
+            // objeto na memória e trocava a chave a cada render.
+            $config['where']     = SessionClosure::marker($config['where'], $this);
         }
 
-        $this->ocCfgKey = md5(static::class . '|' . json_encode($config));
+        // Redesenho (depois de uma ação): a tela do navegador segue com a chave
+        // com que foi desenhada, e é para ela que os eventos são despachados.
+        if ($this->ocCfgKey === '') {
+            $this->ocCfgKey = md5(static::class . '|' . json_encode($config));
+        }
         session([
             'mad_oc_cfg.' . $this->ocCfgKey        => $cfgSession,
             'mad_oc_cfg_latest.' . static::class    => $this->ocCfgKey,

@@ -697,6 +697,22 @@ class FieldListColumn
         }
     }
 
+    /**
+     * `depends-on="@campo"` (fw#250): o combo da linha depende de um campo do
+     * formulário PRINCIPAL, não de uma coluna irmã. Devolve o nome do campo
+     * (sem o `@`), ou '' quando o `depends-on` aponta para a linha.
+     */
+    public static function masterDependsOn(string $dependsOn): string
+    {
+        $dependsOn = trim($dependsOn);
+        if ($dependsOn === '' || $dependsOn[0] !== '@') {
+            return '';
+        }
+        $field = trim(substr($dependsOn, 1));
+
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) === 1 ? $field : '';
+    }
+
     // ── Auto-load dependente (Camada 3: chamado via _madFlDependentOptions) ──
 
     /**

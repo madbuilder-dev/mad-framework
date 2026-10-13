@@ -46,6 +46,12 @@ namespace Mad\Pdv;
  * │    print-mode="off|browser"  receipt-width="58|80"  receipt-header=         │
  * │    receipt-footer=  auto-print  on-finalized="metodoDoHost"                 │
  * │                                                                             │
+ * │  Item composto (pizza meio a meio, borda, adicionais):                      │
+ * │    composite-field="montavel"   coluna do produto que marca o item montável │
+ * │    on-compose="montarItem"      método da tela: dá preço/descrição/filhas   │
+ * │    item-description-field=      coluna do item que guarda a descrição       │
+ * │    (o navegador dispara `mad-pdv:compose`; a tela abre o montador dela)     │
+ * │                                                                             │
  * │  Visual: title=  fullscreen-toggle  currency-symbol="R$"  locale=           │
  * │          density="normal|compact"  show-images                              │
  * │                                                                             │

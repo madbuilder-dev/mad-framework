@@ -370,11 +370,16 @@ class MadChart
 
         if ($this->manualData !== null) {
             $rows = [];
+            $integers = $this->manualData !== [];
             foreach ($this->manualData as $label => $value) {
                 $rows[] = [(string) $label, (float) $value];
+                $integers = $integers && Engine\BaseChart::isIntegerValue($value);
             }
             $chart->setFieldGroup(['label']);
             $chart->setData($rows);
+            // Os valores acima já viraram float: o motor não tem mais como saber
+            // que eram inteiros (contagem) para tirar as casas decimais.
+            $chart->setIntegerSeries($integers);
         } else {
             if ($this->baseQuery !== null) $chart->setBaseQuery($this->baseQuery);
             if ($this->model)      $chart->setModel($this->model);
@@ -408,9 +413,11 @@ class MadChart
 
         // precision !== null (e não truthiness): numeric(0)/currency(...,0) são
         // formatos válidos — o check antigo tratava precisão 0 como "não setado".
+        // Só prefixo/sufixo (sem formato): a precisão segue null e o motor
+        // decide pela série (inteiros sem casas) — ver displayPrecision().
         if ($this->precision !== null || $this->prefix || $this->suffix) {
             $chart->setDisplayNumeric(
-                $this->precision ?? 2,
+                $this->precision,
                 $this->decimal,
                 $this->thousand,
                 $this->prefix,

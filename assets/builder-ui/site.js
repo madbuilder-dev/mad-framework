@@ -1,9 +1,10 @@
 /* ==========================================================================
    site.js — o pouco de comportamento que o site público precisa.
 
-   Duas coisas, e só:
+   Três coisas, e só:
      1. o menu do celular abre e fecha;
-     2. a tabela de planos alterna entre mensal e anual.
+     2. a tabela de planos alterna entre mensal e anual;
+     3. o link `href="#secao"` rola até a seção da página aberta.
 
    Sem dependências (nada de Alpine, jQuery ou MadWire). Tudo que é essencial
    na página continua funcionando com o JavaScript desligado: os links do menu
@@ -143,10 +144,54 @@
     });
   }
 
+  /* ── Link para uma seção da própria página ─────────────────────────────── */
+
+  // O casco do site emite `<base href="raiz do app/">` (os assets relativos da
+  // página pendem dele). Com `<base>`, o navegador resolve `href="#secao"`
+  // contra a base, não contra a página aberta: em `/loja/x?mesa=1` o link ia
+  // para `/#secao`, a inicial, e o caminho e a query se perdiam.
+  //
+  // No instante do clique o link passa a apontar para a página aberta e, logo
+  // depois que o navegador o segue, volta ao `#secao` que a página escreveu
+  // (script que lê o `href` continua vendo o que sempre viu). Só quando o alvo
+  // existe NESTA página: menu `href="#recursos"` repetido em todas as páginas
+  // segue levando para a seção da inicial, como sempre levou.
+  function alvoNestaPagina(hash) {
+    if (hash === '#' || hash.toLowerCase() === '#top') return true;
+    var id = hash.slice(1);
+    try {
+      id = decodeURIComponent(id);
+    } catch (e) {
+      return false;
+    }
+    return !!(document.getElementById(id) || document.getElementsByName(id)[0]);
+  }
+
+  function ligarAncoras() {
+    var raiz = document.documentElement;
+    if (!raiz || raiz.dataset.siteAnchorsReady === '1') return;
+    raiz.dataset.siteAnchorsReady = '1';
+
+    document.addEventListener('click', function (e) {
+      if (e.defaultPrevented || !e.target || !e.target.closest) return;
+      var link = e.target.closest('a[href^="#"]');
+      if (!link) return;
+
+      var hash = link.getAttribute('href') || '';
+      if (hash.charAt(0) !== '#' || !alvoNestaPagina(hash)) return;
+
+      link.setAttribute('href', location.pathname + location.search + hash);
+      setTimeout(function () {
+        link.setAttribute('href', hash);
+      }, 0);
+    });
+  }
+
   function iniciar() {
     ligarMenu();
     ligarCiclo();
     ligarPlanoDoCadastro();
+    ligarAncoras();
   }
 
   if (document.readyState === 'loading') {

@@ -30,7 +30,7 @@
         </td>
         @endif
     @else
-        <td class="mad-dg-cell mad-dg-total-cell" style="text-align:{{ $summaryColumn->align }};"
+        <td class="mad-dg-cell mad-dg-total-cell{{ $summaryColumn->nowrapClass() }}" style="text-align:{{ $summaryColumn->align }};"
             :class="{ 'mad-dg-col-hidden': isColHidden({{ json_encode($summaryColumn->fieldKey) }}) }">
             {{-- Se as colunas do rótulo forem ocultadas (ou todas calcularem),
                  identifica o resumo dentro da primeira célula ainda visível. --}}

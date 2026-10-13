@@ -30,6 +30,9 @@
      *   colors            array       []            Paleta custom
      *   class             string      ''            CSS extra
      *   format            string      ''            'currency'|'currency:R$'|'currency:R$:2:,:.'|'numeric:2'
+     *                                                Sem format: série só de inteiros (contagem,
+     *                                                soma de coluna inteira) sai sem casas e o
+     *                                                eixo anda de 1 em 1; as demais, com 2 casas
      *   suffix            string      ''            Sufixo nos valores
      *   abbreviate        bool        false         Valores abreviados (K, M, B)
      *   horizontal        bool        false         Bar horizontal

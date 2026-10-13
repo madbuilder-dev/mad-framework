@@ -516,6 +516,36 @@ class MadResponse
         return '#'.$field.':not([data-df-fields] *), [name="'.$field.'"]:not([data-df-fields] *)';
     }
 
+    /**
+     * O que uma lista de ops faz com a mensagem de erro de cada campo:
+     * `true` = pinta (`fieldError()`), `false` = limpa (`clearFieldError()`).
+     * Vale a última op de cada campo.
+     *
+     * @internal usado pelo MadComponent para tirar da tela a mensagem que a
+     *           própria ação pintou e não pinta mais
+     *
+     * @param list<array<string,mixed>> $ops
+     * @return array<string,bool>
+     */
+    public static function fieldErrorMarks(array $ops): array
+    {
+        $marks = [];
+        foreach ($ops as $op) {
+            if (!is_array($op) || ($op['content'] ?? null) !== 'mad-error') {
+                continue;
+            }
+            $kind = $op['op'] ?? '';
+            if ($kind !== 'addClass' && $kind !== 'removeClass') {
+                continue;
+            }
+            if (preg_match('/^\[data-field-error="([^"]+)"\]/', (string) ($op['target'] ?? ''), $m)) {
+                $marks[$m[1]] = $kind === 'addClass';
+            }
+        }
+
+        return $marks;
+    }
+
     // ── Recarregamento de seções ──────────────────────────────────────────────
 
     /**

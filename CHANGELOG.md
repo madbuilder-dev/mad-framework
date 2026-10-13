@@ -12,6 +12,70 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.160.0] — 2026-10-13
+
+### Novidades
+
+- **Kanban:** as etapas do quadro podem ser declaradas na própria tela, com `<mad-kanban-stage value="novo" label="Novo" color="#3B82F6" />` dentro do `<mad-kanban>`, sem tabela de etapas. Para usar outra coluna da tabela de etapas como chave, há o `stage-key-field`.
+- **Kanban:** o quadro pode se atualizar sozinho com `auto-refresh="15"` (segundos). Enquanto o servidor não responde, um aviso com contagem e o botão "Tentar agora" fica na tela até a atualização voltar.
+- **Kanban:** ao arrastar um cartão para perto da borda, o quadro rola sozinho até a coluna que está fora da tela, e a coluna longa rola até o fim. Para desligar, use `drag-autoscroll="false"`.
+- **PDV:** item composto. Com `composite-field` e `on-compose` no `<mad-pdv>`, o produto marcado abre o montador da sua tela (pizza meio a meio, borda, adicionais) e entra no carrinho com o preço e a descrição calculados no servidor; a venda grava também as linhas filhas. `item-description-field` guarda a descrição montada. Republique o projeto para aplicar.
+- **Listagens:** a listagem pode ler de uma consulta em vez de uma tabela só, por exemplo para juntar duas tabelas na mesma lista. Página, ordenação, busca, filtros, total do rodapé e exportação funcionam sobre o resultado. Declare `sourceQuery()` na tela.
+- **Dashboards:** o painel e a listagem podem abrir já num período escolhido, como hoje ou os últimos 7 dias; o filtro mostra esse período e o Limpar volta para ele. Declare `$defaultPeriod` na tela.
+- **Formulários:** novo `<mad-hidden-field name="…" value="…" />`, um campo que não aparece na tela e é gravado com os demais. Serve para valor fixo ou calculado pela tela.
+- **Formulários:** `$this->form->date('campo')` devolve a data do campo pronta para usar, venha ela como o usuário digitou ou no formato do banco. `MadForm::parseDate($valor)` faz a mesma leitura para um valor avulso.
+- **Formulários:** um `<mad-field-list>` com `model` e `foreign-key` dentro do `<mad-detail-fields>` passa a ser a lista de itens da linha do detalhe (detalhe do detalhe). Ela abre com os itens da linha em edição e é gravada junto com a linha no Salvar.
+- **Lista de itens:** em `<mad-field-list-column type="dbcombo">`, `depends-on="@campo"` faz o combo da linha depender de um campo do formulário principal. Trocar o campo recarrega o combo de todas as linhas.
+- **Permissões:** o perfil ganhou o campo Página Inicial. Quem tem o perfil e não escolheu a própria entra por essa tela, em vez da primeira do menu. Republique o projeto para aplicar.
+- **Site público:** em Preferências › Site dá para escolher a empresa em que nasce a unidade de quem se cadastra pelo site e a primeira tela que essa pessoa vê. Em branco, tudo continua como antes. Republique o projeto para aplicar.
+- **Site público:** o cadastro pelo site dispara o evento `SiteSignupCompleted`. Um listener do projeto cria os dados da conta nova (a loja, um cadastro modelo) no mesmo momento, já dentro da unidade recém-criada.
+- **Site público:** `site_url('/caminho', absolute: true)` devolve o endereço completo, com domínio, para link enviado por e-mail ou WhatsApp e para QR Code.
+- **Telas:** `_stateExcludedProps()` lista as propriedades públicas que só servem para desenhar a tela (a lista que a view percorre). Elas deixam de ir e voltar a cada clique; recarregue-as no `hydrate()`.
+- **Multi-unidade:** opção para a leitura não devolver nada quando não há unidade definida (`MAD_UNIT_SCOPE_EMPTY=closed`). Protege a página pública que esquece de escolher a unidade: em vez de mostrar os registros de todas, mostra nenhum. Vem desligada.
+
+### Melhorias
+
+- **Listagens:** ao excluir um registro que outros usam, o aviso passa a dizer onde ele está em uso e quantos registros são (por exemplo, "em uso em Produtos (3 registros)"), no lugar de "em uso em outra parte do sistema".
+- **Site público:** página do site sem ação pública ficou mais leve: o estado da tela não vai mais no HTML. Numa vitrine com 180 produtos, a página caiu de 98 KB para 49 KB.
+- **App gerado:** abrir uma tela faz três pedidos a menos ao servidor: a busca, as notificações e as mensagens do topo chegam junto com a página. Em hospedagem que atende um pedido por vez, a tela aparece em cerca de metade do tempo. Republique o projeto para aplicar.
+- **Temas:** a cor da dica de campo (`hint=`) agora pode ser trocada pelo projeto: defina `--mad-hint-color` no CSS do projeto (vale no tema claro e no escuro, sem `!important`).
+
+### Correções
+
+- **App gerado:** durante uma publicação, a tela mostra "Atualizando o sistema" e repete a ação sozinha quando o app volta, em vez de abrir a janela técnica de erro para quem está usando.
+- **App gerado:** os diálogos de `MadMessage` (confirmação, pergunta, aviso e erro) juntavam o texto num parágrafo só. Agora cada quebra de linha do texto aparece no diálogo.
+- **App gerado:** o console do navegador não registra mais "Erro de rede" ao recarregar uma tela que se atualiza sozinha, nem "FullCalendar is not defined" em telas sem calendário com a rede lenta.
+- **Kanban:** um quadro que ficou aberto durante uma publicação respondia erro a cada atualização e a cada cartão arrastado, até a página ser recarregada. Agora ele se recompõe sozinho.
+- **Kanban:** a atualização do quadro não devolve mais a coluna ao topo nem esconde os cartões que já tinham sido carregados pela rolagem. O cartão que estava à vista continua no mesmo lugar.
+- **Listagens:** em listagem com muitas colunas, o valor aparecia quebrado ("R$" numa linha e "6,00" na de baixo) e a última coluna ficava cortada sem barra de rolagem. Valores, números e datas agora ficam numa linha só e a barra horizontal aparece quando a listagem não cabe na tela.
+- **Listagens:** depois de uma ação que atualiza só a linha, os botões daquela linha ficavam sem o atributo `title`, e automações que procuram o botão pela dica deixavam de achá-lo.
+- **Dashboards:** cartão de indicador estreito cortava o rótulo ("VEN…") quando havia selo de variação. Agora o selo desce para a linha de baixo quando os dois não cabem lado a lado.
+- **Dashboards:** no filtro em estilo chips, o × do período por datas não limpava o período.
+- **Formulários:** a mensagem de erro que a própria tela mostra num campo (`fieldError()`) ficava na tela depois de o usuário corrigir e a ação gravar. Agora ela sai quando a mesma ação passa.
+- **Formulários:** em `<mad-detail-form>`, a linha nova ignorava o valor padrão dos campos (`value`, `:checked`) e gravava vazio. Agora abre com o padrão de cada campo.
+- **Formulários:** o `<mad-datetime-field>` trocava dia e mês na tela depois de qualquer ação quando o dia era até 12 (`05/10/2026 19:45` virava `10/05/2026 19:45`), e o Salvar seguinte gravava a data trocada.
+- **Lista de itens:** em `<mad-field-list>`, o valor que o `on-change` de uma coluna colocava em outra coluna de combo (`$this->form->set('coluna[]', …)`) aparecia na tela e era enviado vazio no Salvar. Agora vai o valor que está na tela.
+- **Botões:** `mad:click` com texto vindo do Blade (`mad:click="onStatus('{{ $status }}')"`) num `<mad-btn>` deixava a tela com erro. Agora o texto chega ao método.
+- **Botões:** o `<mad-btn>` com `href` e `disabled-when` continuava clicável quando a condição mandava desabilitar. Agora fica desabilitado como os demais botões.
+- **Permissões:** o aviso de ação recusada mostrava o nome interno do método ("Sem permissão para salao cancelar comanda"). Agora mostra o nome dado em `#[MadPermission('…')]`, o mesmo da tela de Perfis, também na dica do botão desabilitado.
+- **PDV:** num `<mad-pdv>` com `:where` em closure, depois de Finalizar o carrinho não limpava, a busca e o Escolher produto voltavam vazios e o filtro deixava de valer nas buscas. Closure que usa `$this` da tela dava erro ao abrir. Republique o projeto para aplicar.
+- **PDV:** o botão de remover item de cada linha do carrinho aparecia sem o ícone.
+- **Organograma:** `<mad-org-chart>` com `:where` em closure deixava de receber as respostas do servidor depois da primeira ação.
+- **Documentos (PDF):** linhas preparadas no gancho do documento (`$record->setRelation('itens', …)`) não apareciam no repetidor nem na tabela, que saíam vazios. Agora o bloco cujo detalhe tem o nome dessa lista a imprime, com totais.
+- **Site público:** link `href="#secao"` numa página do site abria a página inicial e perdia o endereço e os parâmetros. Agora rola até a seção da própria página.
+- **Site público:** `site_url()` chamado em comando, tarefa agendada ou job de fila devolvia um caminho de pasta do servidor no lugar do endereço. Agora parte do endereço configurado do app.
+- **Avisos:** no celular, depois de um aviso (`->toast()`), o primeiro toque na tela não pegava, e em telas de 360 px o aviso passava da borda. Agora só o cartão do aviso recebe o toque e ele cabe na tela.
+- **Temas:** dentro do app, caixa de seleção e opção (radio) escritas em HTML próprio, sem classe `mad-*`, apareciam vazias mesmo marcadas. Agora mostram a marca, no tema claro e no escuro.
+- **Menus:** o rótulo de grupo do `<mad-dropdown>` (`<mad-dropdown-label>`) e textos com a classe `mad-hint` saíam em cinza claro demais para ler. Passam a usar o mesmo tom da dica de campo, nos dois temas.
+
+### Atenção
+
+- **Formulários:** em `<mad-detail-form>`, o `<mad-switch-field>` desligado passa a gravar `0` (ou o `value-off` da tag), onde antes ficava vazio. É o que o formulário principal e a lista de itens já gravam. Código que testava "vazio" para saber se estava desligado deve aceitar `0`.
+- **Formulários:** quem já tinha um `<mad-field-list>` com `model` e `foreign-key` dentro de `<mad-detail-fields>` via os itens ligados ao registro da tela. Agora eles são ligados à linha do detalhe: confira se a `foreign-key` da lista aponta para a tabela do detalhe.
+- **Telas:** propriedade da tela preenchida com uma data no formato do banco e ligada a um campo de data de mesmo nome voltava como texto (`11/10/2026`) depois de qualquer ação, e a consulta seguinte não achava nada. Agora ela continua no formato do banco (`2026-10-11`). Tela que lia essa propriedade como `dd/mm/aaaa` deve usar `$this->form->date('campo')` ou `$this->form->get('campo')`.
+- **Dashboards:** gráfico de números inteiros sem `format` deixa de mostrar casas decimais ("PDV: 1,00" vira "PDV: 1", e a soma de uma coluna inteira passa de "19,00" para "19"); o eixo anda de 1 em 1. Para manter as casas, use `format="numeric:2"`. Gráficos de valores e os que já têm `format` não mudam.
+- **Dashboards:** faixa de indicadores e linhas de gráficos colocadas uma embaixo da outra ganham 16 px de espaço entre si (antes ficavam coladas). Duas `<mad-form-grid>` soltas, uma embaixo da outra, direto no corpo da página, ganham o mesmo espaço.
+
 ## [5.159.1] — 2026-10-13
 
 ### Melhorias

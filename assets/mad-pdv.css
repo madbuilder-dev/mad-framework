@@ -287,6 +287,15 @@
     color: var(--mad-warning-text, #92400e);
     font-weight: 600;
 }
+/* Item montado: as escolhas (sabores, borda, adicionais) sob o nome — o
+   caixa confere por elas, então quebram linha e têm tinta de leitura. */
+.mad-pdv-line-name small.mad-pdv-line-desc {
+    color: var(--mad-text-muted, #4b5563);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 .mad-pdv-line-total { font-weight: 700; }
 
 .mad-pdv-qty {

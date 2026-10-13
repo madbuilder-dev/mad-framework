@@ -103,7 +103,9 @@ class MadDocRepeaterCompiler
 
         $out  = "@php \${$pfx}_parent = \$record ?? null; @endphp\n";
         if ($sourcePrelude !== '') $out .= $sourcePrelude;
-        $out .= "@php \${$pfx}_rows = ({$rowsExpr}) ?: []; @endphp\n";
+        // rows(): Collection/array/consulta/JSON viram linhas; linha em array
+        // passa a responder `$record->campo` (MadDocRow).
+        $out .= "@php \${$pfx}_rows = \\Mad\\Doc\\MadDocRuntime::rows({$rowsExpr}); @endphp\n";
 
         // Init accumulators
         foreach ($aggMap as $name => $spec) {
@@ -217,7 +219,10 @@ class MadDocRepeaterCompiler
                     break;
                 }
             }
-            $prelude = "@php \${$pfx}_source = \\Mad\\Doc\\MadDocRuntime::queryRecords({$modelExpr}, ({$filterExpr})); @endphp\n";
+            // Nome que não é model = lista que o registro carrega (posta no
+            // gancho do documento): recordList() responde antes da consulta.
+            $prelude = "@php \${$pfx}_source = \\Mad\\Doc\\MadDocRuntime::recordList(\${$pfx}_parent, {$modelExpr})"
+                     . " ?? \\Mad\\Doc\\MadDocRuntime::queryRecords({$modelExpr}, ({$filterExpr})); @endphp\n";
             return [$prelude, "\${$pfx}_source"];
         }
         // (c) nothing declared — empty list.

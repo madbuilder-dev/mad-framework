@@ -3,7 +3,6 @@ namespace Mad\Pdv;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Lang;
-use Laravel\SerializableClosure\SerializableClosure;
 use Mad\Component\MadComponent;
 use Mad\Database\QuerySource;
 use Mad\Database\TenantContext;
@@ -11,6 +10,7 @@ use Mad\Database\UnitContext;
 use Mad\Form\ModelOptionsLoader;
 use Mad\Http\MadResponse;
 use Mad\Http\MadStateCrypt;
+use Mad\Support\SessionClosure;
 
 /**
  * MadPdvComponent — frente de caixa (POS) genérica e configurável.
@@ -27,8 +27,8 @@ use Mad\Http\MadStateCrypt;
  *   - models resolvidos via ModelOptionsLoader::resolveModelClass (registry);
  *   - persistência via fill() → respeita $fillable/$guarded; só campos
  *     MAPEADOS são escritos; operador vem da sessão, nunca do payload;
- *   - closures (:where) vão pra sessão embrulhadas em SerializableClosure
- *     (padrão MadOrgChart — nunca closure crua);
+ *   - closures (:where) NÃO vão pra sessão: fica um marcador e a tela as
+ *     reentrega a cada ação (ver _restoreLiveClosures);
  *   - config incompleta → painel de erro sempre visível (nunca tela branca).
  */
 abstract class MadPdvComponent extends MadComponent
@@ -232,6 +232,33 @@ abstract class MadPdvComponent extends MadComponent
     /** Método do host chamado pós-commit (além do hook afterSale). */
     protected string $onFinalized = '';
 
+    // ── Item composto (pizza meio a meio, borda, adicionais) ──────────────
+    //
+    // O PDV não monta nada sozinho: produto marcado em `composite-field` abre
+    // o montador DA TELA (evento `mad-pdv:compose` no navegador) e o preço, a
+    // descrição e as linhas filhas saem do método `on-compose` — chamado ao
+    // montar e DE NOVO ao finalizar. O preço nunca vem do navegador.
+
+    /** Coluna do produto que marca "item montável" (leitura tolerante: 1/true/T/S). */
+    protected string $compositeField = '';
+
+    /**
+     * Método da tela: `montarItem(object $produto, array $escolhas, float $quantidade): array`.
+     * Devolve `price` (obrigatório), `description`, `fields` (colunas a mais
+     * da linha do item), `children` (`[['model' =>, 'key' =>, 'rows' => [...]]]`)
+     * ou `error` (recusa com a mensagem).
+     */
+    protected string $onCompose = '';
+
+    /** Coluna do item que guarda a descrição montada (o cupom reimpresso lê daqui). */
+    protected string $itemDescriptionField = '';
+
+    /** Teto do JSON de escolhas de UMA linha (bytes). */
+    protected const COMPOSE_CHOICES_MAX = 20000;
+
+    /** Teto de linhas filhas de UMA linha montada. */
+    protected const COMPOSE_CHILD_ROWS_MAX = 200;
+
     // ── Visual ────────────────────────────────────────────────────────────
 
     /** Attr `title` da tag (MadComponent::$title é static — nome próprio aqui). */
@@ -263,6 +290,15 @@ abstract class MadPdvComponent extends MadComponent
      * entra no state do wire (mesmo padrão MadSheet::$shCfgKey).
      */
     public string $pdvCfgKey = '';
+
+    /** Atributos que aceitam closure (`:where="…"`) além do texto. */
+    private const CLOSURE_KEYS = ['where', 'customerWhere', 'priceWhere', 'stockWhere'];
+
+    /** Filtros em closure que a sessão não trouxe e a tela ainda não devolveu. */
+    private array $_closuresToRestore = [];
+
+    /** Desenho "a seco": só para a tela reentregar a config ({@see _restoreLiveClosures()}). */
+    private bool $_probingConfig = false;
 
     /** Host externo quando standalone — actions custom roteiam pra ele. */
     protected ?object $_externalHost = null;
@@ -310,6 +346,39 @@ abstract class MadPdvComponent extends MadComponent
         }
         if (is_array($cfg)) {
             $this->_applyInlineConfig($cfg);
+            $this->_restoreLiveClosures();
+        }
+    }
+
+    /**
+     * Devolve às ações as closures dos atributos (`:where="$that->filtro()"`).
+     *
+     * Closure não atravessa a sessão; quem a escreve é o Blade da tela. Então
+     * a tela é desenhada uma vez "a seco": o `<mad-pdv>` reavalia os atributos,
+     * entrega a config com as closures vivas — já ligadas a ESTA tela, com o
+     * estado desta requisição — e não desenha mais nada.
+     *
+     * Se a tela não devolver alguma delas, aquele filtro continua fechado
+     * (nenhuma linha) e o motivo vai para o log.
+     */
+    private function _restoreLiveClosures(): void
+    {
+        if ($this->_closuresToRestore === [] || $this->_probingConfig) {
+            return;
+        }
+
+        $this->_probingConfig = true;
+        try {
+            $this->render();
+        } catch (\Throwable $e) {
+            error_log('[MadPdv] a tela ' . static::class . ' não pôde ser redesenhada para recuperar o filtro: ' . $e->getMessage());
+        } finally {
+            $this->_probingConfig = false;
+        }
+
+        if ($this->_closuresToRestore !== []) {
+            error_log('[MadPdv] filtro em closure não recuperado em ' . static::class . ' ('
+                . implode(', ', array_keys($this->_closuresToRestore)) . '): a consulta fica sem resultados');
         }
     }
 
@@ -328,19 +397,30 @@ abstract class MadPdvComponent extends MadComponent
 
         $this->_applyInlineConfig($config);
 
-        // Closures não passam por json_encode (chave) nem serialize cru
-        // (sessão) — vão embrulhadas em SerializableClosure; a chave usa um
-        // hash estável do wrap (padrão MadOrgChart, NÃO a closure crua do
-        // sheet/kanban).
+        // Desenho "a seco" pedido por _restoreLiveClosures(): só interessava a
+        // config (com as closures vivas) que a tela acabou de entregar.
+        if ($this->_probingConfig) {
+            return '';
+        }
+
+        // Closure não vai para a sessão (que no padrão do app é JSON: o objeto
+        // voltava como `{}` e o filtro deixava de valer nas ações). Vai um
+        // marcador com o resumo ESTÁVEL dela — o do `serialize()` levava o
+        // número do objeto na memória e trocava a chave a cada render.
         $cfgSession = $config;
-        foreach (['where', 'customerWhere', 'priceWhere', 'stockWhere'] as $k) {
+        foreach (self::CLOSURE_KEYS as $k) {
             if (($config[$k] ?? null) instanceof \Closure) {
-                $cfgSession[$k] = new SerializableClosure($config[$k]);
-                $config[$k]     = md5(serialize($cfgSession[$k]));
+                $config[$k]     = SessionClosure::marker($config[$k], $this);
+                $cfgSession[$k] = $config[$k];
             }
         }
 
-        $this->pdvCfgKey = md5(static::class . '|' . json_encode($config));
+        // Redesenho (depois de uma ação): a tela do navegador segue com a chave
+        // com que foi desenhada — é no `data-mad-pdv` dela que chegam a busca e
+        // o "venda concluída". A chave fica; a config nova entra no lugar.
+        if ($this->pdvCfgKey === '') {
+            $this->pdvCfgKey = md5(static::class . '|' . json_encode($config));
+        }
         session([
             'mad_pdv_cfg.' . $this->pdvCfgKey     => $cfgSession,
             'mad_pdv_cfg_latest.' . static::class => $this->pdvCfgKey,
@@ -381,6 +461,7 @@ abstract class MadPdvComponent extends MadComponent
             'customerOrderBy', 'discountMode', 'discountInput', 'printMode', 'receiptHeader',
             'receiptFooter', 'onFinalized', 'currencySymbol',
             'locale', 'density',
+            'compositeField', 'onCompose', 'itemDescriptionField',
         ];
         static $bools = [
             'customerRequired', 'allowPriceOverride', 'allowFraction',
@@ -448,15 +529,22 @@ abstract class MadPdvComponent extends MadComponent
                 continue;
             }
             $w = $config[$key];
-            if ($w instanceof SerializableClosure) {
-                $w = $w->getClosure();
-            }
             if ($w instanceof \Closure) {
                 $this->$closProp = $w;
                 $this->$strProp  = '';
-            } elseif (is_string($w)) {
+                unset($this->_closuresToRestore[$key]);
+            } elseif (is_string($w) && ! SessionClosure::isMarker($w)) {
                 $this->$strProp  = $w;
                 $this->$closProp = null;
+                unset($this->_closuresToRestore[$key]);
+            } elseif (SessionClosure::isMarker($w) || is_array($w) || is_object($w)) {
+                // Veio da sessão no lugar de uma closure (o marcador; ou o
+                // que sobrou de uma guardada por versão anterior). Até a tela
+                // devolver a de verdade, o filtro é FECHADO: perder o filtro
+                // nunca pode virar "mostrar tudo".
+                $this->$closProp = SessionClosure::denyAll();
+                $this->$strProp  = '';
+                $this->_closuresToRestore[$key] = true;
             }
         }
 
@@ -852,6 +940,19 @@ abstract class MadPdvComponent extends MadComponent
             if ($this->$prop === '') $e[] = "{$attr} é obrigatório";
         }
 
+        // ── Item composto ──
+        if ($this->compositeField !== '') {
+            if ($this->onCompose === '') {
+                $e[] = 'composite-field exige on-compose (o método da tela que dá o preço do item montado)';
+            } elseif (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $this->onCompose)) {
+                $e[] = "on-compose '{$this->onCompose}' não é um nome de método válido";
+            } elseif ($this->_composeTarget() === null && !$this instanceof MadPdvStandalone) {
+                $e[] = "on-compose: o método '{$this->onCompose}' não existe em " . static::class;
+            }
+        } elseif ($this->onCompose !== '') {
+            $e[] = 'on-compose sem composite-field: informe a coluna do produto que marca o item montável';
+        }
+
         // ── Contas a receber (Rev. 5) ──
         if ($this->receivableEnabled()) {
             foreach ([
@@ -1038,6 +1139,7 @@ abstract class MadPdvComponent extends MadComponent
                 'unit-field'    => $this->unitField,
                 'image-field'   => $this->imageField,
                 'active-field'  => $this->activeField,
+                'composite-field' => $this->compositeField,
             ]),
             'priceModel' => $this->priceIsRelated() ? array_filter([
                 'price-field' => $this->priceField,
@@ -1066,6 +1168,7 @@ abstract class MadPdvComponent extends MadComponent
                 'item-price-field'    => $this->itemPriceField,
                 'item-discount-field' => $this->itemDiscountField,
                 'item-total-field'    => $this->itemTotalField,
+                'item-description-field' => $this->itemDescriptionField,
             ], $this->_columnItemFields())),
             'receivableModel' => $this->receivableEnabled() ? array_filter([
                 'receivable-sale-field'     => $this->receivableSaleField,
@@ -1130,6 +1233,9 @@ abstract class MadPdvComponent extends MadComponent
             'print_blocked'  => 'Printing is blocked in this environment (preview). The receipt is shown on screen.',
             'choose_product' => 'Choose product',
             'stock_badge'    => 'stock: :n',
+            'compose_missing' => 'Este item precisa ser montado e esta tela não tem um montador.',
+            'compose_edit'    => 'Montar de novo',
+            'compose_failed'  => 'Não foi possível montar o item.',
         ];
         $flags = $this->discountFlags();
 
@@ -1166,6 +1272,7 @@ abstract class MadPdvComponent extends MadComponent
                 'showImages'         => $this->showImagesEffective(),
                 'searchMinLength'    => max(1, $this->searchMinLength),
                 'searchDebounceMs'   => 300,
+                'composite'          => $this->compositeEnabled(),
             ],
             'payments' => array_values(array_map(
                 fn (PdvPayment $p) => $p->toClientConfig(),
@@ -1182,7 +1289,7 @@ abstract class MadPdvComponent extends MadComponent
                 'footer' => $this->receiptFooter !== '' ? $this->receiptFooter : ($labels['thanks'] ?? ''),
                 'width'  => $this->receiptWidthEffective(),
             ],
-            'wire' => ['lookup' => 'onProductLookup', 'finalize' => 'onFinalizeSale'],
+            'wire' => ['lookup' => 'onProductLookup', 'finalize' => 'onFinalizeSale', 'compose' => 'onComposeItem'],
         ];
     }
 
@@ -1377,6 +1484,178 @@ abstract class MadPdvComponent extends MadComponent
         ]));
     }
 
+    // ── Item composto ─────────────────────────────────────────────────────
+
+    /** O recurso está ligado neste PDV? */
+    public function compositeEnabled(): bool
+    {
+        return $this->compositeField !== '' && $this->onCompose !== '';
+    }
+
+    /** O produto está marcado como "item montável"? */
+    protected function _isComposite(object $rec): bool
+    {
+        return $this->compositeEnabled() && $this->_isTruthyMarker($rec->{$this->compositeField} ?? null);
+    }
+
+    /** Quem tem o método do `on-compose`: a tela (ou o host externo). */
+    protected function _composeTarget(): ?object
+    {
+        $m = $this->onCompose;
+        if ($m === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $m)) {
+            return null;
+        }
+        if (method_exists($this, $m)) {
+            return $this;
+        }
+        return ($this->_externalHost && method_exists($this->_externalHost, $m)) ? $this->_externalHost : null;
+    }
+
+    /**
+     * Pede à tela o preço do item montado e normaliza a resposta.
+     *
+     * Devolve SEMPRE um destes dois formatos — nunca lança:
+     *   ['error' => 'mensagem para o caixa']
+     *   ['price' => float, 'description' => string, 'fields' => array, 'children' => array]
+     *
+     * Mensagem de `error` escrita pela tela vai como veio; falha técnica
+     * (exceção, resposta sem preço) vira a mensagem genérica e o detalhe vai
+     * para o log.
+     */
+    protected function _composeItem(object $rec, array $choices, float $qty): array
+    {
+        $generic = ['error' => (string) $this->_t('compose_failed', 'Não foi possível montar o item.')];
+        $target  = $this->_composeTarget();
+        if ($target === null) {
+            error_log('[MadPdv] on-compose: método ' . $this->onCompose . ' não encontrado em ' . static::class);
+            return $generic;
+        }
+
+        try {
+            $out = $target->{$this->onCompose}($rec, $choices, $qty);
+        } catch (\Throwable $e) {
+            error_log('[MadPdv] on-compose falhou em ' . static::class . ': ' . $e->getMessage());
+            return $generic;
+        }
+        if (!is_array($out)) {
+            error_log('[MadPdv] on-compose de ' . static::class . ' precisa devolver um array');
+            return $generic;
+        }
+        if (isset($out['error']) && trim((string) $out['error']) !== '') {
+            return ['error' => mb_substr(trim((string) $out['error']), 0, 300)];
+        }
+        if (!isset($out['price']) || !is_numeric($out['price']) || (float) $out['price'] < 0) {
+            error_log('[MadPdv] on-compose de ' . static::class . " não devolveu 'price' (número >= 0)");
+            return $generic;
+        }
+
+        $children = [];
+        $nRows    = 0;
+        foreach ((array) ($out['children'] ?? []) as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+            $rows = array_values(array_filter((array) ($group['rows'] ?? []), 'is_array'));
+            if ($rows === []) {
+                continue;
+            }
+            $nRows += count($rows);
+            $children[] = [
+                'model' => trim((string) ($group['model'] ?? '')),
+                'key'   => trim((string) ($group['key'] ?? '')),
+                'rows'  => $rows,
+            ];
+        }
+        if ($nRows > self::COMPOSE_CHILD_ROWS_MAX) {
+            error_log('[MadPdv] on-compose de ' . static::class . ' devolveu linhas filhas demais (' . $nRows . ')');
+            return $generic;
+        }
+
+        return [
+            'price'       => $this->_r($out['price']),
+            'description' => mb_substr(trim((string) ($out['description'] ?? '')), 0, 500),
+            'fields'      => is_array($out['fields'] ?? null) ? $out['fields'] : [],
+            'children'    => $children,
+        ];
+    }
+
+    /** Escolhas da linha como vieram do navegador: array JSON dentro do teto, ou null. */
+    protected function _composeChoices(mixed $raw): ?array
+    {
+        if (is_string($raw)) {
+            if (strlen($raw) > self::COMPOSE_CHOICES_MAX) {
+                return null;
+            }
+            $raw = json_decode($raw, true);
+        }
+        if (!is_array($raw)) {
+            return null;
+        }
+        $json = json_encode($raw);
+        return ($json === false || strlen($json) > self::COMPOSE_CHOICES_MAX) ? null : $raw;
+    }
+
+    /**
+     * O montador da tela confirmou: devolve ao carrinho o preço e a descrição
+     * do item (`mad-pdv:compose-result`). `fields`/`children` ficam no
+     * servidor — são recalculados no finalize, com as mesmas escolhas.
+     */
+    public function onComposeItem(
+        string $productId,
+        string $choicesJson = '{}',
+        float $qty = 1,
+        int $requestId = 0,
+    ): MadResponse {
+        $fail = fn (string $msg) => (new MadResponse())
+            ->toast($msg, 'error')
+            ->script($this->_pdvEvent('mad-pdv:compose-result', [
+                'requestId' => $requestId,
+                'ok'        => false,
+                'productId' => ctype_digit($productId) ? (int) $productId : $productId,
+                'error'     => $msg,
+            ]));
+        $generic = (string) $this->_t('compose_failed', 'Não foi possível montar o item.');
+
+        if ($this->configErrors() !== [] || !$this->compositeEnabled()) {
+            return $fail($generic);
+        }
+        $choices = $this->_composeChoices($choicesJson);
+        $fqcn    = $this->_resolveModelFqcn($this->model);
+        if ($choices === null || $fqcn === '') {
+            return $fail($generic);
+        }
+
+        // Mesmo recorte da busca: filtro do PDV + ativo.
+        $q = $fqcn::query();
+        $this->_applyProductWhere($q);
+        $rec = $q->where((new $fqcn())->getKeyName(), $productId)->first();
+        if (!$rec || !$this->_isActive($rec) || !$this->_isComposite($rec)) {
+            return $fail((string) __('pdv.err_product_not_found'));
+        }
+
+        $item = $this->_composeItem($rec, $choices, $qty > 0 ? $qty : 1.0);
+        if (isset($item['error'])) {
+            return $fail($item['error']);
+        }
+
+        return (new MadResponse())->script($this->_pdvEvent('mad-pdv:compose-result', [
+            'requestId'   => $requestId,
+            'ok'          => true,
+            'productId'   => $rec->getKey(),
+            'price'       => $item['price'],
+            'description' => $item['description'],
+            'choices'     => $choices,
+        ]));
+    }
+
+    /** Texto de `lang/…/pdv.php`; app publicado antes da chave existir usa o padrão. */
+    protected function _t(string $key, string $default): string
+    {
+        $full = 'pdv.' . $key;
+        $text = __($full);
+        return (is_string($text) && $text !== $full) ? $text : $default;
+    }
+
     /**
      * Finaliza a venda (§7.2). O payload NUNCA carrega model/coluna — toda
      * regra (preço, teto de desconto, estoque, soma de pagamentos, cliente)
@@ -1443,7 +1722,7 @@ abstract class MadPdvComponent extends MadComponent
             ->keyBy(fn ($r) => (string) $r->getKey());
 
         $flags = $this->discountFlags();
-        $notFound = $inactive = $noPrice = $priceChanged = $fieldErrors = [];
+        $notFound = $inactive = $noPrice = $priceChanged = $fieldErrors = $composeFailed = [];
         $clean        = [];
         $qtyByProduct = [];
 
@@ -1461,6 +1740,9 @@ abstract class MadPdvComponent extends MadComponent
             $qty   = (float) ($it['qty'] ?? 0);
             $price = $this->_r($it['unitPrice'] ?? 0);
             $disc  = $this->_r($it['discount'] ?? 0);
+            // Identidade da LINHA no carrinho: duas montagens do mesmo produto
+            // dividem o productId — o erro precisa dizer qual das duas.
+            $lineId = mb_substr(trim((string) ($it['line'] ?? '')), 0, 64);
 
             $rec = $recs[(string) $pid] ?? null;
             if (!$rec) {
@@ -1472,25 +1754,51 @@ abstract class MadPdvComponent extends MadComponent
                 continue;
             }
 
-            if ($this->priceIsRelated()) {
-                $rel = $relPrices[(string) $pid] ?? null;
-                if ($rel === null) {
-                    // Linha de preço sumiu/NULL entre o bip e o finalize —
-                    // code próprio (§7.3 Rev. 3), não price-changed com null.
-                    $noPrice[] = ['productId' => $pid];
+            // Item montado: o preço é o que a TELA calcula a partir das
+            // escolhas — as mesmas que ela precificou ao montar. Nunca o do
+            // payload, nem com "alterar preço" liberado.
+            $compose = null;
+            if ($this->_isComposite($rec)) {
+                $choices = $this->_composeChoices($it['choices'] ?? null);
+                $compose = $choices === null
+                    ? ['error' => (string) $this->_t('compose_missing_choices', 'Monte o item antes de vender.')]
+                    : $this->_composeItem($rec, $choices, $qty > 0 ? $qty : 1.0);
+                if (isset($compose['error'])) {
+                    $composeFailed[] = [
+                        'productId' => $pid, 'line' => $lineId,
+                        'name' => (string) $rec->{$this->nameField}, 'msg' => $compose['error'],
+                    ];
                     continue;
                 }
-                $current = $this->_r($rel);
+                if (abs($price - $compose['price']) > 0.005) {
+                    $priceChanged[] = [
+                        'productId' => $pid, 'line' => $lineId,
+                        'oldPrice' => $price, 'newPrice' => $compose['price'],
+                    ];
+                    continue;
+                }
+                $effPrice = $compose['price'];
             } else {
-                $current = $this->_r($rec->{$this->priceField});
+                if ($this->priceIsRelated()) {
+                    $rel = $relPrices[(string) $pid] ?? null;
+                    if ($rel === null) {
+                        // Linha de preço sumiu/NULL entre o bip e o finalize —
+                        // code próprio (§7.3 Rev. 3), não price-changed com null.
+                        $noPrice[] = ['productId' => $pid];
+                        continue;
+                    }
+                    $current = $this->_r($rel);
+                } else {
+                    $current = $this->_r($rec->{$this->priceField});
+                }
+                // MESMA função do lookup — ver o docblock de _effectiveUnitPrice.
+                $current = $this->_effectiveUnitPrice($rec, $current);
+                if (!$this->allowPriceOverride && abs($price - $current) > 0.005) {
+                    $priceChanged[] = ['productId' => $pid, 'oldPrice' => $price, 'newPrice' => $current];
+                    continue;
+                }
+                $effPrice = $this->allowPriceOverride ? $price : $current;
             }
-            // MESMA função do lookup — ver o docblock de _effectiveUnitPrice.
-            $current = $this->_effectiveUnitPrice($rec, $current);
-            if (!$this->allowPriceOverride && abs($price - $current) > 0.005) {
-                $priceChanged[] = ['productId' => $pid, 'oldPrice' => $price, 'newPrice' => $current];
-                continue;
-            }
-            $effPrice = $this->allowPriceOverride ? $price : $current;
 
             if ($qty <= 0) {
                 $fieldErrors[] = ['field' => "items.{$pid}.qty", 'msg' => 'quantidade inválida'];
@@ -1557,12 +1865,17 @@ abstract class MadPdvComponent extends MadComponent
                 'disc'      => $disc,
                 'cols'      => $lineCols,
                 'rec'       => $rec,
+                'compose'   => $compose,
             ];
         }
 
         if ($notFound !== [])     return $this->_saleError('product-not-found', ['items' => $notFound]);
         if ($inactive !== [])     return $this->_saleError('product-inactive', ['items' => $inactive]);
         if ($noPrice !== [])      return $this->_saleError('no-price', ['items' => $noPrice]);
+        if ($composeFailed !== []) {
+            // A frase da tela ("Escolha no máximo 2 sabores.") é a que o caixa lê.
+            return $this->_saleError('compose-failed', ['items' => $composeFailed], true, $composeFailed[0]['msg']);
+        }
         if ($priceChanged !== []) return $this->_saleError('price-changed', ['items' => $priceChanged]);
         if ($fieldErrors !== [])  return $this->_saleError('validation', ['fields' => $fieldErrors]);
 
@@ -1847,11 +2160,31 @@ abstract class MadPdvComponent extends MadComponent
                             $idata[$col->itemField] = $l['cols'][$key] ?? null;
                         }
                     }
+                    // Item montado: as colunas a mais que a tela devolveu
+                    // entram por BAIXO — venda, produto, quantidade, preço e
+                    // total são do PDV e nunca são sobrescritos.
+                    if ($l['compose'] !== null) {
+                        if ($this->itemDescriptionField !== '') {
+                            $idata[$this->itemDescriptionField] = $l['compose']['description'] !== ''
+                                ? $l['compose']['description'] : null;
+                        }
+                        $idata += array_filter(
+                            $l['compose']['fields'],
+                            fn ($k) => is_string($k) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $k),
+                            ARRAY_FILTER_USE_KEY,
+                        );
+                    }
                     $item = new $itemFqcn();
                     $item->fill($idata);
                     $this->_stampScope($item);
                     $item->save();
                     $savedItems[] = $item;
+
+                    // Linhas filhas (sabores, complementos): mesma transação
+                    // da venda. Qualquer falha desfaz a venda inteira.
+                    foreach ($l['compose']['children'] ?? [] as $group) {
+                        $this->_saveComposeChildren($group, $item, $l);
+                    }
                 }
 
                 foreach ($payClean as $pm) {
@@ -1961,6 +2294,7 @@ abstract class MadPdvComponent extends MadComponent
                 'discount'  => $l['disc'],
                 'total'     => $l['total'],
                 'cols'      => $this->_receiptCols($l),
+                'description' => $l['compose']['description'] ?? '',
             ], $clean),
             'totals'   => [
                 'subtotal' => $subtotal,
@@ -1990,6 +2324,47 @@ abstract class MadPdvComponent extends MadComponent
             $resp->toast((string) __('pdv.err_after_sale'), 'warning');
         }
         return $resp;
+    }
+
+    /**
+     * Grava um grupo de linhas filhas de um item montado, ligado ao item pela
+     * coluna `key`. O model e a coluna vêm do método da tela (código do
+     * servidor), nunca do navegador. Model que não resolve, coluna inválida ou
+     * conexão diferente da venda (a transação não alcançaria) abortam a venda.
+     */
+    protected function _saveComposeChildren(array $group, object $item, array $line): void
+    {
+        $bad = fn (string $why) => new PdvSaleException('compose-failed', ['items' => [[
+            'productId' => $line['productId'], 'name' => $line['name'], 'msg' => '',
+        ]], 'reason' => $why]);
+
+        $fqcn = '';
+        try {
+            $fqcn = $group['model'] !== '' ? $this->_resolveModelFqcn($group['model']) : '';
+        } catch (\Throwable $e) {
+        }
+        if ($fqcn === '' || !class_exists($fqcn) || !is_subclass_of($fqcn, \Illuminate\Database\Eloquent\Model::class)) {
+            error_log('[MadPdv] on-compose: model de linha filha não encontrado (' . $group['model'] . ')');
+            throw $bad('model');
+        }
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $group['key'])) {
+            error_log("[MadPdv] on-compose: 'key' inválida para " . $group['model']);
+            throw $bad('key');
+        }
+        $itemConn  = $item->getConnectionName() ?: $this->_db();
+        $childConn = (new $fqcn())->getConnectionName() ?: $this->_db();
+        if ($childConn !== $itemConn) {
+            error_log("[MadPdv] on-compose: {$group['model']} está em '{$childConn}' e a venda em '{$itemConn}'");
+            throw $bad('connection');
+        }
+
+        foreach ($group['rows'] as $row) {
+            $child = new $fqcn();
+            $child->fill($row);
+            $child->{$group['key']} = $item->getKey();
+            $this->_stampScope($child);
+            $child->save();
+        }
     }
 
     // ── Hooks (subclasse / casca gerada) ──────────────────────────────────
@@ -2275,7 +2650,8 @@ abstract class MadPdvComponent extends MadComponent
             'stock'   => $stock,
             'unit'    => $this->unitField !== '' ? (string) $rec->{$this->unitField} : null,
             'image'   => $this->imageField !== '' ? (string) $rec->{$this->imageField} : null,
-        ] + $this->_columnValuesFor($rec);
+            // Só quando é: PDV sem item montável não ganha chave nova no fio.
+        ] + ($this->_isComposite($rec) ? ['composite' => true] : []) + $this->_columnValuesFor($rec);
     }
 
     /**
@@ -2579,6 +2955,8 @@ abstract class MadPdvComponent extends MadComponent
                     'unitPrice' => (float) $it->{$this->itemPriceField},
                     'discount'  => $this->itemDiscountField !== '' ? (float) $it->{$this->itemDiscountField} : 0.0,
                     'total'     => (float) $it->{$this->itemTotalField},
+                    'description' => $this->itemDescriptionField !== ''
+                        ? (string) ($it->{$this->itemDescriptionField} ?? '') : '',
                 ];
             }
 
@@ -2639,9 +3017,13 @@ abstract class MadPdvComponent extends MadComponent
             ]));
     }
 
-    protected function _saleError(string $code, array $details = [], bool $recoverable = true): MadResponse
+    protected function _saleError(string $code, array $details = [], bool $recoverable = true, string $message = ''): MadResponse
     {
-        $msg = (string) __('pdv.err_' . str_replace('-', '_', $code));
+        // `$message`: a frase da tela (recusa do item montado) no lugar da genérica do código.
+        $key = 'err_' . str_replace('-', '_', $code);
+        $msg = $message !== ''
+            ? $message
+            : $this->_t($key, $code === 'compose-failed' ? 'Não foi possível montar o item.' : 'pdv.' . $key);
         return (new MadResponse())
             ->toast($msg, 'error')
             ->script($this->_pdvEvent('mad-pdv:sale-error', [

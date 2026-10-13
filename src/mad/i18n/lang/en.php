@@ -255,6 +255,12 @@ return [
             // Technical error (database/PHP) caught in an action: details go only to the log (Mad\Ui\MadUserError).
             'friendly'      => 'The operation could not be completed. Try again or contact the administrator.',
             'delete_failed' => 'The record could not be deleted. It may be in use elsewhere; if this continues, contact the administrator.',
+            // Record in use: the sentence says who uses it (Mad\Ui\MadRecordInUse).
+            'in_use'      => 'This record cannot be deleted: it is in use in :where. Delete or change those records first.',
+            'in_use_one'  => ':label (1 record)',
+            'in_use_many' => ':label (:count records)',
+            'in_use_and'  => ' and ',
+            'in_use_more' => ':count more places',
             'save_failed'   => 'Could not save. Try again or contact the administrator.',
             'load_failed'   => 'Could not load the data. Try again or contact the administrator.',
             'duplicate'     => 'A record with this data already exists.',

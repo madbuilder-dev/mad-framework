@@ -29,7 +29,8 @@ use Mad\Form\MadValidator;
  * detalhe interno — e a frase fica sem o campo. O que não se encaixa em nenhum
  * caso devolve `null`: quem chama mostra o aviso genérico.
  *
- * Nenhuma frase traz SQL, valor, nome de tabela ou de conexão.
+ * Nenhuma frase traz SQL, valor, nome de tabela ou de conexão. Quem USA um
+ * registro que não pôde ser excluído é assunto do {@see MadRecordInUse}.
  */
 final class MadDbErrorMessage
 {

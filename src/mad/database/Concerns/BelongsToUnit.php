@@ -21,6 +21,10 @@ use Mad\Database\UnitContext;
  *   - conferência: unit_id explícito que muda para uma unidade fora das do
  *     usuário ({@see UnitContext::allowedIds()}) lança UnitScopeViolation.
  *
+ * Sem unidade corrente a leitura não filtra (histórico). Com
+ * mad.general.unit_scope_empty = 'closed', um pedido HTTP sem unidade não lê
+ * linha nenhuma ({@see UnitContext::closedWhenEmpty()}).
+ *
  * Visão do administrador do dono (mad.tenant.admin_scope = 'all',
  * {@see AdminScope}): a LEITURA dele não filtra unidade (readIds() = null); o
  * carimbo continua na ativa, e um registro de unidade que não é dele não muda
@@ -88,8 +92,9 @@ trait BelongsToUnit
 
     /**
      * Unidades que o escopo desta tabela enxerga AGORA (a ativa, ou todas as do
-     * usuário no modo 'all'). null = sem filtro. É o que as regras
-     * `unique`/`exists` usam para contar as mesmas linhas que a leitura.
+     * usuário no modo 'all'). null = sem filtro; [] = nenhuma linha (sem
+     * unidade com a leitura fechada). É o que as regras `unique`/`exists` usam
+     * para contar as mesmas linhas que a leitura.
      *
      * @return list<int>|null
      */
@@ -112,6 +117,15 @@ trait BelongsToUnit
             $ids = UnitContext::readIds();
             if ($ids === null) {
                 return; // sem unidade corrente => sem filtro
+            }
+            if ($ids === []) {
+                // Sem unidade e leitura fechada (mad.general.unit_scope_empty =
+                // 'closed'): nenhuma linha, e um aviso por pedido para a tela
+                // vazia não ficar sem explicação.
+                $builder->whereRaw('0 = 1');
+                UnitContext::noteClosedRead($model::class);
+
+                return;
             }
             // Uma unidade só (modo 'active', ou usuário de uma filial): o mesmo
             // `=` de sempre — SQL, plano e chave de cache idênticos.

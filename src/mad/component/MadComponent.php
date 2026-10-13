@@ -177,6 +177,24 @@ abstract class MadComponent
     protected array $_comboOrigin = [];
 
     /**
+     * Campos com mensagem de erro pintada pela resposta de uma ação
+     * (`fieldError()`): campo => ação que pintou. Sobrevive aos POSTs do wire.
+     *
+     * @var array<string,string>
+     */
+    private array $_paintedErrors = [];
+
+    /**
+     * Propriedades públicas que a tela entregou com uma DATA no formato do
+     * banco e que têm um campo de data com o mesmo nome no formulário (fw#274).
+     * Viajam no estado: o que o navegador devolve para elas volta ao formato
+     * do banco — ver {@see _keepDbDates()}.
+     *
+     * @var array<string, true>
+     */
+    private array $_dbDateProps = [];
+
+    /**
      * Cache de nomes de props públicas por classe.
      * Evita Reflection repetida a cada render/getState.
      *
@@ -1039,6 +1057,45 @@ abstract class MadComponent
         }
     }
 
+    /**
+     * A mensagem de erro que a própria ação pintou num campo (`fieldError()`)
+     * sai da tela quando a MESMA ação roda de novo e não a pinta: o campo
+     * passou. Outra ação da tela (um filtro, um `mad:change`) não mexe nela.
+     *
+     * Devolve as ops de limpeza — o MadComponentHandler as põe ANTES das ops
+     * da resposta — e passa a lembrar o que `$ops` pinta.
+     *
+     * @internal chamado pelo MadComponentHandler antes de cifrar o estado da resposta
+     *
+     * @param list<array<string,mixed>> $ops ops da resposta (as limpezas do `validate()` que passou inclusive)
+     * @return list<array<string,mixed>>
+     */
+    public function _reconcilePaintedErrors(string $action, array $ops): array
+    {
+        $marks  = MadResponse::fieldErrorMarks($ops);
+        $clears = [];
+
+        if ($action !== '') {
+            foreach ($this->_paintedErrors as $field => $paintedBy) {
+                if ($paintedBy !== $action || array_key_exists($field, $marks)) {
+                    continue;
+                }
+                $clears = [...$clears, ...(new MadResponse())->clearFieldError((string) $field)->getOps()];
+                unset($this->_paintedErrors[$field]);
+            }
+        }
+
+        foreach ($marks as $field => $painted) {
+            if ($painted && $action !== '') {
+                $this->_paintedErrors[$field] = $action;
+            } else {
+                unset($this->_paintedErrors[$field]);
+            }
+        }
+
+        return $clears;
+    }
+
     /** O HTML do render em curso já foi lido por _declareFromHtml()? (o redesenho completo embrulha o mesmo HTML) */
     private bool $_htmlDeclared = false;
 
@@ -1164,6 +1221,10 @@ abstract class MadComponent
     public function _getState(): array
     {
         $state = $this->_publicProps();
+        // Só de render: a view as recebe (render() lê _publicProps()), o estado não.
+        foreach ($this->_stateExcludedProps() as $renderOnly) {
+            unset($state[$renderOnly]);
+        }
         if (!empty($this->_forwardParams)) {
             $state['_forwardParams'] = $this->_forwardParams;
         }
@@ -1174,6 +1235,13 @@ abstract class MadComponent
         // do GET que abriu o drawer — sem isto, returnToCombo() sempre veria null.
         if ($this->_comboOrigin !== []) {
             $state['_comboOrigin'] = $this->_comboOrigin;
+        }
+        if ($this->_paintedErrors !== []) {
+            $state['_paintedErrors'] = $this->_paintedErrors;
+        }
+        $dbDates = $this->_dbDatePropNames($state);
+        if ($dbDates !== []) {
+            $state['_dbDateProps'] = $dbDates;
         }
         return $state;
     }
@@ -1200,6 +1268,18 @@ abstract class MadComponent
         if (isset($state['_comboOrigin']) && is_array($state['_comboOrigin'])) {
             $this->_comboOrigin = $state['_comboOrigin'];
             unset($state['_comboOrigin']);
+        }
+
+        // Restaura as mensagens de erro que a tela pintou (interno)
+        if (isset($state['_paintedErrors']) && is_array($state['_paintedErrors'])) {
+            $this->_paintedErrors = array_filter($state['_paintedErrors'], 'is_string');
+            unset($state['_paintedErrors']);
+        }
+
+        // Restaura as props de data no formato do banco (interno, fw#274)
+        if (isset($state['_dbDateProps']) && is_array($state['_dbDateProps'])) {
+            $this->_dbDateProps = array_fill_keys(array_filter($state['_dbDateProps'], 'is_string'), true);
+            unset($state['_dbDateProps']);
         }
 
         foreach ($state as $key => $value) {
@@ -1660,9 +1740,13 @@ abstract class MadComponent
         }
         $values = $filtered;
         $this->_warnRefusedByForms();
+        // O que vai para as PROPRIEDADES: a data volta ao formato do banco
+        // quando foi nele que a tela a entregou. O formulário segue recebendo
+        // o que o navegador mandou ($values).
+        $forProps = $this->_keepDbDates($values);
 
         // ── Fase 1: hooks updating (antes de alterar) ─────────────────────────
-        foreach ($values as $prop => $newValue) {
+        foreach ($forProps as $prop => $newValue) {
             if (!$this->_isPublicProp($prop)) continue;
 
             $old = $this->_isInitialized($prop) ? $this->$prop : null;
@@ -1676,7 +1760,7 @@ abstract class MadComponent
         }
 
         // ── Fase 2: aplica os valores ─────────────────────────────────────────
-        $this->fill($values);
+        $this->fill($forProps);
         $this->_fillHomonymFormFields($values);
 
         // ── Fase 3: hooks updated (após alterar) ──────────────────────────────
@@ -1692,6 +1776,69 @@ abstract class MadComponent
                 $this->$specific($current);
             }
         }
+    }
+
+    /**
+     * Propriedade pública com o mesmo nome de um campo de DATA do formulário
+     * (fw#274). A tela põe `2026-10-11` na propriedade (no `mount`, por
+     * exemplo), o campo mostra `11/10/2026` e devolvia esse texto a cada ação:
+     * a propriedade trocava de formato sozinha e a consulta do render seguinte
+     * não achava mais nada, sem erro.
+     *
+     * A propriedade que a tela entregou no formato do banco continua nele: o
+     * texto do campo de data passa pela mesma conversão do `$form->get()`.
+     * Propriedade que nunca teve data do banco (nasce vazia e só o usuário a
+     * preenche) segue recebendo o texto da tela, como sempre recebeu; campo
+     * que não é de data não é tocado.
+     *
+     * @param  array<string,mixed> $values já filtrados por _applyModelValues()
+     * @return array<string,mixed>
+     */
+    private function _keepDbDates(array $values): array
+    {
+        foreach ($this->_dbDateProps as $prop => $_) {
+            $value = $values[$prop] ?? null;
+            if (!is_string($value) || !\Mad\Form\MadFormRegistry::isDisplayDate($value)) {
+                continue;
+            }
+            $props = \Mad\Form\MadFormRegistry::requestFieldProps($prop);
+            if (in_array($props['type'] ?? null, ['date', 'datetime'], true)) {
+                $values[$prop] = \Mad\Form\MadFormRegistry::transformField($value, $props);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Nomes para o `_dbDateProps` do estado: os que já vieram nele mais as
+     * propriedades de texto que AGORA guardam uma data no formato do banco e
+     * têm campo homônimo num formulário da tela. Uma vez na lista, fica — a
+     * tela que limpa o filtro e escolhe outro dia continua no mesmo formato.
+     *
+     * @param  array<string,mixed> $publicState propriedades públicas já serializadas
+     * @return list<string>
+     */
+    private function _dbDatePropNames(array $publicState): array
+    {
+        $names = $this->_dbDateProps;
+        $forms = null;
+
+        foreach ($publicState as $name => $value) {
+            if (isset($names[$name]) || !is_string($value)
+                || preg_match('/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/', $value) !== 1) {
+                continue;
+            }
+            $forms ??= $this->_forms();
+            foreach ($forms as $form) {
+                if ($form->declaresField((string) $name)) {
+                    $names[$name] = true;
+                    break;
+                }
+            }
+        }
+
+        return array_keys($names);
     }
 
     /**
@@ -2129,6 +2276,30 @@ abstract class MadComponent
         }
 
         return $props;
+    }
+
+    /**
+     * Props públicas que ficam FORA do estado da tela (`mad-state`): as que só
+     * servem ao render — a lista que a view percorre, o cardápio de uma
+     * vitrine. O estado vai cifrado no HTML e texto cifrado não comprime: uma
+     * lista grande numa prop pública dobrava o peso da página (fw#284).
+     *
+     *     protected function _stateExcludedProps(): array
+     *     {
+     *         return ['cardapio', 'categorias'];
+     *     }
+     *
+     * O que muda para a prop listada: o render da abertura a enxerga como
+     * sempre; numa AÇÃO ela chega com o valor inicial da classe (não veio do
+     * navegador) — recarregue-a no `hydrate()`, que roda antes de toda ação.
+     * Não liste aqui o que uma ação precisa lembrar (o registro aberto, o
+     * filtro escolhido): isso é estado.
+     *
+     * @return list<string>
+     */
+    protected function _stateExcludedProps(): array
+    {
+        return [];
     }
 
     /**

@@ -271,6 +271,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Mes/ano atuais como default no mount(). */
     protected bool $defaultToCurrentPeriod = false;
 
+    /**
+     * Período em que a tela abre (e para o qual o "Limpar" volta), pelo nome
+     * do atalho: 'hoje', 'ontem', '7d', '30d', 'mes', 'mes_anterior',
+     * 'trimestre', 'ano', 'ano_anterior'. '' = não usa. Vence
+     * $defaultToCurrentPeriod.
+     */
+    protected string $defaultPeriod = '';
+
     /** Habilita dropdown de presets dentro do period-filter blade. */
     protected bool $usePresets = false;
 
@@ -638,6 +646,73 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
+     * Fonte da listagem por CONSULTA, no lugar da tabela do `$model`: linhas
+     * que vêm de mais de uma tabela (`union`), de um `join` com colunas
+     * próprias, de um agrupamento.
+     *
+     *   protected function sourceQuery(): mixed
+     *   {
+     *       $porTamanho = ProdutoTamanhoPreco::query()
+     *           ->join('produto', 'produto.id', '=', 'produto_tamanho_preco.produto_id')
+     *           ->selectRaw('produto_tamanho_preco.id as id, produto.nome, produto_tamanho_preco.preco');
+     *       $precoUnico = Produto::query()->selectRaw('100000 + id as id, nome, preco');
+     *
+     *       return $porTamanho->unionAll($precoUnico);
+     *   }
+     *
+     * A listagem usa a consulta como tabela: os `field` das colunas são os
+     * nomes que ela devolve, e por cima dela valem página, ordenação, busca,
+     * filtros, total do rodapé e exportação. `$model` não é usado. A linha não
+     * é um registro de uma tabela: excluir, editar na célula e `manageRow` não
+     * se aplicam; ação de linha recebe a coluna `id` da consulta.
+     *
+     * Escopos de empresa, unidade e lixeira entram quando a consulta parte dos
+     * Models (`Produto::query()`), não de `DB::table()`.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder|null
+     */
+    protected function sourceQuery(): mixed
+    {
+        return null;   // null = a tabela do $model
+    }
+
+    /** A tela declara `sourceQuery()`? */
+    protected function _usesSource(): bool
+    {
+        return $this->_usesSource
+            ??= (new \ReflectionMethod($this, 'sourceQuery'))->getDeclaringClass()->getName() !== self::class;
+    }
+
+    private ?bool $_usesSource = null;
+
+    /**
+     * A consulta de `sourceQuery()` como tabela derivada, pronta para receber
+     * filtros, ordenação e página — ou null quando a tela não a declara. Com a
+     * fonte declarada o `$model` sai de cena: o que vale são as colunas da
+     * consulta, não as da tabela dele.
+     */
+    protected function _sourceBase(): ?\Illuminate\Database\Query\Builder
+    {
+        if (!$this->_usesSource()) {
+            return null;
+        }
+        $source = $this->sourceQuery();
+        if ($source === null) {
+            return null;
+        }
+        // toBase(): aplica os escopos globais do Model (lixeira, unidade, empresa).
+        if ($source instanceof \Illuminate\Database\Eloquent\Builder) {
+            $source = $source->toBase();
+        }
+        if (!$source instanceof \Illuminate\Database\Query\Builder) {
+            throw new \LogicException(static::class . '::sourceQuery() precisa devolver uma consulta (Builder).');
+        }
+        $this->model = '';
+
+        return $source->getConnection()->query()->fromSub($source, 'mad_src');
+    }
+
+    /**
      * Decora UM registro para a linha reapresentada pelo `manageRow`.
      *
      * Existe porque os dois caminhos de render não passam pelo mesmo lugar: a
@@ -674,6 +749,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         // MadFiltersTrait — init form + carrega state de filtros
         $this->_initFiltersForm();
+
+        // Período padrão declarado ($defaultPeriod) — so se subclasse nao seedou
+        if ($this->_defaultPeriodPreset() !== '' && $this->mes === '' && $this->ano === ''
+            && $this->dtIni === '' && $this->dtFim === '' && $this->preset === '') {
+            $this->_seedDefaultPeriod();
+        }
 
         // Period default — so se subclasse nao seedou
         if ($this->defaultToCurrentPeriod && $this->mes === '' && $this->ano === '') {
@@ -884,7 +965,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
                 return $key === null ? $livre : [
                     'mode'  => \Mad\Security\ActionGuard::mode() === 'hide' ? 'hide' : 'disable',
-                    'title' => \Mad\Security\ActionVocab::denyTitle($key),
+                    'title' => \Mad\Security\ActionVocab::denyTitle($key, \Mad\Security\PermissionGate::actionOwners($this)),
                 ];
             }
             if ($target !== '') {
@@ -1427,6 +1508,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         $sql = null;
         try {
+            if ($this->_usesSource()) {
+                // Fonte por consulta: a fórmula lê as colunas da consulta.
+                return $this->_evaluateSqlMemo[$expr] = GridTotalsQuery::sourceEvaluateSql(
+                    \Illuminate\Support\Facades\DB::connection($this->_db()), $expr
+                );
+            }
             $class = (!empty($this->model) && !class_exists($this->model))
                 ? \Mad\Form\ModelOptionsLoader::resolveModelClass($this->model)
                 : $this->model;
@@ -1929,8 +2016,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $found   = false;
         $deleted = false;
         $blocked = false;   // a linha não tem o Excluir: escondido ou desabilitado pela condição
+        $target  = null;    // o registro que se tentou excluir: a recusa "em uso" diz quem o usa
         try {
-            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, &$found, &$deleted, &$blocked) {
+            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, &$found, &$deleted, &$blocked, &$target) {
                 $record = $this->_visibleRecord($id);
                 if (!$record) {
                     return;
@@ -1940,6 +2028,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     $blocked = true;
                     return;
                 }
+                $target = $record;
                 // delete() devolve false quando um `deleting` cancela. O estado
                 // do registro confirma (um delete() sobrescrito pode não devolver
                 // nada): sumiu do banco, ou foi para a lixeira (SoftDeletes).
@@ -1949,10 +2038,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             });
         } catch (\Throwable $e) {
             // Erro técnico (ex.: registro em uso — violação de FK) não vai cru
-            // pra tela: o toast mostrava o SQL e o caminho do banco.
+            // pra tela: o toast mostrava o SQL e o caminho do banco. Registro em
+            // uso (FK do banco ou guard do Model gerado): a frase diz QUEM o usa.
+            $inUse = \Mad\Ui\MadRecordInUse::explain($e, $target);
+
             return \Mad\Ui\MadUserError::isTechnical($e)
-                ? \Mad\Ui\MadToast::danger(\Mad\Ui\MadUserError::message($e, mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
-                : \Mad\Ui\MadToast::danger('Erro ao excluir: ' . $e->getMessage());
+                ? \Mad\Ui\MadToast::danger(\Mad\Ui\MadUserError::message($e, $inUse ?? mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
+                : \Mad\Ui\MadToast::danger($inUse ?? 'Erro ao excluir: ' . $e->getMessage());
         }
 
         $this->loadData();
@@ -3345,7 +3437,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _countForExport(): ?int
     {
-        if (empty($this->model) || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
+        if ((empty($this->model) && !$this->_usesSource()) || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
             return null;
         }
         foreach (['query', '_autoQuery', '_runQuery', 'loadData'] as $method) {
@@ -4710,8 +4802,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _buildQuery($base = null)
     {
-        // $base: fonte alternativa (ex: derived table do MadSeekGrid). Default = model.
-        $q     = $base ?? $this->model::query();
+        // $base: fonte alternativa (ex: derived table do MadSeekGrid). Sem ela, a
+        // consulta de sourceQuery() quando a tela declara; senão, a tabela do model.
+        $q     = $base ?? $this->_sourceBase() ?? $this->_modelQuery();
         $model = $this->model ?: null;
 
         // (A) período + unit + auto-discovery — siblings builder-native.
@@ -4963,8 +5056,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Query automática builder-native (Fase 4c-2/4). Conexão do model (Eloquent). */
     protected function _autoQuery(): array
     {
-        if (empty($this->model)) return ['items' => [], 'total' => 0];
+        if (empty($this->model) && !$this->_usesSource()) return ['items' => [], 'total' => 0];
         return $this->_runQuery($this->_buildQuery());
+    }
+
+    /** A consulta na tabela do `$model` — o ponto de partida de toda listagem sem fonte própria. */
+    private function _modelQuery()
+    {
+        if (empty($this->model)) {
+            throw new \LogicException(static::class . ': a listagem não tem $model'
+                . ($this->_usesSource() ? ' e sourceQuery() devolveu null.' : '.'));
+        }
+
+        return $this->model::query();
     }
 
     /**
@@ -5080,7 +5184,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _grandTotals(array $columns): array
     {
-        if (empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class)) {
+        $source = $this->_usesSource();
+        if (!$source && (empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class))) {
             return [];
         }
         foreach (self::TOTALS_QUERY_HOOKS as $method) {
@@ -5093,6 +5198,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // A MESMA consulta da tela: _buildQuery() + o closure do onSearch(),
             // como o _runQuery() faz para contar as linhas.
             $q = $this->_buildQuery();
+            // Fonte por consulta (sourceQuery): o total sai da tabela derivada.
+            if ($source && $q instanceof \Illuminate\Database\Query\Builder) {
+                if ($this->searchQuery) { ($this->searchQuery)($q); }
+
+                return GridTotalsQuery::sourceTotals($q, $columns);
+            }
             if (!$q instanceof \Illuminate\Database\Eloquent\Builder) {
                 return [];
             }
@@ -7323,7 +7434,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             foreach ($visibleColumns as $col) {
                 $cellVal  = $row[$col->field] ?? '';
                 $rendered = $col->renderValue($cellVal, $row);
-                $html .= '<td class="mad-dg-cell" style="text-align:' . $col->align . ';">' . $rendered . '</td>';
+                $html .= '<td class="mad-dg-cell' . $col->nowrapClass() . '" style="text-align:' . $col->align . ';">' . $rendered . '</td>';
             }
             $html .= '</tr>';
             return $html;

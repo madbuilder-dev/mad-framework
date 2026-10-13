@@ -67,6 +67,29 @@ class MadRenderContext
     }
 
     /**
+     * Empilha uma cópia do contexto atual SEM os valores de `$names` (mesmo
+     * componente). Usado pelo editor do `<mad-detail-form>`: os campos dele
+     * são colunas da LINHA, e o valor que o registro principal tem numa coluna
+     * de mesmo nome (`nome`, `ativo`, `ordem`) não é o valor inicial deles —
+     * vale o padrão da tag. O resto do contexto segue visível (o campo do
+     * formulário principal de que um combo da linha depende, por exemplo).
+     *
+     * Quem chama desempilha com `pop()`.
+     *
+     * @param list<string> $names
+     */
+    public static function pushWithout(array $names): void
+    {
+        $context = self::current();
+        foreach ($names as $name) {
+            unset($context[$name]);
+        }
+
+        self::$stack[]      = $context;
+        self::$components[] = self::getComponent();
+    }
+
+    /**
      * Remove o contexto do topo do stack (chamado após o render do componente).
      */
     public static function pop(): void

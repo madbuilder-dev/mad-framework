@@ -23,6 +23,21 @@
     // F5: filtro extra removido (builder-native); detail sempre por FK.
     $_flCritToken = '';
 
+    // ── Lista de itens da LINHA de um detalhe (fw#251) ───────────────────────
+    // Desenhada dentro do <mad-detail-fields>, com model + foreign-key: os itens
+    // são da linha que o editor abre, não do registro da tela. Ela não carrega
+    // nem grava sozinha — as linhas viajam dentro da linha do detalhe (mad-ui.js,
+    // madDetailForm) e o Salvar as grava com a linha (MadForm::_saveNestedLists).
+    $_flNested = '';
+    if ($model && $foreignKey && ($_flScope = \Mad\Component\MadRenderContext::getForm()?->detailEditorScope())) {
+        $_flNested       = (string) $_flScope;
+        $_flNestedModel  = (string) $model;
+        $_flNestedFk     = (string) $foreignKey;
+        $model = $foreignKey = '';
+        $rows  = [];
+    }
+    unset($_flScope);
+
     // ── Colunas com caminho de relacionamento (`{cidade->estado->pais->nome}`) ──
     // Não existem no toArray() da linha: só resolvem percorrendo as relações do
     // registro filho. Mesmo mecanismo do <mad-grid>/<mad-data-table>.
@@ -111,12 +126,25 @@
             'forceCase' => $_mc->forceCase,
         ];
     }
-    \Mad\Form\MadFormRegistry::registerFieldList($name, array_map(fn($c) => $c->field, $columns), $model, $foreignKey, $database, $_flColMeta);
+    if ($_flNested !== '') {
+        // Da linha do detalhe: quem a conhece é o detalhe, não o formulário.
+        $_flLabels = [];
+        foreach ($columns as $_lc) {
+            $_flLabels[(string) $_lc->field] = trim(strip_tags((string) $_lc->label));
+        }
+        \Mad\Component\MadRenderContext::getForm()?->declareNestedList(
+            $_flNested, $name, $_flNestedModel, $_flNestedFk,
+            array_map(fn($c) => (string) $c->field, $columns), $_flColMeta, $_flLabels, trim(strip_tags((string) $label))
+        );
+        unset($_flLabels, $_lc);
+    } else {
+        \Mad\Form\MadFormRegistry::registerFieldList($name, array_map(fn($c) => $c->field, $columns), $model, $foreignKey, $database, $_flColMeta);
+    }
 
     // Colunas da linha que a grade não mostra: o formulário anota como estavam
     // no banco — o Salvar não regrava a que ninguém mexeu. Na lista gravada à
     // mão (sem model na tag) a base vem do loadDetailRows() da tela.
-    if ($_form = \Mad\Component\MadRenderContext::getForm()) {
+    if ($_flNested === '' && ($_form = \Mad\Component\MadRenderContext::getForm())) {
         $_form->noteDetailColumns($name, (string) $model, (string) $foreignKey, $initialRows);
         // Colunas em que o usuário DIGITA (fora as só de leitura, desabilitadas,
         // calculadas e ocultas): a que não for coluna da tabela e tiver valor é
@@ -175,7 +203,9 @@
     }
     // Sempre, mesmo sem coluna de arquivo: o formulário da tela anota como a
     // lista trata os arquivos das linhas, e o Salvar só aceita essa descrição.
-    \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_flFileCols);
+    if ($_flNested === '') {
+        \Mad\Form\MadFormRegistry::registerDetailFileColumns($name, $_flFileCols);
+    }
 
     // type='files': injeta os netos já gravados em cada linha (edição) p/ o modal exibir.
     // Chave '__flfiles_<campo>' (prefixo __ → ignorada no save do item).
@@ -321,7 +351,9 @@
 
     // As linhas como vão para o navegador: o que voltar diferente nas colunas
     // que a lista não tem não é aceito (MadForm::takeRowsFromBrowser).
-    \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $initialRows);
+    if ($_flNested === '') {
+        \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $initialRows);
+    }
 
     $cfgJson = json_encode([
         'columns'    => array_map(fn($c) => $c->toArray(), $columns),
@@ -343,7 +375,9 @@
     $hasError = !empty($error);
 @endphp
 
-<div class="mad-field {{ $class }}">
+{{-- Lista da linha de um detalhe: ocupa a largura toda do editor (na grade de
+     duas colunas do <mad-detail-fields> ela ficava espremida em uma). --}}
+<div class="mad-field {{ $class }}"@if($_flNested !== '') style="grid-column: 1 / -1;"@endif>
 
     {{-- Label e hint --------------------------------------------------------- --}}
     @if($label)
@@ -353,6 +387,7 @@
     {{-- Container principal do field-list ------------------------------------ --}}
     <div class="mad-fl {{ $hasError ? 'mad-fl-has-error' : '' }}"
          data-mad-fl-name="{{ $name }}"
+         @if($_flNested !== '') data-mad-fl-nested="{{ $_flNested }}" @endif
          x-data="madFieldList({{ $cfgJson }})"
          @if($sortable) data-sortable="1" @endif>
 
@@ -422,6 +457,7 @@
                 <span>Nenhum item adicionado</span>
             </div>
 
+            @php $__flMasterDeps = []; @endphp
             <template x-for="(row, rowIndex) in rows" :key="row.__id">
                 <div class="mad-fl-row" :data-row-id="row.__id"
                      x-init="$nextTick(() => { _madLucide(); if (typeof _madEnergizeFields === 'function') _madEnergizeFields($el); if (typeof _madFlApplyCachedOptions === 'function') _madFlApplyCachedOptions($el); })"
@@ -493,8 +529,21 @@
                                 $__cq = $__m::query();
                                 \Mad\Form\FieldListColumn::applyWhereStringToQuery($__cq, (string) $col->where);
 
+                                // depends-on="@campo" (fw#250): o pai é um campo do
+                                // formulário PRINCIPAL, não uma coluna da linha. As
+                                // opções saem filtradas pelo valor dele (o mesmo que o
+                                // campo mostra: registro aberto ou o que foi digitado).
+                                $__flMaster = \Mad\Form\FieldListColumn::masterDependsOn((string) $col->dependsOn);
+
                                 $depValues = [];
-                                if ($col->dependsOn && !empty($initialRows)) {
+                                if ($__flMaster !== '') {
+                                    $__flMv = \Mad\Component\MadRenderContext::current()[$__flMaster] ?? null;
+                                    if (is_scalar($__flMv) && (string) $__flMv !== '') {
+                                        $depValues = [(string) $__flMv];
+                                        $__cq->where($col->dependsColumn ?: $__flMaster, '=', $__flMv);
+                                    }
+                                    unset($__flMv);
+                                } elseif ($col->dependsOn && !empty($initialRows)) {
                                     $depValues = array_unique(array_filter(array_column($initialRows, $col->dependsOn)));
                                     if ($depValues) {
                                         $filterCol = $col->dependsColumn ?: $col->dependsOn;
@@ -527,9 +576,16 @@
                                         'display'  => $col->display,
                                         'order'    => $col->orderBy,
                                         'order_dir' => $col->orderDir,
-                                        'column'   => $col->dependsColumn ?: $col->dependsOn,
+                                        'column'   => $col->dependsColumn ?: ($__flMaster !== '' ? $__flMaster : $col->dependsOn),
                                         'where'    => $col->where,
                                     ]);
+                                    // A linha vive num <template x-for>: sem linhas não há
+                                    // <select> no DOM para dizer ao navegador que a coluna
+                                    // depende do campo do principal. O marcador sai fora do
+                                    // template, depois das linhas.
+                                    if ($__flMaster !== '') {
+                                        $__flMasterDeps[] = ['field' => $__flMaster, 'target' => $fld, 'token' => $depToken];
+                                    }
                                 }
                             }
 
@@ -1151,6 +1207,12 @@
 
                 </div>
             </template>
+            {{-- Colunas de combo que dependem de um campo do formulário principal
+                 (depends-on="@campo", fw#250): o mad-ui.js recarrega as opções de
+                 todas as linhas quando o campo muda. --}}
+            @foreach($__flMasterDeps as $__flMd)
+                <span hidden data-mad-fl-master-dep="{{ $__flMd['field'] }}" data-mad-fl-master-target="{{ $__flMd['target'] }}" data-mad-fl-dep-token="{{ $__flMd['token'] }}"></span>
+            @endforeach
         </div>
         {{-- /mad-fl-body ---------------------------------------------------- --}}
 

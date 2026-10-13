@@ -175,14 +175,32 @@ class MadForbidden
      *
      * @param  string|null  $key  chave do vocabulário (`delete`) ou nome do
      *                            método numa ação própria (`onAprovar`)
+     * @param  string|list<string>|null  $owners  tela(s) dona(s) do método: com
+     *                            elas a ação própria sai com o nome escrito em
+     *                            `#[MadPermission('…')]`, o mesmo da tela de
+     *                            Perfis, em vez do nome do método
      */
-    public static function actionMessage(?string $key): string
+    public static function actionMessage(?string $key, string|array|null $owners = null): string
     {
         if ($key === null || trim($key) === '') {
             return self::message();
         }
 
-        return \Mad\Security\ActionVocab::denyTitle(trim($key));
+        return \Mad\Security\ActionVocab::denyTitle(trim($key), $owners);
+    }
+
+    /**
+     * {@see wirePayload()} para a recusa do gate de ENTRADA do canal reativo:
+     * lê do próprio POST qual ação foi negada e de que tela ela é.
+     *
+     * @param  array<string, mixed>  $post
+     * @return array{error: string, title: string, forbidden: true, actions?: list<array{label: string, href: string, target: string}>}
+     */
+    public static function wireDenied(array $post): array
+    {
+        $negada = \Mad\Security\PermissionGate::deniedWireAction($post);
+
+        return self::wirePayload($negada['key'] ?? null, $negada['class'] ?? null);
     }
 
     /**
@@ -194,7 +212,7 @@ class MadForbidden
      *
      * @return array{error: string, title: string, forbidden: true, actions?: list<array{label: string, href: string, target: string}>}
      */
-    public static function wirePayload(?string $key = null): array
+    public static function wirePayload(?string $key = null, string|array|null $owners = null): array
     {
         // Recusa com motivo próprio (licença vencida): vale para a tela e para
         // a ação — as ações foram zeradas pelo mesmo motivo, e "Sem permissão
@@ -210,7 +228,7 @@ class MadForbidden
         }
 
         return [
-            'error'     => self::actionMessage($key),
+            'error'     => self::actionMessage($key, $owners),
             'title'     => self::heading(),
             'forbidden' => true,
         ];

@@ -137,6 +137,9 @@
                                     <img class="mad-pdv-line-img" x-show="cfg.behavior.showImages && l.image" :src="l.image" alt="">
                                     <div class="mad-pdv-line-name">
                                         <span x-text="l.name"></span>
+                                        {{-- Item montado: o que o caixa escolheu (sabores, borda, adicionais). --}}
+                                        <small class="mad-pdv-line-desc" x-show="l.description" x-cloak
+                                               x-text="l.description"></small>
                                         <small x-text="l.code || l.barcode || ''"></small>
                                         <small class="mad-pdv-stock-badge" x-show="l.stockWarn" x-cloak
                                                x-text="cfg.i18n.stock_short"></small>
@@ -173,13 +176,14 @@
                                     <small class="mad-pdv-unit" x-show="l.unit" x-text="l.unit"></small>
                                 </td>
                                 <td class="mad-pdv-col-money">
-                                    <template x-if="cfg.behavior.allowPriceOverride">
+                                    {{-- Preço do item montado é o do servidor: nunca editável. --}}
+                                    <template x-if="cfg.behavior.allowPriceOverride && !l.composite">
                                         <input type="text" inputmode="decimal" class="mad-pdv-money-input"
                                                :value="money(l.priceC)"
                                                @change="setLinePrice(i, $event.target.value)"
                                                @click.stop>
                                     </template>
-                                    <template x-if="!cfg.behavior.allowPriceOverride">
+                                    <template x-if="!cfg.behavior.allowPriceOverride || l.composite">
                                         <span x-text="money(l.priceC)"></span>
                                     </template>
                                 </td>
@@ -220,6 +224,12 @@
                                 </template>
                                 <td class="mad-pdv-col-money mad-pdv-line-total" x-text="money(lineTotalC(l))"></td>
                                 <td class="mad-pdv-col-actions">
+                                    <button type="button" class="mad-pdv-iconbtn mad-pdv-recompose" tabindex="-1"
+                                            x-show="l.composite" x-cloak
+                                            :aria-label="cfg.i18n.compose_edit" :title="cfg.i18n.compose_edit"
+                                            @click.stop="recompose(i)">
+                                        <i data-lucide="sliders-horizontal"></i>
+                                    </button>
                                     <button type="button" class="mad-pdv-iconbtn" tabindex="-1"
                                             :aria-label="cfg.i18n.remove_item"
                                             @click.stop="removeLine(i)">
@@ -580,6 +590,10 @@
                                     <span class="rl-name" x-text="ln.name"></span>
                                     <span class="rl-calc" x-text="fmtQty(ln.qty) + (ln.unit ? ln.unit : '') + ' x ' + money(toC(ln.unitPrice))"></span>
                                     <span class="rl-total" x-text="money(toC(ln.total))"></span>
+                                </div>
+                                {{-- Item montado: a descrição acompanha a linha no cupom. --}}
+                                <div class="mad-pdv-receipt-line mad-pdv-receipt-col mad-pdv-receipt-desc" x-show="ln.description">
+                                    <span class="rl-name" x-text="ln.description"></span>
                                 </div>
                                 <template x-for="cc in (ln.cols || [])" :key="cc.label">
                                     <div class="mad-pdv-receipt-line mad-pdv-receipt-col">

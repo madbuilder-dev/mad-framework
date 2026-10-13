@@ -1145,10 +1145,27 @@ function _madFlCellValue(row, name, el) {
 }
 
 /**
+ * Escreve `value` na célula `name` da LINHA (Alpine) — é o que o Salvar envia.
+ * As ops do servidor mexem no campo sem disparar `change` (acordaria o
+ * on-change e a cascata da coluna de destino), e o x-model de um <select> só
+ * sincroniza no `change`: a tela mostrava o valor novo e a linha seguia com o
+ * antigo, ou vazia (fw#257).
+ */
+function _madFlSyncRowModel(row, name, value) {
+    try {
+        var d = (window.Alpine && Alpine.$data) ? Alpine.$data(row) : null;
+        if (!d || !d.row) return;
+        var v = (value === null || value === undefined) ? '' : value;
+        var cur = d.row[name];
+        if (String(cur === null || cur === undefined ? '' : cur) !== String(v)) d.row[name] = v;
+    } catch (e) {}
+}
+
+/**
  * Popula um <select> dentro de uma row do field-list.
  * Trata MAD Select (destroy/reinit) e sincroniza Alpine x-model.
  */
-function _madFlApplyCombo(row, targetName, options, keepValue) {
+function _madFlApplyCombo(row, targetName, options, keepValue, leaveRow) {
     var target = row.querySelector('select[name="' + targetName + '[]"]');
     if (!target) return;
 
@@ -1184,6 +1201,10 @@ function _madFlApplyCombo(row, targetName, options, keepValue) {
     // Limpa o valor selecionado (ou repõe o salvo, na carga) e sincroniza Alpine
     target.value = keep;
     target.dispatchEvent(new Event('input', { bubbles: true }));
+    // A linha (o que o Salvar envia) acompanha o combo: sem isto ela seguia
+    // com o valor antigo, que saiu da tela (fw#257). `leaveRow`: a troca
+    // GLOBAL de lista (setItems fora do on-change) não mexe nas linhas.
+    if (!leaveRow) _madFlSyncRowModel(row, targetName, keep);
 
     // MAD Select: re-projeta a UI; se ainda não montado, monta agora
     if (target._madSelect) target._madSelect.refreshOptions(true);
@@ -1218,7 +1239,7 @@ function _madFlApplyComboAll(container, targetName, options) {
 
     // 2) Atualiza rows existentes
     container.querySelectorAll('.mad-fl-row').forEach(function(row) {
-        _madFlApplyCombo(row, targetName, options);
+        _madFlApplyCombo(row, targetName, options, false, true);
     });
 }
 
@@ -1254,12 +1275,14 @@ function _madFlApplyVal(row, targetName, value, keepValue) {
     // Se tem MAD Select, usa a API dele
     if (target._madSelect) {
         target._madSelect.setValue(value, true);
+        _madFlSyncRowModel(row, targetName, target.value);
         return;
     }
 
     target.value = value;
     // Dispara evento para sincronizar Alpine x-model
     target.dispatchEvent(new Event('input', { bubbles: true }));
+    if (target.tagName === 'SELECT') _madFlSyncRowModel(row, targetName, target.value);
 
     // Campo mascarado de FORM (numeric/money) dentro da row: o componente
     // reformata com as próprias casas decimais.
@@ -1371,6 +1394,102 @@ document.addEventListener('change', function(e) {
         });
     });
 });
+
+/* ═══════════════════════════════════════════════════════════════════
+   FIELD-LIST depends-on="@campo" — o pai é um campo do formulário PRINCIPAL
+   ═══════════════════════════════════════════════════════════════════
+
+   <mad-field-list-column type="dbcombo" depends-on="@categoria_id" …> (fw#250):
+   o servidor desenha as opções pelo valor do campo e deixa, fora do
+   <template x-for> das linhas, um marcador por coluna dependente
+   ([data-mad-fl-master-dep], com o token da consulta). Quando o campo muda,
+   UM pedido por coluna traz a lista nova, aplicada em todas as linhas e
+   guardada para as que nascem depois.
+*/
+function _madFlMasterValue(el) {
+    var t = String(el.type || '').toLowerCase();
+    if ((t === 'checkbox' || t === 'radio') && !el.checked) return '';
+    return (el.value === undefined || el.value === null) ? '' : String(el.value);
+}
+
+function _madFlMasterApply(list, targetName, options) {
+    options = options || {};
+    // Linhas que nascem depois (Adicionar, setRows, redesenho) — ver _madFlApplyCachedOptions.
+    var scope = _madFlCacheScope(list);
+    (_madFlComboOptionsCache[scope] = _madFlComboOptionsCache[scope] || {})[targetName] = options;
+
+    list.querySelectorAll('.mad-fl-row').forEach(function(row) {
+        var target = row.querySelector('select[name="' + targetName + '[]"]');
+        if (!target) return;
+        // O valor que continua na lista nova fica; o de outra categoria sai
+        // do combo e da linha (o que o Salvar envia).
+        var cur = _madFlCellValue(row, targetName, target);
+        var stays = cur !== '' && Object.prototype.hasOwnProperty.call(options, cur);
+        _madFlApplyCombo(row, targetName, options, stays);
+    });
+}
+
+function _madFlMasterChanged(el) {
+    if (!el || !el.name || (el.closest && el.closest('.mad-fl-row'))) return;
+    var wrapper = _madOwnerComponent(el);
+    if (!wrapper || !wrapper.querySelectorAll) return;
+    var fieldName = String(el.name).replace(/\[\]$/, '');
+    var marks = wrapper.querySelectorAll('[data-mad-fl-master-dep="' + fieldName.replace(/["\\]/g, '\\$&') + '"]');
+    if (!marks.length) return;
+    var endpoint = wrapper.getAttribute('mad-endpoint');
+
+    Array.prototype.forEach.call(marks, function(mark) {
+        if (_madOwnerComponent(mark) !== wrapper) return;
+        var list = mark.closest('[data-mad-fl-name]');
+        var targetName = mark.getAttribute('data-mad-fl-master-target') || '';
+        if (!list || !targetName) return;
+        var listName = list.getAttribute('data-mad-fl-name') || '';
+        var token = mark.getAttribute('data-mad-fl-dep-token') || '';
+        var parentValue = _madFlMasterValue(el);
+
+        if (parentValue === '') {
+            // Campo vazio → nenhuma opção, sem ida ao servidor.
+            _madFlMasterApply(list, targetName, {});
+            return;
+        }
+        if (!endpoint) return;
+
+        // Em fila (ver _madWireQueued), com o estado da hora do envio.
+        _madWireQueued(wrapper, function(wrapper) {
+        var body = new FormData();
+        body.append('mad_state',  wrapper.getAttribute('mad-state'));
+        body.append('mad_id',     wrapper.getAttribute('mad-id'));
+        body.append('mad_action', '_madFlDependentOptions');
+        body.append('mad_params', JSON.stringify({ target: targetName, token: token, value: parentValue }));
+
+        return fetch(endpoint, { method: 'POST', body: body, headers: _madWireHeaders() })
+            .then(function(r) { return _madWireJson(r, { source: 'mad-fl-depends', method: 'POST' }); })
+            .then(function(data) {
+                if (!data) return;   // erro do servidor já exibido (MadErrorModal)
+                if (data.error) { console.error('[mad-fl-depends]', data.error); return; }
+                _madSyncWireState(wrapper, data);
+                // O campo mudou de novo enquanto esta resposta vinha: a lista
+                // é de um valor que já não está na tela.
+                if (_madFlMasterValue(el) !== parentValue) return;
+                // A lista pode ter sido redesenhada enquanto a resposta vinha.
+                var live = (document.contains && !document.contains(list) && wrapper.querySelector)
+                    ? wrapper.querySelector('[data-mad-fl-name="' + listName.replace(/["\\]/g, '\\$&') + '"]')
+                    : list;
+                if (!live) return;
+
+                var globalOps = [];
+                (data.ops || []).forEach(function(op) {
+                    if (op.op === 'fl_combo') _madFlMasterApply(live, op.target, op.options);
+                    else                      globalOps.push(op);
+                });
+                _madApplyWireOps(globalOps, wrapper);
+            })
+            .catch(function(err) { console.error('[mad-fl-depends] Erro:', err); });
+        });
+    });
+}
+
+document.addEventListener('change', function(e) { _madFlMasterChanged(e.target); });
 
 /* ═══════════════════════════════════════════════════════════════════
    FIELD-LIST auto-fire — Camada 2: dispara onChange em selects populados no init
@@ -3233,6 +3352,35 @@ var _madWhen = (function () {
         }
     }
 
+    // Botão-link (`<mad-btn href>` = `<a class="mad-btn">`) sob disabled-when
+    // (fw#258): link não tem `disabled`. O voto marca a classe (o CSS barra o
+    // clique), avisa o leitor de tela e tira o link do Tab; sem votos, os
+    // atributos voltam ao que o servidor desenhou.
+    function btnLinks(root) {
+        var out = [];
+        if (root.matches && root.matches('a.mad-btn')) out.push(root);
+        var inner = root.querySelectorAll ? root.querySelectorAll('a.mad-btn') : [];
+        for (var i = 0; i < inner.length; i++) out.push(inner[i]);
+        return out;
+    }
+
+    function voteLink(a, id, on) {
+        if (!a.setAttribute) return;
+        var st = a._madWhenLink || (a._madWhenLink = { votes: new Set(), aria: null, tab: null, enforcing: false });
+        if (on) st.votes.add(id); else st.votes.delete(id);
+        if (st.votes.size > 0) {
+            if (!st.enforcing) { st.aria = a.getAttribute('aria-disabled'); st.tab = a.getAttribute('tabindex'); st.enforcing = true; }
+            a.classList.add('mad-when-disabled');
+            a.setAttribute('aria-disabled', 'true');
+            a.setAttribute('tabindex', '-1');
+        } else if (st.enforcing) {
+            a.classList.remove('mad-when-disabled');
+            if (st.aria === null) a.removeAttribute('aria-disabled'); else a.setAttribute('aria-disabled', st.aria);
+            if (st.tab === null) a.removeAttribute('tabindex'); else a.setAttribute('tabindex', st.tab);
+            st.enforcing = false;
+        }
+    }
+
     // Uma condição montada num elemento. Não liga listener nenhum: quem
     // decide QUANDO reavaliar é a diretiva (e o teste).
     function mount(el, kind, expression) {
@@ -3246,6 +3394,7 @@ var _madWhen = (function () {
         var root = (el.closest && el.closest('.mad-field')) || el;
         var scope = (el.closest && (el.closest('form') || el.closest('[mad-component]'))) || document;
         var touched = new Set();
+        var links = new Set();
         var warned = false;
         var getter = function (n) { return readValue(scope, n); };
 
@@ -3298,6 +3447,7 @@ var _madWhen = (function () {
                 vote(list[i], kind, id, on);
             }
             if (kind === 'disabled' && root.classList) root.classList.toggle('mad-when-disabled', on);
+            if (kind === 'disabled') btnLinks(root).forEach(function (a) { links.add(a); voteLink(a, id, on); });
             if (kind === 'required') starFields().forEach(syncStar);
             recheck(root);
         }
@@ -3311,6 +3461,8 @@ var _madWhen = (function () {
             stars.forEach(syncStar);
             if (kind === 'visible') voteHidden(root, id, false);
             if (kind === 'disabled' && root.classList) root.classList.remove('mad-when-disabled');
+            links.forEach(function (a) { voteLink(a, id, false); });
+            links.clear();
             recheck(root);
         }
 
@@ -10318,7 +10470,7 @@ document.addEventListener('alpine:init', () => {
 
                 container.querySelectorAll('[name]').forEach(inp => {
                     const field = inp.getAttribute('name');
-                    if (!field || field.startsWith('__')) return;
+                    if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
 
                     // Listener bidirecional: input → formData
                     const sync = () => {
@@ -10349,7 +10501,7 @@ document.addEventListener('alpine:init', () => {
 
                 container.querySelectorAll('[name]').forEach(inp => {
                     const field = inp.getAttribute('name');
-                    if (!field || field.startsWith('__')) return;
+                    if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
 
                     const val = this.formData[field] ?? '';
 
@@ -10425,7 +10577,10 @@ document.addEventListener('alpine:init', () => {
 
                     // ── Checkbox / Switch
                     if (inp.type === 'checkbox') {
-                        inp.checked = !!val && val !== '0' && val !== '';
+                        // Interruptor de dois valores ('A'/'I'): o valor de
+                        // desligado da linha não é "marcado".
+                        const off = inp.getAttribute('data-value-off');
+                        inp.checked = !!val && val !== '0' && val !== '' && !(off !== null && String(val) === off);
                     // ── Select padrão
                     } else if (inp.tagName === 'SELECT') {
                         inp.value = val;
@@ -10455,7 +10610,109 @@ document.addEventListener('alpine:init', () => {
                     this.formData[k] = c.default ?? '';
                 });
                 this.editIndex = -1;
-                this.$nextTick(() => { this._syncFormInputs(); this._clearFileInputs(); });
+                const fresh = this.formData;
+                this.$nextTick(() => {
+                    // Só na linha nova: se um editRow() entrou antes deste
+                    // tick, o formData já é o da linha em edição.
+                    if (this.formData === fresh) { this._applyFieldDefaults(); this._nestedLoad(null); }
+                    this._syncFormInputs(); this._clearFileInputs();
+                });
+            },
+
+            // ── Listas de itens da LINHA (fw#251) ───────────────────────
+            // `<mad-field-list model foreign-key>` dentro do editor: os itens
+            // são da linha aberta. A linha os leva na chave com o nome da
+            // lista (`row.precos = [...]`) — é assim que chegam do servidor e
+            // é assim que voltam no Salvar, dentro da linha do detalhe.
+            // Os campos da lista (`[data-mad-fl-nested] [name]`) são coluna
+            // de um ITEM, não da linha do detalhe: o editor os pula ao ligar,
+            // preencher, ler e tirar padrões.
+
+            // [{ name, data }] das listas do editor já ligadas pelo Alpine.
+            _nestedLists() {
+                const container = this._getFieldsContainer();
+                if (!container || !window.Alpine) return [];
+                const out = [];
+                container.querySelectorAll('[data-mad-fl-nested]').forEach(el => {
+                    if (el.getAttribute('data-mad-fl-nested') !== this.name) return;
+                    const name = el.getAttribute('data-mad-fl-name');
+                    if (!name) return;
+                    let data = null;
+                    try { data = Alpine.$data(el); } catch(e) {}
+                    if (data && Array.isArray(data.rows)) out.push({ name, data });
+                });
+                return out;
+            },
+
+            // Mostra nas listas do editor os itens da linha `source` (null =
+            // linha nova, listas vazias). Em dois tempos: as células de
+            // dinheiro / número guardam o OBJETO do item com que nasceram, e
+            // o x-for reaproveita a célula de mesmo __id — esvaziar primeiro
+            // faz todas renascerem ligadas à cópia que o editor vai mexer.
+            _nestedLoad(source) {
+                const lists = this._nestedLists();
+                if (!lists.length) return;
+                lists.forEach(l => { l.data.rows = []; });
+                if (!source) return;
+                this.$nextTick(() => {
+                    // Outra linha (ou a linha nova) entrou no editor antes.
+                    if (this.formData !== source) return;
+                    lists.forEach(l => {
+                        const items = Array.isArray(source[l.name]) ? source[l.name] : [];
+                        l.data.rows = JSON.parse(JSON.stringify(items)).map(r => ({ __id: r.__id || _uuid(), ...r }));
+                    });
+                });
+            },
+
+            // Leva para `target` (a linha que sai do editor) os itens que as
+            // listas do editor têm agora.
+            _nestedCollect(target) {
+                this._nestedLists().forEach(l => {
+                    target[l.name] = JSON.parse(JSON.stringify(l.data.rows || []));
+                });
+            },
+
+            // A linha NOVA abre com o valor padrão de cada campo do editor
+            // (`value`, `:checked`, `default` da tag). O padrão é o que o
+            // servidor desenhou, lido UMA vez — antes de o editor ser limpo
+            // pela primeira vez — e guardado no próprio container: sem isto o
+            // _syncFormInputs copiava '' por cima e a linha entrava com
+            // `ativo`/`ordem` vazios (fw#249).
+            _applyFieldDefaults() {
+                const container = this._getFieldsContainer();
+                if (!container) return;
+                if (!container._madDfDefaults) {
+                    const d = {};
+                    container.querySelectorAll('[name]').forEach(inp => {
+                        const field = inp.getAttribute('name');
+                        if (!field || field.startsWith('__') || inp.type === 'file' || inp.closest('[data-mad-fl-nested]')) return;
+                        let v;
+                        if (inp.type === 'checkbox') {
+                            v = inp.defaultChecked ? (inp.value || '1') : '';
+                        } else if (inp.type === 'radio') {
+                            if (!inp.defaultChecked) return;
+                            v = inp.value;
+                        } else if (inp.type === 'hidden') {
+                            // madNumericField / madMoneyField: o valor mora no Alpine
+                            const wrap = inp.closest('[x-data]');
+                            let ad = null;
+                            if (wrap && window.Alpine) { try { ad = Alpine.$data(wrap); } catch(e) {} }
+                            v = (ad && 'rawValue' in ad) ? ad.rawValue : inp.value;
+                        } else if (inp.tagName === 'SELECT') {
+                            if (inp.multiple) return;
+                            const opt = Array.from(inp.options || []).find(o => o.defaultSelected);
+                            v = opt ? opt.value : '';
+                        } else {
+                            v = inp.defaultValue;
+                        }
+                        if (v !== undefined && v !== null && String(v) !== '') d[field] = v;
+                    });
+                    container._madDfDefaults = d;
+                }
+                const defaults = container._madDfDefaults;
+                Object.keys(defaults).forEach(k => {
+                    if (this.formData[k] === undefined || this.formData[k] === '') this.formData[k] = defaults[k];
+                });
             },
 
             // ── Collect: lê valores atuais de todos os inputs do form ──
@@ -10467,7 +10724,7 @@ document.addEventListener('alpine:init', () => {
 
                 container.querySelectorAll('[name]').forEach(inp => {
                     const field = inp.getAttribute('name');
-                    if (!field || field.startsWith('__')) return;
+                    if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
 
                     // Inputs de arquivo: o valor (.value = "C:\fakepath\…") não serve.
                     // O File real é capturado em addOrUpdate (_captureRowFiles); aqui
@@ -10494,13 +10751,17 @@ document.addEventListener('alpine:init', () => {
                     }
 
                     if (inp.type === 'checkbox') {
-                        this.formData[field] = inp.checked ? (inp.value || '1') : '';
+                        // Desligado: o valor de desligado do interruptor
+                        // (`data-value-off`, 0 por padrão) — como no formulário
+                        // principal. Checkbox comum segue chegando vazio.
+                        this.formData[field] = inp.checked ? (inp.value || '1') : (inp.getAttribute('data-value-off') ?? '');
                     } else if (inp._madSelect) {
                         this.formData[field] = inp._madSelect.getValue();
                     } else {
                         this.formData[field] = inp.value;
                     }
                 });
+                this._nestedCollect(this.formData);
             },
 
             // ── Evaluate: computa campos calculados client-side ────
@@ -10594,7 +10855,7 @@ document.addEventListener('alpine:init', () => {
                 const dfName = this.name;
                 container.querySelectorAll('input[type="file"]').forEach(inp => {
                     let field = inp.getAttribute('name') || '';
-                    if (!field) return;
+                    if (!field || inp.closest('[data-mad-fl-nested]')) return;
                     field = field.replace(/\[\]$/, '');
                     if (field.startsWith('__')) return;
                     const files = inp.files ? Array.from(inp.files) : [];
@@ -10626,9 +10887,11 @@ document.addEventListener('alpine:init', () => {
             editRow(index) {
                 this.editIndex = index;
                 this.formData = { ...this.rows[index] };
+                const editing = this.formData;
                 this.$nextTick(() => {
                     this._bindFormInputs(); // garante bind em modal/drawer lazy
                     this._syncFormInputs();
+                    if (this.formData === editing) this._nestedLoad(editing);
                     this._openFormOverlay();
                     // Foca primeiro input
                     const container = this._getFieldsContainer();
@@ -11220,6 +11483,8 @@ document.addEventListener('alpine:init', () => {
         // [data-stage-count] e ficava parado, e o rollback de um move recusado
         // "desfazia" um ajuste que nunca aconteceu (a tela ficava 3/1 com 2/2).
         let _board = null;
+        // Rolagem automática do arrasto em curso: { x, y, col, at, raf, over }.
+        let _dragScroll = null;
 
         return {
             dragging: null,        // { cardId, fromStageId }
@@ -11230,15 +11495,26 @@ document.addEventListener('alpine:init', () => {
             exhausted: {},         // { stageId: bool } — servidor disse hasMore=false
             _indicator: null,
             _pendingMoves: {},     // { cardId: {container,nextSibling,stageId} } p/ rollback
+            // Declarado de propósito: propriedade nova gravada com `this.x =` vai
+            // para o escopo Alpine MAIS EXTERNO da página, dividido entre o quadro
+            // que sai e o que entra num redesenho — o destroy() do antigo
+            // apagava o timer do novo.
+            _refreshTimer: null,
 
             init() {
                 _board   = this.$el;
                 _wrapper = this.$el.closest('[mad-component]');
                 (cfg.stages || []).forEach(s => {
-                    this.offsets[s.id] = s.count > cfg.cardsPerLoad ? cfg.cardsPerLoad : s.count;
+                    // `loaded` = cartões que o servidor desenhou na coluna: passa de
+                    // cardsPerLoad quando o redesenho devolve o que ela já tinha.
+                    const loaded = typeof s.loaded === 'number'
+                        ? s.loaded
+                        : (s.count > cfg.cardsPerLoad ? cfg.cardsPerLoad : s.count);
+                    this.offsets[s.id] = loaded;
                     // seed inicial; depois o hasMore do servidor é a autoridade
-                    if (s.count <= cfg.cardsPerLoad) this.exhausted[s.id] = true;
+                    if (s.count <= loaded) this.exhausted[s.id] = true;
                 });
+                this._syncLoaded();
 
                 // Ops do mad.js (append_cards / kanban_move_failed) despacham
                 // eventos que BORBULHAM do container até o board — listener no
@@ -11251,15 +11527,83 @@ document.addEventListener('alpine:init', () => {
                         this.offsets[sid] = (this.offsets[sid] || 0) + e.detail.appended;
                     }
                     if (e.detail.hasMore === false) this.exhausted[sid] = true;
+                    this._syncLoaded();
                 };
                 this._onMoveFailed = (e) => this._rollbackMove(String(e.detail.cardId || ''));
                 this.$el.addEventListener('mad-kanban-loaded', this._onLoaded);
                 this.$el.addEventListener('mad-kanban-move-failed', this._onMoveFailed);
+                this._startAutoRefresh();
             },
 
             destroy() {
                 this.$el.removeEventListener('mad-kanban-loaded', this._onLoaded);
                 this.$el.removeEventListener('mad-kanban-move-failed', this._onMoveFailed);
+                this._stopAutoRefresh();
+                this._stopDragScroll();
+            },
+
+            // Quantos cartões cada coluna tem na tela, no campo que viaja em
+            // todo pedido da tela (`kbLoaded`): o redesenho devolve a coluna do
+            // mesmo tamanho, em vez de cortá-la de volta para a primeira carga.
+            // Só entram as colunas que passaram de cardsPerLoad.
+            _syncLoaded() {
+                const input = _board ? _board.querySelector('input[data-mad-kb-loaded]') : null;
+                if (!input) return;
+                const kept = {};
+                Object.keys(this.offsets).forEach((sid) => {
+                    if (this.offsets[sid] > cfg.cardsPerLoad) kept[sid] = this.offsets[sid];
+                });
+                input.value = Object.keys(kept).length ? JSON.stringify(kept) : '';
+            },
+
+            // ── Atualização automática (auto-refresh="15") ───────────
+            // O quadro relê os dados sozinho. A resposta redesenha a tela e o
+            // quadro novo liga o próprio timer; este morre no destroy().
+
+            _startAutoRefresh() {
+                const sec = parseInt(cfg.autoRefresh, 10) || 0;
+                this._stopAutoRefresh();
+                if (sec < 5 || !_wrapper) return;
+                this._refreshTimer = setInterval(() => this._autoRefreshTick(), sec * 1000);
+            },
+
+            _stopAutoRefresh() {
+                if (this._refreshTimer) clearInterval(this._refreshTimer);
+                this._refreshTimer = null;
+            },
+
+            _autoRefreshTick() {
+                const w = _wrapper;
+                if (!w || !w.isConnected) { this._stopAutoRefresh(); return; }
+                // Aba em segundo plano, pedido em voo, arrasto em curso ou
+                // alguém digitando num filtro do quadro: pula este ciclo.
+                if (document.hidden || w.hasAttribute('data-mad-busy')) return;
+                if (this.dragging || this.draggingStage) return;
+                const ae = document.activeElement;
+                if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')) return;
+                if (typeof MadWire === 'undefined') return;
+
+                MadWire.call(w, 'onReload', [], {}, { background: true }).then((r) => {
+                    if (!r || r.ok || r.reason === 'unload') return;
+                    this._autoRefreshLost(r.reason);
+                });
+            },
+
+            // Sem resposta: para o timer e entrega ao wire, que mantém a faixa
+            // na tela e repete até o servidor responder.
+            _autoRefreshLost(reason) {
+                const sec = parseInt(cfg.autoRefresh, 10) || 0;
+                const id  = _wrapper ? _wrapper.getAttribute('mad-id') : '';
+                if (!id || typeof MadWire.reconnect !== 'function') return;
+                this._stopAutoRefresh();
+                const live = () => document.querySelector('[mad-id="' + _kbCss(id) + '"]');
+                MadWire.reconnect(
+                    () => { const el = live(); return el ? MadWire.call(el, 'onReload', [], {}, { background: true }) : { ok: false, reason: 'gone' }; },
+                    { key: 'kanban:' + id, reason, waits: [sec, Math.min(60, sec * 2), Math.min(60, sec * 4)], alive: () => !!live() }
+                ).then(() => {
+                    // Resposta parcial não troca o quadro: o timer volta aqui.
+                    if (_wrapper && _wrapper.isConnected && !this._refreshTimer) this._startAutoRefresh();
+                });
             },
 
             // ── Drag & Drop ──────────────────────────────────────────
@@ -11267,6 +11611,7 @@ document.addEventListener('alpine:init', () => {
             onDragStart(e, cardId, stageId) {
                 if (!cfg.draggable) { e.preventDefault(); return; }
                 this.dragging = { cardId: String(cardId), fromStageId: String(stageId) };
+                this._startDragScroll();
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', String(cardId));
                 requestAnimationFrame(() => {
@@ -11281,6 +11626,76 @@ document.addEventListener('alpine:init', () => {
                 this.dragging = null;
                 this.dragOverStage = null;
                 this._removeIndicator();
+                this._stopDragScroll();
+            },
+
+            // ── Rolagem automática ao arrastar ───────────────────────
+            // Quadro mais largo que a tela: a coluna de destino fica fora da
+            // área visível. Com o ponteiro perto da borda (ou além dela) o
+            // quadro rola sozinho; na vertical, a lista de cartões sob o
+            // ponteiro. O navegador só faz isso numa faixa de ~20 px, e nem
+            // todos. `drag-autoscroll="false"` desliga.
+
+            _startDragScroll() {
+                if (cfg.dragAutoscroll === false || _dragScroll) return;
+                const st = { x: 0, y: 0, col: null, at: 0, raf: null, over: (e) => this._dragScrollOver(e) };
+                // Na página, não no quadro: o ponteiro que passou da borda
+                // continua valendo.
+                document.addEventListener('dragover', st.over);
+                _dragScroll = st;
+            },
+
+            _stopDragScroll() {
+                const st = _dragScroll;
+                if (!st) return;
+                _dragScroll = null;
+                document.removeEventListener('dragover', st.over);
+                if (st.raf) cancelAnimationFrame(st.raf);
+            },
+
+            // Velocidade em px por quadro: 0 fora da faixa de `belt` px junto
+            // à borda; de 4 até `max` conforme o ponteiro chega (ou passa) dela.
+            _edgeSpeed(pos, start, end, belt, max) {
+                const b = Math.min(belt, (end - start) / 3);
+                if (b <= 0) return 0;
+                const depth = pos < start + b ? (start + b - pos) / b : (pos > end - b ? (pos - (end - b)) / b : 0);
+                if (!depth) return 0;
+                const speed = Math.ceil(4 + (max - 4) * Math.min(1, depth));
+                return pos < start + b ? -speed : speed;
+            },
+
+            _dragScrollOver(e) {
+                const st = _dragScroll;
+                if (!st) return;
+                if (!_board || !_board.isConnected || (!this.dragging && !this.draggingStage)) { this._stopDragScroll(); return; }
+                const r = _board.getBoundingClientRect();
+                st.at = Date.now();
+                st.x = 0; st.y = 0; st.col = null;
+                // Só com o ponteiro na altura do quadro: arrastar para outro
+                // canto da página não mexe nele.
+                if (e.clientY >= r.top && e.clientY <= r.bottom) {
+                    st.x = this._edgeSpeed(e.clientX, r.left, r.right, 80, 24);
+                    const colEl = this.dragging && e.target && e.target.closest ? e.target.closest('.mad-kanban-col') : null;
+                    const cards = colEl ? colEl.querySelector('.mad-kanban-cards') : null;
+                    if (cards) {
+                        const cr = cards.getBoundingClientRect();
+                        st.y = this._edgeSpeed(e.clientY, cr.top, cr.bottom, 56, 16);
+                        st.col = cards;
+                    }
+                }
+                if ((st.x || st.y) && !st.raf) st.raf = requestAnimationFrame(() => this._dragScrollStep());
+            },
+
+            _dragScrollStep() {
+                const st = _dragScroll;
+                if (!st) return;
+                st.raf = null;
+                // O navegador manda `dragover` o tempo todo durante o arrasto;
+                // silêncio = o ponteiro saiu da janela ou o arrasto acabou sem aviso.
+                if ((!st.x && !st.y) || Date.now() - st.at > 400) return;
+                if (st.x && _board) _board.scrollLeft += st.x;
+                if (st.y && st.col) st.col.scrollTop += st.y;
+                st.raf = requestAnimationFrame(() => this._dragScrollStep());
             },
 
             onDragOver(e, stageId) {
@@ -11441,6 +11856,7 @@ document.addEventListener('alpine:init', () => {
                 const col = e.currentTarget.closest('.mad-kanban-col');
                 if (!col) return;
                 this.draggingStage = { stageId: String(col.dataset.stageId), before: this._stageOrder() };
+                this._startDragScroll();
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', 'stage:' + col.dataset.stageId);
                 requestAnimationFrame(() => col.classList.add('mad-kanban-col--dragging'));
@@ -11482,6 +11898,7 @@ document.addEventListener('alpine:init', () => {
                 const col = this.draggingStage ? this._stageCol(this.draggingStage.stageId) : null;
                 if (col) col.classList.remove('mad-kanban-col--dragging');
                 this.draggingStage = null;
+                this._stopDragScroll();
             },
 
             _stageCol(stageId) {
@@ -14041,23 +14458,55 @@ document.addEventListener("alpine:init", function () {
         return el.getAttribute('title') || '';
     }
 
+    // O elemento que está SEM o title nativo agora: { el, text, data, aria }.
+    // O title sai só enquanto o ponteiro/foco está nele e volta em restoreTitle().
+    var stashed = null;
+
     function stashTitle(el) {
         var t = el.getAttribute('title');
         if (t !== null && t !== '') {
-            if (!el.hasAttribute('data-mad-title')) {
+            if (stashed && stashed.el !== el) restoreTitle();
+            var rec = stashed || { el: el, text: t, data: false, aria: false };
+            rec.text = t;
+            // `rec.data`/`rec.aria`: o atributo é da dica (não do autor) e
+            // acompanha o title se ele mudar com o ponteiro em cima.
+            if (rec.data || !el.hasAttribute('data-mad-title')) {
                 el.setAttribute('data-mad-title', t);
+                rec.data = true;
             }
             // Botão/link só de ícone: o title era o NOME que o leitor de tela
             // lê ("Excluir", "Sem permissão para excluir"). Sem ele depois do
             // primeiro hover, o controle ficava mudo — o nome passa pro aria-label.
             if (el.matches && el.matches('button, a[href], [role="button"]')
-                && !el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')
+                && (rec.aria || (!el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')))
                 && !(el.textContent || '').trim()) {
                 el.setAttribute('aria-label', t);
+                rec.aria = true;
             }
             // Remove native title para suprimir tooltip do browser.
             el.removeAttribute('title');
+            stashed = rec;
         }
+    }
+
+    // Devolve o title quando o ponteiro/foco sai e tira o que a dica pôs. Sem
+    // isto bastava o mouse passar por um botão para ele ficar para sempre com
+    // `data-mad-title` + `aria-label` e sem `title` — numa linha redesenhada
+    // (manage_row) o botão novo nasce embaixo do ponteiro e ficava diferente
+    // dos das outras linhas para quem procura pelo title.
+    function restoreTitle() {
+        var rec = stashed;
+        stashed = null;
+        if (!rec) return;
+        var el = rec.el;
+        // Title posto de novo por um binding enquanto isso: vale o novo.
+        if (!el.hasAttribute('title')) el.setAttribute('title', rec.text);
+        if (rec.data && el.getAttribute('data-mad-title') === rec.text) el.removeAttribute('data-mad-title');
+        if (rec.aria && el.getAttribute('aria-label') === rec.text) el.removeAttribute('aria-label');
+    }
+
+    function isHovered(el) {
+        try { return !!(el.matches && el.matches(':hover')); } catch (e) { return false; }
     }
 
     function placementFor(el) {
@@ -14112,9 +14561,9 @@ document.addEventListener("alpine:init", function () {
 
     function show(el) {
         if (!el) return;
+        stashTitle(el);
         var text = getTooltipText(el);
         if (!text) return;
-        stashTitle(el);
         ensureTipEl();
         // html:true compat (o front-end legado permitia tags no title).
         tipEl.innerHTML = text;
@@ -14142,6 +14591,11 @@ document.addEventListener("alpine:init", function () {
     }, true);
 
     document.addEventListener('mouseout', function (e) {
+        // Saiu do elemento que está sem o title (e não foi para um filho dele).
+        if (stashed && stashed.el.contains(e.target)
+            && !(e.relatedTarget && stashed.el.contains(e.relatedTarget))) {
+            restoreTitle();
+        }
         if (showTimer) {
             // Ainda pendente — se o mouse saiu do alvo antes de abrir, cancela.
             var rel = e.relatedTarget;
@@ -14165,6 +14619,9 @@ document.addEventListener("alpine:init", function () {
 
     document.addEventListener('focusout', function () {
         hide();
+        // Com o ponteiro ainda em cima o title espera o mouseout: devolver
+        // agora faria a dica nativa do navegador aparecer ali mesmo.
+        if (stashed && !isHovered(stashed.el)) restoreTitle();
     });
 
     // Esconder em interacoes que "mudam contexto".

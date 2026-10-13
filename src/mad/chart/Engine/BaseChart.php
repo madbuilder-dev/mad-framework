@@ -88,6 +88,16 @@ abstract class BaseChart
     protected $prefix;
     protected $sufix;
 
+    /**
+     * A série só tem INTEIROS? Informado por quem injeta dados manuais (o
+     * `:data` chega aqui já convertido em float); null = olhar o tipo do valor
+     * em cada linha vinda do banco. Ver displayPrecision().
+     */
+    protected ?bool $integerSeries = null;
+
+    /** A 2ª métrica do mixed (line-total) só tem inteiros? */
+    protected bool $lineMetricInteger = true;
+
     /** Posição da legenda ('bottom' | 'right') — setada em showLegend(), lida no EChart. */
     protected $positionLegend;
 
@@ -123,7 +133,8 @@ abstract class BaseChart
         $this->hidePanel(FALSE);
         $this->setSize('100%', 300);
 
-        $this->setDisplayNumeric();
+        // Precisão null = decide pela série (inteiros sem casas): displayPrecision().
+        $this->setDisplayNumeric(null);
         $this->culling = true;
 
         $this->positionLegend = 'bottom';
@@ -824,7 +835,7 @@ abstract class BaseChart
     /**
      * Sets the numeric display format.
      *
-     * @param int    $precision         Number of decimal places.
+     * @param int|null $precision       Number of decimal places (null = decide pela série, ver displayPrecision()).
      * @param string $decimalSeparator  The decimal separator.
      * @param string $thousandSeparator The thousands separator.
      * @param string $prefix            A prefix for the values.
@@ -837,6 +848,63 @@ abstract class BaseChart
         $this->thousandSeparator = $thousandSeparator;
         $this->prefix = $prefix;
         $this->sufix = $sufix;
+    }
+
+    /** Diz ao motor se os dados manuais são todos inteiros (ver $integerSeries). */
+    public function setIntegerSeries(?bool $integer): void
+    {
+        $this->integerSeries = $integer;
+    }
+
+    /**
+     * Casas decimais dos rótulos, do tooltip e do eixo.
+     *
+     * Com formato pedido (`format="numeric:2"`, `currency`…) vale o pedido.
+     * Sem formato, a série só de inteiros — contagem, soma de coluna inteira —
+     * sai sem casas ("PDV: 1", não "PDV: 1,00"); qualquer outra, com 2.
+     */
+    protected function displayPrecision(): int
+    {
+        if ($this->precision !== null) {
+            return (int) $this->precision;
+        }
+
+        return $this->seriesIsInteger() ? 0 : 2;
+    }
+
+    /**
+     * Quem decide é o TIPO do valor, não o valor: `6.0`/"6.00" de uma coluna
+     * decimal continua sendo valor (2 casas), para o gráfico de faturamento não
+     * trocar de formato no dia em que tudo fechar redondo.
+     */
+    protected function seriesIsInteger(): bool
+    {
+        if ($this->integerSeries !== null) {
+            return $this->integerSeries;
+        }
+        if (! $this->lineMetricInteger) {
+            return false;
+        }
+
+        $seen = false;
+        foreach ((is_array($this->data) ? $this->data : []) as $row) {
+            $value = is_array($row) ? end($row) : $row;
+            if ($value === null) {
+                continue;
+            }
+            if (! self::isIntegerValue($value)) {
+                return false;
+            }
+            $seen = true;
+        }
+
+        return $seen;
+    }
+
+    /** Inteiro do PHP ou texto só de dígitos (contagem que o driver devolveu como string). */
+    public static function isIntegerValue(mixed $value): bool
+    {
+        return is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', $value) === 1);
     }
 
     
@@ -996,9 +1064,13 @@ abstract class BaseChart
         // ANTES da lógica de fieldColor — $items volta ao shape clássico
         // [label, total] e nenhum consumer downstream muda.
         $this->lineMetricValues = [];
+        $this->lineMetricInteger = true;
         if ($items && $this->lineMetric) {
             foreach ($items as $i => $item) {
                 $v = array_pop($item);
+                if ($v !== null && ! self::isIntegerValue($v)) {
+                    $this->lineMetricInteger = false;
+                }
                 $this->lineMetricValues[$i] = is_numeric($v) ? (float) $v : 0.0;
                 $items[$i] = $item;
             }

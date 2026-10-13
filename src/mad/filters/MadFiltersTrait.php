@@ -12,6 +12,9 @@ use Mad\Util\MadTempo;
  *   - protected string $dateField
  *   - protected array  $periodFields  (e.g. ['mes' => 'mes', 'ano' => 'ano'])
  *   - protected bool   $defaultToCurrentPeriod
+ *   - protected string $defaultPeriod (opcional: atalho de período da abertura
+ *       e do "Limpar" — 'hoje', 'ontem', '7d', '30d', 'mes', 'mes_anterior',
+ *       'trimestre', 'ano', 'ano_anterior'; vence $defaultToCurrentPeriod)
  *   - protected bool   $usePresets
  *   - protected bool   $rememberFilters
  *   - protected bool   $applyUnitFilter
@@ -549,9 +552,15 @@ trait MadFiltersTrait
      *                dashboard abria agregando a TABELA INTEIRA, com a pill
      *                em "→ 0,0%" ate o usuario escolher um periodo;
      *   preset     → 'mes' (mes atual).
+     * Com $defaultPeriod ('hoje', '7d', 'mes'…) vale o atalho declarado.
      */
     protected function _seedDefaultPeriod(): void
     {
+        $default = $this->_defaultPeriodPreset();
+        if ($default !== '') {
+            $this->_seedPeriodFromPreset($default);
+            return;
+        }
         $useCurrent = $this->defaultToCurrentPeriod ?? false;
         $type       = $this->periodType ?? 'month-year';
         $this->mes   = $useCurrent ? date('m') : '';
@@ -559,6 +568,74 @@ trait MadFiltersTrait
         $this->dtIni = $useCurrent && $type === 'date-range' ? date('Y-m-01') : '';
         $this->dtFim = $useCurrent && $type === 'date-range' ? date('Y-m-d') : '';
         $this->preset = $useCurrent && $type === 'preset' ? 'mes' : '';
+    }
+
+    /**
+     * O atalho de período declarado em `$defaultPeriod`, na chave que
+     * presetRange() entende, ou '' quando a tela não declara (ou declara um
+     * nome que não existe: vale o comportamento de antes, com aviso no log).
+     * Os nomes em inglês são apelidos: 'today' = 'hoje', 'last7' = '7d'…
+     */
+    protected function _defaultPeriodPreset(): string
+    {
+        $raw = strtolower(trim((string) ($this->defaultPeriod ?? '')));
+        if ($raw === '') {
+            return '';
+        }
+        $preset = [
+            'today'      => 'hoje',
+            'yesterday'  => 'ontem',
+            'last7'      => '7d',
+            'last30'     => '30d',
+            'month'      => 'mes',
+            'last-month' => 'mes_anterior',
+            'quarter'    => 'trimestre',
+            'year'       => 'ano',
+            'last-year'  => 'ano_anterior',
+        ][$raw] ?? $raw;
+        if ($this->presetRange($preset)[0] === '') {
+            $this->periodFilterWarning('[MadFilters] $defaultPeriod "' . $raw . '" ignorado em ' . static::class
+                . ': use hoje, ontem, 7d, 30d, mes, mes_anterior, trimestre, ano ou ano_anterior.');
+
+            return '';
+        }
+
+        return $preset;
+    }
+
+    /**
+     * Período de abertura a partir de um atalho, no formato do tipo de período:
+     *   date-range → dtIni/dtFim com o intervalo do atalho;
+     *   preset     → o próprio atalho;
+     *   month-year → mês e ano ('mes', 'mes_anterior'), só o ano ('ano',
+     *                'ano_anterior') ou o mês corrente (o tipo não sabe dizer
+     *                "hoje" nem "7 dias").
+     */
+    private function _seedPeriodFromPreset(string $preset): void
+    {
+        $this->mes = $this->ano = $this->dtIni = $this->dtFim = $this->preset = '';
+        [$start, $end] = $this->presetRange($preset);
+
+        switch ($this->periodType ?? 'month-year') {
+            case 'date-range':
+                $this->dtIni = substr($start, 0, 10);
+                $this->dtFim = substr($end, 0, 10);
+                break;
+            case 'preset':
+                $this->preset = $preset;
+                break;
+            case 'month-year':
+                if ($preset === 'ano' || $preset === 'ano_anterior') {
+                    $this->ano = substr($start, 0, 4);
+                } elseif ($preset === 'mes_anterior') {
+                    $this->mes = substr($start, 5, 2);
+                    $this->ano = substr($start, 0, 4);
+                } else {
+                    $this->mes = date('m');
+                    $this->ano = date('Y');
+                }
+                break;
+        }
     }
 
     /** Reseta todos os filtros pros defaults. */
@@ -1592,10 +1669,16 @@ trait MadFiltersTrait
                 continue;
             }
             $name = $f['attrs']['name'] ?? '';
+            // daterange: 2 props (name_start/name_end) — o × limpa as duas via
+            // clearFilter("a|b"). Sem isto o alvo saía vazio e o × não fazia nada.
+            $clear = $name;
+            if ($clear === '' && ($f['type'] ?? '') === 'daterange') {
+                $clear = trim(($f['attrs']['name_start'] ?? '') . '|' . ($f['attrs']['name_end'] ?? ''), '|');
+            }
             $out[] = [
                 'label' => $f['attrs']['label'] ?? ucfirst($name),
                 'value' => $this->resolveFilterLabel($f),
-                'clear' => $name,
+                'clear' => $clear,
             ];
         }
         return $out;

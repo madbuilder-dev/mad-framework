@@ -827,6 +827,18 @@ class PermissionGate
      */
     public static function deniedWireActionKey(array $post): ?string
     {
+        return self::deniedWireAction($post)['key'] ?? null;
+    }
+
+    /**
+     * {@see deniedWireActionKey()} dizendo também de que TELA é a ação: a
+     * recusa de uma ação própria usa o nome que a tela deu a ela em
+     * `#[MadPermission('…')]`, e para ler o atributo é preciso a classe.
+     *
+     * @return array{key: string, class: string}|null
+     */
+    public static function deniedWireAction(array $post): ?array
+    {
         $token = $post['mad_state'] ?? null;
         if (!$token) {
             return null;
@@ -848,6 +860,18 @@ class PermissionGate
             return null;
         }
 
-        return ActionVocab::staticKey($action) ?? $action;
+        return ['key' => ActionVocab::staticKey($action) ?? $action, 'class' => $class];
+    }
+
+    /**
+     * Onde procurar o nome de uma ação deste componente: os donos da
+     * permissão ({@see ownersOf()}) e a própria classe. É a lista que
+     * {@see ActionVocab::label()} recebe para achar o `#[MadPermission('…')]`.
+     *
+     * @return list<string>
+     */
+    public static function actionOwners(object $component): array
+    {
+        return array_values(array_unique([...self::ownersOf($component), get_class($component)]));
     }
 }

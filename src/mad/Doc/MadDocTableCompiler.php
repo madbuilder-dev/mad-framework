@@ -169,7 +169,10 @@ class MadDocTableCompiler
                 }
             }
 
-            $prelude = "@php \${$pfx}_rows = \\Mad\\Doc\\MadDocRuntime::queryRecords({$modelExpr}, ({$filterExpr})); @endphp\n";
+            // Nome que não é model = lista que o registro carrega (posta no
+            // gancho do documento): recordList() responde antes da consulta.
+            $prelude = "@php \${$pfx}_rows = \\Mad\\Doc\\MadDocRuntime::recordList(\$record ?? null, {$modelExpr})"
+                     . " ?? \\Mad\\Doc\\MadDocRuntime::queryRecords({$modelExpr}, ({$filterExpr})); @endphp\n";
             return [$prelude, "\${$pfx}_rows"];
         }
 

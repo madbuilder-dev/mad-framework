@@ -17,6 +17,8 @@
     $stagesReorderable = method_exists($__component, 'isStagesReorderable') && $__component->isStagesReorderable();
     $perLoad    = $__component->getCardsPerLoad();
     $topScroll  = method_exists($__component, 'hasTopScroll') ? $__component->hasTopScroll() : false;
+    $autoRefresh = method_exists($__component, 'getAutoRefresh') ? $__component->getAutoRefresh() : 0;
+    $dragAutoscroll = method_exists($__component, 'isDragAutoscroll') ? $__component->isDragAutoscroll() : true;
     $titleField = method_exists($__component, 'getStageTitleField') ? $__component->getStageTitleField() : 'nome';
     $colorField = method_exists($__component, 'getStageColorField') ? $__component->getStageColorField() : 'cor';
     $hasValue   = !empty($totals);
@@ -24,7 +26,9 @@
 
     $stagesJson = array_map(function($s) use ($counts, $__component) {
         $sid = $__component->stageId($s);
-        return ['id' => $sid, 'count' => $counts[$sid] ?? 0];
+        // `loaded`: cartões desenhados na coluna (passa de cards-per-load quando o
+        // redesenho devolve o que ela já tinha) — a carga seguinte continua daí.
+        return ['id' => $sid, 'count' => $counts[$sid] ?? 0, 'loaded' => count($__component->getCardsForStage($sid))];
     }, $stages);
 @endphp
 
@@ -49,6 +53,8 @@
          cardsPerLoad: {{ $perLoad }},
          draggable: {{ $draggable ? 'true' : 'false' }},
          stagesReorderable: {{ $stagesReorderable ? 'true' : 'false' }},
+         autoRefresh: {{ (int) $autoRefresh }},
+         dragAutoscroll: {{ $dragAutoscroll ? 'true' : 'false' }},
          clickTarget: {{ json_encode((string) ($clickNav['class'] ?? '')) }},
          clickMethod: {{ json_encode((string) ($clickNav['method'] ?? 'onShow')) }},
          clickUrl: {{ json_encode((string) ($clickNav['url'] ?? '')) }},
@@ -150,6 +156,10 @@
         </div>
     </div>
     @endforeach
+
+    {{-- Cartões que cada coluna tem na tela: o quadro preenche e vai em todo
+         pedido, para o redesenho devolver a coluna do mesmo tamanho. --}}
+    <input type="hidden" data-mad-model="kbLoaded" data-mad-kb-loaded value="">
 </div>
 @if ($topScroll)
 </div>

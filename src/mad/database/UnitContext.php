@@ -30,6 +30,14 @@ namespace Mad\Database;
  * VISÃO DO ADMINISTRADOR (mad.tenant.admin_scope = 'all', {@see AdminScope}):
  * para o administrador do dono do app, readIds() devolve null (sem filtro de
  * unidade). id() e allowedIds() não mudam — a gravação não amplia.
+ *
+ * SEM UNIDADE (mad.general.unit_scope_empty, env MAD_UNIT_SCOPE_EMPTY):
+ *   - 'open' (padrão): pedido sem unidade lê as linhas de todas — o histórico;
+ *   - 'closed': pedido HTTP sem unidade (visitante de uma página do site, rota
+ *     sem login) não lê linha nenhuma — readIds() devolve []. A página define a
+ *     unidade com set($id); quem quer mesmo ler todas diz isso com set(null) ou
+ *     com `->withoutGlobalScope('mad_unit')` na consulta. Console, agendador e
+ *     fila seguem abertos ({@see closedWhenEmpty()}).
  */
 class UnitContext
 {
@@ -77,9 +85,35 @@ class UnitContext
     }
 
     /**
+     * O pedido sem unidade lê NADA em vez de tudo? Só com a opção
+     * mad.general.unit_scope_empty = 'closed' (qualquer outro valor = aberto, o
+     * histórico) e só em pedido HTTP: comando, agendador e fila não têm sessão
+     * e seguem lendo como sempre. Quem fixou o contexto com set() — inclusive
+     * set(null), "sem unidade de propósito" — responde por ele.
+     */
+    public static function closedWhenEmpty(): bool
+    {
+        if (self::$hasOverride) {
+            return false;
+        }
+        try {
+            if (! function_exists('config') || (string) config('mad.general.unit_scope_empty', 'open') !== 'closed') {
+                return false;
+            }
+            $app = app();
+
+            return ! ($app->runningInConsole() && ! $app->runningUnitTests());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Unidades que a LEITURA enxerga agora (ordenadas, sem repetição). null =
      * sem unidade (o scope não filtra — fail-open, como id()) ou visão de
      * todas as empresas do administrador do dono ({@see AdminScope::readsAll()}).
+     * [] = sem unidade com a leitura fechada ({@see closedWhenEmpty()}): nenhuma
+     * linha.
      *
      * @return list<int>|null
      */
@@ -93,7 +127,7 @@ class UnitContext
 
         $active = self::id();
         if (self::$hasOverride || self::mode() !== 'all') {
-            return $active === null ? null : [$active];
+            return $active === null ? self::emptyRead() : [$active];
         }
 
         $ids = self::sessionUnitIds() ?? [];
@@ -103,7 +137,39 @@ class UnitContext
         $ids = array_values(array_unique($ids));
         sort($ids);
 
-        return $ids === [] ? null : $ids;
+        return $ids === [] ? self::emptyRead() : $ids;
+    }
+
+    /**
+     * Registra que a leitura de $model foi fechada por falta de unidade — um
+     * aviso no log por tabela e por pedido, com o caminho de quem leu. Sem ele
+     * a página só mostra uma lista vazia. Nunca lança.
+     */
+    public static function noteClosedRead(string $model): void
+    {
+        try {
+            DataScope::memo('unit_scope_closed', $model, static function () use ($model): bool {
+                $path = null;
+                try {
+                    $path = app()->bound('request') ? request()->path() : null;
+                } catch (\Throwable) {
+                }
+                \Illuminate\Support\Facades\Log::warning('mad.unit_scope.closed', [
+                    'model' => $model,
+                    'path'  => $path,
+                    'hint'  => 'Sem unidade no pedido: defina com UnitContext::set($id) antes de ler, ou UnitContext::set(null) para ler todas de propósito.',
+                ]);
+
+                return true;
+            });
+        } catch (\Throwable) {
+        }
+    }
+
+    /** O que readIds() devolve sem unidade: null (aberto) ou [] (fechado). */
+    private static function emptyRead(): ?array
+    {
+        return self::closedWhenEmpty() ? [] : null;
     }
 
     /**
@@ -142,6 +208,9 @@ class UnitContext
         $ids = self::readIds();
         if ($ids === null) {
             return '-';
+        }
+        if ($ids === []) {
+            return 'x'; // sem unidade, leitura fechada: não divide cache com a aberta
         }
         if (count($ids) === 1) {
             return (string) $ids[0];

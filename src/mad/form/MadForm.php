@@ -1701,6 +1701,7 @@ class MadForm
     {
         $this->_editorScope = $detail;
         $this->_editorFields[$detail] = [];
+        $this->_nestedLists[$detail] = [];
         $this->_editorSources[$detail] = [];
         $this->_editorImages[$detail] = [];
     }
@@ -1710,6 +1711,245 @@ class MadForm
     {
         $this->_editorScope = null;
         $this->skipInScan($html);
+    }
+
+    /**
+     * Listas de itens da LINHA de um detalhe (fw#251): `<mad-field-list>` com
+     * `model` + `foreign-key` desenhada dentro do `<mad-detail-fields>`.
+     * detalhe => nome da lista => ['m' => Model, 'f' => chave estrangeira,
+     * 'c' => colunas, 'x' => metadado de coluna para o Salvar].
+     *
+     * @var array<string, array<string, array<string,mixed>>>
+     */
+    private array $_nestedLists = [];
+
+    /**
+     * Detalhe cujo editor (`<mad-detail-fields>`) está sendo desenhado agora.
+     *
+     * @internal usado pela view do field-list
+     */
+    public function detailEditorScope(): ?string
+    {
+        return $this->_editorScope;
+    }
+
+    /**
+     * Uma Lista de itens com Model e chave estrangeira foi desenhada dentro do
+     * editor do detalhe `$detail`: ela é da LINHA. As linhas dela viajam dentro
+     * da linha do detalhe (na chave `$name`) e são gravadas junto com ela, com
+     * a chave estrangeira apontando para a linha — ver _saveNestedLists().
+     *
+     * Model, chave estrangeira e colunas ficam no estado da tela: o Salvar não
+     * os lê do que o navegador devolve.
+     *
+     * @internal chamado pela view do field-list
+     *
+     * @param list<string>               $columns
+     * @param array<string,array<string,mixed>> $colMeta force-case / strip-mask das colunas
+     * @param array<string,string>       $labels  coluna => rótulo (mensagens do Salvar)
+     * @param string                     $label   rótulo da lista (mensagens do Salvar)
+     */
+    public function declareNestedList(string $detail, string $name, string $model, string $foreignKey, array $columns, array $colMeta = [], array $labels = [], string $label = ''): void
+    {
+        if ($detail === '' || $name === '' || $model === '' || $foreignKey === '' || $this->_openedBefore) {
+            return;
+        }
+        $shown = [];
+        foreach ($columns as $column) {
+            if (is_string($column) && $column !== '') {
+                $shown[$column] = 1;
+            }
+        }
+        $entry = ['m' => $model, 'f' => $foreignKey, 'c' => $shown];
+        if ($colMeta) {
+            $entry['x'] = $colMeta;
+        }
+        $labels = array_filter($labels, static fn ($text): bool => is_string($text) && $text !== '');
+        if ($labels) {
+            $entry['t'] = $labels;
+        }
+        if ($label !== '') {
+            $entry['l'] = $label;
+        }
+        $this->_nestedLists[$detail][$name] = $entry;
+    }
+
+    /** O detalhe `$detail` tem Lista de itens da linha neste render? @internal */
+    public function hasNestedLists(string $detail): bool
+    {
+        return !empty($this->_nestedLists[$detail]);
+    }
+
+    /** Nome com que o formulário lembra as linhas da lista `$list` sob a linha `$rowKey` do detalhe. */
+    private static function _nestedKnownName(string $detail, string $list, mixed $rowKey): string
+    {
+        return $detail . '>' . $list . '#' . (string) $rowKey;
+    }
+
+    /**
+     * Põe em cada linha do detalhe `$detail` as linhas das Listas de itens
+     * DELA, lidas pela chave estrangeira = chave da linha, e anota o que foi
+     * entregue (o Salvar só apaga o item que a tela mostrou e o usuário tirou).
+     *
+     * Leitura que falha: as linhas seguem sem a lista — e, sem a lista, o
+     * Salvar não toca nos itens daquela linha.
+     *
+     * @internal chamado pela view do detail-form, depois de desenhar o editor
+     *
+     * @param  list<array<string,mixed>> $rows linhas do detalhe (já com `__id`)
+     * @return list<array<string,mixed>>
+     */
+    public function loadNestedRows(string $detail, array $rows): array
+    {
+        $nested = $this->_nestedLists[$detail] ?? [];
+        $known  = $this->_known[$detail]['k'] ?? null;   // chave da linha => __id
+        if (!$nested || !$rows) {
+            return $rows;
+        }
+
+        $keyOf = [];   // __id => chave da linha
+        foreach (is_array($known) ? $known : [] as $rowKey => $rowId) {
+            if ($rowId !== '') {
+                $keyOf[(string) $rowId] = $rowKey;
+            }
+        }
+
+        foreach ($nested as $name => $meta) {
+            // O que ficou lembrado de uma linha que o detalhe não tem mais.
+            $prefix = $detail . '>' . $name . '#';
+            $alive  = array_fill_keys(array_map('strval', array_values($keyOf)), 1);
+            foreach (array_keys($this->_known) as $knownName) {
+                if (is_string($knownName) && str_starts_with($knownName, $prefix)
+                    && !isset($alive[substr($knownName, strlen($prefix))])) {
+                    unset($this->_known[$knownName]);
+                }
+            }
+            if (!$keyOf) {
+                continue;
+            }
+
+            $byParent = [];   // chave da linha => [[linha, chave do item], …]
+            try {
+                $cls   = \Mad\Form\ModelOptionsLoader::resolveModelClass((string) $meta['m']);
+                $probe = new $cls();
+                $fk    = (string) $meta['f'];
+                $items = $cls::query()->whereIn($fk, array_values($keyOf))->orderBy($probe->getKeyName())->get();
+                foreach ($items as $item) {
+                    $all  = $item->toArray();
+                    $line = [];
+                    foreach (array_keys((array) $meta['c']) as $column) {
+                        if (array_key_exists($column, $all) && (is_scalar($all[$column]) || $all[$column] === null)) {
+                            $line[$column] = $all[$column];
+                        }
+                    }
+                    $byParent[(string) $item->getAttribute($fk)][] = [$line, $item->getKey()];
+                }
+            } catch (\Throwable $e) {
+                error_log('[MadForm::loadNestedRows] falha ao carregar a lista "' . $name . '" das linhas de "'
+                    . $detail . '" (model=' . ($meta['m'] ?? '') . ', fk=' . ($meta['f'] ?? '')
+                    . ') — as linhas abrem sem os itens e o Salvar NAO vai apagar nada: ' . $e->getMessage());
+                continue;
+            }
+
+            foreach ($rows as $i => $row) {
+                $rowId = is_scalar($row['__id'] ?? null) ? (string) $row['__id'] : '';
+                if ($rowId === '' || !isset($keyOf[$rowId]) || is_array($row[$name] ?? null)) {
+                    continue;
+                }
+                $rowKey = $keyOf[$rowId];
+                $found  = $byParent[(string) $rowKey] ?? [];
+                $list   = FieldListColumn::normalizeRows(array_column($found, 0));
+                $loaded = [];
+                foreach ($list as $j => $line) {
+                    $itemKey = $found[$j][1] ?? null;
+                    if ($itemKey !== null && $itemKey !== '') {
+                        $loaded[$itemKey] = (string) ($line['__id'] ?? '');
+                    }
+                }
+                $rows[$i][$name] = $list;
+                $this->_remember(self::_nestedKnownName($detail, (string) $name, $rowKey), $rowKey, $loaded);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Grava as Listas de itens da linha `$child` do detalhe `$detailName`
+     * (fw#251), pelo mesmo caminho das linhas do detalhe: chave estrangeira =
+     * chave da linha, cada item decidido por ele mesmo, e só é apagado o item
+     * que a tela mostrou e não voltou.
+     *
+     * De cada item só entram as colunas que a lista tem (e o `__id`).
+     *
+     * @param array<string,array<string,mixed>> $nestedMeta o que a TELA declarou (estado)
+     * @param array<string,mixed>               $lists      nome da lista => linhas vindas do navegador
+     */
+    private function _saveNestedLists(array $nestedMeta, array $lists, string $detailName, object $child): void
+    {
+        $childKey = method_exists($child, 'getKey') ? $child->getKey() : null;
+        if ($childKey === null || $childKey === '') {
+            return;
+        }
+
+        foreach ($lists as $name => $items) {
+            $meta = $nestedMeta[$name] ?? null;
+            if (!is_array($meta) || empty($meta['m']) || empty($meta['f']) || !is_array($items)) {
+                continue;
+            }
+            $allowed = (array) ($meta['c'] ?? []);
+            $clean   = [];
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $line = [];
+                foreach ($item as $column => $value) {
+                    $column = (string) $column;
+                    if (($column === '__id' || isset($allowed[$column])) && (is_scalar($value) || $value === null)) {
+                        $line[$column] = $value;
+                    }
+                }
+                $clean[] = $line;
+            }
+            if (!empty($meta['x'])) {
+                $clean = MadFormRegistry::transformRowsWith((array) $meta['x'], $clean);
+            }
+
+            $this->_saveDetailRows(
+                (string) $meta['m'],
+                (string) $meta['f'],
+                $child,
+                $clean,
+                null,
+                self::_nestedKnownName($detailName, (string) $name, $childKey)
+            );
+        }
+    }
+
+    /**
+     * Linhas do detalhe `$detailName` vão ser apagadas: os itens das Listas de
+     * itens delas saem antes (fw#251).
+     *
+     * @param array<string,array<string,mixed>> $nestedMeta
+     * @param list<int|string>                  $rowKeys
+     */
+    private function _deleteNestedOf(array $nestedMeta, string $detailName, array $rowKeys): void
+    {
+        foreach ($nestedMeta as $name => $meta) {
+            if (!is_array($meta) || empty($meta['m']) || empty($meta['f'])) {
+                continue;
+            }
+            $cls = \Mad\Form\ModelOptionsLoader::resolveModelClass((string) $meta['m']);
+            foreach (array_chunk($rowKeys, 200) as $chunk) {
+                foreach ($cls::query()->whereIn((string) $meta['f'], $chunk)->get() as $item) {
+                    $item->delete();
+                }
+            }
+            foreach ($rowKeys as $rowKey) {
+                unset($this->_known[self::_nestedKnownName($detailName, (string) $name, $rowKey)]);
+            }
+        }
     }
 
     /**
@@ -1742,7 +1982,22 @@ class MadForm
         }
 
         $before = $this->_known[self::DECLARED]['d'][$name] ?? [];
+
+        // Listas de itens da LINHA (fw#251): Model, chave e colunas com que o
+        // Salvar grava os itens de cada linha — ver declareNestedList(). O
+        // editor desenhado neste render decide; sem ele, vale o que já estava.
+        $nested = array_key_exists($name, $this->_nestedLists)
+            ? $this->_nestedLists[$name]
+            : (is_array($before['n'] ?? null) ? $before['n'] : []);
+        foreach (array_keys($nested) as $nestedName) {
+            // A linha a leva na chave com o nome da lista.
+            $shown[(string) $nestedName] = 1;
+        }
+
         $entry  = ['c' => $shown];
+        if ($nested) {
+            $entry['n'] = $nested;
+        }
         if ($html) {
             $entry['z'] = $html;
         }
@@ -1892,6 +2147,7 @@ class MadForm
             $this->_editorSources = [];
             $this->_editorImages  = [];
             $this->_editorScope   = null;
+            $this->_nestedLists   = [];
         }
         if ($this->_openedBefore) {
             return;
@@ -6175,6 +6431,63 @@ class MadForm
     }
 
     /**
+     * A data de um campo, pronta para usar: `$this->form->date('dia')`.
+     *
+     * Entende o texto que a tela mostra ("11/10/2026", "11/10/2026 19:45") e o
+     * formato do banco ("2026-10-11", "2026-10-11 19:45:00") — o campo guarda
+     * um ou outro conforme o valor veio do usuário ou de `set()`/`fill()`.
+     * Campo vazio, ausente ou com data que não existe devolve null.
+     */
+    public function date(string $field): ?\Illuminate\Support\Carbon
+    {
+        $this->_usedNow[$field] = true;
+
+        return self::parseDate($this->fields[$field] ?? null);
+    }
+
+    /**
+     * Lê uma data que pode estar no formato da tela ou no do banco, sem trocar
+     * dia e mês (`Carbon::parse('11/10/2026')` lê 10 de novembro).
+     *
+     * Serve para o valor que não passa por `get()`: a propriedade pública da
+     * tela com o mesmo nome do campo e o `$value` que o `mad:change` do campo
+     * recebe, que chegam como o usuário vê. Vazio, texto que não é data e dia
+     * que não existe ("31/02/2026") devolvem null.
+     */
+    public static function parseDate(mixed $value): ?\Illuminate\Support\Carbon
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return \Illuminate\Support\Carbon::instance($value);
+        }
+        if (!is_string($value) || ($value = trim($value)) === '') {
+            return null;
+        }
+
+        $formats = ($value[2] ?? '') === '/'
+            ? ['d/m/Y', 'd/m/Y H:i', 'd/m/Y H:i:s']
+            : ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'];
+        foreach ($formats as $format) {
+            $date = \DateTime::createFromFormat('!' . $format, $value);
+            // O PHP aceita 31/02 e devolve 03/03: só vale a data que volta igual.
+            if ($date !== false && $date->format($format) === $value) {
+                return \Illuminate\Support\Carbon::instance($date);
+            }
+        }
+
+        // Data e hora com fração de segundo ou fuso ("2026-10-11T19:45:00.000000Z",
+        // o que um Model com cast de datetime entrega no toArray()).
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $value) === 1) {
+            try {
+                return \Illuminate\Support\Carbon::parse($value);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Define um campo individual.
      *
      * Convencao: nome terminado em `[]` indica campo de field-list — gera op
@@ -6495,6 +6808,11 @@ class MadForm
         $rows = array_values(array_filter($data, function ($row) {
             if (!is_array($row)) return false;
             foreach ($row as $val) {
+                // Lista de itens da linha (fw#251): a linha a leva como lista.
+                if (is_array($val)) {
+                    if ($val !== []) return true;
+                    continue;
+                }
                 if (trim((string) $val) !== '') return true;
             }
             return false;
@@ -8277,6 +8595,24 @@ class MadForm
         $pk       = $mestre->getKeyName();
         $parentId = $mestre->$pk;
 
+        // Listas de itens da LINHA (fw#251): saem da linha antes de qualquer
+        // conta — não são coluna dela — e são gravadas depois da linha.
+        $nestedMeta = $detailName !== '' ? (array) ($this->_known[self::DECLARED]['d'][$detailName]['n'] ?? []) : [];
+        $nestedRows = [];   // __id da linha => nome da lista => itens
+        if ($nestedMeta) {
+            foreach ($rows as $i => $row) {
+                foreach ($nestedMeta as $nestedName => $_) {
+                    if (!is_array($row) || !array_key_exists($nestedName, $row)) {
+                        continue;
+                    }
+                    if (is_array($row[$nestedName]) && is_scalar($row['__id'] ?? null) && (string) $row['__id'] !== '') {
+                        $nestedRows[(string) $row['__id']][$nestedName] = $row[$nestedName];
+                    }
+                    unset($rows[$i][$nestedName]);
+                }
+            }
+        }
+
         // Filtra rows completamente vazias
         $rows = array_values(array_filter($rows, static function (array $row): bool {
             foreach ($row as $k => $v) {
@@ -8435,6 +8771,10 @@ class MadForm
             $remove = [];
         }
 
+        if ($nestedMeta && $remove) {
+            $this->_deleteNestedOf($nestedMeta, $detailName, array_values($remove));
+        }
+
         // Antes de gravar: a linha que entra pode ocupar o lugar da que sai num
         // índice único (trocar o produto de uma linha, gerar as parcelas de novo).
         $this->_deleteDetailRows($cls, $fk, $parentId, $detailPk, array_values($remove));
@@ -8457,6 +8797,9 @@ class MadForm
                 if ($isNew || isset($unconfirmed[$key])) {
                     $pending[] = $key;
                 }
+            }
+            if ($nestedMeta && isset($nestedRows[$rowId])) {
+                $this->_saveNestedLists($nestedMeta, $nestedRows[$rowId], $detailName, $instance);
             }
         }
 
@@ -8834,6 +9177,13 @@ class MadForm
         $detailName = (string) $detailName;
 
         $entry   = (array) ($this->_known[self::DECLARED]['d'][$detailName] ?? []);
+        // Lista de itens da linha de um detalhe (fw#251): os rótulos estão com o detalhe.
+        if (!$entry && preg_match('/^(.+)>([^>#]+)#/', $detailName, $m)) {
+            $nested = $this->_known[self::DECLARED]['d'][$m[1]]['n'][$m[2]] ?? null;
+            if (is_array($nested)) {
+                $entry = ['t' => (array) ($nested['t'] ?? []), 'tl' => $nested['l'] ?? null];
+            }
+        }
         $columns = [];
         foreach ((array) ($entry['t'] ?? []) as $column => $label) {
             if (is_string($label) && $label !== '') {

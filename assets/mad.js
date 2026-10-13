@@ -2951,6 +2951,7 @@ const Mad = {
             try { edit = data.captureEdit(); } catch (e) { edit = null; }
             if (edit) snap.gridEdits.push({ key: w.getAttribute('data-grid-key') || '', edit });
         });
+        snap.kanbans = this._kanbanCapture(root);
         this._tabsBlocks(root).forEach((t) => {
             const active = this._tabsActive(t);
             if (active) snap.tabs.push({ key: this._tabsKey(t), active, def: t.getAttribute('data-mad-tabs-default') });
@@ -2985,6 +2986,8 @@ const Mad = {
             });
         }
 
+        if (snap.kanbans && snap.kanbans.length) this._kanbanRestore(root, snap.kanbans);
+
         if (!snap.scroll || !snap.scroll.length) return;
         // As telas embutidas voltam como "Carregando..." (mais baixas que o
         // conteúdo): segura a altura antiga até elas chegarem, senão a página
@@ -3008,6 +3011,63 @@ const Mad = {
                 s.el.scrollTop = s.top;
                 s.el.scrollLeft = s.left;
             } catch (e) { /* elemento sem rolagem — ignora */ }
+        });
+    },
+
+    /**
+     * Quadros kanban sob `root`: a rolagem de cada coluna e a horizontal do
+     * quadro. O redesenho devolvia toda coluna no topo — quem acompanhava o fim
+     * de uma fila longa perdia o lugar a cada atualização (fw#285). A coluna é
+     * ancorada no primeiro cartão à vista: se entraram ou saíram cartões acima
+     * dele, ele continua no mesmo lugar da tela.
+     */
+    _kanbanCapture(root) {
+        const out = [];
+        if (!root || !root.querySelectorAll) return out;
+        let i = -1;
+        for (const board of root.querySelectorAll('.mad-kanban-board')) {
+            i++;
+            const cols = [];
+            for (const col of board.querySelectorAll('.mad-kanban-cards')) {
+                if (!col.scrollTop) continue;
+                const s = { stage: col.getAttribute('data-stage-id') || '', top: col.scrollTop, card: null, gap: 0 };
+                if (typeof col.getBoundingClientRect === 'function') {
+                    const top = col.getBoundingClientRect().top;
+                    for (const card of col.querySelectorAll('.mad-kanban-card')) {
+                        const r = card.getBoundingClientRect();
+                        if (r.bottom <= top) continue;
+                        s.card = card.getAttribute('data-card-id');
+                        s.gap = r.top - top;
+                        break;
+                    }
+                }
+                cols.push(s);
+            }
+            if (cols.length || board.scrollLeft) out.push({ i, left: board.scrollLeft || 0, cols });
+        }
+        return out;
+    },
+
+    _kanbanRestore(root, list) {
+        if (!root || !root.querySelectorAll) return;
+        const boards = Array.from(root.querySelectorAll('.mad-kanban-board'));
+        (list || []).forEach((b) => {
+            const board = boards[b.i];
+            if (!board) return;
+            try {
+                if (b.left) board.scrollLeft = b.left;
+                const cols = Array.from(board.querySelectorAll('.mad-kanban-cards'));
+                b.cols.forEach((s) => {
+                    const col = cols.find((c) => (c.getAttribute('data-stage-id') || '') === s.stage);
+                    if (!col) return;
+                    col.scrollTop = s.top;
+                    if (s.card === null || typeof col.getBoundingClientRect !== 'function') return;
+                    const card = Array.from(col.querySelectorAll('.mad-kanban-card'))
+                        .find((c) => c.getAttribute('data-card-id') === s.card);
+                    if (!card) return;
+                    col.scrollTop += (card.getBoundingClientRect().top - col.getBoundingClientRect().top) - s.gap;
+                });
+            } catch (e) { console.error('[mad] kanban scroll:', e); }
         });
     },
 
@@ -3315,6 +3375,18 @@ const MadDialog = {
         if (el.parentNode) el.parentNode.removeChild(el);
     },
 
+    /**
+     * Texto SEM HTML: as quebras de linha viram <br> (o corpo é innerHTML, e
+     * ali o `\n` é só espaço — a confirmação com uma lista saía num parágrafo
+     * só). Mensagem que já traz uma tag passa como está: quem a escreveu
+     * decidiu as quebras.
+     */
+    _messageHtml(message) {
+        const text = String(message == null ? '' : message);
+        if (!/[\r\n]/.test(text) || /<\/?[a-z!]/i.test(text)) return text;
+        return text.replace(/\r\n?|\n/g, '<br>');
+    },
+
     show({ type = 'info', title = '', message = '', buttons = null, icon = '', fields = null } = {}) {
         const el = this._createOverlay();
 
@@ -3325,7 +3397,7 @@ const MadDialog = {
         el.querySelector('.mad-dialog-icon').setAttribute('data-lucide', icon || icons[type] || 'info');
         el.querySelector('.mad-dialog-icon').style.color = colors[type] || colors.info;
         el.querySelector('.mad-dialog-title').textContent = title;
-        el.querySelector('.mad-dialog-body').innerHTML = message;
+        el.querySelector('.mad-dialog-body').innerHTML = this._messageHtml(message);
 
         // Campos do diálogo (MadConfirm::field — o TInputDialog do Adianti):
         // o botão recebe os valores digitados ({nome: valor}) no callback.
