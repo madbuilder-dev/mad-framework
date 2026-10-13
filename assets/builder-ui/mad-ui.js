@@ -1535,6 +1535,7 @@ function _madRefreshQuickCombos(pop) {
                     var opt = document.createElement('option');
                     opt.value = String(o.value);
                     opt.textContent = String(o.label);
+                    if (o.hl) _madSelSetHl(opt, o.hl);
                     if (prev && opt.value === prev) { opt.selected = true; found = true; }
                     sel.appendChild(opt);
                 });
@@ -1928,7 +1929,13 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
    Sem busca: `data-mad-nosearch` (prop `no-search`) abre a lista sem a caixa
    de digitação, nos modos single e check.
    "×" de limpar: no single com valor, quando o campo pode ficar vazio (tem a
-   opção em branco, não é obrigatório nem está travado) — getter `clearable`. */
+   opção em branco, não é obrigatório nem está travado) — getter `clearable`.
+   Destaque por condição (`<mad-option-highlights>`): o servidor calcula a
+   MARCA de cada opção e a grava na `<option>` em `data-mad-hl` (row|badge),
+   `data-mad-hl-tone` ou `data-mad-hl-color`, e `data-mad-hl-badge`. A lista
+   pinta a linha (ou só o selo) e o valor escolhido ganha uma bolinha da cor.
+   Marca que chega por JSON (busca no servidor, recarga da cascata) entra na
+   `<option>` por `_madSelSetHl` — o <select> continua a fonte da verdade. */
 
 /* Acha um <option> pelo value sem depender de querySelector escapado. */
 function _madSelOpt(el, v) {
@@ -1937,6 +1944,44 @@ function _madSelOpt(el, v) {
     for (var i = 0; i < opts.length; i++) { if (opts[i].value === v) return opts[i]; }
     return null;
 }
+
+/* Marca de destaque (`<mad-option-highlights>`) saneada: tom do par, cor só se
+   for cor (vai para um style), selo como texto. null = sem marca. */
+var _MAD_SEL_HL_TONES = { danger: 1, warning: 1, success: 1, info: 1 };
+var _MAD_SEL_HL_COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgba?|hsla?|oklch)\([0-9.,%\s\/-]+\)|var\(--[\w-]+\))$/;
+function _madSelHlNorm(hl) {
+    if (!hl || typeof hl !== 'object') return null;
+    var color = typeof hl.color === 'string' ? hl.color.trim() : '';
+    if (color && !_MAD_SEL_HL_COLOR.test(color)) color = '';
+    var badge = hl.badge == null ? '' : String(hl.badge);
+    return {
+        paint: hl.paint === 'badge' && badge ? 'badge' : 'row',
+        tone: color ? '' : (_MAD_SEL_HL_TONES[hl.tone] ? hl.tone : 'warning'),
+        color: color, badge: badge
+    };
+}
+/* Marca gravada numa <option> (data-mad-hl*), ou null. */
+function _madSelHl(opt) {
+    if (!opt || typeof opt.getAttribute !== 'function') return null;
+    var paint = opt.getAttribute('data-mad-hl');
+    if (paint === null) return null;
+    return _madSelHlNorm({
+        paint: paint, tone: opt.getAttribute('data-mad-hl-tone'),
+        color: opt.getAttribute('data-mad-hl-color'), badge: opt.getAttribute('data-mad-hl-badge')
+    });
+}
+/* Grava (ou tira) a marca numa <option>. */
+function _madSelSetHl(opt, hl) {
+    if (!opt || typeof opt.setAttribute !== 'function') return;
+    hl = _madSelHlNorm(hl);
+    ['data-mad-hl', 'data-mad-hl-tone', 'data-mad-hl-color', 'data-mad-hl-badge'].forEach(function (a) { opt.removeAttribute(a); });
+    if (!hl) return;
+    opt.setAttribute('data-mad-hl', hl.paint);
+    if (hl.color) opt.setAttribute('data-mad-hl-color', hl.color);
+    else opt.setAttribute('data-mad-hl-tone', hl.tone);
+    if (hl.badge) opt.setAttribute('data-mad-hl-badge', hl.badge);
+}
+window._madSelSetHl = _madSelSetHl;
 
 /* A opção em branco do <select>: a primeira `<option value="">` HABILITADA.
    A desabilitada de value vazio é o aviso de lista que não carregou
@@ -1969,7 +2014,7 @@ function _madSelectFactory() {
         noResultsMsg: 'Nenhum registro encontrado.', noResCfg: null,
         // ── estado transiente de UI ──
         open: false, query: '', activeIndex: -1, loading: false, results: [],
-        _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {},
+        _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {},
         _listeners: {}, _outside: null, _onScroll: null, _ctrlRect: null,
         _isTouch: false, _uid: '', _native: null, _taBuf: '', _taTimer: null,
 
@@ -2049,6 +2094,27 @@ function _madSelectFactory() {
             if (o) return o.textContent;
             return this._labelMap[v] != null ? this._labelMap[v] : v;
         },
+        // Marca de destaque de um valor: a da <option>; sem option ainda
+        // (resultado da busca que não foi escolhido), a que veio na resposta.
+        _hlFor(v) {
+            var o = _madSelOpt(this._native, v);
+            return (o && _madSelHl(o)) || this._hlMap[v] || null;
+        },
+        // Aplica a marca num elemento da lista/do controle: `data-mad-hl`
+        // (row|badge), `data-mad-hl-tone` (o tom, ou "color") e a cor livre
+        // em --mad-sel-hl-color. Sem marca, o elemento fica como era.
+        paintHl(el, hl) {
+            if (!el) return;
+            if (!hl) {
+                el.removeAttribute('data-mad-hl'); el.removeAttribute('data-mad-hl-tone');
+                if (el.style && el.style.length) el.style.removeProperty('--mad-sel-hl-color');
+                return;
+            }
+            el.setAttribute('data-mad-hl', hl.paint === 'badge' ? 'badge' : 'row');
+            el.setAttribute('data-mad-hl-tone', hl.color ? 'color' : (hl.tone || 'warning'));
+            if (hl.color) el.style.setProperty('--mad-sel-hl-color', hl.color);
+            else if (el.style && el.style.length) el.style.removeProperty('--mad-sel-hl-color');
+        },
 
         // ── getters derivados (reativos via _v) ──
         get selectedValues() {
@@ -2061,14 +2127,16 @@ function _madSelectFactory() {
         get displayItems() {
             this._v;
             var self = this;
-            return this.selectedValues.map(function (v) { return { value: v, text: self._labelFor(v) }; });
+            return this.selectedValues.map(function (v) { return { value: v, text: self._labelFor(v), hl: self._hlFor(v) }; });
         },
         get hasValue() { return this.selectedValues.length > 0; },
+        // Marca do valor escolhido no single (a bolinha antes do texto).
+        get singleHl() { var d = this.displayItems; return d.length ? d[0].hl : null; },
         get nativeOptions() {
             this._v;
             var el = this._native; if (!el) return [];
             var out = [], o = el.options;
-            for (var i = 0; i < o.length; i++) { if (o[i].value !== '') out.push({ value: o[i].value, text: o[i].textContent }); }
+            for (var i = 0; i < o.length; i++) { if (o[i].value !== '') out.push({ value: o[i].value, text: o[i].textContent, hl: _madSelHl(o[i]) }); }
             return out;
         },
         // Opção em branco como linha da lista: sem ela, depois de escolher um
@@ -2236,7 +2304,13 @@ function _madSelectFactory() {
                 .then(function (d) {
                     _madOptionsError(el, d.error);
                     self.results = d.results || [];
-                    self.results.forEach(function (r) { self._labelMap[r.value] = r.text; });
+                    self.results.forEach(function (r) {
+                        self._labelMap[r.value] = r.text;
+                        // Marca do <mad-option-highlights>: fica guardada para a
+                        // <option> que nasce quando o resultado é escolhido.
+                        r.hl = _madSelHlNorm(r.hl);
+                        if (r.hl) self._hlMap[r.value] = r.hl; else delete self._hlMap[r.value];
+                    });
                     self.activeIndex = self.results.length ? 0 : -1;
                 })
                 .catch(function () { self.results = []; })
@@ -2385,7 +2459,11 @@ function _madSelectFactory() {
         // ── internals ──
         _ensureOption(v) {
             var el = this._native, o = _madSelOpt(el, v);
-            if (!o) { o = document.createElement('option'); o.value = v; o.textContent = this._labelFor(v); o.setAttribute('data-mad-synthetic', ''); el.appendChild(o); }
+            if (!o) {
+                o = document.createElement('option'); o.value = v; o.textContent = this._labelFor(v); o.setAttribute('data-mad-synthetic', '');
+                if (this._hlMap[v]) _madSelSetHl(o, this._hlMap[v]);
+                el.appendChild(o);
+            }
             return o;
         },
         _commit() { this._v++; this._native.dispatchEvent(new Event('change', { bubbles: true })); },
@@ -2443,12 +2521,18 @@ function _madSelectFactory() {
                 existing.textContent = lbl;
                 existing.removeAttribute('data-mad-synthetic');
             }
+            // Marca de destaque que veio com a opção (`hl`): vai para a <option>.
+            if (o.hl !== undefined) {
+                var hl = _madSelHlNorm(o.hl);
+                if (hl) this._hlMap[o.value] = hl; else delete this._hlMap[o.value];
+                _madSelSetHl(_madSelOpt(el, o.value), hl);
+            }
             this._labelMap[o.value] = lbl; this._v++;
         },
         addOptions(arr) { var self = this; (arr || []).forEach(function (o) { self.addOption(o); }); },
         clearOptions() {
             var el = this._native, keep = _madSelOpt(el, '');
-            el.innerHTML = ''; if (keep) el.appendChild(keep); this._labelMap = {}; this._v++;
+            el.innerHTML = ''; if (keep) el.appendChild(keep); this._labelMap = {}; this._hlMap = {}; this._v++;
         },
         refreshOptions(silent) { this._seedLabels(); this._v++; },
         refreshFromSelect() { this._seedLabels(); this._v++; },
@@ -2477,13 +2561,18 @@ function _madSelectFactory() {
    movido pra dentro como x-ref="native" pelo _madCreateSelect. */
 var _MAD_SEL_CONTROL_TPL =
 '<div class="mad-sel-control" :class="{\'has-clear\':clearable}" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="searchable?null:-1">' +
+  '<template x-if="!multiple && !checkbox && singleHl">' +
+    '<span class="mad-sel-dot" aria-hidden="true" x-show="!open || !searchable" x-effect="paintHl($el, singleHl)"></span>' +
+  '</template>' +
   '<template x-if="!multiple && !checkbox">' +
     '<span class="mad-sel-single" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?displayItems[0].text:placeholder"></span>' +
   '</template>' +
   '<template x-if="multiple && !checkbox">' +
     '<span class="mad-sel-chips">' +
       '<template x-for="item in displayItems" :key="item.value">' +
-        '<span class="mad-sel-chip"><span x-text="item.text"></span>' +
+        '<span class="mad-sel-chip">' +
+        '<template x-if="item.hl"><span class="mad-sel-dot" aria-hidden="true" x-effect="paintHl($el, item.hl)"></span></template>' +
+        '<span x-text="item.text"></span>' +
         '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="Remover" @mousedown.prevent.stop="_readonly() || removeItem(item.value)">&times;</span></span>' +
       '</template>' +
     '</span>' +
@@ -2505,9 +2594,10 @@ var _MAD_SEL_CONTROL_TPL =
         '<ul class="mad-sel-list" role="listbox">' +
           '<template x-for="(opt,i) in visibleOptions" :key="opt.value">' +
             '<li class="mad-sel-option" role="option" :class="{\'is-active\':i===activeIndex,\'is-selected\':isSelected(opt.value),\'is-empty\':opt.empty}" ' +
-              '@mouseenter="activeIndex=i" @mousedown.prevent="selectOption(opt.value)">' +
+              '@mouseenter="activeIndex=i" @mousedown.prevent="selectOption(opt.value)" x-effect="paintHl($el, opt.hl)">' +
               '<template x-if="checkbox"><input type="checkbox" class="mad-sel-checkbox" tabindex="-1" :checked="isSelected(opt.value)" @click.prevent></template>' +
               '<span class="mad-sel-option-text" x-html="highlight(opt.text)"></span>' +
+              '<template x-if="opt.hl && opt.hl.badge"><span class="mad-sel-badge" x-text="opt.hl.badge"></span></template>' +
             '</li>' +
           '</template>' +
         '</ul>' +
@@ -3396,10 +3486,13 @@ document.addEventListener('change', function(e) {
                     opt0.textContent = 'Selecione...';
                     dep.appendChild(opt0);
                 }
+                // Destaque das opções: a marca de cada chave vem ao lado, em `marks`.
+                var marks = data.marks || null;
                 Object.keys(options).forEach(function(k) {
                     var opt = document.createElement('option');
                     opt.value = k;
                     opt.textContent = options[k];
+                    if (marks && marks[k]) _madSelSetHl(opt, marks[k]);
                     dep.appendChild(opt);
                 });
                 dep.value = (wanted !== '' && Object.prototype.hasOwnProperty.call(options, wanted)) ? wanted : '';

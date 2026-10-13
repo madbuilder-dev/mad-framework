@@ -53,6 +53,22 @@
      *   create-label    string  Dica/nome acessível do botão (padrao: 'Cadastrar novo')
      *   create-icon     string  Icone Lucide (padrao: 'plus')
      *   create-params   array   Parametros fixos da abertura (:create-params="['origem' => 'x']")
+     *
+     *   option-highlights array  Destaque das opções por condição. Em geral vem da tag filha:
+     *       <mad-option-highlights>
+     *           <mad-option-highlight when-field="status" when-value="inativo" tone="danger" badge="Inativo" />
+     *           <mad-option-highlight when-field="saldo" when-op="lt" when-value="0" color="#fde68a" />
+     *           <mad-option-highlight display-condition="estaInadimplente" tone="danger"
+     *                                 badge="{dias_atraso} dias" paint="badge" />
+     *       </mad-option-highlights>
+     *     Condição: when-field + when-value / when-op (eq, neq, gt, gte, lt, lte) / when-in / when-nin,
+     *     ou display-condition="metodo" (public static da tela) / "Classe::metodo". when-field é coluna
+     *     do model do campo. tone: danger|warning|success|info; color: cor livre (vence o tom);
+     *     badge: selo à direita da opção (texto ou máscara {coluna}); paint: row (padrão) ou badge
+     *     (só o selo leva a cor). Vale a primeira regra que casar. À mão:
+     *     :option-highlights="[['when' => ['field' => 'status', 'op' => 'eq', 'value' => 'inativo'], 'tone' => 'danger']]"
+     *     Ver \Mad\Form\MadOptionHighlightCompiler.
+     *     Lista posta por código (`$this->form->setItems()`) não tem registro para avaliar: sai sem destaque.
      */
 
     $name          = $name          ?? '';
@@ -69,6 +85,12 @@
     $filters       = $filters       ?? [];
     $query         = $query         ?? null;   // Eloquent/Query Builder (novo padrão)
     $autoFill      = $autoFill      ?? [];      // <fill> filhos → auto-fill ao selecionar
+    // <mad-option-highlights> → regras saneadas (display-condition resolvido na
+    // tela) + coletor que marca cada opção na MESMA consulta. Sem regras: [] e
+    // null, e nada abaixo muda. Ver \Mad\Form\OptionHighlights.
+    $__hlRules     = \Mad\Form\OptionHighlights::forField($optionHighlights ?? []);
+    $__hlMarks     = [];
+    $__hlEach      = \Mad\Form\OptionHighlights::collector($__hlRules, $__hlMarks);
 
     // Largura — width / max-width (aceita calc(), %, px, ...) aplicados ao
     // wrapper .mad-field. Espelha o input-field e o preview do builder.
@@ -231,7 +253,7 @@
                 $keyField,
                 $display,
                 $orderBy ?: null, $orderDir ?: 'asc',
-                $__optMissing
+                $__optMissing, $__hlEach
             );
         } catch (\Throwable $e) {
             $options = [];
@@ -269,7 +291,7 @@
                     $__cq->where($dependsColumn, '=', $parentValue);
                 }
                 $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing
+                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing, $__hlEach
                 );
             } catch (\Throwable $e) {
                 $options = [];
@@ -308,7 +330,9 @@
             'order_dir' => $orderDir,
             'column'   => $dependsColumn,
             'filters'  => $filters,
-        ]);
+            // Regras do destaque das opções: a recarga marca as opções novas
+            // com as MESMAS regras do 1º desenho (só existe com regras).
+        ] + ($__hlRules ? ['highlights' => $__hlRules] : []));
     }
 
     // Auto-fill (<fill>): cifra a config (model/key/db + query_sql do filtro do
@@ -405,7 +429,7 @@
             <option value="" disabled data-mad-options-error>{{ $__optError }}</option>
         @endif
         @foreach($options as $optKey => $optLabel)
-            <option value="{{ $optKey }}"
+            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}
                     @if((string)$optKey === (string)$selected) selected @endif>
                 {{ $optLabel }}
             </option>

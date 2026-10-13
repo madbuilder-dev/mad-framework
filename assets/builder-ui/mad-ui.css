@@ -1592,6 +1592,63 @@ textarea.mad-textarea:read-only:focus {
   padding: 0 1px;
 }
 .mad-sel-option-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* <mad-option-highlights>: destaque da opção por condição — o par do
+   <mad-row-highlights> da grade, com os mesmos tokens (o escuro vem pronto: os
+   *-subtle mudam no tema escuro). O JS marca a linha da lista com
+   data-mad-hl="row|badge" e data-mad-hl-tone="<tom>|color"; a cor livre chega
+   em --mad-sel-hl-color, misturada ao transparente — lê nos dois temas.
+   row = pinta a linha (fundo suave + barra de acento); badge = só o selo.
+   Item ativo (mouse/teclado) e item selecionado continuam visíveis: o ativo
+   escurece o fundo do tom, o selecionado mantém o negrito. */
+.mad-sel-option[data-mad-hl-tone="danger"],  .mad-sel-dot[data-mad-hl-tone="danger"]  { --mad-sel-hl-bg: var(--mad-danger-subtle);  --mad-sel-hl-accent: var(--mad-danger); }
+.mad-sel-option[data-mad-hl-tone="warning"], .mad-sel-dot[data-mad-hl-tone="warning"] { --mad-sel-hl-bg: var(--mad-warning-subtle); --mad-sel-hl-accent: var(--mad-warning); }
+.mad-sel-option[data-mad-hl-tone="success"], .mad-sel-dot[data-mad-hl-tone="success"] { --mad-sel-hl-bg: var(--mad-success-subtle); --mad-sel-hl-accent: var(--mad-success); }
+.mad-sel-option[data-mad-hl-tone="info"],    .mad-sel-dot[data-mad-hl-tone="info"]    { --mad-sel-hl-bg: var(--mad-info-subtle);    --mad-sel-hl-accent: var(--mad-info); }
+.mad-sel-option[data-mad-hl-tone="color"],   .mad-sel-dot[data-mad-hl-tone="color"] {
+  --mad-sel-hl-bg: color-mix(in srgb, var(--mad-sel-hl-color, var(--mad-warning)) 18%, transparent);
+  --mad-sel-hl-accent: var(--mad-sel-hl-color, var(--mad-warning));
+}
+.mad-sel-option[data-mad-hl="row"] {
+  background: var(--mad-sel-hl-bg);
+  box-shadow: inset 3px 0 0 var(--mad-sel-hl-accent);
+}
+.mad-sel-option[data-mad-hl="row"].is-active {
+  background: color-mix(in srgb, var(--mad-sel-hl-accent) 24%, var(--mad-bg-muted));
+}
+/* O tema escuro (notch-dark.css) fixa o fundo do item ativo e do selecionado
+   com !important: a linha pintada segue com o tom nos dois estados. */
+html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-selected {
+  background: var(--mad-sel-hl-bg) !important;
+}
+html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
+  background: color-mix(in srgb, var(--mad-sel-hl-accent) 28%, var(--mad-bg-muted)) !important;
+}
+.mad-sel-option[data-mad-hl] .mad-sel-option-text { flex: 1 1 auto; min-width: 0; }
+/* Selo à direita da opção (`badge`). O texto é do registro: entra por x-text. */
+.mad-sel-badge {
+  flex: 0 1 auto;
+  margin-left: auto;
+  max-width: 50%;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--mad-sel-hl-accent, var(--mad-warning)) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mad-sel-hl-accent, var(--mad-warning)) 16%, var(--mad-bg));
+  color: color-mix(in srgb, var(--mad-sel-hl-accent, var(--mad-warning)) 62%, var(--mad-text));
+  font-size: var(--mad-text-xs);
+  font-weight: 600;
+  line-height: 1.6;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Cor livre pode ser clara demais para tinta: o texto do selo é o do tema. */
+.mad-sel-option[data-mad-hl-tone="color"] .mad-sel-badge { color: var(--mad-text); }
+/* Bolinha do valor escolhido: antes do texto (single) e dentro do chip (multi). */
+.mad-sel-dot {
+  flex: 0 0 auto;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--mad-sel-hl-accent, var(--mad-warning));
+}
+.mad-sel-chip > .mad-sel-dot { overflow: visible; }
 .mad-sel-checkbox {
   -webkit-appearance: checkbox !important;
   -moz-appearance: checkbox !important;

@@ -5,6 +5,7 @@ use Mad\Component\MadComponentHandler;
 use Mad\Filters\MadFilterable;
 use Mad\Filters\MadFiltersTrait;
 use Mad\Http\MadStateCrypt;
+use Mad\Support\HighlightRules;
 use Mad\View\MadBlade;
 
 
@@ -4312,60 +4313,30 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /**
      * Avalia uma condicao declarativa (when-* e disabled-*) contra uma linha.
      * Aceita tanto objeto de model (preferido — permite navegacao ->) quanto array.
+     *
+     * A avaliação mora em {@see HighlightRules::evalCond()}: é a mesma das
+     * opções dos campos de banco (`<mad-option-highlights>`).
      */
     protected static function _evalCond(array|object $row, array $cond): bool
     {
-        $field = $cond['field'] ?? '';
-        if ($field === '') return true;
-
-        if (is_object($row)) {
-            try { $fv = (string)($row->{$field} ?? ''); }
-            catch (\Throwable $e) { $fv = ''; }
-        } else {
-            $fv = (string)($row[$field] ?? '');
-        }
-        $val = $cond['value'] ?? '';
-
-        return match ($cond['op'] ?? 'eq') {
-            'eq'  => $fv === (string)$val,
-            'neq' => $fv !== (string)$val,
-            'in'  => in_array($fv, (array)$val, true),
-            'nin' => !in_array($fv, (array)$val, true),
-            // Comparação de grandeza (destaque "estoque abaixo de 10"): número
-            // com número; senão texto — data ISO (AAAA-MM-DD) compara certo.
-            // Campo vazio nunca casa (vazio não é "menor que 10").
-            'gt', 'gte', 'lt', 'lte' => $fv !== '' && static::_cmpOp($cond['op'], static::_cmpValues($fv, (string)$val)),
-            default => true,
-        };
+        return HighlightRules::evalCond($row, $cond);
     }
 
     /** -1/0/1 entre o valor do campo e o da regra (número se os dois forem). */
     protected static function _cmpValues(string $a, string $b): int
     {
-        $a = trim($a);
-        $b = trim($b);
-        if (is_numeric($a) && is_numeric($b)) {
-            return (float)$a <=> (float)$b;
-        }
-
-        return strcmp($a, $b) <=> 0;
+        return HighlightRules::cmpValues($a, $b);
     }
 
     protected static function _cmpOp(string $op, int $cmp): bool
     {
-        return match ($op) {
-            'gt'  => $cmp > 0,
-            'gte' => $cmp >= 0,
-            'lt'  => $cmp < 0,
-            'lte' => $cmp <= 0,
-            default => false,
-        };
+        return HighlightRules::cmpOp($op, $cmp);
     }
 
     // ── Destaque da linha por condição (<mad-row-highlights>) ─────────────
 
     /** Tons do destaque — classes `mad-dg-hl--<tom>` com tokens --mad-* (claro e escuro). */
-    public const ROW_HIGHLIGHT_TONES = ['danger', 'warning', 'success', 'info'];
+    public const ROW_HIGHLIGHT_TONES = HighlightRules::TONES;
 
     /**
      * Regras de destaque de uma listagem escrita à mão (builder#247). Mesmo
@@ -4405,24 +4376,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         $out = [];
         foreach ($raw as $r) {
-            if (!is_array($r)) continue;
-            $when = $r['when'] ?? null;
-            if (is_string($when)) {
-                $when = trim($when);
-                if ($when === '') continue;
-                $when = GridAction::hostCallable($when, $hosts);
-            } elseif (!is_array($when) || trim((string) ($when['field'] ?? '')) === '') {
-                continue;
-            }
-            $tone = strtolower(trim((string) ($r['tone'] ?? '')));
-            if (!in_array($tone, self::ROW_HIGHLIGHT_TONES, true)) $tone = '';
-            $color = static::_safeHighlightColor((string) ($r['color'] ?? ''));
-            if ($tone === '' && $color === '') $tone = 'warning';
-            $out[] = [
-                'when'  => $when,
-                'tone'  => $color !== '' ? '' : $tone,
-                'color' => $color,
-                'cell'  => trim(str_replace(['{', '}'], '', (string) ($r['cell'] ?? ''))),
+            $rule = HighlightRules::normalizeRule($r, $hosts);
+            if ($rule === null) continue;
+            $out[] = $rule + [
+                'cell' => trim(str_replace(['{', '}'], '', (string) ($r['cell'] ?? ''))),
             ];
         }
 
@@ -4432,9 +4389,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Cor livre aceita: #hex, nome, rgb()/hsl()/oklch() ou var(--x). Qualquer outra coisa some. */
     protected static function _safeHighlightColor(string $c): string
     {
-        $c = trim($c);
-
-        return preg_match('/^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}|(?:rgba?|hsla?|oklch)\([0-9.,%\s\/-]+\)|var\(--[\w-]+\))$/', $c) ? $c : '';
+        return HighlightRules::safeColor($c);
     }
 
     /** A primeira regra que casa com a linha, ou null. */
@@ -4455,21 +4410,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (is_array($when)) {
             return static::_evalCond($record ?? $row, $when);
         }
-        if (!is_string($when) || !is_callable($when)) {
-            static $warned = [];
-            $key = is_string($when) ? $when : get_debug_type($when);
-            if (!isset($warned[$key])) {
-                $warned[$key] = true;
-                error_log('[MadGrid] destaque de linha: display-condition "' . $key . '" não é chamável — a regra foi ignorada. Use um método public static da tela (só o nome) ou Classe::metodo.');
-            }
-            return false;
-        }
-        try {
-            return (bool) GridAction::callRowCallback($when, $record, $row);
-        } catch (\Throwable $e) {
-            error_log('[MadGrid] destaque de linha: "' . $when . '" falhou — ' . $e->getMessage());
-            return false;
-        }
+
+        return HighlightRules::callableMatches($when, $record, $row, '[MadGrid] destaque de linha');
     }
 
     /** Classes da <tr> (e do cartão) — vazio quando a regra pinta só a célula. */

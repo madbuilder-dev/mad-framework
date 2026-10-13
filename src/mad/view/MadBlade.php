@@ -160,6 +160,11 @@ class MadBladeCompiler extends BladeCompiler
         //        o corpo, preservando os <fill>) e ANTES do mapping mad→x.
         $value = \Mad\Form\MadAutoFillCompiler::process($value);
 
+        // 2.56. Extrai o <mad-option-highlights> dos campos de banco (combo e
+        //        buscas) e converte em :option-highlights="[...]" no pai. Depois
+        //        do quick-form e do <fill>: os três convivem no mesmo campo.
+        $value = \Mad\Form\MadOptionHighlightCompiler::process($value);
+
         // 2.6. Aliases de chart por tipo: <mad-{bar|line|pie|...|radar|mixed}-chart>
         //      → <mad-db-chart type="{tipo}">. Injeta type="..." preservando demais attrs.
         $chartTypes = 'bar|line|pie|donut|rose|funnel|treemap|radar|mixed';

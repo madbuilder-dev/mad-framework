@@ -82,9 +82,15 @@ class ModelOptionsLoader
      *                                  `*` e o rótulo só sai em branco —, então quem quer avisar
      *                                  o erro (\Mad\Form\OptionsLoadError) precisa desta lista.
      *                                  Tabela vazia = [] (não há registro para conferir).
+     * @param  callable|null $each      (opcional) chamado a cada opção com (chave, registro) — é por
+     *                                  onde `<mad-option-highlights>` avalia as regras na MESMA
+     *                                  consulta ({@see OptionHighlights::collector()}). O registro é
+     *                                  o model quando a fonte é Eloquent (a linha crua é hidratada,
+     *                                  sem consulta nova; o rótulo continua saindo da linha crua,
+     *                                  igual a sem o callback) e a linha stdClass num Query\Builder.
      * @return array<int|string, string>
      */
-    public static function itemsFromQuery($query, string $key, string $value, ?string $ordercolumn = null, string $orderDir = 'asc', ?array &$missing = null): array
+    public static function itemsFromQuery($query, string $key, string $value, ?string $ordercolumn = null, string $orderDir = 'asc', ?array &$missing = null, ?callable $each = null): array
     {
         $missing = [];
 
@@ -137,6 +143,15 @@ class ModelOptionsLoader
             $records = $q->get();
         }
 
+        // Registro que o `$each` recebe: a linha crua vira model (sem consulta).
+        $asRecord = null;
+        if ($each !== null && $query instanceof EloquentBuilder) {
+            $proto    = $query->getModel();
+            $asRecord = static fn (object $row): object => $row instanceof Model
+                ? $row
+                : $proto->newFromBuilder(get_object_vars($row));
+        }
+
         $items   = [];
         $checked = false;
         foreach ($records as $object) {
@@ -158,6 +173,10 @@ class ModelOptionsLoader
                 : $object->{$key};
 
             $items[$k] = $label;
+
+            if ($each !== null) {
+                $each($k, $asRecord !== null ? $asRecord($object) : $object);
+            }
         }
 
         if ($isMask && $ordercolumn === null) {

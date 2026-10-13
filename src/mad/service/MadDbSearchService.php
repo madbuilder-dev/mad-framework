@@ -18,6 +18,11 @@ use Mad\Http\MadStateCrypt;
  * MadStateCrypt::encrypt() e embutida no DOM em data-mad-search-token.
  * O cliente envia apenas { token, q, depValue? }.
  *
+ * Destaque das opções (`<mad-option-highlights>`): as regras vêm no token
+ * (`highlights`); cada resultado que casa ganha a MARCA já calculada em `hl`
+ * (`{paint, tone|color, badge}`). A regra nunca sai do servidor. Token sem
+ * regras: a resposta é a de sempre.
+ *
  * Estende MadComponent apenas pelo contrato do dispatcher (MadAppController
  * so roda subclasses); o unico entry point e o metodo estatico via ?static=1.
  *
@@ -55,6 +60,10 @@ class MadDbSearchService extends MadComponent
 
                 $querySql      = (string)($config['query_sql'] ?? '');
                 $queryBindings = (array)($config['query_bindings'] ?? []);
+
+                // Regras do <mad-option-highlights>, cunhadas no token pelo campo.
+                $hlRules  = \Mad\Form\OptionHighlights::normalize($config['highlights'] ?? []);
+                $hlRecord = $hlRules ? \Mad\Form\OptionHighlights::hydrator($model, $database) : null;
 
                 if ($querySql !== '' || $model !== '') {
                     try {
@@ -169,7 +178,12 @@ class MadDbSearchService extends MadComponent
                                 $v = (string) ($object->{$display} ?? '');
                             }
                             if ($k !== null && $v !== '') {
-                                $results[] = ['value' => (string)$k, 'text' => $v];
+                                $result = ['value' => (string)$k, 'text' => $v];
+                                if ($hlRecord !== null
+                                    && ($hl = \Mad\Form\OptionHighlights::markFor($hlRules, $hlRecord($object))) !== null) {
+                                    $result['hl'] = $hl;
+                                }
+                                $results[] = $result;
                             }
                         }
                     } catch (\Throwable $e) {

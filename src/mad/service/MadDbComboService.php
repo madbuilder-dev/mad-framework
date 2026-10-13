@@ -20,6 +20,12 @@ use Mad\Http\MadStateCrypt;
  * do dbcombo-field via MadStateCrypt::encrypt() e embutida no DOM como token
  * opaco em data-mad-dep-token. O cliente envia apenas { token, value }.
  *
+ * Destaque das opções (`<mad-option-highlights>`): as regras vêm no token
+ * (`highlights`) e a resposta leva só a MARCA já calculada das opções que
+ * casam — em `marks` (chave => marca) ao lado do mapa `options` da cascata, e
+ * em `hl` de cada item da lista completa. Quem lê `options` como sempre leu
+ * não percebe; token sem regras devolve a resposta de sempre.
+ *
  * Estende MadComponent apenas pelo contrato do dispatcher (MadAppController
  * so roda subclasses); o unico entry point e o metodo estatico via ?static=1.
  *
@@ -33,6 +39,7 @@ class MadDbComboService extends MadComponent
         $value = (string) ($param['value'] ?? '');
 
         $options = [];
+        $marks   = []; // chave da opção => marca do destaque (só com regras no token)
         // Aviso da falha (só com APP_DEBUG; ver \Mad\Form\OptionsLoadError). O
         // combo filho continua vazio, mas o motivo vai para o log — antes o catch
         // engolia tudo e a cascata "não carregava" sem rastro (fórum #41).
@@ -77,7 +84,12 @@ class MadDbComboService extends MadComponent
                             $__q->where($column, '=', $value);
                         }
                         $missing = [];
-                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir, $missing);
+                        $hlMarks = [];
+                        $hlEach  = \Mad\Form\OptionHighlights::collector(
+                            \Mad\Form\OptionHighlights::normalize($config['highlights'] ?? []),
+                            $hlMarks
+                        );
+                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir, $missing, $hlEach);
                         $error = OptionsLoadError::handleMissing($missing, 'mad-dbcombo-field (recarga)', [
                             'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
                         ]);
@@ -87,13 +99,19 @@ class MadDbComboService extends MadComponent
                             // ordem crescente — perderia o order_by.
                             $options = [];
                             foreach (($items ?: []) as $k => $v) {
-                                $options[] = ['value' => (string)$k, 'label' => (string)$v];
+                                $option = ['value' => (string)$k, 'label' => (string)$v];
+                                if (isset($hlMarks[(string)$k])) {
+                                    $option['hl'] = $hlMarks[(string)$k];
+                                }
+                                $options[] = $option;
                             }
                         } else {
                             $options = $items;
+                            $marks   = $hlMarks;
                         }
                     } catch (\Throwable $e) {
                         $options = [];
+                        $marks   = [];
                         $error = OptionsLoadError::handle($e, 'mad-dbcombo-field (recarga)', [
                             'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
                         ]);
@@ -103,7 +121,15 @@ class MadDbComboService extends MadComponent
         }
 
         header('Content-Type: application/json');
-        echo json_encode($error !== null ? ['options' => $options, 'error' => $error] : ['options' => $options]);
+        $payload = ['options' => $options];
+        if ($marks !== []) {
+            // Objeto, não lista: chave numérica em sequência viraria array no JSON.
+            $payload['marks'] = (object) $marks;
+        }
+        if ($error !== null) {
+            $payload['error'] = $error;
+        }
+        echo json_encode($payload);
     }
 
     /** Nunca renderiza — endpoint estatico puro. */

@@ -35,6 +35,22 @@
      *   disabled    bool
      *   attrs       string   Attrs extras
      *   id          string   ID do elemento
+     *
+     *   option-highlights array  Destaque das opções por condição. Em geral vem da tag filha:
+     *       <mad-option-highlights>
+     *           <mad-option-highlight when-field="status" when-value="inativo" tone="danger" badge="Inativo" />
+     *           <mad-option-highlight when-field="saldo" when-op="lt" when-value="0" color="#fde68a" />
+     *           <mad-option-highlight display-condition="estaInadimplente" tone="danger"
+     *                                 badge="{dias_atraso} dias" paint="badge" />
+     *       </mad-option-highlights>
+     *     Condição: when-field + when-value / when-op (eq, neq, gt, gte, lt, lte) / when-in / when-nin,
+     *     ou display-condition="metodo" (public static da tela) / "Classe::metodo". when-field é coluna
+     *     do model do campo. tone: danger|warning|success|info; color: cor livre (vence o tom);
+     *     badge: selo à direita da opção (texto ou máscara {coluna}); paint: row (padrão) ou badge
+     *     (só o selo leva a cor). Vale a primeira regra que casar. À mão:
+     *     :option-highlights="[['when' => ['field' => 'status', 'op' => 'eq', 'value' => 'inativo'], 'tone' => 'danger']]"
+     *     Ver \Mad\Form\MadOptionHighlightCompiler.
+     *     Vale na lista da busca, nas opções dos itens já gravados e em cada item escolhido (bolinha).
      */
 
     $name          = $name          ?? '';
@@ -83,6 +99,11 @@
     $noResultsQuickRegisterClass  = $noResultsQuickRegisterClass  ?? 'mad-btn mad-btn-success mad-btn-sm';
     $noResultsQuickFields         = $noResultsQuickFields         ?? [];
     $noResultsMessage             = $noResultsMessage             ?? '';
+    // <mad-option-highlights> → regras saneadas (display-condition resolvido na
+    // tela). Sem regras: [] e nada abaixo muda. Ver \Mad\Form\OptionHighlights.
+    $__hlRules = \Mad\Form\OptionHighlights::forField($optionHighlights ?? []);
+    $__hlMarks = [];
+    $__hlEach  = \Mad\Form\OptionHighlights::collector($__hlRules, $__hlMarks);
     if ($name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false) {
         $attrs = 'mad:model="' . $name . '" ' . $attrs;
     }
@@ -183,7 +204,9 @@
             'query_sql'      => $querySql,
             'query_bindings' => $queryBindings,
             'limit'          => 500,
-        ]);
+            // Regras do destaque das opções: a busca marca cada resultado no
+            // servidor; o navegador só recebe a marca (só existe com regras).
+        ] + ($__hlRules ? ['highlights' => $__hlRules] : []));
     }
 
     // Token depends-on
@@ -228,7 +251,7 @@
         try {
             $__pm = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             $preloadOptions = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display, null, 'asc', $__optMissing
+                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display, null, 'asc', $__optMissing, $__hlEach
             );
         } catch (\Exception $e) {
             $preloadOptions = [];
@@ -274,7 +297,7 @@
         {!! $attrs !!}
     >
         @foreach($preloadOptions as $optKey => $optLabel)
-            <option value="{{ $optKey }}"
+            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}
                 @if(in_array((string)$optKey, $selected)) selected @endif>
                 {{ $optLabel }}
             </option>

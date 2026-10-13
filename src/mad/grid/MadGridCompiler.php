@@ -1617,9 +1617,9 @@ class MadGridCompiler
      * do htmlspecialchars, o '@' e o '{' viram entidade: rendem idênticos na
      * tela e são inertes para o Blade.
      */
-    protected static function warn(string $msg): string
+    protected static function warn(string $msg, string $who = 'MadGridCompiler'): string
     {
-        @error_log('[MadGridCompiler] ' . $msg);
+        @error_log('[' . $who . '] ' . $msg);
         if (!static::debugEnabled()) return '';
         $safe = strtr(htmlspecialchars($msg, ENT_QUOTES), [
             '@' => '&#64;',    // @if/@foreach/@php citados na mensagem
@@ -1627,7 +1627,7 @@ class MadGridCompiler
         ]);
 
         return '<div class="mad-alert mad-alert-danger" role="alert" style="margin-bottom:8px">'
-             . '<div class="mad-alert-title">MadGridCompiler</div>'
+             . '<div class="mad-alert-title">' . $who . '</div>'
              . '<div class="mad-alert-desc">' . $safe . '</div></div>';
     }
 
@@ -2543,30 +2543,97 @@ class MadGridCompiler
      */
     protected static function buildRowHighlightConfigs(string $body): array
     {
+        return static::buildHighlightRuleConfigs(
+            $body,
+            'mad-row-highlight',
+            static fn (array $a, string $name, array &$notes): string => ", 'cell' => " . static::qs(trim(static::str($a, 'cell'))),
+            static::$_actionNotes
+        );
+    }
+
+    /** `paint` do `<mad-option-highlight>` — espelha {@see \Mad\Form\OptionHighlights::PAINTS}. */
+    protected const OPTION_HIGHLIGHT_PAINTS = ['row', 'badge'];
+
+    /**
+     * Regras do `<mad-option-highlights>` (framework#323) → configs
+     * `['when' => …, 'tone' => …, 'color' => …, 'badge' => …, 'paint' => …]`,
+     * prontas para a prop `:option-highlights` do campo de banco.
+     *
+     * É o MESMO leitor do `<mad-row-highlights>` (condição, tom e cor iguais);
+     * muda só o que é da opção: `badge` (texto do selo, literal ou máscara
+     * `{coluna}`; aceita `:badge="expr"`) e `paint` (`row` ou `badge`). Chamado
+     * pelo {@see \Mad\Form\MadOptionHighlightCompiler}, que cuida da tag pai.
+     *
+     * @return array{0: list<string>, 1: string} [configs, avisos já desenhados (só com APP_DEBUG)]
+     */
+    public static function optionHighlightConfigs(string $body): array
+    {
+        $notes   = [];
+        $configs = static::buildHighlightRuleConfigs(
+            $body,
+            'mad-option-highlight',
+            static function (array $a, string $name, array &$notes): string {
+                $paint = strtolower(trim(static::str($a, 'paint')));
+                if ($paint !== '' && !in_array($paint, self::OPTION_HIGHLIGHT_PAINTS, true)) {
+                    $notes[] = $name . ' paint="' . $paint . '" não existe (use ' . implode(', ', self::OPTION_HIGHLIGHT_PAINTS) . '): vale row.';
+                    $paint = '';
+                }
+
+                return ", 'badge' => " . static::strExpr($a, 'badge')
+                     . ", 'paint' => " . static::qs($paint === '' ? 'row' : $paint);
+            },
+            $notes
+        );
+
+        $diag = '';
+        foreach (array_unique($notes) as $note) {
+            $diag .= static::optionHighlightNote($note);
+        }
+
+        return [$configs, $diag];
+    }
+
+    /** Aviso de authoring do `<mad-option-highlights>`: no log sempre; na tela (antes do campo) com o APP_DEBUG. */
+    public static function optionHighlightNote(string $msg): string
+    {
+        return static::warn($msg, 'MadOptionHighlightCompiler');
+    }
+
+    /**
+     * Lê as regras `<{$tag} …/>` de um container de destaque: condição, tom e
+     * cor são comuns; `$extra` devolve o trecho de config que é de cada lugar
+     * (a célula da grade, o selo da opção).
+     *
+     * @param  callable(array, string, array): string $extra  (atributos, nome da regra, &avisos) → ", 'chave' => …"
+     * @param  list<string> $notes (saída) avisos de authoring
+     * @return list<string>
+     */
+    protected static function buildHighlightRuleConfigs(string $body, string $tag, callable $extra, array &$notes): array
+    {
         $out = [];
         preg_match_all(
-            '/<mad-row-highlight(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-row-highlight', '[\s\S]*?') . '/s',
+            '/<' . $tag . '(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose($tag, '[\s\S]*?') . '/s',
             $body, $rules, PREG_SET_ORDER
         );
         foreach ($rules as $i => $r) {
             $a    = static::parseAttrs($r[1] ?? '');
-            $name = '<mad-row-highlight> nº ' . ($i + 1);
+            $name = '<' . $tag . '> nº ' . ($i + 1);
 
             $hasFn    = trim(static::str($a, 'display-condition')) !== '';
             $hasField = trim(static::str($a, 'when-field')) !== '';
             if (!$hasFn && !$hasField) {
-                static::$_actionNotes[] = $name . ' sem condição (when-field ou display-condition): a regra foi ignorada.';
+                $notes[] = $name . ' sem condição (when-field ou display-condition): a regra foi ignorada.';
                 continue;
             }
             if ($hasFn && $hasField) {
-                static::$_actionNotes[] = $name . ' tem display-condition e when-field: vale o display-condition.';
+                $notes[] = $name . ' tem display-condition e when-field: vale o display-condition.';
             }
             $condAttrs = $hasFn
                 ? ['display-condition' => $a['display-condition']]
                 : array_intersect_key($a, array_flip(['when-field', 'when-value', 'when-in', 'when-nin', 'when-op']));
             $op = strtolower(trim(static::str($a, 'when-op')));
             if (!$hasFn && $op !== '' && !isset($a['when-in']) && !isset($a['when-nin']) && !in_array($op, self::WHEN_OPS, true)) {
-                static::$_actionNotes[] = $name . ' when-op="' . $op . '" não existe (use ' . implode(', ', self::WHEN_OPS) . ' ou when-in/when-nin): a regra nunca casa.';
+                $notes[] = $name . ' when-op="' . $op . '" não existe (use ' . implode(', ', self::WHEN_OPS) . ' ou when-in/when-nin): a regra nunca casa.';
             }
             $when = '';
             foreach (static::actConditionParts($condAttrs) as $part) {
@@ -2578,14 +2645,14 @@ class MadGridCompiler
             $tone  = strtolower(trim(static::str($a, 'tone')));
             $color = trim(static::str($a, 'color'));
             if ($tone !== '' && !in_array($tone, self::ROW_HIGHLIGHT_TONES, true)) {
-                static::$_actionNotes[] = $name . ' tone="' . $tone . '" não existe (use ' . implode(', ', self::ROW_HIGHLIGHT_TONES) . '): vale o aviso (amarelo).';
+                $notes[] = $name . ' tone="' . $tone . '" não existe (use ' . implode(', ', self::ROW_HIGHLIGHT_TONES) . '): vale o aviso (amarelo).';
                 $tone = $color === '' ? 'warning' : '';
             }
 
             $out[] = '[' . $when
                 . ", 'tone' => " . static::qs($tone)
                 . ", 'color' => " . static::qs($color)
-                . ", 'cell' => " . static::qs(trim(static::str($a, 'cell')))
+                . $extra($a, $name, $notes)
                 . ']';
         }
 

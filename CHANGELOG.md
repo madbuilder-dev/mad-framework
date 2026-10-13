@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.159.0] — 2026-10-13
+
+### Novidades
+
+- **Campos de seleção:** as opções de um campo de banco podem ganhar cor e selo conforme os dados do registro, com `<mad-option-highlights>` dentro de `<mad-dbcombo-field>`, `<mad-dbselect-field>`, `<mad-dbunique-search-field>` e `<mad-dbmulti-search-field>`. Serve para sinalizar na própria lista o cliente inativo, o produto sem estoque ou o título vencido. A condição é a mesma do destaque da linha da grade. Sem a tag, o campo continua igual. Republique o projeto para aplicar.
+
 ## [5.158.1] — 2026-10-13
 
 ### Melhorias
