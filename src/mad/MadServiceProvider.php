@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -32,6 +33,8 @@ use Mad\Console\GridPurgeExportsCommand;
 use Mad\Console\RestDriverInstallCommand;
 use Mad\Console\TraceFlushCommand;
 use Mad\Console\TraceInfraCommand;
+use Mad\Console\WebhookCommand;
+use Mad\Console\WebhookTickCommand;
 use Mad\Core\AppConfig;
 use Mad\Database\MadPostgresConnection;
 use Mad\Http\Controllers\GridExportDownloadController;
@@ -48,6 +51,10 @@ use Mad\Rest\RestDriverSigner;
 use Mad\Util\MadSqlCollector;
 use Mad\View\MadBlade;
 use Mad\Web\BladeDirectives;
+use Mad\Webhook\WebhookController;
+use Mad\Webhook\WebhookDefinition;
+use Mad\Webhook\WebhookProcessor;
+use Mad\Webhook\WebhookRegistry;
 use Yajra\Oci8\Connectors\OracleConnector;
 use Yajra\Oci8\Oci8Connection;
 
@@ -85,6 +92,15 @@ class MadServiceProvider extends ServiceProvider
                 RestDriverInstallCommand::class,
             ]);
         }
+
+        // Fora do gate de console de propósito: a plataforma (e a Central de
+        // Comando) chamam `Artisan::call('mad:webhook', …)` de dentro de uma
+        // requisição web. `commands()` só registra um callback, não custa nada
+        // a quem nunca sobe o Artisan.
+        $this->commands([
+            WebhookCommand::class,
+            WebhookTickCommand::class,
+        ]);
     }
 
     /**
@@ -139,6 +155,67 @@ class MadServiceProvider extends ServiceProvider
         $this->bootPublishing();
         $this->bootTrace();
         $this->bootSchedulePause();
+        $this->bootWebhooks();
+    }
+
+    /**
+     * Webhooks recebidos — `POST /api/webhooks/{slug}` e
+     * `POST /api/webhooks/{slug}/{key}` ({@see WebhookController}).
+     *
+     * Uma rota FIXA do framework atende todos os webhooks declarados em
+     * `app/config/webhooks.json`: nenhuma rota é gerada por webhook, então o
+     * `routes/api.php` do projeto não tem como derrubar o recurso.
+     *
+     * Tudo dentro do `booted`, que roda depois de TODOS os providers (os
+     * arquivos de rota do app inclusive):
+     *
+     *  - a rota entra por último na coleção, e o Laravel casa a primeira que
+     *    serve — uma rota do próprio projeto em `/api/webhooks/*` continua
+     *    vencendo;
+     *  - o limitador só é declarado se o app não declarou o seu
+     *    (`RateLimiter::for('mad-webhook', …)` no app vence).
+     *
+     * Limitador NOMEADO, por slug + IP, com o limite da definição: o numérico
+     * (`throttle:N,M`) contaria todos os webhooks no mesmo balde e não saberia
+     * o limite de cada um. Slug desconhecido divide um balde só por IP, para
+     * que sondar endereços não crie uma chave de cache por tentativa.
+     *
+     * Sem grupo `web`: sem sessão, sem cookie e sem CSRF. O `where()` nos dois
+     * segmentos faz o que não tem forma de slug/chave nem chegar ao controller.
+     */
+    private function bootWebhooks(): void
+    {
+        $this->app->booted(static function (): void {
+            if (RateLimiter::limiter('mad-webhook') === null) {
+                RateLimiter::for('mad-webhook', static function (Request $request) {
+                    $slug = (string) $request->route('slug');
+                    $definition = WebhookRegistry::find($slug);
+
+                    return Limit::perMinute($definition?->rateLimit ?? 60)
+                        ->by('mad-webhook|' . ($definition !== null ? $slug : '?') . '|' . $request->ip());
+                });
+            }
+
+            Route::post('/api/webhooks/{slug}/{key?}', WebhookController::class)
+                ->where('slug', WebhookDefinition::SLUG_PATTERN)
+                ->where('key', WebhookDefinition::KEY_PATTERN)
+                ->middleware('throttle:mad-webhook')
+                ->name('mad.webhook');
+        });
+
+        // Batimento do worker da fila: é por ele que o modo `auto` sabe se há
+        // quem tire o job da fila. Dispara a cada volta do `queue:work`; a
+        // gravação no cache é limitada a uma a cada 30 s.
+        Event::listen(Looping::class, static fn () => WebhookProcessor::beat());
+
+        // Manutenção a cada minuto (falhas com recuo, entregas paradas, limpeza).
+        // Pulada enquanto o app não tem nenhum webhook definido.
+        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+            $schedule->command('mad:webhook:tick')
+                ->everyMinute()
+                ->withoutOverlapping(10)
+                ->skip(static fn () => ! WebhookRegistry::hasDefinitions());
+        });
     }
 
     /**

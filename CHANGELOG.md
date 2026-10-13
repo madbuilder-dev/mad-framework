@@ -12,6 +12,23 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.161.0] — 2026-10-13
+
+### Novidades
+
+- **Webhooks recebidos:** o app passa a receber avisos de outros sistemas (pagamento, ponto, loja, transportadora) em `/api/webhooks/<nome>`, sem escrever rota nem conferência de assinatura. O que existe é definido no projeto; cada aviso é conferido, guardado e entregue ao código do projeto. Republique o projeto para aplicar.
+- **Webhooks recebidos:** o remetente recebe a resposta na hora e o processamento acontece depois, com fila quando há uma rodando e sem depender dela quando não há. Aviso repetido pelo remetente não é processado duas vezes, e o que falha é tentado de novo sozinho, com intervalo crescente.
+- **Webhooks recebidos:** conferência por assinatura (como GitHub, Stripe e Shopify enviam), por token no cabeçalho ou no endereço, ou por lista de endereços liberados. Sem segredo definido, nenhum aviso é aceito.
+- **Webhooks recebidos:** webhook por unidade. Cada unidade tem o próprio endereço e o próprio segredo, e o código do projeto roda já na empresa e na unidade donas do aviso.
+- **Administração:** nova tela **Webhooks recebidos**, com o endereço para copiar, gerar ou colar o segredo (mostrado uma única vez), pausar e retomar. O segredo anterior continua aceito durante a troca, para nenhum aviso se perder.
+- **Administração:** nova tela **Entregas**, com tudo o que chegou, a situação de cada aviso, o motivo quando falhou ou foi recusado, o conteúdo recebido e o botão **Reprocessar** para o que falhou.
+- **Linha de comando:** `php artisan mad:webhook list`, `mad:webhook secret <nome>` e `mad:webhook test <nome>` (envia um aviso de teste assinado para o próprio app) ajudam a configurar e conferir sem depender do remetente.
+
+### Atenção
+
+- **Webhooks recebidos:** o recurso cria duas tabelas novas. Em app já publicado, rode as migrations (o deploy do MadBuilder já faz isso); até lá o endereço responde "tente mais tarde" e nada é perdido do lado do remetente que repete o envio.
+- **Agendador:** a repetição automática de avisos que falharam e a limpeza do histórico rodam pelo agendador do app, a cada minuto. Sem agendador, a repetição acontece quando o próximo aviso chega.
+
 ## [5.160.0] — 2026-10-13
 
 ### Novidades

@@ -61,6 +61,9 @@ final class ProtectedData
         'mad_iam_payment_method' => 'token do cartão no provedor de pagamento',
         'mad_iam_billing_event'  => 'eventos brutos dos webhooks do provedor de pagamento',
         'mad_sys_preference'     => 'chaves dos provedores de pagamento (billing_*_secret) e preferências do sistema',
+        // webhooks recebidos
+        'mad_sys_webhook_endpoint' => 'segredos e chaves de endereço dos webhooks recebidos',
+        'mad_sys_webhook_delivery' => 'cabeçalhos e corpo das entregas dos webhooks recebidos',
         // logs que carregam segredo
         'mad_log_request'        => 'cabeçalhos (cookie, Authorization) e corpo das requisições, inclusive o login',
         'mad_log_sql'            => 'texto das instruções SQL executadas',

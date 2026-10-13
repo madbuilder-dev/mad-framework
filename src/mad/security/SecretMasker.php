@@ -198,9 +198,21 @@ final class SecretMasker
         return implode('&', $parts);
     }
 
-    /** URI/URL com query: mascara só a parte depois do `?`. */
+    /**
+     * URI/URL: mascara a query (a parte depois do `?`) e a chave do endereço de
+     * um webhook recebido (`/api/webhooks/<slug>/<chave>`), que identifica o
+     * endpoint da unidade e, na verificação por token na URL, É a credencial.
+     */
     public static function maskUri(string $uri): string
     {
+        if (str_contains($uri, '/api/webhooks/')) {
+            $uri = (string) preg_replace(
+                '#(/api/webhooks/[a-z0-9][a-z0-9-]{0,79}/)[A-Za-z0-9]{24,64}(?=$|[/?\#])#',
+                '$1' . self::MASK,
+                $uri,
+            );
+        }
+
         $q = strpos($uri, '?');
         if ($q === false) {
             return $uri;
