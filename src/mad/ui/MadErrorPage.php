@@ -110,19 +110,71 @@ class MadErrorPage
             HTML, 'internal');
     }
 
-    /** Recusa de acesso (403), versão do usuário final. */
-    public static function forbidden(): string
+    /**
+     * Recusa de acesso (403), versão do usuário final.
+     *
+     * Com `$reason` (ver {@see MadForbidden::explainUsing()}) a página diz o
+     * MOTIVO e o próximo passo no lugar do texto genérico, e as ações dele
+     * viram botões antes do "Ir para o início". Cada botão leva
+     * `data-mad-denied-action`: é por ele que o diálogo de quem abriu a tela em
+     * cortina (mad.js, fw#308) monta os mesmos botões.
+     *
+     * @param  array{title: string, body?: string, icon?: string,
+     *               actions?: list<array{label: string, href: string, target?: string}>}|null  $reason
+     */
+    public static function forbidden(?array $reason = null): string
     {
-        $title = self::esc(self::t('mad.forbidden_title', 'Você não tem acesso a esta tela'));
-        $body  = self::esc(self::t('mad.forbidden_body', 'Peça a liberação a quem administra o sistema.'));
-        $home  = self::esc(self::t('mad.forbidden_home', 'Ir para o início'));
-        $url   = self::esc(self::homeUrl());
+        $home = self::esc(self::t('mad.forbidden_home', 'Ir para o início'));
+        $url  = self::esc(self::homeUrl());
 
-        return self::card('lock', '#dc2626', $title, $body, <<<HTML
+        if ($reason === null || trim((string) ($reason['title'] ?? '')) === '') {
+            $title = self::esc(self::t('mad.forbidden_title', 'Você não tem acesso a esta tela'));
+            $body  = self::esc(self::t('mad.forbidden_body', 'Peça a liberação a quem administra o sistema.'));
+
+            return self::card('lock', '#dc2626', $title, $body, <<<HTML
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                    <a href="{$url}" class="mad-btn mad-btn-primary">{$home}</a>
+                </div>
+                HTML);
+        }
+
+        $buttons = '';
+        foreach ((array) ($reason['actions'] ?? []) as $i => $action) {
+            $label = self::esc((string) ($action['label'] ?? ''));
+            $href  = self::esc((string) ($action['href'] ?? ''));
+            if ($label === '' || $href === '') {
+                continue;
+            }
+            $class = $i === 0 ? 'mad-btn mad-btn-primary' : 'mad-btn mad-btn-secondary';
+
+            if (($action['target'] ?? 'app') === 'external') {
+                $buttons .= '<a href="' . $href . '" target="_blank" rel="noopener" class="' . $class
+                    . '" data-mad-denied-action="external">' . $label . '</a>';
+                continue;
+            }
+
+            // Dentro do sistema: navega pelo Mad (sem recarregar o casco); o
+            // href fica de reserva para quem abrir em outra aba.
+            $buttons .= '<a href="' . $href . '" class="' . $class . '" data-mad-denied-action="app"'
+                . ' onclick="if(window.Mad&amp;&amp;Mad.navigate){Mad.navigate(this.getAttribute(\'href\'));return false;}">'
+                . $label . '</a>';
+        }
+
+        $homeClass = $buttons === '' ? 'mad-btn mad-btn-primary' : 'mad-btn mad-btn-secondary';
+        $icon      = preg_match('/^[a-z0-9-]+$/', (string) ($reason['icon'] ?? '')) ? (string) $reason['icon'] : 'lock';
+
+        return self::card(
+            $icon,
+            '#d97706',
+            self::esc((string) $reason['title']),
+            self::esc((string) ($reason['body'] ?? '')),
+            <<<HTML
             <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-                <a href="{$url}" class="mad-btn mad-btn-primary">{$home}</a>
+                {$buttons}
+                <a href="{$url}" class="{$homeClass}">{$home}</a>
             </div>
-            HTML);
+            HTML
+        );
     }
 
     /**

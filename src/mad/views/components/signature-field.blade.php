@@ -81,6 +81,12 @@
         // A assinatura desenhada ou digitada sai num tipo que o campo aceita (mad-ui.js).
         'accept'     => $_acceptDeclared,
         'maxBytes'   => $_declaredBytes ?: '',
+        // As regras que o NAVEGADOR aplica — as da tag ou, sem elas, o padrão
+        // do campo. Servem só para conferir o arquivo que ele recusou e tirou
+        // do envio (`__mad_file_refused`, fw#297): o arquivo que chega continua
+        // conferido só pelo que a tag declarou.
+        'browserAccept'   => $accept,
+        'browserMaxBytes' => $maxBytes,
     ]);
 
     $_disabledJs = $disabled ? 'true' : 'false';

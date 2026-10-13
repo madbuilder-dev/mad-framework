@@ -412,7 +412,8 @@ final class MadUploadRules
             // O navegador recusou um arquivo neste campo e o tirou do envio
             // (fw#297): sem isto o Salvar gravava o resto e a tela dizia
             // "salvo", com o arquivo antigo no lugar.
-            if ($sent === 0 && ($problem = self::refusedInBrowser($name, $max, $accept, $storage !== '')) !== null) {
+            [$refuseMax, $refuseAccept] = self::browserRules($props);
+            if ($sent === 0 && ($problem = self::refusedInBrowser($name, $refuseMax, $refuseAccept, $storage !== '')) !== null) {
                 $errors[$name] = $problem;
                 continue;
             }
@@ -548,18 +549,40 @@ final class MadUploadRules
                     continue 2;
                 }
             }
-            $problem = self::refusedInBrowser(
-                $name,
-                max(0, (int) ($props['maxBytes'] ?? 0)),
-                (string) ($props['accept'] ?? ''),
-                (string) ($props['storage'] ?? '') !== '',
-            );
+            [$max, $accept] = self::browserRules($props);
+            $problem = self::refusedInBrowser($name, $max, $accept, (string) ($props['storage'] ?? '') !== '');
             if ($problem !== null) {
                 $errors[$name] = $problem;
             }
         }
 
         return $errors;
+    }
+
+    /**
+     * As regras pelas quais o NAVEGADOR recusa um arquivo neste campo: Tamanho
+     * máximo e Tipos aceitos da tag e, onde ela não declara, o padrão do campo
+     * (`browserMaxBytes`/`browserAccept` — a Imagem sem nada configurado recusa
+     * acima de 5 MB e fora de PNG/JPEG/GIF/WEBP).
+     *
+     * Só para conferir a marca do arquivo recusado. Com só as regras da tag, a
+     * Foto sem `max-size` recusava o PNG de 12 MB no navegador e o servidor
+     * concluía que "as regras deixariam passar": o Salvar gravava o resto e
+     * respondia "Registro salvo" (reteste da fw#297). O arquivo que CHEGA
+     * continua conferido só pelo que a tag declarou.
+     *
+     * @param  array<string,mixed> $props
+     * @return array{0: int, 1: string} [bytes, tipos aceitos]
+     */
+    private static function browserRules(array $props): array
+    {
+        $max    = max(0, (int) ($props['maxBytes'] ?? 0));
+        $accept = (string) ($props['accept'] ?? '');
+
+        return [
+            $max > 0 ? $max : max(0, (int) ($props['browserMaxBytes'] ?? 0)),
+            $accept !== '' ? $accept : (string) ($props['browserAccept'] ?? ''),
+        ];
     }
 
     /**

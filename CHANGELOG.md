@@ -12,6 +12,26 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.158.0] — 2026-10-13
+
+### Novidades
+
+- **Licenciamento:** em Cobrança, o dono do sistema informa um e-mail e um WhatsApp de suporte, mostrados ao administrador da unidade quando a licença vence e a cobrança está desligada.
+
+### Melhorias
+
+- **Site público:** a cor do aviso de erro dos formulários do site passa a ser a variável `--site-danger`, para sites de fundo escuro poderem clarear o vermelho.
+- **Formulários:** o subtítulo das seções ficou mais legível nos temas claro e escuro.
+
+### Correções
+
+- **Site público:** a página de cadastro aberta pelo "Criar conta" do menu ou do rodapé pedia "Escolha um plano." sem mostrar nenhum plano. Agora ela lista os planos com preço e teste grátis, com o primeiro já marcado; com um plano só ele é assumido, e sem plano disponível a página aponta o contato.
+- **Site público:** plano sem preço anual não pode mais ser contratado no período anual pelo cadastro do site.
+- **Licenciamento:** com a licença vencida ou inativa, a tela só dizia "Você não tem acesso a esta tela". Agora a faixa do topo, a tela bloqueada e o aviso de quem abre uma tela em cortina lateral dizem que é a licença, a data e o que fazer: renovar a assinatura, falar com o suporte ou com o administrador da unidade.
+- **Formulários:** em campos de imagem sem "Tamanho máximo" ou "Tipos aceitos" configurados, um arquivo acima de 5 MB ou de tipo não aceito era avisado no campo, mas o Salvar gravava o resto e dizia "Registro salvo". Agora o Salvar é recusado com a mensagem no campo, também em telas com código próprio e em cortina lateral. Republique o projeto para aplicar.
+- **Temas:** no tema escuro, a caixa de enviar imagem ficava branca com o texto quase invisível, e a aba selecionada, o "clique para enviar" e o aviso "Nenhum item adicionado" tinham pouco contraste. O campo de assinatura também passa a seguir o tema. Republique o projeto para aplicar.
+- **Temas:** no tema escuro, botões que são links (como "Ir para o início" da tela bloqueada) apareciam sem texto.
+
 ## [5.157.1] — 2026-10-13
 
 ### Atenção

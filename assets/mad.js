@@ -2434,7 +2434,10 @@ const Mad = {
     _deniedFragment(html, res) {
         const m = _madDeniedMessage(res ? res.status : 0, html);
         if (!m) return false;
-        MadDialog.show({ type: 'warning', title: m.title, message: m.message });
+        // Recusa com motivo (licença vencida, fw#321): os botões do próximo
+        // passo que a página traz também vão no diálogo.
+        const buttons = _madDeniedButtons(m.actions);
+        MadDialog.show({ type: 'warning', title: m.title, message: _madDeniedEscape(m.message), buttons: buttons });
         return true;
     },
 
@@ -3167,6 +3170,11 @@ const MadLoader = {
  * Só 4xx: 5xx é do modal de erro, envelope JSON de ops segue o caminho dele.
  * Com a página de erro pronta do servidor (MadErrorPage: título e texto já no
  * idioma do usuário), usa a dela; sem, um aviso genérico — nunca silêncio.
+ *
+ * `actions` são os botões do próximo passo que a página marca com
+ * `data-mad-denied-action` — recusa com motivo, como a licença vencida
+ * ("Renovar assinatura", o contato de suporte; fw#321). O "Ir para o início"
+ * não tem a marca: no diálogo o usuário já está numa tela.
  */
 function _madDeniedMessage(status, html) {
     if (!(status >= 400 && status < 500)) return null;
@@ -3183,14 +3191,62 @@ function _madDeniedMessage(status, html) {
     const h = page ? /<h[12][^>]*>([\s\S]*?)<\/h[12]>/i.exec(body) : null;
     const p = page ? /<p[^>]*>([\s\S]*?)<\/p>/i.exec(body) : null;
     if (h && text(h[1]) !== '') {
-        return { title: text(h[1]), message: p ? text(p[1]) : '' };
+        // Quote-aware: o valor de um atributo pode ter `>` (o onclick do link).
+        const actions = [];
+        const link = /<a\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/a>/gi;
+        let a;
+        while ((a = link.exec(body)) !== null) {
+            const kind = /\bdata-mad-denied-action="(app|external)"/.exec(a[1]);
+            const href = /\bhref="([^"]*)"/.exec(a[1]);
+            const label = text(a[2]);
+            const url = href ? text(href[1]) : '';
+            // Só endereço do próprio sistema ou http(s)/mailto/tel.
+            const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url);
+            const safe = url !== '' && (!scheme || /^(https?|mailto|tel)$/i.test(scheme[1]));
+            if (kind && label !== '' && safe) actions.push({ label: label, href: url, target: kind[1] });
+        }
+        return { title: text(h[1]), message: p ? text(p[1]) : '', actions: actions };
     }
     return {
         title: 'Não foi possível abrir a tela',
         message: status === 403 || status === 401
             ? 'Você não tem acesso a esta tela. Peça a liberação a quem administra o sistema.'
             : 'A tela não respondeu como esperado (erro ' + status + '). Tente de novo.',
+        actions: [],
     };
+}
+
+/**
+ * Botões do diálogo de recusa com motivo (fw#321): um por ação do próximo
+ * passo, mais "Fechar". Ação `app` navega dentro do sistema; `external`
+ * (e-mail, WhatsApp) abre fora, sem tirar o usuário de onde está. Sem ação,
+ * null — o diálogo fica com o "OK" de sempre.
+ */
+function _madDeniedButtons(actions) {
+    const list = Array.isArray(actions) ? actions.filter(a => a && a.label && a.href) : [];
+    if (!list.length) return null;
+    const buttons = list.map((a, i) => ({
+        label: String(a.label),
+        type: i === 0 ? 'primary' : 'secondary',
+        callback: function () {
+            const href = String(a.href);
+            if (a.target !== 'external' && window.Mad && typeof Mad.navigate === 'function') {
+                Mad.navigate(href);
+            } else if (a.target !== 'external' || /^(mailto|tel):/i.test(href)) {
+                window.location.href = href;
+            } else {
+                window.open(href, '_blank', 'noopener');
+            }
+        },
+    }));
+    buttons.push({ label: 'Fechar', type: 'secondary', callback: null });
+    return buttons;
+}
+
+/** Texto cru → HTML seguro para o corpo do diálogo (que é innerHTML). */
+function _madDeniedEscape(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 const MadDialog = {

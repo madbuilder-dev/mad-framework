@@ -5,10 +5,13 @@
     Mesma mecânica do contato (HTML puro + `@csrf` + armadilha + carimbo de
     tempo), mas com duas diferenças que importam:
 
-     • **O plano e o ciclo vêm do link.** O botão da seção de preços manda
-       `?plan=...&cycle=...`; os dois viajam em campo escondido para que o
-       cadastro já crie a assinatura certa. Sem plano no link, o servidor
-       decide (e é ele quem valida: campo escondido é sugestão, não ordem).
+     • **O plano e o ciclo vêm do link — ou do próprio formulário.** O botão
+       da seção de preços manda `?plan=...&cycle=...`; os dois viajam em campo
+       escondido para que o cadastro já crie a assinatura certa. Sem plano no
+       link ("Criar conta" do menu e do rodapé), o formulário mostra os planos
+       contratáveis pelo site com o primeiro marcado; com um plano só, ele é
+       assumido; sem nenhum, o bloco avisa e aponta o contato. Quem valida é
+       sempre o servidor: campo de formulário é sugestão, não ordem.
      • **Quando o dono fechou o cadastro pelo site**, o bloco não mostra um
        formulário que vai ser recusado — mostra o caminho do contato. Quem
        quiser decidir isso na mão usa `open="1"` / `open="0"`.
@@ -102,6 +105,86 @@
         try { return (string) old($field, ''); } catch (\Throwable $e) { return ''; }
     };
 
+    // ── Plano: do link, do seletor ou o único que existe (fw#320) ──────────
+    // `$__options === null` é o modo antigo (só campo escondido): app sem a
+    // política de cadastro, ou cadastro fechado com `open="1"` forçado na tag
+    // — ali não há lista de planos contratáveis para oferecer.
+    $__policy  = \App\Service\Site\SiteSignupPolicy::class;
+    $__options = null;
+    if ($__open && class_exists($__policy) && method_exists($__policy, 'signupPlans')) {
+        try {
+            if ($__policy::enabled()) {
+                $__options = array_values((array) $__policy::signupPlans());
+            }
+        } catch (\Throwable $e) {
+            $__options = null;
+        }
+    }
+
+    $__planError  = $__error('plan_id');
+    $__cycleError = $__error('cycle');
+
+    $__planMode   = 'legacy';   // legacy | hidden | single | select | empty
+    $__chosen     = null;       // o plano que vai marcado/escondido
+    $__cycleRadio = [];         // períodos oferecidos como rádio (vazio = campo escondido)
+
+    if (is_array($__options)) {
+        $__byId = [];
+        foreach ($__options as $__option) {
+            $__byId[(string) $__option['id']] = $__option;
+        }
+
+        $__fromLink = $__planId !== '' && isset($__byId[$__planId]);
+        $__oldPlan  = $__old('plan_id');
+        $__oldCycle = $__old('cycle');
+        // Período pedido: o que a pessoa já tinha escolhido vence o do link.
+        $__wanted   = in_array($__oldCycle, ['monthly', 'yearly'], true) ? $__oldCycle : $__cycle;
+
+        if ($__options === []) {
+            $__planMode = 'empty';
+        } elseif ($__fromLink && $__planError === '' && $__cycleError === '') {
+            // Chegou pelo botão de um plano: como sempre foi, sem seletor.
+            $__planMode = 'hidden';
+            $__chosen   = $__byId[$__planId];
+        } elseif (count($__options) === 1) {
+            $__planMode = 'single';
+            $__chosen   = $__options[0];
+            if (count($__chosen['cycles']) > 1) { $__cycleRadio = $__chosen['cycles']; }
+        } else {
+            $__planMode = 'select';
+            $__chosen   = $__byId[$__oldPlan] ?? ($__fromLink ? $__byId[$__planId] : $__options[0]);
+            foreach (['monthly', 'yearly'] as $__c) {
+                foreach ($__options as $__option) {
+                    if (in_array($__c, $__option['cycles'], true)) { $__cycleRadio[] = $__c; break; }
+                }
+            }
+            if (count($__cycleRadio) < 2) { $__cycleRadio = []; }
+        }
+
+        if ($__chosen !== null) {
+            $__planId = (string) $__chosen['id'];
+            // Período que o plano não oferece cai no primeiro que ele oferece
+            // (mensal quando existe): nada de contrato anual sem preço anual.
+            $__cycle  = in_array($__wanted, $__chosen['cycles'], true) ? $__wanted : (string) ($__chosen['cycles'][0] ?? 'monthly');
+        }
+    }
+
+    // "R$ 199,00/mês · R$ 1.990,00/ano" — os preços de um plano, nos períodos
+    // que ele oferece. Os dois ficam à vista: a troca de período não depende
+    // de JavaScript para a pessoa saber quanto vai pagar.
+    $__priceParts = function (array $option): array {
+        $parts = [];
+        foreach ((array) ($option['cycles'] ?? []) as $cycle) {
+            $label   = (string) ($option['prices'][$cycle] ?? '');
+            $parts[] = [
+                'label'  => $label !== '' ? $label : mad_t('mad.site_price_on_request'),
+                'suffix' => $label !== '' ? mad_t($cycle === 'yearly' ? 'mad.site_per_year' : 'mad.site_per_month') : '',
+            ];
+        }
+
+        return $parts;
+    };
+
     $__captchaKey = '';
     if (class_exists(\App\Service\Sys\PreferenceService::class)) {
         try {
@@ -125,14 +208,23 @@
         @if(! $__open)
             <p>{{ mad_t('mad.site_signup_closed') }}</p>
             <p><a class="site-btn site-btn--primary" href="{{ $__contactHref }}">{{ mad_t('mad.site_talk_to_sales') }}</a></p>
+        @elseif($__planMode === 'empty')
+            {{-- Nenhum plano contratável pelo site: um formulário aqui só
+                 terminaria em recusa. --}}
+            <p>{{ mad_t('mad.site_signup_no_plans') }}</p>
+            <p><a class="site-btn site-btn--primary" href="{{ $__contactHref }}">{{ mad_t('mad.site_talk_to_sales') }}</a></p>
         @else
             <p>{{ $lead !== '' ? $lead : mad_t('mad.site_signup_lead') }}</p>
 
             <form class="site-form" method="post" action="{{ site_url('/public/site/signup') }}">
                 @csrf
                 <input type="hidden" name="_t" value="{{ time() }}">
-                <input type="hidden" name="plan_id" value="{{ $__planId }}">
-                <input type="hidden" name="cycle" value="{{ $__cycle }}">
+                @if($__planMode !== 'select')
+                    <input type="hidden" name="plan_id" value="{{ $__planId }}">
+                @endif
+                @if($__cycleRadio === [])
+                    <input type="hidden" name="cycle" value="{{ $__cycle }}">
+                @endif
 
                 {{-- Aviso que não é de um campo: limite de tentativas, envio
                      rápido demais, falha ao criar a conta. --}}
@@ -144,6 +236,83 @@
                     <label for="site-signup-website">Website</label>
                     <input type="text" id="site-signup-website" name="website" value="" tabindex="-1" autocomplete="off">
                 </div>
+
+                @if($__planMode === 'select')
+                    {{-- Sem plano no link: a pessoa escolhe aqui. A recusa do
+                         plano aparece DENTRO deste bloco, junto de onde
+                         escolher outro. --}}
+                    <fieldset class="site-form__plans" data-site-signup-plans
+                              @if($__planError !== '') aria-invalid="true" @endif>
+                        <legend>{{ mad_t('mad.site_signup_choose_plan') }}</legend>
+                        @foreach($__options as $__option)
+                            <label class="site-form__plan" for="site-signup-plan-{{ $__option['id'] }}">
+                                <input type="radio" name="plan_id" value="{{ $__option['id'] }}"
+                                       id="site-signup-plan-{{ $__option['id'] }}"
+                                       data-cycles="{{ implode(' ', $__option['cycles']) }}" required
+                                       @if((string) $__option['id'] === $__planId) checked @endif>
+                                <span class="site-form__plan-body">
+                                    <span class="site-form__plan-name">{{ $__option['name'] }}</span>
+                                    <span class="site-form__plan-price">
+                                        @foreach($__priceParts($__option) as $__i => $__part)
+                                            @if($__i > 0)<span aria-hidden="true"> · </span>@endif
+                                            <span>{{ $__part['label'] }}@if($__part['suffix'] !== '')<small>{{ $__part['suffix'] }}</small>@endif</span>
+                                        @endforeach
+                                    </span>
+                                    @if($__option['trial_days'] > 0)
+                                        <span class="site-form__plan-note">{{ mad_t('mad.site_plan_trial', ['days' => (string) $__option['trial_days']]) }}</span>
+                                    @endif
+                                </span>
+                            </label>
+                        @endforeach
+                        @if($__planError !== '')
+                            <p class="site-form__error" role="alert">{{ $__planError }}</p>
+                        @endif
+                    </fieldset>
+                @elseif($__planMode === 'single')
+                    {{-- Um plano só: ele é assumido. O resumo diz em que plano
+                         a conta nasce — não é um seletor. --}}
+                    <div class="site-form__plans" data-site-signup-plan>
+                        <span class="site-form__plans-label">{{ mad_t('mad.site_signup_plan') }}</span>
+                        <div class="site-form__plan site-form__plan--only">
+                            <span class="site-form__plan-body">
+                                <span class="site-form__plan-name">{{ $__chosen['name'] }}</span>
+                                <span class="site-form__plan-price">
+                                    @foreach($__priceParts($__chosen) as $__i => $__part)
+                                        @if($__i > 0)<span aria-hidden="true"> · </span>@endif
+                                        <span>{{ $__part['label'] }}@if($__part['suffix'] !== '')<small>{{ $__part['suffix'] }}</small>@endif</span>
+                                    @endforeach
+                                </span>
+                                @if($__chosen['trial_days'] > 0)
+                                    <span class="site-form__plan-note">{{ mad_t('mad.site_plan_trial', ['days' => (string) $__chosen['trial_days']]) }}</span>
+                                @endif
+                            </span>
+                        </div>
+                        @if($__planError !== '')
+                            <p class="site-form__error" role="alert">{{ $__planError }}</p>
+                        @endif
+                    </div>
+                @endif
+
+                @if($__cycleRadio !== [])
+                    <fieldset class="site-form__plans" data-site-signup-cycles
+                              @if($__cycleError !== '') aria-invalid="true" @endif>
+                        <legend>{{ mad_t('mad.site_cycle_switch') }}</legend>
+                        <div class="site-form__cycles">
+                            @foreach($__cycleRadio as $__c)
+                                <label class="site-form__cycle" for="site-signup-cycle-{{ $__c }}">
+                                    <input type="radio" name="cycle" value="{{ $__c }}" id="site-signup-cycle-{{ $__c }}" required
+                                           @if($__c === $__cycle) checked @endif>
+                                    <span>{{ mad_t($__c === 'yearly' ? 'mad.site_yearly' : 'mad.site_monthly') }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        @if($__cycleError !== '')
+                            <p class="site-form__error" role="alert">{{ $__cycleError }}</p>
+                        @endif
+                    </fieldset>
+                @elseif($__cycleError !== '' && $__planMode !== 'legacy')
+                    <p class="site-form__error" role="alert">{{ $__cycleError }}</p>
+                @endif
 
                 <div class="site-form__field">
                     <label for="site-signup-company">{{ mad_t('mad.site_field_company') }}</label>
@@ -227,8 +396,13 @@
                     <script src="https://www.google.com/recaptcha/api.js" async defer></script>
                 @endif
 
-                @if($__error('plan_id') !== '')
-                    <p class="site-form__error">{{ $__error('plan_id') }}</p>
+                {{-- Modo antigo (sem lista de planos): a recusa do plano não tem
+                     bloco próprio e fica aqui, antes do botão. --}}
+                @if($__planMode === 'legacy' && $__planError !== '')
+                    <p class="site-form__error">{{ $__planError }}</p>
+                @endif
+                @if($__planMode === 'legacy' && $__cycleError !== '')
+                    <p class="site-form__error">{{ $__cycleError }}</p>
                 @endif
 
                 <button type="submit" class="site-btn site-btn--primary">

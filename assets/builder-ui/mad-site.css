@@ -24,6 +24,9 @@
   --site-fg-dim: #667085;
   --site-border: #e4e7ec;
   --site-border-strong: #d0d5dd;
+  /* Aviso de erro dos formulários. Variável para o tema do site poder trocar:
+     num site de fundo escuro o vermelho escuro some (2,7:1). */
+  --site-danger: #b42318;
 
   --site-radius: 10px;
   --site-radius-sm: 6px;
@@ -367,12 +370,45 @@ body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
   cursor: pointer;
 }
 
+/* Cadastro: a escolha do plano e do período (`/cadastro` sem plano no link).
+   Cada plano é um cartão clicável com o rádio dentro; o período é uma linha de
+   rádios. Só tokens do site: o tema do projeto (claro ou escuro) pinta tudo. */
+.site-form__plans { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.site-form__plans legend,
+.site-form__plans-label { display: block; margin: 0 0 8px; padding: 0; font-size: 14px; font-weight: 600; color: var(--site-fg); }
+.site-form__plans-label { margin-bottom: -2px; }
+.site-form__plan {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--site-border-strong);
+  border-radius: var(--site-radius-sm);
+  background: var(--site-bg);
+  color: var(--site-fg);
+  cursor: pointer;
+}
+.site-form__plan:has(input:checked) { border-color: var(--site-brand); box-shadow: inset 0 0 0 1px var(--site-brand); }
+.site-form__plan:has(input:focus-visible) { outline: 2px solid var(--site-brand); outline-offset: 2px; }
+.site-form__plan--only { cursor: default; background: var(--site-bg-tint); }
+.site-form__plan input,
+.site-form__cycle input { flex: 0 0 auto; width: auto; margin: .3em 0 0; accent-color: var(--site-brand); }
+.site-form__plan-body { display: grid; gap: 2px; min-width: 0; }
+.site-form__plan-name { font-weight: 650; }
+.site-form__plan-price { font-size: 15px; overflow-wrap: anywhere; }
+.site-form__plan-price small { font-size: 14px; color: var(--site-fg-muted); }
+.site-form__plan-note { font-size: 14px; color: var(--site-fg-muted); }
+.site-form__cycles { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.site-form__cycle { display: inline-flex; align-items: flex-start; gap: 8px; color: var(--site-fg); cursor: pointer; }
+.site-form__cycle:has(input:disabled) { color: var(--site-fg-dim); cursor: not-allowed; }
+body.site .site-form__plans .site-form__error { margin: 0; }
+
 /* `body.site .site-form__error`: o aviso é um <p>, e `body.site p` (cinza)
    ganhava do seletor de classe sozinho — o erro saía como texto comum. */
 body.site .site-form__error,
-.site-form__error { color: #b42318; font-size: 14px; }
+.site-form__error { color: var(--site-danger); font-size: 14px; }
 .site-form__field input[aria-invalid="true"],
-.site-form__field textarea[aria-invalid="true"] { border-color: #b42318; }
+.site-form__field textarea[aria-invalid="true"] { border-color: var(--site-danger); }
 
 .site-form__success {
   padding: 14px 16px;

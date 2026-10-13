@@ -32,6 +32,91 @@ use Illuminate\Http\Response;
 class MadForbidden
 {
     /**
+     * Quem explica a recusa, quando ela tem um motivo que não é "seu perfil não
+     * tem esta tela" — ver {@see explainUsing()}.
+     *
+     * @var (callable(): ?array)|null
+     */
+    private static $explainer = null;
+
+    /**
+     * Registra quem explica a recusa (uma vez, no boot da aplicação).
+     *
+     * O pacote só sabe que o acesso foi negado. A APLICAÇÃO pode saber POR QUÊ:
+     * a licença da unidade venceu e trancou todas as telas (fw#321). Dizer
+     * "peça a liberação a quem administra o sistema" a quem administra é mandar
+     * a pessoa pedir a si mesma. O explicador devolve `null` (recusa comum) ou:
+     *
+     *   [
+     *     'title'   => 'A licença desta unidade expirou em 11/10/2026.',
+     *     'body'    => 'Renove a assinatura para voltar a usar o sistema.',
+     *     'heading' => 'Licença expirada',            // título curto (canal reativo)
+     *     'icon'    => 'calendar-x',                  // opcional (lucide)
+     *     'actions' => [                              // opcional
+     *        ['label' => 'Renovar assinatura', 'href' => '/app/...', 'target' => 'app'],
+     *        ['label' => 'Enviar e-mail', 'href' => 'mailto:...', 'target' => 'external'],
+     *     ],
+     *   ]
+     *
+     * `target`: `app` navega dentro do sistema; `external` abre fora (e-mail,
+     * WhatsApp). `null` desliga o explicador.
+     *
+     * @param  (callable(): ?array)|null  $explainer
+     */
+    public static function explainUsing(?callable $explainer): void
+    {
+        self::$explainer = $explainer;
+    }
+
+    /**
+     * O motivo da recusa, já saneado, ou `null` para a recusa comum.
+     *
+     * Fail-safe: explicador ausente, que estoura ou que devolve algo sem título
+     * vira a recusa de sempre. Uma recusa nunca pode virar erro 500.
+     *
+     * @return array{title: string, body: string, heading: string, icon: string,
+     *               actions: list<array{label: string, href: string, target: string}>}|null
+     */
+    public static function reason(): ?array
+    {
+        if (self::$explainer === null) {
+            return null;
+        }
+
+        try {
+            $raw = (self::$explainer)();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if (! is_array($raw) || trim((string) ($raw['title'] ?? '')) === '') {
+            return null;
+        }
+
+        $actions = [];
+        foreach ((array) ($raw['actions'] ?? []) as $action) {
+            $label = is_array($action) ? trim((string) ($action['label'] ?? '')) : '';
+            $href  = is_array($action) ? trim((string) ($action['href'] ?? '')) : '';
+            if ($label === '' || $href === '') {
+                continue;
+            }
+            $actions[] = [
+                'label'  => $label,
+                'href'   => $href,
+                'target' => ($action['target'] ?? 'app') === 'external' ? 'external' : 'app',
+            ];
+        }
+
+        return [
+            'title'   => trim((string) $raw['title']),
+            'body'    => trim((string) ($raw['body'] ?? '')),
+            'heading' => trim((string) ($raw['heading'] ?? '')),
+            'icon'    => trim((string) ($raw['icon'] ?? '')),
+            'actions' => $actions,
+        ];
+    }
+
+    /**
      * Resposta 403 pronta.
      *
      * @param  Request|null  $request  quando ausente, cai no `request()` global
@@ -48,7 +133,7 @@ class MadForbidden
             }
         }
 
-        return new Response(MadErrorPage::forbidden(), 403, [
+        return new Response(MadErrorPage::forbidden(self::reason()), 403, [
             'Content-Type' => 'text/html; charset=utf-8',
         ]);
     }
@@ -98,10 +183,23 @@ class MadForbidden
      * de ERRO intitulado "Exceção" — a regra de acesso do perfil parecia pane do
      * sistema. `forbidden` diz ao cliente que é recusa, não falha.
      *
-     * @return array{error: string, title: string, forbidden: true}
+     * @return array{error: string, title: string, forbidden: true, actions?: list<array{label: string, href: string, target: string}>}
      */
     public static function wirePayload(?string $key = null): array
     {
+        // Recusa com motivo próprio (licença vencida): vale para a tela e para
+        // a ação — as ações foram zeradas pelo mesmo motivo, e "Sem permissão
+        // para excluir" esconderia a causa.
+        $reason = self::reason();
+        if ($reason !== null) {
+            return [
+                'error'     => trim($reason['title'] . ' ' . $reason['body']),
+                'title'     => $reason['heading'] !== '' ? $reason['heading'] : self::heading(),
+                'forbidden' => true,
+                'actions'   => $reason['actions'],
+            ];
+        }
+
         return [
             'error'     => self::actionMessage($key),
             'title'     => self::heading(),

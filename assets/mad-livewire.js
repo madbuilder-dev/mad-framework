@@ -1579,7 +1579,14 @@ const MadWire = (() => {
                 if (data.warning && typeof __mad_warning === 'function') {
                     __mad_warning(data.title || 'Aviso', data.error);
                 } else if ((res.status === 403 || data.forbidden) && typeof __mad_warning === 'function') {
-                    __mad_warning(data.title || 'Sem permissão', data.error);
+                    // Recusa com motivo (licença vencida, fw#321): o servidor
+                    // manda os botões do próximo passo junto com o texto.
+                    const next = (typeof _madDeniedButtons === 'function') ? _madDeniedButtons(data.actions) : null;
+                    if (next && typeof MadDialog !== 'undefined') {
+                        MadDialog.show({ type: 'warning', title: data.title || 'Sem permissão', message: data.error, buttons: next });
+                    } else {
+                        __mad_warning(data.title || 'Sem permissão', data.error);
+                    }
                 } else if (typeof __mad_error === 'function') {
                     __mad_error('Exceção', data.error);
                 } else {

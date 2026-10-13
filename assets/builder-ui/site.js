@@ -106,9 +106,47 @@
     });
   }
 
+  /* ── Cadastro: plano × período ─────────────────────────────────────────── */
+
+  // O formulário de cadastro oferece os planos e, ao lado, o período. Nem todo
+  // plano tem preço anual: ao trocar de plano, o período que ele não oferece
+  // fica desligado e a escolha cai no primeiro que ele oferece. Sem JavaScript
+  // nada disso roda e o servidor recusa a combinação com a mensagem no campo.
+  function ajustarPeriodos(form) {
+    var marcado = form.querySelector('input[name="plan_id"][data-cycles]:checked');
+    if (!marcado) return;
+
+    var aceitos = (marcado.getAttribute('data-cycles') || '').split(' ');
+    var primeiro = null;
+    var atualVale = false;
+
+    form.querySelectorAll('input[type="radio"][name="cycle"]').forEach(function (periodo) {
+      var vale = aceitos.indexOf(periodo.value) !== -1;
+      periodo.disabled = !vale;
+      if (vale && !primeiro) primeiro = periodo;
+      if (vale && periodo.checked) atualVale = true;
+    });
+
+    if (!atualVale && primeiro) primeiro.checked = true;
+  }
+
+  function ligarPlanoDoCadastro() {
+    document.querySelectorAll('[data-site-signup-plans]').forEach(function (bloco) {
+      var form = bloco.closest('form');
+      if (!form || form.dataset.sitePlanReady === '1') return;
+      form.dataset.sitePlanReady = '1';
+
+      bloco.addEventListener('change', function () {
+        ajustarPeriodos(form);
+      });
+      ajustarPeriodos(form);
+    });
+  }
+
   function iniciar() {
     ligarMenu();
     ligarCiclo();
+    ligarPlanoDoCadastro();
   }
 
   if (document.readyState === 'loading') {
