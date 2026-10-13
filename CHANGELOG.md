@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.159.1] — 2026-10-13
+
+### Melhorias
+
+- **Listagens:** a tecla Esc fecha o painel do filtro do cabeçalho e devolve o foco ao botão que o abriu.
+- **Menu do sistema:** o título do painel de notificações e de mensagens ficou mais legível, no tema claro e no escuro.
+
+### Correções
+
+- **Listagens:** no celular, o painel de um filtro do cabeçalho abria cortado para fora da tela e o botão de aplicar ficava inalcançável. Agora o painel abre para o lado em que cabe.
+- **Menu do sistema:** no celular, as notificações, as mensagens, os temas e o menu do perfil abriam cortados dentro do painel do topo; o menu do perfil quase não aparecia. Agora abrem inteiros, dentro da tela.
+- **Componentes:** lista do combo com opção de texto comprido, calendário, seletor de ícone e a dica dos indicadores saíam da tela quando o campo ficava perto da borda direita. Agora ficam dentro dela, e abrem para cima quando não há espaço embaixo.
+- **Componentes:** o menu do `<mad-dropdown>` dentro de um bloco com rolagem aparecia cortado. Agora aparece inteiro.
+
 ## [5.159.0] — 2026-10-13
 
 ### Novidades

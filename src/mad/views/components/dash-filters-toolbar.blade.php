@@ -55,7 +55,7 @@
                 @endphp
 
                 <div class="mad-dashf-anchor" x-data="{ open: false }">
-                    <button type="button" class="{{ $cls }}" @click="open = !open"
+                    <button type="button" class="{{ $cls }}" x-ref="trigger" @click="open = !open"
                             aria-haspopup="true" :aria-expanded="open ? 'true' : 'false'">
                         <span class="mad-dashf-mini-lbl">{{ $label }}:</span>
                         <span>{{ $valLbl }}</span>
@@ -66,7 +66,7 @@
                          escolhidos quando a lista fecha, e o popover alargando
                          movia o botão Aplicar para fora do clique. --}}
                     <div class="mad-dashf-pop" x-show="open" x-cloak @if ($isMulti) style="width:340px;max-width:calc(100vw - 32px)" @endif
-                         @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="open = false">
+                         @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="if (open) { open = false; $refs.trigger.focus() }">
                         <div class="mad-dashf-pop-head">
                             <span>{{ mad_t('mad.dashf.filter_by', ['label' => mb_strtolower($label)]) }}</span>
                             <button type="button" class="mad-dashf-pop-close" @click="open = false" aria-label="{{ mad_t('mad.btn.close') }}">×</button>

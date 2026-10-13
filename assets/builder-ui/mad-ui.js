@@ -2588,6 +2588,7 @@ var _MAD_SEL_CONTROL_TPL =
 '</div>' +
 '<template x-teleport="body">' +
   '<div class="mad-sel-dropdown mad-ui" x-ref="dropdown" :data-mad-owner="_uid" x-show="open" :style="dropStyle" x-cloak ' +
+    'x-effect="open && !_isTouch && (_posV, visibleOptions.length, $nextTick(() => window.madFloatPlace && window.madFloatPlace($el)))" ' +
     ':class="{\'mad-sel-dropdown-touch\':_isTouch}" @mousedown.prevent>' +
     '<template x-if="open">' +
       '<div class="mad-sel-dropdown-inner">' +
@@ -3930,54 +3931,302 @@ document.addEventListener('alpine:init', () => {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
- * madDropdownPlace(root) — mantém o menu do <mad-dropdown> dentro da tela.
+ * madFloatPlace(panel, anchor) — mantém uma superfície flutuante dentro da tela.
  *
- * O CSS abre o menu embaixo do gatilho, alinhado ao lado pedido (`align`).
- * Quando isso o põe para fora da tela (celular, gatilho encostado na borda —
- * fw#325), o menu vai para o lado em que cabe; se não cabe de nenhum lado,
- * encosta a 8 px da borda. Não cabendo embaixo e cabendo em cima, abre para
- * cima. Cabendo como o CSS pôs, nada é gravado.
+ * UMA função para tudo o que abre por cima da página: menu, painel de filtro,
+ * painel de colunas, lista do combo, seletor de ícone. Parte de onde o CSS (ou
+ * o JS da própria superfície) a pôs e só mexe quando ela sai da tela:
+ *   - mais larga que a tela → encolhe para a tela menos 8 px de cada lado;
+ *   - sai pela lateral → vai para o outro lado do gatilho quando cabe lá;
+ *     senão encosta a 8 px da borda;
+ *   - não cabe embaixo e cabe em cima → abre para cima (e o inverso);
+ *   - cortada por um ancestral com rolagem (o painel "⋮" do topo no celular,
+ *     o corpo de uma janela) e cabendo na tela → sai dele: `position: fixed`
+ *     no mesmo lugar (fw#329). Num painel fixo a página não rola para mostrar
+ *     o resto, então ali ela sai mesmo sem caber na altura e rola por dentro.
+ * Cabendo como está, nenhum estilo em linha é gravado. Folha de borda a borda
+ * (calendário e lista do combo no celular) é desenho, não estouro: fica.
+ *
+ * `anchor` é o gatilho; sem ele vale o elemento contra o qual o CSS posiciona
+ * a superfície. Um ancestral com rolagem (a área de conteúdo ao lado do menu
+ * lateral, embaixo do cabeçalho) estreita o limite: o que passa dele é cortado.
+ *
+ * Quem chama: a vigia logo abaixo (superfícies de `madFloatSelector`, ao
+ * aparecer, ao redimensionar a janela e — as que saíram de um ancestral — ao
+ * rolar), madDropdownPlace() e a lista do combo.
+ */
+window.madFloatPlace = function (panel, anchor) {
+    if (!panel || !panel.style || !panel.getClientRects) return;
+    var GAP = 8, EPS = 0.5;
+    var style = panel.style;
+
+    // Desfaz o que a chamada anterior gravou — só o que ninguém mexeu depois.
+    // O ponto de partida é sempre a posição de origem, não a última correção.
+    var last = panel._madFloat;
+    if (last) {
+        for (var k in last.set) if (style[k] === last.set[k]) style[k] = last.was[k];
+        panel._madFloat = null;
+        if (window._madFloatOut) window._madFloatOut.delete(panel);
+    }
+    if (!panel.getClientRects().length) return;
+
+    var cs = window.getComputedStyle(panel);
+    var fixed = cs.position === 'fixed';
+    if (!fixed && cs.position !== 'absolute') return;
+
+    var vw = document.documentElement.clientWidth || window.innerWidth;
+    var vh = window.innerHeight;
+    var mine = { set: {}, was: {}, anchor: anchor || null, out: false };
+
+    function put(prop, value) {
+        if (!(prop in mine.was)) mine.was[prop] = style[prop];
+        style[prop] = value;
+        mine.set[prop] = style[prop];
+        panel._madFloat = mine;
+    }
+    function px(n) { return (Math.round(n * 100) / 100) + 'px'; }
+    // O que `width`/`max-width` não contam quando a caixa é content-box.
+    function pad() {
+        return cs.boxSizing === 'border-box' ? 0
+            : (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+            + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+    }
+    function box() {
+        var r = panel.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height, right: r.left + r.width, bottom: r.top + r.height };
+    }
+    // Canto contra o qual `left`/`top`/`bottom` da superfície contam.
+    function origin() {
+        var op = fixed ? null : panel.offsetParent;
+        if (op === document.body && window.getComputedStyle(op).position === 'static') op = null;
+        if (!op) {
+            // Sem ancestral posicionado conta do topo do documento, que sobe com a rolagem.
+            var root = document.documentElement;
+            var d = !fixed && root.getBoundingClientRect ? root.getBoundingClientRect() : { left: 0, top: 0 };
+            return { x: d.left, y: d.top, h: vh };
+        }
+        var r = op.getBoundingClientRect();
+        return {
+            x: r.left + (op.clientLeft || 0) - (op.scrollLeft || 0),
+            y: r.top + (op.clientTop || 0) - (op.scrollTop || 0),
+            h: op.clientHeight,
+        };
+    }
+    function setLeft(left) {
+        put('right', 'auto');
+        put('left', px(left - origin().x));
+        var off = left - box().left;
+        if (Math.abs(off) > EPS) put('left', px(left - origin().x + off));
+    }
+
+    var rect = box();
+    if (Math.abs(rect.left) <= EPS && Math.abs(rect.right - vw) <= EPS) return;
+
+    // Ancestral que corta o que passa dele (rolagem ou overflow escondido).
+    var clip = null, clipFixed = false;
+    for (var p = fixed ? null : panel.offsetParent; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+        var pc = window.getComputedStyle(p);
+        if (pc.overflowX !== 'visible' || pc.overflowY !== 'visible') {
+            clip = p.getBoundingClientRect();
+            clipFixed = pc.position === 'fixed';
+            break;
+        }
+        if (pc.position === 'fixed') break;
+    }
+
+    var a = anchor || (fixed ? null : panel.offsetParent);
+    var ar = a && a !== document.body ? a.getBoundingClientRect() : null;
+    var side = ar ? (Math.abs(rect.left - ar.left) <= 1 ? 'start' : (Math.abs(rect.right - ar.right) <= 1 ? 'end' : '')) : '';
+    var room = vw - 2 * GAP;
+
+    // Lateral: até três voltas, porque deslocar pode mudar a largura (a
+    // superfície se ajusta ao espaço que sobra no bloco em que está).
+    for (var pass = 0; pass < 3; pass++) {
+        rect = box();
+        if (rect.width > room + EPS && !('maxWidth' in mine.set)) {
+            if ((parseFloat(cs.minWidth) || 0) > room - pad()) put('minWidth', '0');
+            put('maxWidth', px(room - pad()));
+            rect = box();
+        }
+
+        var min = GAP, max = vw - GAP;
+        if (clip && rect.width <= Math.min(max, clip.right) - Math.max(min, clip.left) + EPS) {
+            min = Math.max(min, clip.left);
+            max = Math.min(max, clip.right);
+        }
+        if (rect.left >= min - EPS && rect.right <= max + EPS) break;
+
+        var left = rect.left;
+        if (side && pass === 0) {
+            var atStart = ar.left;
+            var atEnd = ar.right - rect.width;
+            var fitsStart = atStart >= min - EPS && atStart + rect.width <= max + EPS;
+            var fitsEnd = atEnd >= min - EPS && atEnd + rect.width <= max + EPS;
+            left = side === 'end' ? (fitsEnd || !fitsStart ? atEnd : atStart) : (fitsStart || !fitsEnd ? atStart : atEnd);
+        }
+        setLeft(Math.max(min, Math.min(left, max - rect.width)));
+    }
+
+    // Vertical: só quando a superfície abre colada ao gatilho, embaixo ou em cima.
+    if (ar) {
+        rect = box();
+        // Dentro de um painel fixo vale a tela: a superfície sai dele logo abaixo.
+        var ceil = clip && !clipFixed ? Math.max(GAP, clip.top) : GAP;
+        var floor = clip && !clipFixed ? Math.min(vh - GAP, clip.bottom) : vh - GAP;
+        var below = rect.top >= ar.bottom - 1;
+        var above = rect.bottom <= ar.top + 1;
+        var gap = below ? rect.top - ar.bottom : ar.top - rect.bottom;
+        var o = origin();
+        if (below && gap <= 16 && rect.bottom > floor + EPS && ar.top - gap - rect.height >= ceil - EPS) {
+            put('top', 'auto');
+            put('bottom', px(o.y + o.h - (ar.top - gap)));
+        } else if (above && gap <= 16 && rect.top < ceil - EPS && ar.bottom + gap + rect.height <= floor + EPS) {
+            put('bottom', 'auto');
+            put('top', px(ar.bottom + gap - o.y));
+        }
+    }
+
+    // Cortada pelo ancestral com rolagem: sai dele, no mesmo lugar.
+    if (clip) {
+        rect = box();
+        var cut = rect.left < clip.left - EPS || rect.right > clip.right + EPS
+            || rect.top < clip.top - EPS || rect.bottom > clip.bottom + EPS;
+        var inX = rect.left >= GAP - EPS && rect.right <= vw - GAP + EPS;
+        var inY = rect.top >= GAP - EPS && rect.bottom <= vh - GAP + EPS;
+        if (cut && inX && (inY || (clipFixed && rect.top >= GAP - EPS))) {
+            put('width', px(rect.width - pad()));
+            put('position', 'fixed');
+            fixed = true;
+            put('right', 'auto');
+            put('bottom', 'auto');
+            put('left', px(rect.left));
+            put('top', px(rect.top));
+            if (!inY) {
+                put('maxHeight', px(vh - GAP - rect.top));
+                if (cs.overflowY === 'visible') put('overflowY', 'auto');
+            }
+            // Ancestral com transform vira a referência do `fixed`: compensa.
+            var now = box();
+            if (Math.abs(now.left - rect.left) > EPS) put('left', px(2 * rect.left - now.left));
+            if (Math.abs(now.top - rect.top) > EPS) put('top', px(2 * rect.top - now.top));
+            mine.out = true;
+            (window._madFloatOut || (window._madFloatOut = new Set())).add(panel);
+        }
+    }
+};
+
+/**
+ * madDropdownPlace(root) — o menu do <mad-dropdown> dentro da tela (fw#325).
  *
  * Chamado pela view do componente ao abrir e ao redimensionar a janela com o
- * menu aberto. O menu continua `position:absolute` dentro do componente: só
- * o deslocamento muda.
+ * menu aberto. A regra é a de toda superfície flutuante: madFloatPlace().
  */
 window.madDropdownPlace = function (root) {
     var menu = root && root.querySelector(':scope > .mad-dropdown-menu');
-    if (!menu || menu.offsetParent === null) return;
-
-    var GAP = 8;
-    var vw = document.documentElement.clientWidth || window.innerWidth;
-    var vh = window.innerHeight;
-    var style = menu.style;
-    style.left = style.right = style.top = style.bottom = '';
-
-    var anchor = root.getBoundingClientRect();
-    var preferEnd = menu.classList.contains('mad-dropdown-end');
-
-    // Duas passadas: mudar o deslocamento pode mudar a largura do menu (ele
-    // se ajusta ao espaço que sobra dentro do componente).
-    for (var pass = 0; pass < 2; pass++) {
-        var rect = menu.getBoundingClientRect();
-        if (rect.left >= GAP && rect.right <= vw - GAP) break;
-
-        var atStart = anchor.left;
-        var atEnd = anchor.right - rect.width;
-        var fitsStart = atStart >= GAP && atStart + rect.width <= vw - GAP;
-        var fitsEnd = atEnd >= GAP && atEnd + rect.width <= vw - GAP;
-        var left = preferEnd ? (fitsEnd || !fitsStart ? atEnd : atStart) : (fitsStart || !fitsEnd ? atStart : atEnd);
-        left = Math.max(GAP, Math.min(left, vw - rect.width - GAP));
-
-        style.right = 'auto';
-        style.left = Math.round(left - anchor.left) + 'px';
-    }
-
-    var placed = menu.getBoundingClientRect();
-    if (placed.bottom > vh - GAP && anchor.top - 4 - placed.height >= GAP) {
-        style.top = 'auto';
-        style.bottom = 'calc(100% + 4px)';
-    }
+    if (menu) window.madFloatPlace(menu, root);
 };
+
+/**
+ * Superfícies que só o CSS posiciona. A vigia abaixo confere cada uma contra a
+ * tela quando ela aparece e de novo ao redimensionar a janela (ou girar o
+ * aparelho). `.mad-dropdown-menu` cobre também os menus do topo do sistema
+ * (notificações, mensagens, temas, perfil), que não passam pela view do
+ * <mad-dropdown>. Markup escrito à mão entra com o atributo `data-mad-float` no
+ * elemento que abre por cima da página.
+ */
+window.madFloatSelector = [
+    '.mad-dropdown-menu',
+    '.mad-dashf-pop',
+    '.mad-dg-export-menu',
+    '.mad-dg-col-chooser-panel',
+    '.mad-iconfield-popover',
+    '.mad-drp-popup',
+    '.mad-megamenu',
+    '[data-mad-float]',
+];
+
+(function () {
+    if (window._madFloatWatch || typeof MutationObserver === 'undefined') return;
+    window._madFloatWatch = true;
+
+    var SEL = window.madFloatSelector.join(',');
+    var shown = new WeakSet();
+    var queued = false;
+
+    // Só na passagem de escondida para visível: o que a própria função grava
+    // também chega aqui como mudança de estilo e não pode virar laço.
+    function check(el, again) {
+        if (!el.isConnected || !el.getClientRects().length) { shown.delete(el); return; }
+        if (shown.has(el) && !again) return;
+        shown.add(el);
+        window.madFloatPlace(el);
+    }
+    function scan(node) {
+        if (!node || node.nodeType !== 1) return;
+        if (node.matches(SEL)) check(node);
+        var inner = node.querySelectorAll(SEL);
+        for (var i = 0; i < inner.length; i++) check(inner[i]);
+    }
+
+    new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i++) {
+            var rec = records[i];
+            if (rec.type === 'childList') {
+                for (var j = 0; j < rec.addedNodes.length; j++) scan(rec.addedNodes[j]);
+                continue;
+            }
+            var t = rec.target;
+            if (!t.matches) continue;
+            // Classe trocada com a superfície aberta muda a posição de origem
+            // (a função só grava style, então isto não vira laço).
+            if (t.matches(SEL)) { check(t, rec.attributeName === 'class'); continue; }
+            // Um ancestral que aparece leva junto a superfície aberta dentro dele.
+            if (rec.attributeName === 'style'
+                && /display\s*:\s*none/.test(rec.oldValue || '') !== (t.style.display === 'none')) scan(t);
+        }
+    }).observe(document.documentElement, {
+        subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class'], attributeOldValue: true,
+    });
+
+    // Dica que o CSS abre no :hover/:focus não muda atributo nenhum: é conferida
+    // na entrada do ponteiro e do foco.
+    function hover(e) {
+        var host = e.target && e.target.closest && e.target.closest('.mad-kpi-help');
+        var tip = host && host.querySelector('.mad-kpi-help-tip');
+        if (tip) window.madFloatPlace(tip, host);
+    }
+    document.addEventListener('mouseover', hover);
+    document.addEventListener('focusin', hover);
+
+    // A que saiu de um ancestral com rolagem deixou de rolar junto com o
+    // gatilho: é conferida de novo a cada rolagem (menos a dela mesma).
+    var rolling = false;
+    window.addEventListener('scroll', function (e) {
+        var out = window._madFloatOut;
+        if (!out || !out.size || rolling) return;
+        var own = false;
+        out.forEach(function (el) { if (e.target && e.target.nodeType === 1 && el.contains(e.target)) own = true; });
+        if (own) return;
+        rolling = true;
+        requestAnimationFrame(function () {
+            rolling = false;
+            Array.from(out).forEach(function (el) {
+                var anchor = el._madFloat && el._madFloat.anchor;
+                window.madFloatPlace(el, anchor);
+            });
+        });
+    }, true);
+
+    window.addEventListener('resize', function () {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(function () {
+            queued = false;
+            var all = document.querySelectorAll(SEL);
+            for (var i = 0; i < all.length; i++) { shown.delete(all[i]); check(all[i]); }
+        });
+    });
+})();
 
 /**
  * madToast(options) — dispara um toast Sonner-style.

@@ -64,11 +64,11 @@
                 $firstType = $safeType($regularFields[0]['attrs']['name'] ?? '');
             @endphp
             <div class="mad-dashf-anchor" x-data="{ open: false, tipo: '{{ $firstType }}' }" style="position:relative;">
-                <button type="button" class="mad-dashf-chip-add" @click="open = !open"
+                <button type="button" class="mad-dashf-chip-add" x-ref="trigger" @click="open = !open"
                         aria-haspopup="true" :aria-expanded="open ? 'true' : 'false'">+ {{ mad_t('mad.dashf.add_filter') }}</button>
 
                 <div class="mad-dashf-pop" x-show="open" x-cloak
-                     @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="open = false">
+                     @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="if (open) { open = false; $refs.trigger.focus() }">
                     <div class="mad-dashf-pop-head">
                         <span>{{ mad_t('mad.dashf.add_filter') }}</span>
                         <button type="button" class="mad-dashf-pop-close" @click="open = false" aria-label="{{ mad_t('mad.btn.close') }}">×</button>

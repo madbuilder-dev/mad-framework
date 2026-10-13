@@ -3382,7 +3382,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-notif-header > span {
   font-size: var(--mad-text-xs);
   font-weight: 700;
-  color: var(--mad-text-subtle);
+  /* texto secundário, não o tom de placeholder: o título tem de passar em AA */
+  color: var(--mad-text-muted);
   text-transform: uppercase;
   letter-spacing: .5px;
 }
@@ -13734,6 +13735,8 @@ textarea.mad-dg-inline-input {
 }
 .mad-dashf-pop-actions {
     display: flex;
+    /* Painel estreito (celular): os botões descem de linha em vez de sair dele. */
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 6px;
     margin-top: 10px;
