@@ -3837,6 +3837,56 @@ document.addEventListener('alpine:init', () => {
    ═══════════════════════════════════════════════════════════════════ */
 
 /**
+ * madDropdownPlace(root) — mantém o menu do <mad-dropdown> dentro da tela.
+ *
+ * O CSS abre o menu embaixo do gatilho, alinhado ao lado pedido (`align`).
+ * Quando isso o põe para fora da tela (celular, gatilho encostado na borda —
+ * fw#325), o menu vai para o lado em que cabe; se não cabe de nenhum lado,
+ * encosta a 8 px da borda. Não cabendo embaixo e cabendo em cima, abre para
+ * cima. Cabendo como o CSS pôs, nada é gravado.
+ *
+ * Chamado pela view do componente ao abrir e ao redimensionar a janela com o
+ * menu aberto. O menu continua `position:absolute` dentro do componente: só
+ * o deslocamento muda.
+ */
+window.madDropdownPlace = function (root) {
+    var menu = root && root.querySelector(':scope > .mad-dropdown-menu');
+    if (!menu || menu.offsetParent === null) return;
+
+    var GAP = 8;
+    var vw = document.documentElement.clientWidth || window.innerWidth;
+    var vh = window.innerHeight;
+    var style = menu.style;
+    style.left = style.right = style.top = style.bottom = '';
+
+    var anchor = root.getBoundingClientRect();
+    var preferEnd = menu.classList.contains('mad-dropdown-end');
+
+    // Duas passadas: mudar o deslocamento pode mudar a largura do menu (ele
+    // se ajusta ao espaço que sobra dentro do componente).
+    for (var pass = 0; pass < 2; pass++) {
+        var rect = menu.getBoundingClientRect();
+        if (rect.left >= GAP && rect.right <= vw - GAP) break;
+
+        var atStart = anchor.left;
+        var atEnd = anchor.right - rect.width;
+        var fitsStart = atStart >= GAP && atStart + rect.width <= vw - GAP;
+        var fitsEnd = atEnd >= GAP && atEnd + rect.width <= vw - GAP;
+        var left = preferEnd ? (fitsEnd || !fitsStart ? atEnd : atStart) : (fitsStart || !fitsEnd ? atStart : atEnd);
+        left = Math.max(GAP, Math.min(left, vw - rect.width - GAP));
+
+        style.right = 'auto';
+        style.left = Math.round(left - anchor.left) + 'px';
+    }
+
+    var placed = menu.getBoundingClientRect();
+    if (placed.bottom > vh - GAP && anchor.top - 4 - placed.height >= GAP) {
+        style.top = 'auto';
+        style.bottom = 'calc(100% + 4px)';
+    }
+};
+
+/**
  * madToast(options) — dispara um toast Sonner-style.
  *
  * madToast({ message: 'Salvo!', type: 'success' })

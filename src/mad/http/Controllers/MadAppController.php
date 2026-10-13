@@ -125,7 +125,7 @@ class MadAppController
                     : \Mad\Routing\MadRoutes::loginUrl());
             }
 
-            return MadForbidden::response($request);
+            return MadForbidden::response($request, $class);
         }
 
         $result = (new $class())->show(ctype_digit($id) ? (int) $id : $id);
@@ -171,7 +171,7 @@ class MadAppController
                 return redirect(\Mad\Routing\MadRoutes::loginUrl());
             }
 
-            return MadForbidden::response($request);
+            return MadForbidden::response($request, $class);
         }
 
         // Métodos PHP-ESTÁTICOS via ?static=1 — widgets JS consomem o echo

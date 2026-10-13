@@ -35,7 +35,7 @@ class MadForbidden
      * Quem explica a recusa, quando ela tem um motivo que não é "seu perfil não
      * tem esta tela" — ver {@see explainUsing()}.
      *
-     * @var (callable(): ?array)|null
+     * @var (callable(?string): ?array)|null
      */
     private static $explainer = null;
 
@@ -61,7 +61,12 @@ class MadForbidden
      * `target`: `app` navega dentro do sistema; `external` abre fora (e-mail,
      * WhatsApp). `null` desliga o explicador.
      *
-     * @param  (callable(): ?array)|null  $explainer
+     * O explicador recebe a TELA negada (nome da classe, ou `null` quando a
+     * recusa não é de uma tela conhecida): é o que deixa a aplicação separar
+     * "a licença tirou esta tela" de "seu perfil não tem esta tela" (fw#327).
+     * Quem registrou um explicador sem parâmetro continua valendo.
+     *
+     * @param  (callable(?string): ?array)|null  $explainer
      */
     public static function explainUsing(?callable $explainer): void
     {
@@ -74,17 +79,20 @@ class MadForbidden
      * Fail-safe: explicador ausente, que estoura ou que devolve algo sem título
      * vira a recusa de sempre. Uma recusa nunca pode virar erro 500.
      *
+     * @param  string|null  $screen  a tela negada, quando quem recusa sabe qual é
      * @return array{title: string, body: string, heading: string, icon: string,
      *               actions: list<array{label: string, href: string, target: string}>}|null
      */
-    public static function reason(): ?array
+    public static function reason(?string $screen = null): ?array
     {
         if (self::$explainer === null) {
             return null;
         }
 
+        $screen = $screen !== null && trim($screen) !== '' ? trim($screen) : null;
+
         try {
-            $raw = (self::$explainer)();
+            $raw = (self::$explainer)($screen);
         } catch (\Throwable $e) {
             return null;
         }
@@ -120,8 +128,9 @@ class MadForbidden
      * Resposta 403 pronta.
      *
      * @param  Request|null  $request  quando ausente, cai no `request()` global
+     * @param  string|null   $screen   a tela negada (classe), repassada a quem explica a recusa
      */
-    public static function response(?Request $request = null): Response
+    public static function response(?Request $request = null, ?string $screen = null): Response
     {
         $request = $request ?? (function_exists('request') ? request() : null);
 
@@ -133,7 +142,7 @@ class MadForbidden
             }
         }
 
-        return new Response(MadErrorPage::forbidden(self::reason()), 403, [
+        return new Response(MadErrorPage::forbidden(self::reason($screen)), 403, [
             'Content-Type' => 'text/html; charset=utf-8',
         ]);
     }

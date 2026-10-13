@@ -15,10 +15,16 @@
     $title   = is_string($title ?? null) ? $title : '';
     $variant = is_string($variant ?? null) && $variant !== '' ? $variant : 'secondary';
     $_autoTrigger = trim((string) $trigger) === '' && ($label !== '' || $icon !== '');
+    // O menu nunca sai da tela (fw#325): ao abrir, e ao redimensionar a janela
+    // com ele aberto, o mad-ui.js confere e acerta o lado. `align` continua
+    // sendo o lado preferido. Com um mad-ui.js antigo em cache, nada acontece.
 @endphp
 <div class="mad-dropdown{{ $posClass }} {{ $class }}"
      style="position:relative;display:inline-block;"
      x-data="{ open: false }"
+     x-effect="open && $nextTick(() => window.madDropdownPlace && window.madDropdownPlace($el))"
+     @resize.window="open && window.madDropdownPlace && window.madDropdownPlace($el)"
+     @keydown.escape.window="open = false"
      @click.outside="open = false">
     <div @click="open = !open">
         @if($_autoTrigger)

@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.158.1] — 2026-10-13
+
+### Melhorias
+
+- **Componentes:** a tecla Esc fecha o menu do `<mad-dropdown>`.
+
+### Correções
+
+- **Site público:** o cadastro recusava quem enviava em poucos segundos (preenchimento automático, gerenciador de senhas) só com "Confira os dados e envie de novo.", e reenviar na hora era recusado de novo. Agora o aviso diz que o envio foi rápido demais, os dados ficam e o reenvio passa.
+- **Site público:** o formulário de contato enviado em poucos segundos mostrava "Mensagem recebida" sem guardar o contato. Agora ele volta com o aviso e os dados, e o reenvio é guardado.
+- **Componentes:** no celular, o menu do `<mad-dropdown>` abria cortado para fora da tela quando o botão ficava perto da borda. Agora ele abre para o lado em que cabe, e para cima quando não há espaço embaixo.
+- **Licenciamento:** com a licença da unidade vencida ou inativa, o administrador do sistema via a faixa do topo dizer que era a licença, mas a tela bloqueada dizia só "Você não tem acesso a esta tela". Agora a tela bloqueada repete o aviso da licença e o botão "Editar a licença".
+
 ## [5.158.0] — 2026-10-13
 
 ### Novidades

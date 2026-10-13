@@ -36,6 +36,6 @@ class MadProgramPermission
         // novo e injeta o fragmento no conteúdo — a recusa aparece dentro do
         // app, com menu, em vez de substituir a página inteira. O status
         // continua 403 nos dois caminhos.
-        return MadForbidden::response($request);
+        return MadForbidden::response($request, $class);
     }
 }

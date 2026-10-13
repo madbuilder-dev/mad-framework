@@ -3256,6 +3256,9 @@ textarea.mad-textarea:read-only:focus {
   top: calc(100% + 4px);
   left: 0;
   min-width: 180px;
+  /* Menu mais largo que a tela não passa dela; o lado e o deslocamento são
+     acertados ao abrir (madDropdownPlace, mad-ui.js). */
+  max-width: calc(100vw - 16px);
   background: var(--mad-bg);
   border: 1px solid var(--mad-border);
   border-radius: var(--mad-radius-md);

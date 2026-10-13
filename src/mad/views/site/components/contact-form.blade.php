@@ -12,7 +12,8 @@
         do leitor de tela: quem preenche é robô, e o servidor descarta em
         silêncio.
       • `_t` — carimbo de quando a página foi renderizada. Envio em menos de
-        alguns segundos é automação.
+        2 segundos volta com "você enviou rápido demais" e os dados; o
+        reenvio passa.
       • `origin` + `utm_*` — de qual página e de qual campanha veio o lead,
         preservados do link que o trouxe.
 
@@ -115,6 +116,11 @@
                 @foreach($__utm as $__utmKey => $__utmValue)
                     <input type="hidden" name="{{ $__utmKey }}" value="{{ $__utmValue }}">
                 @endforeach
+
+                {{-- Aviso que não é de um campo: envio rápido demais. --}}
+                @if($__error('form') !== '')
+                    <p class="site-form__error" role="alert">{{ $__error('form') }}</p>
+                @endif
 
                 <div style="{{ $__trapStyle }}" aria-hidden="true">
                     <label for="site-lead-website">Website</label>
