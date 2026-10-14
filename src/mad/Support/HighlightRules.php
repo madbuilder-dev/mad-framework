@@ -39,13 +39,18 @@ final class HighlightRules
         } else {
             $fv = (string)($row[$field] ?? '');
         }
+        // Coluna CHAR(n) do PostgreSQL volta completada com espaços ('PB   '):
+        // sem o trim, `when-value="PB"` nunca casava (fórum #118). Os dois
+        // lados, como já fazia a comparação de grandeza ({@see cmpValues()}).
+        $fv  = trim($fv);
         $val = $cond['value'] ?? '';
+        $one = static fn (mixed $v): string => is_scalar($v) ? trim((string)$v) : '';
 
         return match ($cond['op'] ?? 'eq') {
-            'eq'  => $fv === (string)$val,
-            'neq' => $fv !== (string)$val,
-            'in'  => in_array($fv, (array)$val, true),
-            'nin' => !in_array($fv, (array)$val, true),
+            'eq'  => $fv === $one($val),
+            'neq' => $fv !== $one($val),
+            'in'  => in_array($fv, array_map($one, (array)$val), true),
+            'nin' => !in_array($fv, array_map($one, (array)$val), true),
             // Comparação de grandeza (destaque "estoque abaixo de 10"): número
             // com número; senão texto — data ISO (AAAA-MM-DD) compara certo.
             // Campo vazio nunca casa (vazio não é "menor que 10").

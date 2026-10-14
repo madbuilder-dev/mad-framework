@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.161.1] — 2026-10-14
+
+### Correções
+
+- **Formulários:** o destaque das opções de DB Combo, DB Select, DB Unique Search e DB Multi Search não pintava nada quando a coluna da regra era de tamanho fixo (CHAR) no PostgreSQL, como uma `uf` com "PB". Republique o projeto para aplicar.
+- **Listagens:** o mesmo valia para o destaque da linha e para as condições de exibir ou desabilitar uma ação da grade: com coluna de tamanho fixo no PostgreSQL, a regra nunca casava. Republique o projeto para aplicar.
+
 ## [5.161.0] — 2026-10-13
 
 ### Novidades
