@@ -14,6 +14,14 @@ if (!function_exists('mad_download_url')) {
      */
     function mad_download_url(string $path, ?string $basename = null): string
     {
+        // Arquivo de campo com `public` (#244): o endereço público, fixo e sem
+        // login — o mesmo que o site usa. Só imagem/PDF (o que a rota serve).
+        if (str_starts_with($path, \Mad\Service\MadPublicUpload::PREFIX . '/')
+            && \Mad\Service\MadPublicUpload::mimeFor($path) !== null
+            && \Mad\Service\MadPublicUpload::isPublicPath($path)) {
+            return \Mad\Service\MadPublicUpload::url($path, false);
+        }
+
         $params = ['file' => $path];
         if ($basename !== null && $basename !== '') {
             $params['basename'] = $basename;
@@ -40,6 +48,25 @@ if (!function_exists('mad_download_url')) {
         }
 
         return '/app/_mad-download?' . http_build_query($params);
+    }
+}
+
+if (!function_exists('mad_public_url')) {
+    /**
+     * Endereço PÚBLICO (sem login, fixo) de um arquivo gravado por um campo de
+     * upload com `public` (#244) — para `<img>` numa página do site, e-mail e
+     * WhatsApp. Absoluto por padrão. Valor vazio, ou de campo sem `public`
+     * (arquivo privado), devolve '': o arquivo privado nunca ganha endereço
+     * público.
+     */
+    function mad_public_url(?string $path, bool $absolute = true): string
+    {
+        $path = trim((string) $path);
+        if ($path === '' || !\Mad\Service\MadPublicUpload::isPublicPath($path)) {
+            return '';
+        }
+
+        return \Mad\Service\MadPublicUpload::url($path, $absolute);
     }
 }
 

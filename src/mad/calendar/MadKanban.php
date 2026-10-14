@@ -109,6 +109,15 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      */
     protected string $cardOrderField = 'ordem';
 
+    /**
+     * Direção da ordem dos cartões em cada coluna: 'asc' (padrão, o mais antigo
+     * no topo) ou 'desc' (o mais novo no topo). Vale na carga, no "carregar
+     * mais", na atualização automática e na ordem gravada ao soltar um cartão.
+     * Uma etapa fixa pode trocar a da sua coluna
+     * (`<mad-kanban-stage value="novo" card-order-direction="desc">`).
+     */
+    protected string $cardOrderDirection = 'asc';
+
     /** Campo numérico para somar por coluna (ex: 'valor_total'). Vazio = sem totais. */
     protected string $valueField = '';
 
@@ -1214,7 +1223,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * Etapas fixas normalizadas: `value` de texto não vazio e sem repetição;
      * `label` cai no `value`; `color` é opcional.
      *
-     * @return list<array{value:string,label:string,color:string}>
+     * @return list<array{value:string,label:string,color:string,cardOrderDirection:string}>
      */
     private function _fixedStageList(): array
     {
@@ -1229,13 +1238,16 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 'value' => $value,
                 'label' => $label,
                 'color' => is_scalar($s['color'] ?? null) ? (string) $s['color'] : '',
+                'cardOrderDirection' => is_scalar($s['cardOrderDirection'] ?? null)
+                    ? self::_normalizeDirection((string) $s['cardOrderDirection'])
+                    : '',
             ];
         }
 
         return array_values($out);
     }
 
-    /** @return array{value:string,label:string,color:string}|null */
+    /** @return array{value:string,label:string,color:string,cardOrderDirection:string}|null */
     private function _fixedStage(string $value): ?array
     {
         foreach ($this->_fixedStageList() as $s) {
@@ -1281,7 +1293,8 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     private function _loadAllStageCards(): void
     {
         $modelClass = $this->_resolveModelFqcn($this->model);
-        $orderField = $this->_cardOrderColumn($modelClass) ?? $this->_keyName($modelClass);
+        $keyName    = $this->_keyName($modelClass);
+        $orderField = $this->_cardOrderColumn($modelClass) ?? $keyName;
 
         foreach ($this->_stages as $stage) {
             $this->_stageCards[$this->stageId($stage)] = [];
@@ -1306,9 +1319,9 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 // onSearch) + filtro do stage + ordenação + cards-per-load.
                 $q = $modelClass::query();
                 $this->_buildBaseCardQuery($q);
-                $q->where($this->stageField, '=', $sid)
-                  ->orderBy($orderField, 'asc')
-                  ->limit($this->_stageCardLimit($sid));
+                $q->where($this->stageField, '=', $sid);
+                $this->_orderCards($q, $orderField, $keyName, $sid);
+                $q->limit($this->_stageCardLimit($sid));
 
                 $this->_stageCards[$sid] = QuerySource::recordsFromQuery($q) ?: [];
             }
@@ -1556,12 +1569,16 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                     $scopedIn = $modelClass::query();
                     $this->_buildBaseCardQuery($scopedIn);
                     $rows = $scopedIn->whereIn($pkName, $orderedIds)->get()->keyBy($pkName);
+                    // Coluna em ordem decrescente: a sequência vai invertida,
+                    // para a tela continuar na ordem em que o cartão foi solto.
+                    $desc = $this->_cardOrderDirFor($newStageId) === 'desc';
+                    $n    = count($orderedIds);
                     foreach ($orderedIds as $seq => $id) {
                         $r = ((string) $id === (string) $cardId) ? $record : ($rows[$id] ?? null);
                         if (!$r) {
                             throw new \Exception(mad_t('mad.kanban.record_not_found', ['id' => $id, 'model' => $modelClass]));
                         }
-                        $r->{$orderColumn} = $seq + 1;
+                        $r->{$orderColumn} = $desc ? $n - $seq : $seq + 1;
                         $r->save();
                     }
                 } elseif ($changedStage) {
@@ -1623,13 +1640,14 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     public function onLoadMore(string $stageId, int $offset): MadResponse
     {
         $modelClass = $this->_resolveModelFqcn($this->model);
-        $orderField = $this->_cardOrderColumn($modelClass) ?? $this->_keyName($modelClass);
+        $keyName    = $this->_keyName($modelClass);
+        $orderField = $this->_cardOrderColumn($modelClass) ?? $keyName;
 
         $q = $modelClass::query();
         $this->_buildBaseCardQuery($q);
-        $q->where($this->stageField, '=', $stageId)
-          ->orderBy($orderField, 'asc')
-          ->limit($this->cardsPerLoad)
+        $q->where($this->stageField, '=', $stageId);
+        $this->_orderCards($q, $orderField, $keyName, $stageId);
+        $q->limit($this->cardsPerLoad)
           ->offset($offset);
         $items = QuerySource::recordsFromQuery($q) ?: [];
 
@@ -1781,6 +1799,44 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         }
 
         return $this->_modelHasColumn($modelClass, $field) ? $field : null;
+    }
+
+    /** 'asc' | 'desc' — qualquer outro valor vira '' (sem preferência). */
+    private static function _normalizeDirection(string $dir): string
+    {
+        $dir = strtolower(trim($dir));
+
+        return $dir === 'asc' || $dir === 'desc' ? $dir : '';
+    }
+
+    /**
+     * Direção da ordem dos cartões numa coluna: a da etapa fixa, se declarada;
+     * senão a do quadro (`card-order-direction`, padrão 'asc').
+     */
+    private function _cardOrderDirFor(string $stageId): string
+    {
+        if ($this->_hasFixedStages()) {
+            $own = $this->_fixedStage($stageId)['cardOrderDirection'] ?? '';
+            if ($own !== '') {
+                return $own;
+            }
+        }
+
+        return self::_normalizeDirection($this->cardOrderDirection) ?: 'asc';
+    }
+
+    /**
+     * Ordena os cartões de uma coluna pela coluna de ordem, na direção da
+     * coluna. Desempate pela chave, na mesma direção: com valores repetidos
+     * (datas, ordem zerada) o "carregar mais" não repete nem pula cartão.
+     */
+    private function _orderCards($query, string $orderField, string $keyName, string $stageId): void
+    {
+        $dir = $this->_cardOrderDirFor($stageId);
+        $query->orderBy($orderField, $dir);
+        if ($orderField !== $keyName) {
+            $query->orderBy($keyName, $dir);
+        }
     }
 
     /**
@@ -2220,7 +2276,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // da mesma classe com configs diferentes não se sobrescrevem mais.
         $this->kbCfgKey = md5(static::class . '|' . json_encode(array_intersect_key($config, array_flip([
             'model', 'database', 'stageModel', 'stageField', 'cardOrderField',
-            'valueField', 'valueFormat', 'cardView', 'card', 'clickTarget',
+            'cardOrderDirection', 'valueField', 'valueFormat', 'cardView', 'card', 'clickTarget',
             'stageActions', 'toolbar', 'stages', 'stageKeyField',
         ]))));
         session([
@@ -2253,7 +2309,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         foreach (['model', 'database', 'stageModel', 'stageField', 'stageKeyField',
                   'stageTitleField', 'stageColorField',
                   'stageOrderField', 'stageOrderDirection',
-                  'cardOrderField', 'valueField'] as $k) {
+                  'cardOrderField', 'cardOrderDirection', 'valueField'] as $k) {
             if (array_key_exists($k, $config) && $this->$k !== $config[$k]) {
                 $this->$k    = (string) $config[$k];
                 $needsReload = true;

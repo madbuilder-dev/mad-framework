@@ -263,7 +263,13 @@ abstract class MadSitePage extends MadComponent
             'componentHtml'   => $body,
         ]);
 
-        return new Response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        // Referrer-Policy `same-origin`: a URL da página (que pode levar o token
+        // de um link de convite/avaliação) não sai nem como origem para
+        // terceiros — CDN, fontes, análise (mad-framework#349).
+        return new Response($html, 200, [
+            'Content-Type'    => 'text/html; charset=UTF-8',
+            'Referrer-Policy' => 'same-origin',
+        ]);
     }
 
     /**

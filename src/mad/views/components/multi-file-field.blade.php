@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
 @php
     $required   = !empty($required);
     $disabled   = !empty($disabled);
@@ -106,7 +106,12 @@
         'serverMax'       => \Mad\Form\MadUploadRules::serverFileBytes(),
         'stored'          => $storage !== '',
     ]);
+    // `public` (#244): grava em _public/ com endereço fixo e sem login
+    // (mad_public_url). Sem ela, o arquivo segue privado.
+    $public = !empty($public ?? false) && $public !== 'false';
+
     \Mad\Form\MadFormRegistry::register($name, 'multi-file', [
+        'public'     => $public,
         'label'      => strip_tags($label),
         'required'   => $required,
         'storage'    => $storage,

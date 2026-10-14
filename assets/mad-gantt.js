@@ -929,6 +929,120 @@
 
 })(typeof window !== 'undefined' ? window : globalThis);
 /**
+ * MadGantt — Auto-schedule (`auto-schedule`).
+ *
+ * Depois que uma barra é arrastada ou esticada, empurra para frente os
+ * sucessores que ficariam em conflito, em cascata, mantendo a duração de cada
+ * um. Respeita o tipo da dependência e o lag (dias), com as mesmas regras do
+ * caminho crítico:
+ *
+ *   FS: sucessor começa depois do fim do predecessor (+lag)
+ *   SS: sucessor começa depois do início do predecessor (+lag)
+ *   FF: sucessor termina depois do fim do predecessor (+lag)
+ *   SF: sucessor termina depois do início do predecessor (+lag)
+ *
+ * Só empurra (folga não puxa ninguém para trás). Tarefa só leitura não se move
+ * nem empurra as dela. Data sem horário: o fim é inclusivo (como na barra).
+ *
+ *   cascade(tasks, dependencies, movedId) → [{ id, start, end }] alterados
+ */
+(function (root) {
+    'use strict';
+
+    const DAY = 86400000;
+    const RE  = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/;
+
+    // Horário "ingênuo" em UTC: sem horário de verão no meio da conta.
+    function parse(v) {
+        const m = RE.exec(String(v || ''));
+        if (!m) return null;
+        const timed = m[4] !== undefined;
+        const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], timed ? +m[4] : 0, timed ? +m[5] : 0, timed ? +(m[6] || 0) : 0);
+        return { ms, timed };
+    }
+
+    function fmt(ms, timed) {
+        const d = new Date(ms);
+        const pad = (n) => String(n).padStart(2, '0');
+        const day = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+        return timed ? `${day} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` : day;
+    }
+
+    // [início, fim exclusivo) em ms.
+    function span(t) {
+        const s = parse(t.start);
+        if (!s) return null;
+        const e = parse(t.end) || s;
+        return { s: s.ms, e: e.ms + (e.timed ? 0 : DAY), timed: s.timed };
+    }
+
+    function cascade(tasks, dependencies, movedId) {
+        const byId = {};
+        for (const t of (tasks || [])) byId[String(t.id)] = t;
+        const succ = {};
+        const pred = {};
+        for (const d of (dependencies || [])) {
+            const from = String(d.from), to = String(d.to);
+            if (!byId[from] || !byId[to] || from === to) continue;
+            const dep = { from, to, type: String(d.type || 'FS').toUpperCase(), lag: (+d.lag || 0) * DAY };
+            (succ[from] = succ[from] || []).push(dep);
+            (pred[to] = pred[to] || []).push(dep);
+        }
+
+        const spans = {};
+        const spanOf = (id) => (spans[id] !== undefined ? spans[id] : (spans[id] = span(byId[id])));
+        const changed = {};
+        const queue = [String(movedId)];
+        // Ciclo pré-existente nos dados não pode travar a tela.
+        let budget = (Object.keys(byId).length + 1) * ((dependencies || []).length + 1) + 10;
+
+        while (queue.length && budget-- > 0) {
+            const id = queue.shift();
+            for (const dep of (succ[id] || [])) {
+                const t = byId[dep.to];
+                if (t.readonly) continue;
+                const cur = spanOf(dep.to);
+                if (!cur) continue;
+                const dur = cur.e - cur.s;
+                let need = cur.s;
+                for (const p of pred[dep.to]) {
+                    const ps = spanOf(p.from);
+                    if (!ps) continue;
+                    let min;
+                    switch (p.type) {
+                        case 'SS': min = ps.s + p.lag; break;
+                        case 'FF': min = ps.e + p.lag - dur; break;
+                        case 'SF': min = ps.s + p.lag - dur; break;
+                        default:   min = ps.e + p.lag;
+                    }
+                    if (min > need) need = min;
+                }
+                if (need <= cur.s) continue;
+                // Data sem horário anda em dias inteiros.
+                if (!cur.timed) need = Math.ceil(need / DAY) * DAY;
+                spans[dep.to] = { s: need, e: need + dur, timed: cur.timed };
+                changed[dep.to] = true;
+                queue.push(dep.to);
+            }
+        }
+
+        return Object.keys(changed).map((id) => {
+            const sp = spans[id];
+            return {
+                id: byId[id].id,
+                start: fmt(sp.s, sp.timed),
+                end: fmt(sp.timed ? sp.e : sp.e - DAY, sp.timed),
+            };
+        });
+    }
+
+    root.MadGantt = root.MadGantt || {};
+    root.MadGantt.autoSchedule = {
+        cascade,
+    };
+
+})(typeof window !== 'undefined' ? window : globalThis);
+/**
  * MadGantt — Working-day calendar.
  *
  * Stateless helpers for working-days, holidays, business-hour windows.
@@ -3355,7 +3469,7 @@
         const escText = M.svg.escText;
         const {
             dates, zoom, colors,
-            coords, tree, criticalPath: cpm, calendar,
+            coords, tree, criticalPath: cpm, autoSchedule: autoSched, calendar,
             defs, header, sidebar, chartSvg, dependencies, minimap, tooltip, workload,
             scrollSync, dragBar, dragDependency, hover, keyboard,
             wire, persistence,
@@ -3557,10 +3671,14 @@
                             if (t) { t.start = fmt(start); t.end = fmt(end); }
                         },
                         onDragCommit: (id, start, end, mode) => {
+                            const method = cfg.taskUpdateMethod || cfg.eventUpdateMethod;
+                            const saved = wire.fireTaskUpdate(this.$el, method, id, start, end, mode);
+                            // Agendamento automático: empurra os sucessores e grava
+                            // cada um pelo mesmo método, um depois do outro.
+                            if (this.autoSchedule) this._autoSchedule(id, method, saved);
                             this._markDirty('chart'); this._markDirty('deps');
                             if (this.criticalPath) this._recomputeCritical();
                             this._scheduleFlush();
-                            wire.fireTaskUpdate(this.$el, cfg.taskUpdateMethod || cfg.eventUpdateMethod, id, start, end, mode);
                         },
                     }));
                     this._bindings.push(dragDependency.attach(svgEl, {
@@ -3781,6 +3899,25 @@
                     popContent:   cfg.popContent || '',
                     labels:       cfg.labels || {},
                 };
+            },
+
+            /**
+             * `auto-schedule`: empurra os sucessores da tarefa `movedId` que
+             * ficaram em conflito (em memória, já no próximo desenho) e grava
+             * cada um pelo método do arrasto, em fila depois de `after`.
+             */
+            _autoSchedule(movedId, method, after) {
+                if (!autoSched) return;
+                const changes = autoSched.cascade(this.tasks, this.dependencies, movedId);
+                let chain = Promise.resolve(after);
+                for (const c of changes) {
+                    const t = this._getTask(c.id);
+                    if (!t) continue;
+                    t.start = c.start;
+                    t.end = c.end;
+                    chain = chain.then(() => wire.fireTaskUpdate(this.$el, method, c.id, c.start, c.end, 'auto'));
+                }
+                return chain;
             },
 
             _recomputeCritical() {

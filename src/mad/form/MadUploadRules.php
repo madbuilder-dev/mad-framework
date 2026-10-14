@@ -119,6 +119,12 @@ final class MadUploadRules
             $parts[] = is_scalar($value) ? (string) $value : (string) json_encode($value);
         }
 
+        // `public` (#244) só entra quando ligada: a impressão dos campos sem
+        // ela fica a mesma de antes (tela aberta antes da atualização salva).
+        if (!empty($props['public'])) {
+            $parts[] = 'public';
+        }
+
         return substr(sha1(implode("\x1f", $parts)), 0, 16);
     }
 
@@ -376,8 +382,8 @@ final class MadUploadRules
      *  - extensão que nenhum upload grava;
      *  - `maxBytes` (Tamanho máximo), `accept` (Tipos aceitos) e `maxFiles`
      *    (Máximo de arquivos) do campo — só quando o campo os declara;
-     *  - nas células de arquivo da Lista de itens, o Tamanho máximo da coluna
-     *    (erro em `mad_fl_files`).
+     *  - nas células de arquivo da Lista de itens, o Tamanho máximo e os Tipos
+     *    aceitos da coluna (erro em `mad_fl_files`).
      *
      * @param array<string,mixed> $schema  campos do formulário (nome => props)
      * @param array<string,mixed> $fields  valores do formulário (a Imagem sem `storage` vem aqui, em base64)
@@ -401,7 +407,7 @@ final class MadUploadRules
                 $problem = self::phpProblem((int) $file['error'], (string) $file['name']);
                 if ($problem === null && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
                     $sent++;
-                    $problem = self::fileProblem($file, $max, $accept, $storage !== '');
+                    $problem = self::fileProblem($file, $max, $accept, $storage !== '', !empty($props['public']));
                 }
                 if ($problem !== null) {
                     $errors[$name] = $problem;
@@ -443,19 +449,20 @@ final class MadUploadRules
         }
 
         // Arquivos das células de uma Lista de itens (`mad_fl_files[parte][célula][i]`):
-        // o que o PHP recusou e o Tamanho máximo da coluna (`max-size` de
-        // <mad-field-list-column>), que antes só o navegador conferia.
+        // o que o PHP recusou, o Tamanho máximo (`max-size`) e os Tipos aceitos
+        // (`accept`) da coluna de <mad-field-list-column>, que antes só o
+        // navegador conferia.
         $cells = $_FILES['mad_fl_files'] ?? null;
         foreach (is_array($cells) && is_array($cells['error'] ?? null) ? array_keys($cells['error']) : [] as $cell) {
             $part = [];
             foreach (['name', 'type', 'tmp_name', 'error', 'size'] as $key) {
                 $part[$key] = is_array($cells[$key] ?? null) ? ($cells[$key][$cell] ?? null) : null;
             }
-            $max = self::cellMaxBytes((string) $cell);
+            [$max, $accept] = self::cellRules((string) $cell);
             foreach (self::entries($part) as $file) {
                 $problem = self::phpProblem((int) $file['error'], (string) $file['name']);
-                if ($problem === null && $max > 0 && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
-                    $problem = self::fileProblem($file, $max, '', false);
+                if ($problem === null && ($max > 0 || $accept !== '') && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
+                    $problem = self::fileProblem($file, $max, $accept, false);
                 }
                 if ($problem !== null) {
                     $errors['mad_fl_files'] = $problem;
@@ -468,15 +475,18 @@ final class MadUploadRules
     }
 
     /**
-     * Tamanho máximo (bytes) da coluna de arquivo de uma célula — a chave é
-     * `<detalhe>__<linha>__<coluna>` — ou 0 quando a coluna não declara.
+     * Tamanho máximo (bytes; 0 = sem limite) e Tipos aceitos ('' = qualquer)
+     * da coluna de arquivo de uma célula — a chave é
+     * `<detalhe>__<linha>__<coluna>`.
      *
      * As colunas são as que a lista registrou e que o formulário recebido traz
      * (MadFormRegistry::getDetailFileColumns). O limite faz parte da
      * impressão delas que o estado da tela guarda (detailFilesPrint): um
      * formulário recebido sem ele não grava as linhas.
+     *
+     * @return array{0: int, 1: string}
      */
-    private static function cellMaxBytes(string $cell): int
+    private static function cellRules(string $cell): array
     {
         // O nome da lista, a chave da linha e a coluna podem ter `__`: o nome
         // da lista é o primeiro prefixo registrado; a coluna, o maior sufixo
@@ -491,12 +501,15 @@ final class MadUploadRules
             for ($j = $i + 1; $j < $count; $j++) {
                 $column = implode('__', array_slice($parts, $j));
                 if (is_array($columns[$column] ?? null)) {
-                    return max(0, (int) ($columns[$column]['maxBytes'] ?? 0));
+                    return [
+                        max(0, (int) ($columns[$column]['maxBytes'] ?? 0)),
+                        trim((string) ($columns[$column]['accept'] ?? '')),
+                    ];
                 }
             }
         }
 
-        return 0;
+        return [0, ''];
     }
 
     /**
@@ -618,13 +631,18 @@ final class MadUploadRules
     }
 
     /** @param array{name:string,type:string,tmp_name:string,error:int,size:int} $file */
-    private static function fileProblem(array $file, int $max, string $accept, bool $stored): ?string
+    private static function fileProblem(array $file, int $max, string $accept, bool $stored, bool $public = false): ?string
     {
         $name      = self::shortName((string) $file['name']);
         $extension = strtolower((string) pathinfo((string) $file['name'], PATHINFO_EXTENSION));
 
         if ($stored && $extension !== '' && in_array($extension, self::BLOCKED_EXTENSIONS, true)) {
             return self::text('form.upload_ext_blocked', ['file' => $name, 'ext' => $extension], 'O arquivo :file não foi salvo: arquivos .:ext não são aceitos por segurança.');
+        }
+        // Campo com `public` (#244): o arquivo ganha endereço aberto no domínio
+        // do app — só imagem/PDF de verdade, pelo nome E pelo conteúdo.
+        if ($stored && $public && !\Mad\Service\MadPublicUpload::acceptsUpload((string) $file['name'], (string) $file['tmp_name'])) {
+            return self::text('form.upload_public_type', ['file' => $name], 'O arquivo :file não foi salvo: só imagens (PNG, JPG, GIF, WebP) e PDF podem ter endereço público, por segurança.');
         }
         if ($accept !== '' && !self::accepts($accept, (string) $file['name'], (string) $file['tmp_name'], (string) $file['type'])) {
             return self::text('form.upload_type', ['file' => $name, 'accept' => self::acceptLabel($accept)], 'O arquivo :file não é de um tipo aceito neste campo (:accept).');

@@ -200,6 +200,11 @@
         if ((int) $_fc->maxSize > 0) {
             $_flFileCols[$_fc->field]['maxBytes'] = (int) $_fc->maxSize * 1024;
         }
+        // Tipos aceitos da coluna (`accept`): mesma conferência no Salvar —
+        // antes só filtravam a janela de escolha do navegador.
+        if (trim((string) $_fc->accept) !== '') {
+            $_flFileCols[$_fc->field]['accept'] = trim((string) $_fc->accept);
+        }
     }
     // Sempre, mesmo sem coluna de arquivo: o formulário da tela anota como a
     // lista trata os arquivos das linhas, e o Salvar só aceita essa descrição.

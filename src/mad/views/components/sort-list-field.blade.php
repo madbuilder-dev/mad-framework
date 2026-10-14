@@ -52,6 +52,8 @@
         x-ref="list"
         data-mad-sort-list="{{ $name }}"
         data-mad-sort-list-field-name="{{ $name }}"
+        {{-- A ordem vai no Salvar: o MadWire só envia [data-mad-model] (fw#236). --}}
+        @if($name) data-mad-model="{{ $name }}" @endif
         @if($disabled) style="pointer-events:none;opacity:.6;" @endif
     >
         @foreach($orderedItems as $key => $itemLabel)

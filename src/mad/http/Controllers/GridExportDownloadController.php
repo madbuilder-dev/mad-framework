@@ -3,6 +3,7 @@
 namespace Mad\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Mad\Grid\GridExportAccess;
 use Mad\Service\MadScratchStorage;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -17,7 +18,11 @@ use Symfony\Component\HttpFoundation\Response;
  *    clicar "Baixar" depois do purge (ex.: dialog aberto > 24h), devolvemos
  *    410 Gone com mensagem clara — em vez de um 404 cru ou download corrompido.
  *
- * Segurança: o param `file` precisa ser um basename simples (o uniqid+ext que
+ *  - DONO (mad-framework#342): o link é assinado e curto, e o arquivo só
+ *    serve a quem o gerou, na mesma unidade, enquanto ainda abrir a tela de
+ *    origem — ver GridExportAccess. Divergência = 404 (não revela o arquivo).
+ *
+ * Segurança: o param `file` precisa ser um basename simples (o nome+ext que
  * o exporter gerou) — sem path, sem traversal, sem null byte; extensão na
  * allowlist. Todo IO via Storage (disco de scratch MadScratchStorage, chave
  * output/<basename>) — sempre attachment + Content-Type canônico da extensão.
@@ -44,10 +49,24 @@ class GridExportDownloadController
             abort(403, 'File type not allowed.');
         }
 
+        // Link sem assinatura válida = 404; vencido = 410 (mesmo aviso do purge).
+        if (!GridExportAccess::signatureValid($request)) {
+            abort(Response::HTTP_NOT_FOUND);
+        }
+        if (!GridExportAccess::signatureFresh($request)) {
+            abort(Response::HTTP_GONE, __('grid.export_expired'));
+        }
+
         // Sumiu? Quase sempre foi o purge (mad:grid:purge-exports). 410 Gone.
+        // Antes do dono: o purge leva o metadado junto.
         $key = 'output/' . $file;
         if (!MadScratchStorage::exists($key)) {
             abort(Response::HTTP_GONE, __('grid.export_expired'));
+        }
+
+        // Outro usuário/unidade, ou tela que ele não abre mais: 404.
+        if (!GridExportAccess::ownedByCurrentUser($file)) {
+            abort(Response::HTTP_NOT_FOUND);
         }
 
         $basename = (string) $request->query('basename', '');

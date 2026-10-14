@@ -12,6 +12,66 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.162.0] — 2026-10-14
+
+### Novidades
+
+- **Listagens:** nova opção `auto-refresh` no `<mad-grid>`: a listagem se atualiza sozinha a cada N segundos, na mesma página e com os mesmos filtros, e avisa enquanto o servidor não responde.
+- **Listagens e Kanban:** quando uma atualização automática traz itens novos, a tela recebe o evento `mad-new-items` com os ids, para tocar um som ou destacar o item.
+- **Kanban:** nova opção `card-order-direction` no quadro e em cada etapa fixa (`<mad-kanban-stage>`): `desc` mostra o mais novo no topo da coluna, ao abrir, ao carregar mais, na atualização automática e ao soltar um cartão.
+- **Formulários:** campos de imagem, arquivo, avatar, vários arquivos e assinatura ganham a opção `public`: o arquivo enviado passa a ter um endereço fixo, sem login, para usar em páginas do site, e-mail e WhatsApp (`mad_public_url()`). Só aceita imagens (PNG, JPG, GIF, WebP) e PDF, conferidas pelo conteúdo; trocar o arquivo gera um endereço novo, e arquivos já enviados continuam privados.
+- **Formulários:** `Mad.call(método, parâmetros, elemento, opções)` aceita `{ background, key }`; com `key`, uma nova chamada de mesma chave substitui a que ainda esperava o servidor.
+- **Abas:** `<mad-tabs wrap>` quebra as abas em mais de uma linha em vez de rolar.
+- **PDV:** produto montável (`composite-field`) mostra "Monte o seu" na busca e no catálogo no lugar do preço do cadastro, ou o texto de `composite-price-label` (`:price` vira o preço do cadastro).
+- **Gantt:** com **Agendamento automático** ligado, arrastar ou esticar uma tarefa empurra as tarefas que dependem dela, respeitando o tipo de dependência e o intervalo, e grava as novas datas.
+- **E-mail:** o envio com anexo ganha o modo estrito (`MailService::send(..., strict: true)`), que recusa o e-mail inteiro quando algum anexo é recusado.
+
+### Correções
+
+- **Formulários:** com o app em publicação, um campo que grava ao sair podia voltar ao valor anterior quando a pessoa o alterava duas vezes seguidas; agora a alteração mais nova sempre vence.
+- **Formulários:** o primeiro clique em **Salvar** era ignorado quando o campo recém-digitado tinha reação à alteração (`mad:change`); agora a reação roda e o Salvar grava em seguida, uma vez só, mesmo com duplo clique.
+- **Formulários:** a ordem escolhida na Lista ordenável (`<mad-sort-list-field>`, `<mad-dbsort-list-field>`) não era gravada ao salvar; agora é gravada separada por vírgula e reaberta na mesma ordem.
+- **Formulários:** no Detail Form, grupo de checkbox e busca múltipla do editor da linha não gravavam as marcas nem as mostravam ao **Editar**; agora gravam e reabrem marcadas.
+- **Formulários:** os avisos de alteração feita em outra aba e de itens já removidos pediam para atualizar a tela mesmo depois de o Salvar fechar a cortina; agora pedem para abrir o cadastro de novo.
+- **Formulários:** a coluna de arquivo da Lista de itens passa a respeitar os **Tipos aceitos** também quando o arquivo é escolhido em "Todos os arquivos" ou solto no campo, e o Salvar confere o tipo.
+- **Formulários:** com parte dos itens marcados, a caixa "marcar todos" do Checklist passa a aparecer meio marcada; no tema escuro, caixas marcadas voltam a mostrar o visto.
+- **Listagens:** as condições de um botão de ação da linha (exibir quando, desabilitar quando) passam a ser conferidas também ao clicar, e com "Função/expressão" e "Campo" no mesmo botão as duas passam a valer.
+- **Listagens:** numa listagem por consulta (`sourceQuery()`), um filtro que não é coluna da consulta deixava a lista vazia ou dava erro, e a busca gerada pelo Studio derrubava a tela; agora o filtro só se aplica sozinho quando a consulta tem a coluna, e a busca funciona.
+- **Listagens:** numa listagem por consulta, coluna com `field="{campo}"` saía vazia ou com R$ 0,00 em todas as linhas; agora mostra o valor da consulta.
+- **Listagens:** o arquivo exportado da grade (CSV, Excel ou PDF) só pode ser baixado por quem o gerou, enquanto tiver acesso à tela; o link do botão **Baixar** vale 30 minutos.
+- **Listagens e painéis:** um campo da barra de filtros dentro de `@if` ou `@can` aparecia para todos os perfis; agora só aparece quando a condição vale, e quem não o vê não consegue filtrar por ele.
+- **Listagens e relatórios:** o período padrão (`$defaultPeriod`) não valia na abertura das telas geradas pela plataforma, que abriam com todos os registros; agora abrem no período declarado, já mostrado no chip **Período** e nas datas do seletor, e o período passado no link também é respeitado.
+- **Abas:** quando as abas não cabiam na largura, a última visível ficava apagada e as setas de rolagem só apareciam com o mouse em cima; agora a seta fica sempre visível do lado em que há mais abas, e a aba focada pelo teclado rola para a vista.
+- **Menu:** tela aberta por endereço, favorito ou por botão que leva a outro módulo marcava o primeiro módulo no menu lateral e na trilha do topo; agora o menu acompanha o módulo da tela, inclusive de telas que não estão no menu.
+- **App gerado:** a faixa do topo dava um pequeno pulo depois de cada tela abrir, empurrando a busca e os ícones de aviso; agora o topo já chega pronto.
+- **App gerado:** a tecla Esc não fechava o painel de notificações, o de mensagens nem o menu Exportar da listagem; agora fecha e o foco volta ao botão que abriu.
+- **App gerado:** navegando pelo teclado (Tab) não dava para ver qual campo, caixa, opção, botão (inclusive os da listagem), aba, seletor ou item do menu estava focado; agora o foco mostra um contorno nos temas claro e escuro, e com o mouse nada muda.
+- **App gerado:** o "×" de limpar do seletor, o "/" da trilha do topo e o contorno de foco do menu superior ficavam claros demais para ler; agora passam do contraste mínimo nos temas claro e escuro.
+- **Temas:** o tema do app forçava uma margem em todo botão de opção e caixa de seleção da página, inclusive em HTML próprio da tela; agora o CSS do projeto ajusta essa margem sem precisar de `!important`.
+- **Temas:** o CSS incluído com `@css` volta a aplicar regras com `:is(`, `:not(`, `:hover`, `::before` e larguras com `calc()`, que deixavam de valer na tela.
+- **PDV:** o marcador de produto montável (`composite-field`) pode ser calculado no filtro do caixa (`:where`); antes a tela inteira virava "configuração incompleta". E a pizza escolhida pela busca e confirmada no montador volta a entrar no carrinho.
+- **PDV:** o `<mad-pdv>` colocado dentro de uma tela comum não buscava produto, não chamava o montador da tela (`on-compose`) e não fechava a venda; agora funciona como na página de PDV.
+- **PDV:** com o caixa aberto em mais de uma aba, a busca e a finalização às vezes falhavam até recarregar a tela; agora o caixa se recupera sozinho.
+- **PDV:** no celular, o carrinho rolava para o lado e escondia o total, o remover e a descrição do item montado; agora cada linha quebra em duas e cabe na tela.
+- **Organograma:** com filtro escrito como função (`:where`), os registros escondidos voltavam a aparecer ao expandir ou mover um nó; agora o filtro vale em todas as ações.
+- **Permissões:** botão `<mad-btn navigate>` que abre uma listagem ou dashboard não sai mais bloqueado com "Sem permissão para incluir"; sem acesso à tela, a dica passa a ser "Sem acesso a esta tela".
+- **Permissões:** clonar um grupo passa a copiar também as ações liberadas em cada programa; antes o grupo novo saía com acesso completo a todos eles.
+- **Permissões:** atualizar uma instalação existente e rodar os dados de referência não deixa mais a mesma tela duas vezes em **Programas**.
+- **Site:** links de página pública com token (convite, avaliação) que tinham letra maiúscula ou `_` respondiam "não encontrado"; agora abrem a página.
+- **Site:** o token de um link de página pública não aparece mais no log de requisições nem na telemetria, e as páginas do site deixam de enviar o próprio endereço a outros sites.
+- **Site:** script próprio da página que trata links de seção (`href="#…"`) volta a funcionar, com rolagem suave e sem encher o histórico do Voltar.
+- **Documentos (GED):** arquivo maior que o limite de envio do servidor não grava mais o documento sem o arquivo; o Salvar avisa e não grava.
+- **Banco de dados:** em tabelas com colunas de auditoria, a data de alteração passa a ser preenchida já na criação do registro e também quando o código altera várias linhas de uma vez pelo model.
+- **E-mail:** convite de calendário em `.ics` passa a sair anexado, e anexo recusado (tipo não aceito, acima do limite ou inexistente) deixa de sumir calado: aparece no log de e-mail de **Preferências › E-mail**.
+- **Webhooks:** `mad:webhook test` e `mad:webhook secret` com uma unidade inexistente ou inativa passam a avisar "Unidade N não existe ou está inativa." sem criar um endereço sem uso.
+
+### Atenção
+
+- **Listagens:** um botão de ação da linha com "Função/expressão" e "Campo" no mesmo botão passa a obedecer às duas condições (antes a primeira era ignorada), e o servidor recusa a ação numa linha que a condição esconde ou desabilita. Confira as telas que usam as duas: um botão que hoje aparece pode sumir.
+- **Formulários:** os endereços públicos dos arquivos enviados com `public` dependem da chave do app (`APP_KEY`). Se trocar a chave, defina `MAD_UPLOAD_PUBLIC_KEY` com a chave antiga, ou os endereços já distribuídos deixam de abrir.
+- **Permissões:** `<mad-btn :navigate="'Tela::método'">` passa a conferir a permissão do método nomeado (antes conferia sempre a de incluir). Um perfil sem essa ação passa a ver o botão desabilitado.
+- **Apps publicados:** as correções desta versão estão no runtime do app. Republique o projeto para aplicar.
+
 ## [5.161.1] — 2026-10-14
 
 ### Correções

@@ -16,6 +16,11 @@ class GridAction
     public bool    $isDanger  = false;
     public bool    $isPrimary = false;
     public         $whenFn     = null;   // callable ($row) => bool
+    /**
+     * Segunda condição de exibir, somada à {@see $whenFn}: o `when-field` de
+     * uma ação que também tem `display-condition` (as duas valem juntas).
+     */
+    public         $whenFieldFn = null;  // callable ($row) => bool
     public         $disabledFn = null;  // callable ($row) => bool
     public         $transformFn = null; // callable ($row) => array de overrides
     public array   $params    = [];
@@ -103,6 +108,19 @@ class GridAction
     {
         $this->whenFn = $condition;
         return $this;
+    }
+
+    /** Condição por campo que vale junto com a do {@see when()}. */
+    public function whenField(callable $condition): self
+    {
+        $this->whenFieldFn = $condition;
+        return $this;
+    }
+
+    /** A ação depende da linha para aparecer ou ficar habilitada? */
+    public function hasRowConditions(): bool
+    {
+        return $this->whenFn !== null || $this->whenFieldFn !== null || $this->disabledFn !== null;
     }
 
     /** Callable ou string 'Classe::metodo' que recebe (array $row) e retorna bool. */
@@ -414,6 +432,10 @@ class GridAction
     {
         // Perfil sem a ação, no modo "ocultos": o botão sai da linha.
         if ($this->permDecision()['mode'] === 'hide') {
+            return false;
+        }
+        if ($this->whenFieldFn !== null && is_callable($this->whenFieldFn)
+            && !self::_callRowCallback($this->whenFieldFn, $row)) {
             return false;
         }
         if ($this->whenFn !== null && is_callable($this->whenFn)) {

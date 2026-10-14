@@ -71,7 +71,12 @@
         array_filter(explode(',', $accept), static fn ($t) => trim($t) !== ''),
     ));
 
+    // `public` (#244): grava em _public/ com endereço fixo e sem login
+    // (mad_public_url). Sem ela, o arquivo segue privado.
+    $public = !empty($public ?? false) && $public !== 'false';
+
     \Mad\Form\MadFormRegistry::register($name, 'image', [
+        'public'     => $public,
         'label'      => strip_tags($label),
         'required'   => $required,
         'fileName'   => $fileNameMode,

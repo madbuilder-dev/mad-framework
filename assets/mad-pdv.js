@@ -179,6 +179,16 @@
                     return intPart + cur.decimal + String(Math.abs(c) % 100).padStart(2, '0');
                 },
 
+                // Preço na busca e no catálogo. O do cadastro de um item
+                // montável não é o que vai ser cobrado (pizza com preço por
+                // tamanho tem 0 no cadastro): mostra o `composite-price-label`
+                // (`:price` = preço do cadastro) ou "Monte o seu".
+                priceText(p) {
+                    if (!p || !p.composite || !this.cfg.behavior.composite) return this.money(this.toC(p && p.price));
+                    var tpl = String(this.cfg.behavior.compositePriceLabel || this.cfg.i18n.compose_price || '');
+                    return tpl.indexOf(':price') >= 0 ? tpl.replace(':price', this.money(this.toC(p.price))) : tpl;
+                },
+
                 // ── Saldo no card do catálogo ─────────────────────────────
                 //
                 // O lookup só manda `stock` numérico quando stock-field (ou
@@ -612,6 +622,9 @@
                 _askCompose(p, qty, line) {
                     var self = this;
                     var done = false;
+                    // O elemento que disparou (resultado da busca) sai do DOM
+                    // quando a busca fecha: o pedido ao servidor parte do PDV.
+                    var at = (this.$el && this.$el.closest && this.$el.closest('[data-mad-pdv]')) || this.$el;
                     var detail = {
                         product: {
                             id: p.id, name: p.name, code: p.code || '', barcode: p.barcode || '',
@@ -624,7 +637,7 @@
                         confirm: function (choices) {
                             if (done) return;
                             done = true;
-                            self._composeConfirm(p, qty, line, choices);
+                            self._composeConfirm(p, qty, line, choices, at);
                         },
                         cancel: function () {
                             if (done) return;
@@ -645,12 +658,12 @@
                 },
 
                 /** Escolhas confirmadas: o SERVIDOR dá preço e descrição. */
-                _composeConfirm(p, qty, line, choices) {
+                _composeConfirm(p, qty, line, choices, at) {
                     var self = this;
                     var id = ++this._reqSeq;
                     this._composePending[id] = { product: p, qty: qty, lineUid: line ? line.uid : null };
                     this.composing = true;
-                    wireCall(this.$el, this.cfg.wire.compose, [String(p.id), JSON.stringify(choices || {}), qty, id])
+                    wireCall(at || this.$el, this.cfg.wire.compose, [String(p.id), JSON.stringify(choices || {}), qty, id])
                         .catch(function (err) {
                             console.error('[mad-pdv] compose:', err);
                             delete self._composePending[id];

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Facade;
 use Mad\Webhook\WebhookController;
 use Mad\Webhook\WebhookDefinition;
 use Mad\Webhook\WebhookRegistry;
+use Mad\Webhook\WebhookScope;
 use Mad\Webhook\WebhookStore;
 use Mad\Webhook\WebhookVerifier;
 
@@ -344,6 +345,10 @@ class WebhookCommand extends Command
         if ($definition->isUnitScoped()) {
             if ($unitId === null || $unitId <= 0) {
                 return [null, null, 'Este webhook é por unidade: informe --unit=ID.'];
+            }
+            // Sem endpoint ainda: id errado não pode virar endpoint órfão (com chave e segredo).
+            if (WebhookStore::unitEndpoint($slug, $unitId) === null && ! WebhookScope::unitAvailable($unitId)) {
+                return [null, null, "Unidade {$unitId} não existe ou está inativa."];
             }
 
             return [$definition, WebhookStore::createUnitEndpoint($slug, $unitId)[0], null];

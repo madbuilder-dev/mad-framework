@@ -42,6 +42,17 @@ final class WebhookScope
     /** @var array<int, array<string, mixed>> estados anteriores (ativações aninhadas) */
     private static array $stack = [];
 
+    /**
+     * A unidade existe e está ativa? Mesma regra do `activate()`; quem cria
+     * endpoint por unidade confere antes, para não gravar endpoint órfão.
+     */
+    public static function unitAvailable(int $unitId): bool
+    {
+        $unit = $unitId > 0 ? Unit::find($unitId) : null;
+
+        return $unit !== null && ($unit->active ?? 'Y') !== 'N';
+    }
+
     /** @throws WebhookScopeException */
     public static function activate(int $unitId): void
     {

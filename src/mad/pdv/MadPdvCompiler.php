@@ -48,8 +48,11 @@ namespace Mad\Pdv;
  * │                                                                             │
  * │  Item composto (pizza meio a meio, borda, adicionais):                      │
  * │    composite-field="montavel"   coluna do produto que marca o item montável │
+ * │                                 (ou calculada no :where com addSelect)      │
  * │    on-compose="montarItem"      método da tela: dá preço/descrição/filhas   │
  * │    item-description-field=      coluna do item que guarda a descrição       │
+ * │    composite-price-label=       preço na busca ("a partir de :price");      │
+ * │                                 vazio = "Monte o seu"                       │
  * │    (o navegador dispara `mad-pdv:compose`; a tela abre o montador dela)     │
  * │                                                                             │
  * │  Visual: title=  fullscreen-toggle  currency-symbol="R$"  locale=           │
@@ -222,6 +225,11 @@ class MadPdvCompiler
     {
         if ($host instanceof MadPdvComponent) {
             return $host->_renderInlinePdv($config);
+        }
+
+        // Ação do PDV embutido: a tela dona está sendo desenhada para entregar a config.
+        if (($probe = MadPdvComponent::_pendingHostProbe()) !== null) {
+            return $probe->_renderInlinePdv($config);
         }
 
         $standalone = new MadPdvStandalone();

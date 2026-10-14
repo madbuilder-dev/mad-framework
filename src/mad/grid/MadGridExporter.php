@@ -176,7 +176,7 @@ class MadGridExporter
         array $grandTotals = [], array $report = []
     ): string {
         // PDF gerado em memória e persistido no scratch via Storage.
-        $key = 'output/' . uniqid() . '.pdf';
+        $key = GridExportAccess::newKey('pdf');
 
         $headerBand = self::normalizePdfBand($header, 'header');
         $footerBand = self::normalizePdfBand($footer, 'footer');

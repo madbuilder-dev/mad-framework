@@ -73,7 +73,7 @@ final class GridXlsxWriter
         $disk = MadScratchStorage::disk();
         $disk->makeDirectory('output');
         $disk->makeDirectory('export-tmp');
-        $key = 'output/' . uniqid() . '.xlsx';
+        $key = GridExportAccess::newKey('xlsx');
 
         return new self($key, $disk->path($key), $disk->path('export-tmp'), $columns, $title);
     }

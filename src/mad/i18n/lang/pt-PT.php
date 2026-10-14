@@ -239,6 +239,7 @@ return [
             'changed_elsewhere'     => 'Outro separador ou outra pessoa alterou os dados de :items enquanto este ecrã estava aberto. Isso foi mantido.',
             'changed_elsewhere_in'  => 'Em :list, outro separador ou outra pessoa alterou os dados de :items enquanto este ecrã estava aberto. Isso foi mantido.',
             'changed_tail'       => 'Atualize o ecrã para ver a situação atual.',
+            'changed_reopen_tail' => 'Abra o registo novamente para ver a situação atual.',
             'items_one'          => '1 item',
             'items_many'         => ':count itens',
             'more'               => 'mais :count',
@@ -284,6 +285,7 @@ return [
         'action_delete'     => 'Eliminar',
         'action_export'     => 'Exportar',
         'no_permission_to'  => 'Sem permissão para :action',
+        'no_screen_access'  => 'Sem acesso a este ecrã',
         'no_permission_heading' => 'Sem permissão',
 
         // Seletor de ícones (<mad-icon-field>)

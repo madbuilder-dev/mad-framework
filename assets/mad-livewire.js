@@ -967,6 +967,18 @@ const MadWire = (() => {
                 return;
             }
 
+            // Lista ordenável: a ordem atual dos itens (o arraste move os nós),
+            // como JSON array — o servidor grava por vírgula, como a família
+            // da seleção múltipla. Antes ela nem ia no Salvar (fw#236).
+            if (el.hasAttribute && el.hasAttribute('data-mad-sort-list')) {
+                const order = [];
+                el.querySelectorAll('input[type="hidden"]').forEach(inp => {
+                    if (inp.name === prop + '[]') order.push(inp.value);
+                });
+                result[prop] = JSON.stringify(order);
+                return;
+            }
+
             // Radio group: coleta o valor do radio marcado
             if (el.dataset.madRadioGroup) {
                 const checked = el.querySelector('input[type="radio"]:checked');
@@ -1251,6 +1263,29 @@ const MadWire = (() => {
 
     // ── Loading ──────────────────────────────────────────────────────────────
 
+    // Botão com o ponteiro pressionado em cima (fw#337). O mousedown no Salvar
+    // tira o foco do campo, o `change` dele dispara um pedido, e o _setLoading
+    // desabilitava o Salvar no meio do clique: o mouseup caía no elemento de
+    // trás e o clique sumia, sem aviso. Esse botão fica habilitado até o clique
+    // chegar; a ação dele entra na fila do componente atrás do pedido do campo.
+    let _pressedBtn = null;
+    // Botões de ação (mad:click) que ficaram de fora do carregando por estarem
+    // pressionados: o clique deles cai na fila atrás do pedido do campo.
+    const _heldOpen = new WeakSet();
+    const _PRESSABLE = 'button[type="submit"], input[type="submit"], [data-mad-click]';
+    if (typeof document.addEventListener === 'function') {
+        document.addEventListener('pointerdown', (e) => {
+            const btn = e.target && e.target.closest ? e.target.closest(_PRESSABLE) : null;
+            _pressedBtn = btn && !btn.disabled ? btn : null;
+        }, true);
+        // O clique chegou (antes do submit/handler, que já o marcam ocupado) ou
+        // o ponteiro foi solto fora do botão: deixa de valer.
+        document.addEventListener('click', () => { _pressedBtn = null; }, true);
+        const _releasePressed = () => setTimeout(() => { _pressedBtn = null; }, 0);
+        document.addEventListener('pointerup', _releasePressed, true);
+        document.addEventListener('pointercancel', _releasePressed, true);
+    }
+
     function _setLoading(wrapper, active, sourceForm = null) {
         _componentNodes(wrapper, '[data-mad-loading]').forEach(el => {
             el.style.display = active ? '' : 'none';
@@ -1259,6 +1294,7 @@ const MadWire = (() => {
             el.style.display = active ? 'none' : '';
         });
         _componentNodes(wrapper, '[data-mad-click]').forEach(el => {
+            if (active && el === _pressedBtn) { _heldOpen.add(el); return; }
             el.disabled = active;
         });
         // Submit buttons: if a sourceForm was provided (real submit event),
@@ -1269,6 +1305,7 @@ const MadWire = (() => {
             : _componentNodes(wrapper, 'form[data-mad-submit]');
         formsToTreat.forEach(form => {
             form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(btn => {
+                if (active && btn === _pressedBtn) return;
                 btn.disabled = active;
                 btn.classList.toggle('mad-btn-loading-active', active);
             });
@@ -1310,7 +1347,40 @@ const MadWire = (() => {
     // de chart perdido durante auto-refresh, por ex.). Serializa: cada request
     // espera o anterior do mesmo wrapper e re-resolve o elemento pelo mad-id
     // caso o morph tenha trocado o node.
-    const _inflightByWrapper = new WeakMap();
+    // A chave da fila é o `mad-id`, não o nó: o redesenho completo troca o
+    // wrapper (`replaceWith` no _morph), e um pedido feito no nó NOVO não
+    // esperava os que ainda estavam na fila do antigo. A repetição de um 503
+    // chegava ao servidor DEPOIS de uma gravação mais nova e a desfazia (fw#347).
+    const _inflightByWrapper = new Map();
+
+    function _queueKey(wrapper) {
+        const id = wrapper && wrapper.getAttribute ? wrapper.getAttribute('mad-id') : null;
+        return id ? 'id:' + id : wrapper;
+    }
+
+    function _queueTail(wrapper, run) {
+        const key  = _queueKey(wrapper);
+        const tail = run.then(() => {}, () => {});
+        _inflightByWrapper.set(key, tail);
+        tail.then(() => { if (_inflightByWrapper.get(key) === tail) _inflightByWrapper.delete(key); });
+    }
+
+    // Pedidos do componente (na fila ou em voo) com a sua chave (`opts.key`:
+    // o campo do mad:change, o form do submit, a de quem chamou MadWire.call).
+    // Pedido com chave que tem outro MAIS NOVO de mesma chave atrás dele está
+    // superado: a repetição do 503 é abandonada em vez de gravar o valor velho.
+    const _pendingByWrapper = new Map();
+
+    // Envios que esperam a vez na fila, ainda sem sair (fw#337): por form
+    // (chave do submit) ou pelo botão mad:click. `_queuedOnce(k)` diz se já há
+    // um; `_queuedOnce.hold(k)` o registra e devolve o `onStart` que o solta
+    // quando o pedido sai (os valores são lidos nessa hora).
+    const _queuedSet = new Set();
+    function _queuedOnce(key) { return _queuedSet.has(key); }
+    _queuedOnce.hold = (key) => {
+        _queuedSet.add(key);
+        return () => { _queuedSet.delete(key); };
+    };
 
     // callOnce(): pedidos pendentes (na fila ou em voo) por componente e chave.
     const _onceByWrapper = new WeakMap();
@@ -1324,15 +1394,33 @@ const MadWire = (() => {
                 document.querySelectorAll(`[mad-id="${madId}"]`).forEach(el => el.removeAttribute('data-mad-busy'));
             }
         };
-        const prev = _inflightByWrapper.get(wrapper) || Promise.resolve();
+        const qkey = _queueKey(wrapper);
+        const ticket = { key: opts.key != null && opts.key !== '' ? opts.key : null };
+        let pending = _pendingByWrapper.get(qkey);
+        if (!pending) { pending = []; _pendingByWrapper.set(qkey, pending); }
+        // Um mais velho de mesma chave pode estar esperando a próxima tentativa
+        // do 503: ele confere já, desiste, e este segue com o valor novo.
+        const supersedes = ticket.key !== null && pending.some(t => t.key === ticket.key);
+        pending.push(ticket);
+        if (supersedes) _downBar.answered();
+        const superseded = () => ticket.key !== null
+            && pending.slice(pending.indexOf(ticket) + 1).some(t => t.key === ticket.key);
+        const release = () => {
+            const i = pending.indexOf(ticket);
+            if (i !== -1) pending.splice(i, 1);
+            if (!pending.length && _pendingByWrapper.get(qkey) === pending) _pendingByWrapper.delete(qkey);
+        };
+
+        const prev = _inflightByWrapper.get(qkey) || Promise.resolve();
         const run  = prev.then(() => {
+            if (typeof opts.onStart === 'function') opts.onStart();
             let target = wrapper;
             if (!target.isConnected && madId) {
                 target = document.querySelector(`[mad-id="${madId}"]`) || target;
             }
-            return _requestNow(target, action, params, extraModels, sourceForm, opts);
-        }).then(v => { clearBusy(); return v; }, err => { clearBusy(); throw err; });
-        _inflightByWrapper.set(wrapper, run.then(() => {}, () => {}));
+            return _requestNow(target, action, params, extraModels, sourceForm, { ...opts, superseded });
+        }).then(v => { release(); clearBusy(); return v; }, err => { release(); clearBusy(); throw err; });
+        _queueTail(wrapper, run);
         return run;
     }
 
@@ -1481,7 +1569,14 @@ const MadWire = (() => {
 
             // App fora do ar por instantes (publicação, manutenção): o pedido
             // nem chegou a ele. Repete sozinho, com a faixa de aviso na tela.
-            if (res.status === 503 && !opts.background) res = await _retryWhileUpdating(res, _send);
+            if (res.status === 503 && !opts.background) res = await _retryWhileUpdating(res, _send, opts.superseded);
+
+            // Saiu pedido mais novo do mesmo campo enquanto este esperava a
+            // repetição: ele leva o valor atual. Este não grava nem redesenha.
+            if (res === null) {
+                _setLoading(wrapper, false, sourceForm);
+                return { ok: false, reason: 'superseded' };
+            }
 
             // Container do Teste Online em repouso: o nginx de fallback devolve a
             // pagina "em repouso" INTEIRA (200 + header X-Mad-Offline:1) para
@@ -1788,14 +1883,20 @@ const MadWire = (() => {
         return !/^\s*[{[]/.test(text);
     }
 
-    /** Repete o pedido enquanto o app responde 503; devolve a última resposta. */
-    async function _retryWhileUpdating(first, send) {
+    /**
+     * Repete o pedido enquanto o app responde 503; devolve a última resposta.
+     * `superseded()` verdadeiro (saiu pedido mais novo da mesma chave) abandona
+     * a repetição e devolve null: reenviar o corpo velho desfaria a gravação nova.
+     */
+    async function _retryWhileUpdating(first, send, superseded = null) {
         let res = first;
         let shown = false;
         for (const wait of _UPDATING_WAITS) {
             if (!(await _isUpdating(res))) break;
+            if (superseded && superseded()) { res = null; break; }
             shown = true;
             await _downBar.wait(wait);
+            if (superseded && superseded()) { res = null; break; }
             // Rede oscilando no meio da publicação: segue tentando.
             try { res = await send(); } catch (_) {}
         }
@@ -1988,7 +2089,12 @@ const MadWire = (() => {
         // $this->form os campos do master, e a linha digitada não chegava.
         // Fora do editor _dfEditScope devolve null e nada muda.
         const { action, params } = _parseAction(raw);
-        await _markBusy(el, _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el) }));
+        // Botão que o carregando deixou clicável por estar pressionado (fw#337):
+        // um 2º clique enquanto o 1º ainda espera na fila é o mesmo pedido.
+        if (_queuedOnce(el)) return;
+        const onStart = _heldOpen.has(el) ? _queuedOnce.hold(el) : null;
+        _heldOpen.delete(el);
+        await _markBusy(el, _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el), onStart }));
     });
 
     document.addEventListener('submit', async (e) => {
@@ -2005,7 +2111,15 @@ const MadWire = (() => {
         if (window._madWhen && typeof window._madWhen.blockSubmit === 'function'
             && window._madWhen.blockSubmit(form)) return;
         const { action, params } = _parseAction(raw);
-        await _request(wrapper, action, params, {}, form);
+        // Chave do formulário: um Salvar em repetição do 503 cede a vez ao
+        // Salvar mais novo do MESMO form, que leva os valores atuais (fw#347).
+        const key = form.id ? 'submit:' + action + ':' + form.id : form;
+        // Um envio deste form já espera na fila (atrás da reação de um campo,
+        // fw#337): o Salvar fica clicável nessa janela, e o 2º clique criava
+        // um 2º registro. O da fila lê os campos quando sai, então o repetido
+        // não traz nada novo — é ignorado. Em voo, o Salvar já está ocupado.
+        if (_queuedOnce(key)) return;
+        await _request(wrapper, action, params, {}, form, { key, onStart: _queuedOnce.hold(key) });
     });
 
     document.addEventListener('change', async (e) => {
@@ -2031,7 +2145,13 @@ const MadWire = (() => {
         // Permite tanto data-mad-change="onMethod" (so value) quanto
         // data-mad-change="onMethod(id1, id2)" (extra args + value).
         params.push(hidden ? hidden.value : el.value);
-        await _request(wrapper, action, params, {}, null, { dfScope: _dfEditScope(el) });
+        // Chave do campo: um 503 em repetição deste campo cede a vez ao
+        // pedido mais novo dele (fw#347). Campo sem nome nem id não tem chave.
+        const fieldKey = el.name || (el.getAttribute && el.getAttribute('name')) || el.id || '';
+        await _request(wrapper, action, params, {}, null, {
+            dfScope: _dfEditScope(el),
+            key: fieldKey ? 'change:' + action + ':' + fieldKey : null,
+        });
     });
 
     document.addEventListener('input', (e) => {
@@ -2122,6 +2242,12 @@ const MadWire = (() => {
          * periódica): sem resposta do servidor ela não abre aviso nem repete
          * por conta própria — devolve o desfecho na hora, e quem chamou decide
          * (ver `reconnect`).
+         *
+         * `options.key` marca o que a chamada grava (ex.: `'peso:' + id`): se
+         * o app responder 503 e, durante a repetição automática, sair outra
+         * chamada do componente com a mesma chave, esta desiste e resolve
+         * `{ ok: false, reason: 'superseded' }` — a mais nova leva o valor
+         * atual, e o valor velho não chega ao servidor depois dela.
          */
         /**
          * Mostra `el` ocupado (spinner + aria-busy) até `run` terminar — para
@@ -2137,6 +2263,7 @@ const MadWire = (() => {
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
             const opts  = options && options.quietNetwork ? { quietNetwork: true } : {};
             if (options && options.background) opts.background = true;
+            if (options && options.key != null && options.key !== '') opts.key = String(options.key);
             if (wrapper) return await _request(wrapper, action, params, extra, null, opts);
         },
 
@@ -2193,7 +2320,7 @@ const MadWire = (() => {
                 : idOrEl;
             if (!wrapper || typeof job !== 'function') return Promise.resolve();
             const madId = wrapper.getAttribute ? wrapper.getAttribute('mad-id') : null;
-            const prev  = _inflightByWrapper.get(wrapper) || Promise.resolve();
+            const prev  = _inflightByWrapper.get(_queueKey(wrapper)) || Promise.resolve();
             const run   = prev.then(() => {
                 let target = wrapper;
                 if (target.isConnected === false && madId) {
@@ -2201,7 +2328,7 @@ const MadWire = (() => {
                 }
                 return job(target);
             });
-            _inflightByWrapper.set(wrapper, run.then(() => {}, () => {}));
+            _queueTail(wrapper, run);
             return run;
         },
 

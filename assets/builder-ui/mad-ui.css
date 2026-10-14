@@ -1163,7 +1163,7 @@ html[data-theme="dark"] .mad-textarea.mad-input-error:focus {
               color var(--mad-t), opacity var(--mad-t), box-shadow var(--mad-t);
 }
 .mad-btn:focus-visible {
-  outline: 2px solid var(--mad-primary);
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
   outline-offset: 2px;
 }
 .mad-btn:disabled,
@@ -1381,6 +1381,19 @@ a.mad-btn.mad-when-disabled {
   border-color: var(--mad-primary);
   box-shadow: 0 0 0 3px var(--mad-ring);
 }
+/* Anel de foco de teclado (fw#335). A borda e a sombra de 8% acima mal se
+   viam (1,2:1; no escuro o tema nem troca a borda): quem navega por Tab não
+   achava o campo. O anel é a primária escurecida no claro e a tinta da
+   primária no escuro — 3:1 ou mais com qualquer cor de tema; `--mad-focus-ring`
+   troca a cor. O navegador casa `:focus-visible` também no CLIQUE em campo de
+   texto; o mad-ui.js põe `data-mad-pointer` no <html> no clique e tira no Tab,
+   e o anel some no clique como nos outros controles. */
+html:not([data-mad-pointer]) .mad-input:focus-visible,
+html:not([data-mad-pointer]) .mad-select:focus-visible,
+html:not([data-mad-pointer]) .mad-textarea:focus-visible {
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
+  outline-offset: 1px;
+}
 .mad-input::placeholder,
 .mad-textarea::placeholder { color: var(--mad-text-subtle); }
 .mad-input:disabled,
@@ -1559,7 +1572,9 @@ textarea.mad-textarea:read-only:focus {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px;
   border-radius: 50%;
-  color: var(--mad-text-subtle);
+  /* `--mad-text-muted`, não o `--mad-text-subtle` decorativo: o "×" é um
+     controle e precisa de 3:1 contra o campo (fw#358: 2,6:1 no claro). */
+  color: var(--mad-text-muted);
   font-size: 16px; line-height: 1;
   cursor: pointer;
   transition: color var(--mad-t), background var(--mad-t);
@@ -1894,7 +1909,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 }
 .mad-toggle input:checked  ~ .mad-toggle-track { background: var(--mad-success); }
 .mad-toggle input:checked  ~ .mad-toggle-track::before { transform: translateX(18px); }
-.mad-toggle input:focus-visible ~ .mad-toggle-track { outline: 2px solid var(--mad-primary); outline-offset: 2px; }
+.mad-toggle input:focus-visible ~ .mad-toggle-track { outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000))); outline-offset: 2px; }
 .mad-toggle input:disabled ~ .mad-toggle-track { opacity: .5; cursor: not-allowed; }
 
 /* Variants de cor (sobrescreve track quando checked) */
@@ -1998,17 +2013,17 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   padding: 3px;
   gap: 2px;
   -webkit-overflow-scrolling: touch;
-  /* Scrollbar nativa escondida — navegação por fade + chevrons */
+  /* Scrollbar nativa escondida — navegação pelas setas (sempre visíveis do
+     lado com mais abas) e pela roda do mouse. Sem esmaecimento: ele apagava
+     a aba visível da borda (#359). */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* Fade só no lado com mais conteúdo; --mad-fade-* setado via JS (madTabsScroller) */
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--mad-fade-l, 0px), #000 calc(100% - var(--mad-fade-r, 0px)), transparent 100%);
-          mask-image: linear-gradient(to right, transparent 0, #000 var(--mad-fade-l, 0px), #000 calc(100% - var(--mad-fade-r, 0px)), transparent 100%);
-  transition: -webkit-mask-image var(--mad-t), mask-image var(--mad-t);
 }
 .mad-tabs-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
-/* Botões chevron flutuantes — surgem no hover do strip quando há overflow */
+/* Setas de rolagem — sempre visíveis do lado em que há mais abas (#359). A
+   lista abre uma calha para a seta (padding do wrap), então a seta não cobre
+   aba; antes só apareciam no hover (nunca no teclado nem no toque). */
 .mad-tabs-nav {
   position: absolute;
   top: 50%;
@@ -2029,14 +2044,25 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   pointer-events: none;
   transition: opacity var(--mad-t), transform var(--mad-t), background var(--mad-t), color var(--mad-t);
 }
-.mad-tabs-nav-left  { left: -8px; }
-.mad-tabs-nav-right { right: -8px; }
-.mad-tabs-list-wrap:hover .mad-tabs-nav,
+.mad-tabs-nav-left  { left: 0; }
+.mad-tabs-nav-right { right: 0; }
+.mad-tabs-list-wrap.is-left  { padding-left: 32px; }
+.mad-tabs-list-wrap.is-right { padding-right: 32px; }
+.mad-tabs-list-wrap.is-left  .mad-tabs-nav-left,
+.mad-tabs-list-wrap.is-right .mad-tabs-nav-right,
 .mad-tabs-nav:focus-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(-50%) scale(1);
 }
+
+/* <mad-tabs wrap>: as abas quebram linha em vez de rolar (sem setas nem máscara). */
+.mad-tabs-wrap .mad-tabs-list {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.mad-tabs-wrap .mad-tabs-list-wrap { padding-left: 0; padding-right: 0; }
+.mad-tabs-wrap .mad-tabs-nav { display: none !important; }
 .mad-tabs-nav:hover {
   background: var(--mad-primary);
   color: #fff;
@@ -4043,8 +4069,24 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom: 2px solid #fff;
   transform: rotate(-45deg) translateY(-1px);
 }
+/* Meio marcada (a caixa do cabeçalho do Checklist com parte da lista
+   marcada, fw#239): preenchida, com um traço no lugar do visto. Depois do
+   `:checked` — se os dois casarem, vale o traço, como no navegador. */
+.mad-checkbox:indeterminate ~ .mad-checkbox-box {
+  background: var(--mad-primary);
+  border-color: var(--mad-primary);
+}
+.mad-checkbox:indeterminate ~ .mad-checkbox-box::after {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 0;
+  border: 0;
+  border-top: 2px solid var(--mad-primary-fg, #fff);
+  transform: none;
+}
 .mad-checkbox:focus-visible ~ .mad-checkbox-box {
-  outline: 2px solid var(--mad-primary);
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
   outline-offset: 2px;
 }
 .mad-checkbox-label { font-size: var(--mad-text-sm); color: var(--mad-text); line-height: 1.4; }
@@ -4100,7 +4142,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   display: block;
 }
 .mad-radio:focus-visible ~ .mad-radio-circle {
-  outline: 2px solid var(--mad-primary);
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
   outline-offset: 2px;
 }
 .mad-radio-label { font-size: var(--mad-text-sm); color: var(--mad-text); line-height: 1.4; }
@@ -4153,7 +4195,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-radio-btn.is-disabled { opacity: .5; cursor: not-allowed; }
 .mad-radio-btn-input:focus-visible + .mad-radio-btn-label,
-.mad-radio-btn:focus-within { outline: 2px solid var(--mad-primary); outline-offset: 1px; }
+.mad-radio-btn:has(.mad-radio-btn-input:focus-visible) { outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000))); outline-offset: 1px; }
 .mad-radio-group-sm .mad-radio-btn,
 .mad-radio-btn-group.mad-radio-group-sm .mad-radio-btn { padding: 5px 10px; font-size: var(--mad-text-xs, 12px); }
 .mad-radio-group-lg .mad-radio-btn,
@@ -6549,7 +6591,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-checkbox-group-btn .mad-checkbox-wrap:has(input:checked) { background: var(--mad-primary); }
 .mad-checkbox-group-btn .mad-checkbox-wrap:has(input:checked) .mad-checkbox-label { color: #fff; }
-.mad-checkbox-group-btn .mad-checkbox-wrap:has(input:focus-visible) { outline: 2px solid var(--mad-primary); outline-offset: -2px; }
+.mad-checkbox-group-btn .mad-checkbox-wrap:has(input:focus-visible) { outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000))); outline-offset: 2px; }
 .mad-checkbox-group-btn.mad-checkbox-group-sm .mad-checkbox-wrap { padding: 5px 10px; }
 .mad-checkbox-group-btn.mad-checkbox-group-sm .mad-checkbox-label { font-size: var(--mad-text-xs, 12px); }
 .mad-checkbox-group-btn.mad-checkbox-group-lg .mad-checkbox-wrap { padding: 11px 18px; }
@@ -14810,3 +14852,44 @@ textarea.mad-dg-inline-input {
     from { opacity: 1; }
     to   { opacity: .45; }
 }
+
+/* ── Anel de foco de teclado para o que não tem anel próprio (fw#335) ──────
+   Botões da grade (ordenar, filtro, Tabela/Cards, ações da linha), abas,
+   botões do casco e links ficavam sem anel nenhum: o tema zera o contorno de
+   todo `button` e eles não têm regra de foco. Especificidade baixa de
+   propósito — (0,1,1) para botão/campo/link, (0,1,0) para o resto —, para
+   NÃO vencer o componente que desenha o próprio indicador
+   (`.x:focus-visible { outline: none; background: … }`).
+   Fora do conteúdo (casco: topo, rail, menu lateral, que têm fundo próprio,
+   inclusive na cor da marca) o anel é a cor do texto do controle, que já
+   contrasta com o fundo dele; dentro de `.mad-ui`, a mesma cor dos demais
+   anéis. Campo de texto só no teclado (`data-mad-pointer`, mad-ui.js). */
+button:focus-visible,
+a:where([href]):focus-visible,
+summary:focus-visible,
+:where([role="button"], [role="tab"], [role="menuitem"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+:where(html:not([data-mad-pointer])) input:where(:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"])):focus-visible,
+:where(html:not([data-mad-pointer])) textarea:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+:where(.mad-ui) button:focus-visible,
+:where(.mad-ui) a:where([href]):focus-visible,
+:where(.mad-ui) summary:focus-visible,
+:where(.mad-ui) :where([role="button"], [role="tab"], [role="menuitem"], [tabindex]:not([tabindex="-1"])):focus-visible,
+:where(html:not([data-mad-pointer])) :where(.mad-ui) input:where(:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"])):focus-visible,
+:where(html:not([data-mad-pointer])) :where(.mad-ui) textarea:focus-visible {
+  outline-color: var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
+}
+/* Seletor (`<mad-select-field>` e afins): o foco cai no <select> nativo, que
+   fica invisível por baixo do controle desenhado — o anel vai no controle. */
+:where(html:not([data-mad-pointer])) .mad-sel:has(> .mad-sel-native:focus-visible) > .mad-sel-control,
+:where(html:not([data-mad-pointer])) .mad-sel-control:has(:focus-visible) {
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary-ink, color-mix(in srgb, var(--mad-primary) 50%, #000)));
+  outline-offset: 1px;
+}
+/* A busca dentro do controle (seletor pesquisável) não ganha um 2º anel. */
+.mad-sel-control :focus-visible { outline: none; }

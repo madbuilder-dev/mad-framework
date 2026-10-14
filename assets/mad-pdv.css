@@ -378,6 +378,35 @@
 }
 .mad-pdv-cart-empty i { vertical-align: middle; margin-right: 8px; }
 
+/* Celular: cada linha do carrinho em duas — nome e descrição do item montado
+   (com quebra) em cima; quantidade, valores e ações embaixo. A tabela de 6+
+   colunas passava da largura da tela e escondia a descrição e o remover
+   atrás de uma rolagem lateral. */
+@media (max-width: 480px) {
+    .mad-pdv-cart { overflow-x: hidden; }
+    .mad-pdv-cart-table,
+    .mad-pdv-cart-table tbody { display: block; }
+    .mad-pdv-cart-table thead { display: none; }
+    .mad-pdv-cart-table tbody tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--mad-border-soft, #f3f4f6);
+    }
+    .mad-pdv-cart-table tbody td {
+        width: auto;
+        padding: 0;
+        border-bottom: 0;
+    }
+    .mad-pdv-cart-table tbody td.mad-pdv-col-num { flex: 0 0 auto; }
+    .mad-pdv-cart-table tbody td.mad-pdv-cell-product { flex: 1 1 calc(100% - 40px); }
+    .mad-pdv-line-name > span { white-space: normal; overflow-wrap: anywhere; }
+    .mad-pdv-cart-table tbody td.mad-pdv-line-total { margin-left: auto; }
+    .mad-pdv-cart-empty td { flex: 1 1 100%; }
+}
+
 /* ═══ Hotkeys legend ═══ */
 .mad-pdv-hotkeys {
     display: flex;

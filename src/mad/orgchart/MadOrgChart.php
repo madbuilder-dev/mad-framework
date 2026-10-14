@@ -1,7 +1,6 @@
 <?php
 namespace Mad\OrgChart;
 
-use Laravel\SerializableClosure\SerializableClosure;
 use Mad\Component\MadComponent;
 use Mad\Form\FieldListColumn;
 use Mad\Form\ModelOptionsLoader;
@@ -131,13 +130,60 @@ class MadOrgChart extends MadComponent
         $cfg = $this->ocCfgKey !== ''
             ? session('mad_oc_cfg.' . $this->ocCfgKey)
             : null;
+
+        // A sessão veio sem a config DESTA tela (outra aba gravou por último):
+        // a tela é desenhada uma vez e reentrega a sua. A "última config" da
+        // classe pode ser a de outra aba — com outro filtro.
+        if (!is_array($cfg) && $this->ocCfgKey !== '' && $this->_askScreenForConfig(true)) {
+            return;
+        }
         if (!is_array($cfg)) {
             $latest = session('mad_oc_cfg_latest.' . static::class);
             $cfg    = is_string($latest) && $latest !== '' ? session('mad_oc_cfg.' . $latest) : null;
         }
         if (is_array($cfg)) {
             $this->_applyInlineConfig($cfg);
+            if ($this->_whereToRestore) {
+                $this->_askScreenForConfig(false);
+                if ($this->_whereToRestore) {
+                    error_log('[MadOrgChart] filtro em closure não recuperado em ' . static::class . ': o organograma fica sem nós nas ações');
+                }
+            }
         }
+    }
+
+    /** O `:where` em closure veio da sessão como marcador e ainda não voltou vivo. */
+    private bool $_whereToRestore = false;
+
+    /** Desenho "a seco" em curso ({@see _askScreenForConfig()}). */
+    private bool $_probingConfig = false;
+
+    /** A config desta tela sumiu da sessão e é regravada no desenho a seco. */
+    private bool $_recoveringCfg = false;
+
+    /**
+     * Desenha a tela "a seco" para o `<mad-org-chart>` reentregar a config —
+     * com a closure do `:where` viva, ligada a ESTA tela e ao estado desta
+     * requisição. Closure não atravessa a sessão (em JSON, o padrão do app, ela
+     * voltava como `{}` e o filtro sumia nas ações). Com `$recover`, a config
+     * inteira volta para a sessão; true quando a tela entregou.
+     */
+    private function _askScreenForConfig(bool $recover): bool
+    {
+        $this->_probingConfig = true;
+        $this->_recoveringCfg = $recover;
+        $delivered            = false;
+        try {
+            $this->render();
+            $delivered = $recover ? $this->_recoveringCfg === false : !$this->_whereToRestore;
+        } catch (\Throwable $e) {
+            error_log('[MadOrgChart] a tela ' . static::class . ' não pôde ser redesenhada para recuperar a configuração: ' . $e->getMessage());
+        } finally {
+            $this->_probingConfig = false;
+            $this->_recoveringCfg = false;
+        }
+
+        return $delivered;
     }
 
     protected function view(): string|array
@@ -151,23 +197,32 @@ class MadOrgChart extends MadComponent
     {
         $this->_applyInlineConfig($config);
 
-        // Closure de :where não passa por json_encode (chave) nem por
-        // serialize (sessão) — vai pro cache embrulhada em
-        // SerializableClosure. Sem isso o wire (lazy/reparent) perderia o
-        // filtro no hydrate e nós fora do escopo vazariam pelo
-        // onLoadChildren.
-        $cfgSession = $config;
-        if (($config['where'] ?? null) instanceof \Closure) {
-            $cfgSession['where'] = new SerializableClosure($config['where']);
-            // Resumo ESTÁVEL da closure: o do `serialize()` levava o número do
-            // objeto na memória e trocava a chave a cada render.
-            $config['where']     = SessionClosure::marker($config['where'], $this);
+        // Desenho "a seco" pedido pelo hydrate() só para a closure voltar viva.
+        if ($this->_probingConfig && !$this->_recoveringCfg) {
+            return '';
         }
+
+        // Closure não vai para a sessão: no padrão do app ela é gravada em JSON
+        // e o objeto voltava como `{}` — as ações (expandir, mover) rodavam sem
+        // o filtro. Vai um marcador com o resumo ESTÁVEL dela (o do
+        // `serialize()` levava o número do objeto na memória e trocava a chave
+        // a cada render); nas ações a tela reentrega a closure viva.
+        if (($config['where'] ?? null) instanceof \Closure) {
+            $config['where'] = SessionClosure::marker($config['where'], $this);
+        }
+        $cfgSession = $config;
 
         // Redesenho (depois de uma ação): a tela do navegador segue com a chave
         // com que foi desenhada, e é para ela que os eventos são despachados.
         if ($this->ocCfgKey === '') {
             $this->ocCfgKey = md5(static::class . '|' . json_encode($config));
+        }
+
+        // Config recuperada (a sessão a perdeu): volta para a sessão, sem desenhar.
+        if ($this->_recoveringCfg) {
+            session(['mad_oc_cfg.' . $this->ocCfgKey => $cfgSession]);
+            $this->_recoveringCfg = false;
+            return '';
         }
         session([
             'mad_oc_cfg.' . $this->ocCfgKey        => $cfgSession,
@@ -203,18 +258,24 @@ class MadOrgChart extends MadComponent
             $this->rootId = max(0, (int) $config['rootId']);
         }
         // where: string DSL OU Closure (:where="$filter_x") — sem string-cast.
-        // Do cache de sessão volta como SerializableClosure (wire) — desembrulha.
         if (array_key_exists('where', $config)) {
             $w = $config['where'];
-            if ($w instanceof SerializableClosure) {
-                $w = $w->getClosure();
-            }
             if ($w instanceof \Closure) {
-                $this->whereClosure = $w;
-                $this->where        = '';
-            } elseif (is_string($w)) {
-                $this->where        = $w;
-                $this->whereClosure = null;
+                $this->whereClosure   = $w;
+                $this->where          = '';
+                $this->_whereToRestore = false;
+            } elseif (is_string($w) && !SessionClosure::isMarker($w)) {
+                $this->where           = $w;
+                $this->whereClosure    = null;
+                $this->_whereToRestore = false;
+            } elseif (SessionClosure::isMarker($w) || is_array($w) || is_object($w)) {
+                // Veio da sessão no lugar de uma closure (o marcador; ou o que
+                // sobrou de uma guardada por versão anterior). Até a tela
+                // devolver a de verdade, o filtro é FECHADO: perder o filtro
+                // nunca pode virar "mostrar tudo".
+                $this->whereClosure    = SessionClosure::denyAll();
+                $this->where           = '';
+                $this->_whereToRestore = true;
             }
         }
     }

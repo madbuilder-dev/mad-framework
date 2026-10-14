@@ -2,8 +2,7 @@
 {{--
   Strip de abas com navegação moderna (sem scrollbar nativa):
     - scrollbar do navegador escondida
-    - fade nas bordas apenas no lado onde há mais conteúdo (vars --mad-fade-*)
-    - botões chevron que aparecem no hover quando há overflow
+    - setas sempre visíveis do lado onde há mais abas (calha própria, fora da lista)
     - aba ativa rola pra dentro da vista automaticamente
     - wheel vertical vira scroll horizontal sobre o strip
   `activeTab` vem do x-data pai (<mad-tabs>) — escopo Alpine é herdado.
@@ -22,6 +21,7 @@
     <div class="mad-tabs-list {{ $class }}"
          x-ref="list"
          @scroll.passive="update()"
+         @focusin="reveal($event.target)"
          @wheel="onWheel($event)">
         {!! $slot !!}
     </div>
@@ -67,10 +67,19 @@ window.madTabsScroller = function () {
             const el = this.$refs.list;
             if (!el) return;
             const max = el.scrollWidth - el.clientWidth;
+            const was = this.canLeft + ':' + this.canRight;
             this.canLeft  = el.scrollLeft > 1;
             this.canRight = el.scrollLeft < max - 1;
-            el.style.setProperty('--mad-fade-l', this.canLeft  ? '32px' : '0px');
-            el.style.setProperty('--mad-fade-r', this.canRight ? '32px' : '0px');
+            // A calha da seta que surgiu/sumiu muda a largura útil: a aba que
+            // acabou de ser trazida para a vista volta a ser enquadrada (1 vez).
+            if (this._revealed && was !== this.canLeft + ':' + this.canRight) {
+                const tab = this._revealed;
+                this._revealed = null;
+                requestAnimationFrame(() => this.reveal(tab, true));
+            }
+            // Sem esmaecimento (#359): a máscara de 32 px apagava a aba visível
+            // da borda. Quem avisa que há mais abas é a seta, sempre visível
+            // daquele lado numa calha própria (CSS .is-left/.is-right).
         },
 
         page(dir) {
@@ -92,9 +101,17 @@ window.madTabsScroller = function () {
         scrollActiveIntoView() {
             const el = this.$refs.list;
             if (!el) return;
-            const active = el.querySelector('.mad-tab-active, .mad-tab[aria-selected="true"]');
-            if (!active) return;
-            const pad = 32;
+            this.reveal(el.querySelector('.mad-tab-active, .mad-tab[aria-selected="true"]'));
+        },
+
+        // Traz a aba para a área útil, longe do esmaecimento. Também no foco por
+        // teclado (Tab): o navegador rolava só o mínimo e a aba ficava apagada.
+        reveal(tab, again) {
+            const el = this.$refs.list;
+            if (!el || !tab || !el.contains(tab)) return;
+            const active = tab.closest('.mad-tab') || tab;
+            this._revealed = again ? null : active;
+            const pad = 16;
             const er = el.getBoundingClientRect();
             const ar = active.getBoundingClientRect();
             if (ar.left < er.left + pad) {

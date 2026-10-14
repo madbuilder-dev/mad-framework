@@ -89,6 +89,17 @@ trait MadFiltersTrait
      */
     protected array $_madBladeFilterOps = [];
 
+    /**
+     * Filtros que o bloco `<mad-*-filters>` escondeu por condição (`@if`/
+     * `@can` em volta do campo, #354), anotados no render por
+     * hideFilterFields(). Pública para viajar no estado da tela — ação sem
+     * render (exportar) também ignora o valor —, e o `_` do nome a deixa fora
+     * do que o navegador escreve e dos filtros da tela.
+     *
+     * @var list<string>
+     */
+    public array $_hiddenFilters = [];
+
     /** Operadores aceitos no filtro automatico. */
     public const AUTO_FILTER_OPS = ['=', '!=', 'like', 'starts', 'ends', '>', '>=', '<', '<='];
 
@@ -828,8 +839,15 @@ trait MadFiltersTrait
      */
     public function applyAutoFiltersToQuery($q, ?string $model = null, array $opts = []): void
     {
+        $this->_forgetHiddenFilters();
         $only    = $opts['only']    ?? null;
         $exclude = $opts['exclude'] ?? [];
+        // Colunas conhecidas da consulta (fonte da listagem sem model): prop que
+        // não é coluna dela fica fora do automático — o nome do campo de filtro
+        // virava coluna (`where "f_x" = ?`) e a lista zerava ou dava erro (#355).
+        $columns = isset($opts['columns']) && is_array($opts['columns'])
+            ? array_flip(array_map('strtolower', $opts['columns']))
+            : null;
 
         foreach ($this->autoFilterProps() as $name) {
             if (is_array($only) && !in_array($name, $only, true)) continue;
@@ -838,6 +856,7 @@ trait MadFiltersTrait
             $val = $this->$name;
             if ($val === '' || $val === null || $val === []) continue;
             if ($model !== null && !$this->modelHasColumn($model, $name)) continue;
+            if ($columns !== null && !isset($columns[strtolower($name)])) continue;
 
             // Coluna NUMÉRICA com valor que não é número: a opção do filtro não
             // é um valor da coluna, é uma faixa/categoria que a própria tela
@@ -867,6 +886,46 @@ trait MadFiltersTrait
         }
         // onSearch(Builder) é aplicado por _applyOnSearch (camada B); o antigo
         // contrato 2-arg foi removido — o hook hoje recebe só o Query Builder.
+    }
+
+    /**
+     * Campos do bloco de filtros que a condição em volta (`@if`/`@can`/…)
+     * escondeu neste render. Chamado pelo bloco compilado de <mad-*-filters>
+     * (MadDashFiltersCompiler) antes de a consulta ser montada. O valor que
+     * vier do navegador para eles é descartado: o campo não aparece, e quem
+     * não o vê não filtra por ele (#354).
+     *
+     * @param list<string> $names
+     */
+    public function hideFilterFields(array $names): void
+    {
+        $this->_hiddenFilters = array_values(array_unique(array_filter(
+            array_map('strval', $names),
+            static fn (string $n) => $n !== ''
+        )));
+        $this->_forgetHiddenFilters();
+    }
+
+    /**
+     * Zera o valor dos filtros escondidos: a propriedade (só a que é filtro da
+     * tela) e o campo do formulário, que é o que `form->getData()` lê no
+     * onSearch.
+     */
+    protected function _forgetHiddenFilters(): void
+    {
+        if ($this->_hiddenFilters === []) {
+            return;
+        }
+        $own  = $this->discoverFilterProps();
+        $form = isset($this->form) && $this->form instanceof MadForm ? $this->form : null;
+        foreach ($this->_hiddenFilters as $name) {
+            if (in_array($name, $own, true)) {
+                $this->$name = is_array($this->$name) ? [] : '';
+            }
+            if ($form !== null && array_key_exists($name, $form->fields)) {
+                $form->set($name, is_array($form->fields[$name]) ? [] : '');
+            }
+        }
     }
 
     /**
@@ -1154,7 +1213,12 @@ trait MadFiltersTrait
             $type = (isset($p[0]) && $p[0]->getType()) ? ltrim((string) $p[0]->getType(), '?\\') : '';
 
             if ($n >= 1 && str_contains($type, 'Builder')) {
-                $n >= 2 ? $this->onSearch($q, $model) : $this->onSearch($q);
+                // `onSearch(Builder $q)` do Eloquent numa fonte do construtor de
+                // consultas (sourceQuery): recebe a mesma consulta embrulhada (#355).
+                $arg = $q instanceof \Illuminate\Database\Query\Builder && static::_hookWantsEloquent($p[0]->getType())
+                    ? static::_eloquentOver($q)
+                    : $q;
+                $n >= 2 ? $this->onSearch($arg, $model) : $this->onSearch($arg);
             } elseif ($n === 0) {
                 // onSearch() 0-arg ainda pode setar $this->searchQuery (closure que
                 // recebe o builder).
@@ -1165,6 +1229,47 @@ trait MadFiltersTrait
             // SEM o refinamento custom (linhas a mais expostas). Loga e segue.
             error_log('[MadFilters::_applyOnSearch] ' . static::class . ': ' . $e->getMessage());
         }
+    }
+
+    /**
+     * O parâmetro do gancho só aceita o Builder do Eloquent (não o do construtor
+     * de consultas)? Sem tipo, `mixed` ou união com o de consultas: não.
+     */
+    protected static function _hookWantsEloquent(?\ReflectionType $type): bool
+    {
+        if ($type === null) {
+            return false;
+        }
+        $eloquent = false;
+        foreach ($type instanceof \ReflectionUnionType ? $type->getTypes() : [$type] as $t) {
+            if (!$t instanceof \ReflectionNamedType) {
+                continue;
+            }
+            $name = $t->getName();
+            if (in_array($name, ['mixed', 'object'], true) || is_a(\Illuminate\Database\Query\Builder::class, $name, true)) {
+                return false;
+            }
+            $eloquent = $eloquent || is_a(\Illuminate\Database\Eloquent\Builder::class, $name, true);
+        }
+
+        return $eloquent;
+    }
+
+    /**
+     * Um Builder do Eloquent por cima de uma consulta do construtor: `where`,
+     * `when`, `orderBy`… caem na MESMA consulta. O model é neutro — só serve ao
+     * `where(function ($q) { … })` aninhado; a fonte (`from`) não muda.
+     */
+    protected static function _eloquentOver(\Illuminate\Database\Query\Builder $q): \Illuminate\Database\Eloquent\Builder
+    {
+        $model = new class extends \Illuminate\Database\Eloquent\Model {
+            protected $table = 'mad_src';
+        };
+        $model->setConnection($q->getConnection()->getName());
+        $eb = new \Illuminate\Database\Eloquent\Builder($q);
+        (function ($m) { $this->model = $m; })->call($eb, $model);
+
+        return $eb;
     }
 
     /**

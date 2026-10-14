@@ -79,6 +79,11 @@
     $storageKey = $storageKey ?? '';
     $gridClass  = $gridClass  ?? '';
     $_rowPrefix = $gridClass ? $gridClass . '_' : '';
+    // <mad-grid auto-refresh="15">: o Alpine relê a página atual a cada N s.
+    $_autoRefresh = (int) ($autoRefreshSeconds ?? 0);
+    $_autoRefreshAttrs = $_autoRefresh > 0
+        ? ' data-mad-dg-refresh="' . $_autoRefresh . '" data-mad-dg-page="' . (int) $page . '" data-mad-dg-row-prefix="' . e($_rowPrefix) . '"'
+        : '';
     $hasActions = !empty($actions) || !empty($actionGroups);
     $hasTotals      = !empty($totals);
     $hasGroupBy     = !empty($groupBy);
@@ -182,7 +187,7 @@
         ? json_encode(['lost' => mad_t('mad.error.cell_no_answer'), 'dropped' => mad_t('mad.error.cell_edit_dropped')], JSON_UNESCAPED_UNICODE)
         : '';
 @endphp
-<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"{{ $rowClick ? ' data-row-click' : '' }}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
+<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"{{ $rowClick ? ' data-row-click' : '' }}{!! $_autoRefreshAttrs !!}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
      x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
      x-init="init($el)"
      @mad-dg-page="handlePage($event)"

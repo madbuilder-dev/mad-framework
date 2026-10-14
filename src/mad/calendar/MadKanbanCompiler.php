@@ -25,10 +25,12 @@ namespace Mad\Calendar;
  * │  value="novo"                       Valor gravado em stage-field (obrigatório)│
  * │  label="Novo"                       Título da coluna (padrão: o value)        │
  * │  color="#3B82F6"                    Cor da coluna e do selo de estado         │
+ * │  card-order-direction="desc"        Ordem dos cartões só desta coluna         │
  * │                                                                              │
  * │  <mad-kanban> — demais atributos do board                                    │
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  card-order-field="ordem"           Coluna de ordenação (vazio = sem reorder)│
+ * │  card-order-direction="desc"        asc (padrão) | desc = mais novo no topo   │
  * │  value-field="valor_total"          Campo p/ somar totais por coluna       │
  * │  cards-per-load="20"                Page size do scroll infinito            │
  * │  auto-refresh="15"                  Atualiza sozinho a cada N s (mín. 5; 0 = off) │
@@ -399,6 +401,7 @@ class MadKanbanCompiler
         if (isset($a['stage-order-direction'])) $c[] = "'stageOrderDirection' => " . self::emit($a['stage-order-direction']);
         if (isset($a['stages-reorderable']))   $c[] = "'stagesReorderable' => " . self::emitBool($a['stages-reorderable']);
         if (isset($a['card-order-field']))     $c[] = "'cardOrderField' => "      . self::emit($a['card-order-field']);
+        if (isset($a['card-order-direction'])) $c[] = "'cardOrderDirection' => "  . self::emit($a['card-order-direction']);
         if (isset($a['value-field']))          $c[] = "'valueField' => "          . self::emit($a['value-field']);
         if (isset($a['value-format']))         $c[] = "'valueFormat' => "         . self::emit($a['value-format']);
         if (isset($a['card-view']))            $c[] = "'cardView' => "            . self::emit($a['card-view']);

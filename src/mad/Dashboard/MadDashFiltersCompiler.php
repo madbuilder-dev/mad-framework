@@ -377,6 +377,11 @@ class MadDashFiltersCompiler
 
         ksort($positions);
 
+        // Condição Blade em volta de cada campo (`@if`/`@can`/… entre as tags):
+        // o bloco é trocado inteiro por PHP e o texto entre os campos some —
+        // sem isto o `@if` sumia junto e o campo aparecia para todos (#354).
+        $whens = self::fieldConditions($inner, $positions);
+
         foreach ($positions as $pos => $data) {
             $attrs = self::parseAttrs($data['attrsStr']);
 
@@ -397,7 +402,7 @@ class MadDashFiltersCompiler
                 $rawHtml = preg_replace('#^<mad-select-field\b#', '<mad-select-field :placeholder="mad_t(\'mad.dashf.all\')"', $rawHtml, 1);
             }
 
-            $fields[] = [
+            $field = [
                 'tag'      => $data['tag'],
                 'type'     => self::TAG_TYPES[$data['tag']] ?? 'unknown',
                 'attrs'    => $attrs,
@@ -408,9 +413,147 @@ class MadDashFiltersCompiler
                 'raw_html_b64' => base64_encode($rawHtml),
                 'inner_b64'    => base64_encode($data['inner']),
             ];
+            if (($whens[$pos] ?? '') !== '') {
+                // Expressão PHP (não literal): o buildOutput a avalia no render.
+                $field['when'] = $whens[$pos];
+            }
+            $fields[] = $field;
         }
 
         return $fields;
+    }
+
+    /** Diretivas de condição: abertura e ramo recebem expressão; `else`/`end*` não. */
+    private const CONDITION_OPEN = ['if', 'unless', 'can', 'cannot', 'canany', 'isset', 'empty', 'auth', 'guest'];
+    private const CONDITION_BRANCH = ['elseif', 'elsecan', 'elsecannot', 'elsecanany', 'elseauth', 'elseguest'];
+    private const CONDITION_END = ['endif', 'endunless', 'endcan', 'endcannot', 'endcanany', 'endisset', 'endempty', 'endauth', 'endguest'];
+
+    /**
+     * A condição (expressão PHP) em volta de cada campo, por offset — '' quando
+     * o campo não está dentro de nenhuma. Lê só o texto ENTRE os campos (o
+     * miolo de um campo, como os `@foreach` das opções de um select, é dele).
+     * Diretiva desconhecida ou bloco desequilibrado não muda nada: o campo
+     * aparece, como sempre apareceu.
+     *
+     * @param array<int,array{raw_html:string}> $positions offset => campo (em ordem)
+     * @return array<int,string>
+     */
+    private static function fieldConditions(string $inner, array $positions): array
+    {
+        if (strpos($inner, '@') === false) {
+            return [];
+        }
+        $out   = [];
+        $stack = [];   // cada nível: ['prior' => [cond...], 'cur' => cond]
+        $from  = 0;
+        foreach ($positions as $pos => $data) {
+            if ($pos < $from) {
+                continue;   // dentro de um campo já lido
+            }
+            foreach (self::scanDirectives(substr($inner, $from, $pos - $from)) as [$name, $args]) {
+                if (in_array($name, self::CONDITION_OPEN, true)) {
+                    $stack[] = ['prior' => [], 'cur' => self::conditionOf($name, $args)];
+                } elseif ($stack === []) {
+                    continue;
+                } elseif (in_array($name, self::CONDITION_BRANCH, true) || $name === 'else') {
+                    $top = array_pop($stack);
+                    $top['prior'][] = $top['cur'];
+                    $top['cur'] = $name === 'else' ? 'true' : self::conditionOf($name, $args);
+                    $stack[] = $top;
+                } elseif (in_array($name, self::CONDITION_END, true)) {
+                    array_pop($stack);
+                }
+            }
+            $parts = [];
+            foreach ($stack as $level) {
+                foreach ($level['prior'] as $p) {
+                    $parts[] = '!(' . $p . ')';
+                }
+                if ($level['cur'] !== 'true') {
+                    $parts[] = '(' . $level['cur'] . ')';
+                }
+            }
+            $out[$pos] = implode(' && ', $parts);
+            $from = $pos + strlen($data['raw_html']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Diretivas de condição de um trecho, em ordem: [nome, argumentos sem os
+     * parênteses de fora | null]. `@@if` (escapado) não conta.
+     *
+     * @return list<array{0:string,1:?string}>
+     */
+    private static function scanDirectives(string $text): array
+    {
+        $found = [];
+        if (!preg_match_all('/(?<![@\w])@(\w+)/', $text, $m, PREG_OFFSET_CAPTURE)) {
+            return $found;
+        }
+        $known = array_merge(self::CONDITION_OPEN, self::CONDITION_BRANCH, self::CONDITION_END, ['else']);
+        foreach ($m[1] as [$name, $off]) {
+            $name = strtolower($name);
+            if (!in_array($name, $known, true)) {
+                continue;
+            }
+            $i = $off + strlen($name);
+            while ($i < strlen($text) && ctype_space($text[$i])) {
+                $i++;
+            }
+            $found[] = [$name, ($text[$i] ?? '') === '(' ? self::balancedArgs($text, $i) : null];
+        }
+
+        return $found;
+    }
+
+    /** O que está entre o `(` em $open e o `)` que o fecha (aspas respeitadas). */
+    private static function balancedArgs(string $text, int $open): ?string
+    {
+        $depth = 0;
+        $quote = null;
+        for ($i = $open, $n = strlen($text); $i < $n; $i++) {
+            $c = $text[$i];
+            if ($quote !== null) {
+                if ($c === '\\') {
+                    $i++;
+                } elseif ($c === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if ($c === '"' || $c === "'") {
+                $quote = $c;
+            } elseif ($c === '(') {
+                $depth++;
+            } elseif ($c === ')' && --$depth === 0) {
+                return substr($text, $open + 1, $i - $open - 1);
+            }
+        }
+
+        return null;
+    }
+
+    /** A expressão PHP que a diretiva testa (a mesma que o Blade compila). */
+    private static function conditionOf(string $name, ?string $args): string
+    {
+        $args  = trim((string) $args);
+        $gate  = 'app(\Illuminate\Contracts\Auth\Access\Gate::class)';
+        $guard = 'auth()->guard(' . $args . ')';
+
+        return match ($name) {
+            'if', 'elseif'         => $args !== '' ? $args : 'true',
+            'unless'               => '!(' . ($args !== '' ? $args : 'false') . ')',
+            'can', 'elsecan'       => $gate . '->check(' . $args . ')',
+            'cannot', 'elsecannot' => $gate . '->denies(' . $args . ')',
+            'canany', 'elsecanany' => $gate . '->any(' . $args . ')',
+            'isset'                => 'isset(' . $args . ')',
+            'empty'                => 'empty(' . $args . ')',
+            'auth', 'elseauth'     => $guard . '->check()',
+            'guest', 'elseguest'   => $guard . '->guest()',
+            default                => 'true',
+        };
     }
 
     /**
@@ -534,7 +677,9 @@ class MadDashFiltersCompiler
 
         // Serialize fields + wrapper as PHP literals via var_export
         // Note: raw_html may contain double quotes; var_export handles by single-quoting strings.
-        $fieldsPhp  = self::exportArray($fields);
+        // Campo dentro de `@if`/`@can`/…: entra só quando a condição vale, e o
+        // host fica sabendo dos escondidos (o valor do navegador não filtra).
+        [$fieldsPhp, $whenPhp] = self::exportFields($fields);
         $wrapperPhp = self::exportArray($wrapperAttrs);
         if ($bound) {
             $wrapperPhp = 'array_merge(' . $wrapperPhp . ', [' . implode(', ', $bound) . '])';
@@ -560,6 +705,7 @@ class MadDashFiltersCompiler
         // bloco atravessa o token_get_all como PHP real (mesmo contrato dos
         // demais compilers MAD que emitem PHP, ex. MadGridCompiler).
         return "<?php\n"
+             . $whenPhp
              . "    \$__dashFields  = {$fieldsPhp};\n"
              . "    \$__dashStyle   = " . var_export($style, true) . ";\n"
              . "    \$__dashWrapper = {$wrapperPhp};\n"
@@ -576,6 +722,49 @@ class MadDashFiltersCompiler
              . "    }\n"
              . "?>\n"
              . "@include('{$renderer}', ['fields' => \$__dashFields, 'style' => \$__dashStyle, 'wrapper' => \$__dashWrapper])";
+    }
+
+    /**
+     * Os campos como PHP: o literal de sempre quando nenhum tem condição; com
+     * condição, cada uma avaliada uma vez (`$__dashWhenN`), o campo espalhado
+     * só quando vale e os escondidos avisados ao host (`hideFilterFields`).
+     *
+     * @return array{0:string,1:string} [array de campos, PHP que vem antes]
+     */
+    private static function exportFields(array $fields): array
+    {
+        if (array_filter($fields, static fn ($f) => isset($f['when'])) === []) {
+            return [self::exportArray($fields), ''];
+        }
+
+        $pre   = "    \$__dashHidden = [];\n";
+        $parts = [];
+        foreach (array_values($fields) as $i => $f) {
+            $when = $f['when'] ?? null;
+            unset($f['when']);
+            if ($when === null) {
+                $parts[] = self::exportArray($f);
+                continue;
+            }
+            $var  = '$__dashWhen' . $i;
+            $pre .= "    {$var} = (bool) ({$when});\n";
+            $names = [];
+            foreach (['name', 'name_start', 'name_end', 'name-start', 'name-end'] as $k) {
+                if (is_string($f['attrs'][$k] ?? null) && $f['attrs'][$k] !== '') {
+                    $names[] = $f['attrs'][$k];
+                }
+            }
+            if ($names !== []) {
+                $pre .= "    if (!{$var}) { array_push(\$__dashHidden, ..." . self::exportArray($names) . "); }\n";
+            }
+            $parts[] = '...(' . $var . ' ? [' . self::exportArray($f) . '] : [])';
+        }
+        $pre .= "    \$__dashCond = \\Mad\\Component\\MadRenderContext::getComponent();\n"
+              . "    if (\$__dashCond && method_exists(\$__dashCond, 'hideFilterFields')) {\n"
+              . "        \$__dashCond->hideFilterFields(\$__dashHidden);\n"
+              . "    }\n";
+
+        return ['[' . implode(', ', $parts) . ']', $pre];
     }
 
     /**

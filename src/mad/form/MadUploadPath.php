@@ -79,5 +79,16 @@ class MadUploadPath
                 "Diretório de upload inválido{$ctx}: null byte não é permitido no caminho."
             );
         }
+
+        // `_public/` é dos campos com `public` (#244): o framework grava lá com
+        // um HMAC no caminho. Pasta escrita à mão não entra — senão um campo
+        // sem `public` gravaria onde a rota pública procura.
+        $first = strtolower((string) strtok(ltrim(str_replace('\\', '/', $folder), './'), '/'));
+        if ($first === '_public') {
+            throw new MadUploadPathException(
+                "Diretório de upload inválido{$ctx}: \"{$folder}\" — a pasta _public é reservada aos campos com a opção public. "
+                . "Use public no campo em vez de folder=\"_public…\"."
+            );
+        }
     }
 }

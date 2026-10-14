@@ -553,8 +553,14 @@ class MadComponentHandler
                 ];
             }
 
+            // `<mad-pdv>` embutido numa tela comum: as ações do PDV chegam à
+            // tela, que não as tem — o PDV dela atende (a config vem da tela).
+            $target = $component;
             if (!self::isInvokableAction($class, $action)) {
-                return ['error' => "Método não permitido: {$action}"];
+                $target = \Mad\Pdv\MadPdvComponent::_embeddedFor($component, $action);
+                if ($target === null) {
+                    return ['error' => "Método não permitido: {$action}"];
+                }
             }
 
             // ── Permissão POR AÇÃO (fase contextual) ─────────────────────────
@@ -635,7 +641,7 @@ class MadComponentHandler
             $dfForms = self::_openDetailScope($component, $data);
 
             try {
-                $result = $component->_resolveAndCall($action, $params);
+                $result = $target->_resolveAndCall($action, $params);
             } catch (\Throwable $e) {
                 // Dá ao componente a chance de tratar o erro via exception()
                 if ($component->_callExceptionHook($e)) {
@@ -920,6 +926,8 @@ class MadComponentHandler
         );
 
         $allOps = array_merge($clearedErrorOps, $explicitOps, $bindOps, $dumpOps, $pendingFlOps);
+        // Aviso do formulário numa resposta que fecha a tela: não manda atualizá-la (fw#233).
+        $allOps = \Mad\Form\MadForm::settleNoticeTails($allOps);
 
         // O que a resposta leva além do render (trecho de HTML, linhas de uma
         // lista) passa a ser o que o servidor entregou a esta tela.

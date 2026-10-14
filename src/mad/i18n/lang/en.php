@@ -269,6 +269,8 @@ return [
             'row_gone'       => 'This record is no longer in the list: it may have been deleted or changed by someone else. Refresh the page.',
             'delete_gone'    => 'Nothing was deleted: the record is no longer in the list. It may have been deleted by someone else.',
             'delete_refused' => 'The record was not deleted: the deletion was refused.',
+            'action_gone'    => 'The action was not run: the record is no longer in the list.',
+            'action_refused' => 'The action was not run: it does not apply to this record.',
             'cell_not_saved' => 'The change was not saved.',
             'cell_invalid'   => 'Invalid value.',
             'cell_number'    => 'Enter a number.',
@@ -316,6 +318,7 @@ return [
             'gone_options_one'  => 'In :field, one option this screen still showed as selected had already been cleared in another tab or by someone else and was not selected again.',
             'gone_options_many' => 'In :field, :count options this screen still showed as selected had already been cleared in another tab or by someone else and were not selected again.',
             'gone_tail'       => 'Everything else was saved. Reload the screen to see the current state.',
+            'gone_reopen_tail' => 'Everything else was saved. Open the record again to see the current state.',
             // Save that did not store the rows of a list (the received form describes it differently).
             'not_saved_title' => 'Rows not saved',
             'not_saved_named' => 'The rows of :lists were not saved: reload the screen and try again.',
@@ -336,6 +339,7 @@ return [
             'changed_elsewhere'     => 'Another tab or someone else changed the details of :items while this screen was open. That was kept.',
             'changed_elsewhere_in'  => 'In :list, another tab or someone else changed the details of :items while this screen was open. That was kept.',
             'changed_tail'       => 'Refresh the screen to see the current state.',
+            'changed_reopen_tail' => 'Open the record again to see the current state.',
             'items_one'          => '1 item',
             'items_many'         => ':count items',
             'more'               => ':count more',
@@ -464,6 +468,7 @@ return [
         'action_delete'     => 'Delete',
         'action_export'     => 'Export',
         'no_permission_to'  => 'No permission to :action',
+        'no_screen_access'  => 'No access to this screen',
         'no_permission_heading' => 'No permission',
 
         // Seletor de ícones (<mad-icon-field>)

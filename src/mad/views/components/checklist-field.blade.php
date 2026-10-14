@@ -206,7 +206,7 @@
             </button>
             <label class="mad-checklist-select-all">
                 <input type="checkbox" class="mad-checkbox" @change="toggleAll($event)" :checked="allChecked"
-                    :indeterminate="checkedCount > 0 && !allChecked"
+                    x-effect="$el.indeterminate = partlyChecked"
                     @if($disabled) disabled @endif>
                 <span class="mad-checkbox-box"></span>
             </label>

@@ -112,7 +112,10 @@
                     $_permIsNew = null;
                 }
             }
-            $_permDec   = \Mad\Security\ActionGuard::decide($_permOwner, $_permAction, $_permIsNew);
+            // `@open` = navigate sem método: a tela de destino decide (#356).
+            $_permDec   = $_permAction === '@open'
+                ? \Mad\Security\ActionGuard::decideOpen($_permOwner)
+                : \Mad\Security\ActionGuard::decide($_permOwner, $_permAction, $_permIsNew);
             $_permMode  = $_permDec['mode'];
             $_permTitle = $_permDec['title'];
         }

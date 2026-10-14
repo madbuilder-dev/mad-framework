@@ -55,10 +55,19 @@ window.madTabsScroller = window.madTabsScroller || function () {
             const el = this.$refs.list;
             if (!el) return;
             const max = el.scrollWidth - el.clientWidth;
+            const was = this.canLeft + ':' + this.canRight;
             this.canLeft  = el.scrollLeft > 1;
             this.canRight = el.scrollLeft < max - 1;
-            el.style.setProperty('--mad-fade-l', this.canLeft  ? '32px' : '0px');
-            el.style.setProperty('--mad-fade-r', this.canRight ? '32px' : '0px');
+            // A calha da seta que surgiu/sumiu muda a largura útil: a aba que
+            // acabou de ser trazida para a vista volta a ser enquadrada (1 vez).
+            if (this._revealed && was !== this.canLeft + ':' + this.canRight) {
+                const tab = this._revealed;
+                this._revealed = null;
+                requestAnimationFrame(() => this.reveal(tab, true));
+            }
+            // Sem esmaecimento (#359): a máscara de 32 px apagava a aba visível
+            // da borda. Quem avisa que há mais abas é a seta, sempre visível
+            // daquele lado numa calha própria (CSS .is-left/.is-right).
         },
 
         page(dir) {
@@ -80,9 +89,17 @@ window.madTabsScroller = window.madTabsScroller || function () {
         scrollActiveIntoView() {
             const el = this.$refs.list;
             if (!el) return;
-            const active = el.querySelector('.mad-tab-active, .mad-tab[aria-selected="true"]');
-            if (!active) return;
-            const pad = 32;
+            this.reveal(el.querySelector('.mad-tab-active, .mad-tab[aria-selected="true"]'));
+        },
+
+        // Traz a aba para a área útil, longe do esmaecimento. Também no foco por
+        // teclado (Tab): o navegador rolava só o mínimo e a aba ficava apagada.
+        reveal(tab, again) {
+            const el = this.$refs.list;
+            if (!el || !tab || !el.contains(tab)) return;
+            const active = tab.closest('.mad-tab') || tab;
+            this._revealed = again ? null : active;
+            const pad = 16;
             const er = el.getBoundingClientRect();
             const ar = active.getBoundingClientRect();
             if (ar.left < er.left + pad) {
@@ -985,13 +1002,21 @@ const Mad = {
      *                               argumento, array resolve posicional.
      * @param {HTMLElement} [context]  Elemento de origem opcional. Se omitido,
      *                                 usa o primeiro [mad-component] na página.
+     * @param {object} [options]  Repassadas ao MadWire.call: `background`
+     *                            (não repete nem avisa sem resposta),
+     *                            `quietNetwork` e `key` (o que a chamada grava:
+     *                            no 503, a repetição cede a vez à chamada mais
+     *                            nova de mesma chave).
+     *
+     * Resolve com o desfecho `{ ok, reason }` do MadWire.call.
      *
      * Uso:
      *   Mad.call('onSearch', { q: 'drawer' })   // resolve $q por nome
      *   Mad.call('onAprovar', [42])              // resolve $id por posição
      *   Mad.call('onRecarregar')                 // sem args
+     *   Mad.call('onPeso', [id, valor], el, { key: 'peso:' + id })
      */
-    async call(method, params = {}, context = null) {
+    async call(method, params = {}, context = null, options = {}) {
         if (typeof MadWire === 'undefined' || !MadWire.call) {
             console.error('[Mad.call] MadWire não está disponível');
             return;
@@ -1014,7 +1039,7 @@ const Mad = {
             console.error('[Mad.call] nenhum [mad-component] encontrado na página');
             return;
         }
-        return MadWire.call(wrapper, method, params || {});
+        return MadWire.call(wrapper, method, params || {}, {}, options || {});
     },
 
     // ── "+" ao lado do combo (`create` do <mad-dbcombo-field>) ─────────────

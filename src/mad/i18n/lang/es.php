@@ -262,6 +262,8 @@ return [
             'row_gone'       => 'Este registro ya no está en el listado: puede haber sido eliminado o modificado por otra persona. Actualice la pantalla.',
             'delete_gone'    => 'No se eliminó nada: el registro ya no está en el listado. Puede haber sido eliminado por otra persona.',
             'delete_refused' => 'El registro no fue eliminado: la eliminación fue rechazada.',
+            'action_gone'    => 'La acción no se ejecutó: el registro ya no está en el listado.',
+            'action_refused' => 'La acción no se ejecutó: no aplica a este registro.',
             'cell_not_saved' => 'El cambio no fue guardado.',
             'cell_invalid'   => 'Valor inválido.',
             'cell_number'    => 'Ingrese un número.',
@@ -309,6 +311,7 @@ return [
             'gone_options_one'  => 'En :field, una opción que esta pantalla todavía mostraba marcada ya había sido desmarcada en otra pestaña o por otra persona y no se marcó de nuevo.',
             'gone_options_many' => 'En :field, :count opciones que esta pantalla todavía mostraba marcadas ya habían sido desmarcadas en otra pestaña o por otra persona y no se marcaron de nuevo.',
             'gone_tail'       => 'Lo demás se guardó. Actualice la pantalla para ver la situación actual.',
+            'gone_reopen_tail' => 'Lo demás se guardó. Abra el registro de nuevo para ver la situación actual.',
             // Guardado que no grabó las filas de una lista (el formulario recibido la describe de otra forma).
             'not_saved_title' => 'Filas no guardadas',
             'not_saved_named' => 'Las filas de :lists no se guardaron: recargue la pantalla e inténtelo de nuevo.',
@@ -329,6 +332,7 @@ return [
             'changed_elsewhere'     => 'Otra pestaña u otra persona cambió los datos de :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
             'changed_elsewhere_in'  => 'En :list, otra pestaña u otra persona cambió los datos de :items mientras esta pantalla estaba abierta. Eso se mantuvo.',
             'changed_tail'       => 'Actualice la pantalla para ver la situación actual.',
+            'changed_reopen_tail' => 'Abra el registro de nuevo para ver la situación actual.',
             'items_one'          => '1 ítem',
             'items_many'         => ':count ítems',
             'more'               => ':count más',
@@ -452,6 +456,7 @@ return [
         'action_delete'     => 'Eliminar',
         'action_export'     => 'Exportar',
         'no_permission_to'  => 'Sin permiso para :action',
+        'no_screen_access'  => 'Sin acceso a esta pantalla',
         'no_permission_heading' => 'Sin permiso',
 
         // Seletor de ícones (<mad-icon-field>)

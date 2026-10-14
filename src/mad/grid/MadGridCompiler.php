@@ -23,6 +23,7 @@ use Mad\View\MadBlade;
  * │  searchable               Barra de busca rápida                             │
  * │  :search-columns="[...]"  Campos para busca (notação ponto: 'rel.campo')   │
  * │  sticky                   Thead fixo ao rolar                               │
+ * │  auto-refresh="15"        Relê os dados a cada N s (mín. 5; 0 = desligado)  │
  * │  no-export                Desabilita botões de exportação                   │
  * │  no-auto-load             Abre vazio; consulta só após Buscar/filtro/sort   │
  * │  require-filter           Abre vazio e só consulta com ao menos 1 filtro    │
@@ -1692,6 +1693,12 @@ class MadGridCompiler
         }
         if (static::has($a, 'searchable'))    $c[] = "'searchable' => true";
         if (static::has($a, 'refreshable'))   $c[] = "'refreshable' => true";
+        // auto-refresh="15" — a listagem relê os dados sozinha a cada N segundos.
+        if (isset($a['auto-refresh'])) {
+            $attr = $a['auto-refresh'];
+            $val  = $attr['type'] === 'php' ? '(int) (' . $attr['value'] . ')' : (int) $attr['value'];
+            $c[]  = "'autoRefresh' => {$val}";
+        }
         if (isset($a['search-columns']))     $c[] = "'searchColumns' => " . static::emit($a['search-columns']);
         if (static::has($a, 'no-export'))          $c[] = "'exportable' => false";
         if (static::has($a, 'no-column-chooser')) $c[] = "'columnChooser' => false";
@@ -2481,21 +2488,24 @@ class MadGridCompiler
             $c[] = static::kv('when', static::qs(static::str($a, 'display-condition')));
         }
 
-        // Condição de visibilidade: when-field + when-value/when-in/when-nin + when-op
+        // Condição de visibilidade: when-field + when-value/when-in/when-nin + when-op.
+        // Com display-condition junto, vai em `whenField` e as duas valem:
+        // na mesma chave a segunda apagava a primeira.
         $whenField = static::str($a, 'when-field');
+        $whenKey   = isset($a['display-condition']) ? "'whenField'" : "'when'";
         if ($whenField) {
             if (isset($a['when-in']) || isset($a['when-nin'])) {
                 $isNin   = isset($a['when-nin']);
                 $csvVal  = static::str($a, $isNin ? 'when-nin' : 'when-in');
                 $vals    = array_map('trim', explode(',', $csvVal));
                 $valsStr = "['" . implode("','", array_map('addslashes', $vals)) . "']";
-                $c[] = "'when' => ['field' => " . static::qs($whenField)
+                $c[] = $whenKey . " => ['field' => " . static::qs($whenField)
                      . ", 'op' => " . ($isNin ? "'nin'" : "'in'")
                      . ", 'value' => " . $valsStr . "]";
             } else {
                 $whenVal = static::str($a, 'when-value');
                 $whenOp  = static::str($a, 'when-op', 'eq');
-                $c[] = "'when' => ['field' => " . static::qs($whenField)
+                $c[] = $whenKey . " => ['field' => " . static::qs($whenField)
                      . ", 'op' => " . static::qs($whenOp)
                      . ", 'value' => " . static::qs($whenVal) . "]";
             }

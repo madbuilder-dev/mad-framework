@@ -81,7 +81,7 @@ final class GridCsvWriter
     private function __construct(array $columns, string $delimiter)
     {
         $this->columns   = array_values($columns);
-        $this->key       = 'output/' . uniqid() . '.csv';
+        $this->key       = GridExportAccess::newKey('csv');
         $this->delimiter = $delimiter;
 
         // php://temp: até 2 MB em memória, o resto em arquivo temporário.

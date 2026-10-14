@@ -172,7 +172,11 @@
     if (!raiz || raiz.dataset.siteAnchorsReady === '1') return;
     raiz.dataset.siteAnchorsReady = '1';
 
-    document.addEventListener('click', function (e) {
+    // No `window` (fase de bolha): roda DEPOIS de todo ouvinte do `document`.
+    // O script da própria página (rolagem suave, `replaceState`, foco do "Ir
+    // para o conteúdo") vê o `href="#…"` original e, tratando o clique
+    // (`preventDefault`), tira o framework de cena (fw#346).
+    window.addEventListener('click', function (e) {
       if (e.defaultPrevented || !e.target || !e.target.closest) return;
       var link = e.target.closest('a[href^="#"]');
       if (!link) return;

@@ -573,8 +573,12 @@ class GridRenderHelpers
     {
         $rows = [];
         foreach ($items as $item) {
-            if (is_object($item) && method_exists($item, 'toArray')) {
-                $row = $item->toArray();
+            // stdClass (linha de `sourceQuery()`, do construtor de consultas)
+            // também materializa os renderFields: sem isso `{custo}` não
+            // existia na linha e a coluna saía vazia / R$ 0,00 (#344).
+            $isPlain = is_object($item) && !method_exists($item, 'toArray');
+            if (is_object($item) && (method_exists($item, 'toArray') || $isPlain)) {
+                $row = $isPlain ? (array) $item : $item->toArray();
                 if (!empty($renderFields)) {
                     $hasRender = method_exists($item, 'render');
                     foreach ($renderFields as $field => $pattern) {
@@ -603,10 +607,6 @@ class GridRenderHelpers
                         }
                     }
                 }
-                $row['__record'] = $item;
-                $rows[] = $row;
-            } elseif (is_object($item)) {
-                $row = (array) $item;
                 $row['__record'] = $item;
                 $rows[] = $row;
             } else {

@@ -99,7 +99,7 @@
                             <img class="mad-pdv-result-img" x-show="cfg.behavior.showImages && p.image" :src="p.image" alt="">
                             <span class="mad-pdv-result-name" x-text="p.name"></span>
                             <span class="mad-pdv-result-code" x-text="p.code || p.barcode || ''"></span>
-                            <span class="mad-pdv-result-price" x-text="money(toC(p.price))"></span>
+                            <span class="mad-pdv-result-price" x-text="priceText(p)"></span>
                         </button>
                     </template>
                     <div class="mad-pdv-result-empty" x-show="!results.length" x-text="searchReason"></div>
@@ -499,7 +499,7 @@
                              :src="p.image" alt="">
                         <span class="mad-pdv-picker-name" x-text="p.name"></span>
                         <span class="mad-pdv-picker-code" x-text="p.code || p.barcode || ''"></span>
-                        <span class="mad-pdv-picker-price" x-text="money(toC(p.price))"></span>
+                        <span class="mad-pdv-picker-price" x-text="priceText(p)"></span>
                         {{-- Saldo: só existe quando stock-field (ou stock-model)
                              está mapeado — sem mapeamento o lookup manda null. --}}
                         <span class="mad-pdv-picker-stock" x-show="hasStock(p)" x-cloak

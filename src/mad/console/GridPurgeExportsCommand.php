@@ -21,7 +21,8 @@ class GridPurgeExportsCommand extends Command
 
     protected $description = 'Apaga exports antigos (CSV/XLSX/PDF) do scratch output/';
 
-    private const EXTENSIONS = ['csv', 'xlsx', 'pdf'];
+    // `meta` = dono do export (GridExportAccess), apagado junto com ele.
+    private const EXTENSIONS = ['csv', 'xlsx', 'pdf', 'meta'];
 
     public function handle(): int
     {

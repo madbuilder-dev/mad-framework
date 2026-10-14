@@ -191,6 +191,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Botão de refresh na toolbar. Opt-in via <mad-grid refreshable>. Chama onReload(). */
     protected bool $refreshable = false;
 
+    /**
+     * Atualização automática, em segundos (`<mad-grid auto-refresh="15">`).
+     * 0 = desligada (padrão). Mínimo 5. A listagem relê os dados na mesma
+     * página, com os mesmos filtros e a mesma ordem; item que aparece numa
+     * atualização dispara o evento `mad-new-items` com os ids.
+     */
+    protected int $autoRefresh = 0;
+
     /** Título da exportação (aparece no header do PDF e no sheet name do XLSX).
      *  Se vazio: $title da tela → título do <mad-page-header> da tela → nome da
      *  classe legível, sem o sufixo List ("EquipamentoList" → "Equipamento"). */
@@ -504,6 +512,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return (property_exists($this, 'gridConfig') && is_array($this->gridConfig)) ? $this->gridConfig : [];
     }
 
+    /** Segundos entre as atualizações automáticas; 0 = desligada. Mínimo 5. */
+    public function getAutoRefresh(): int
+    {
+        $cfg     = $this->_bladeGridConfig();
+        $seconds = (int) ($cfg['autoRefresh'] ?? $this->autoRefresh);
+
+        return $seconds > 0 ? max(5, $seconds) : 0;
+    }
+
     /**
      * Texto do botão Exportar ('' = só o ícone). O `export-label` do Blade
      * vence a prop PHP: `true` (atributo nu) = texto traduzido; false/null/''
@@ -712,6 +729,67 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return $source->getConnection()->query()->fromSub($source, 'mad_src');
     }
 
+    /** @var array<string, list<string>> colunas da fonte, por SQL (só nesta requisição) */
+    private array $_sourceColumnsBySql = [];
+
+    /**
+     * Os nomes das colunas que a consulta de `sourceQuery()` devolve, lidos do
+     * próprio banco com `limit 0` (nenhuma linha é lida). Falha = lista vazia:
+     * sem saber as colunas, nenhum filtro automático vira `where`.
+     *
+     * @return list<string>
+     */
+    protected function _sourceColumns(\Illuminate\Database\Query\Builder $source): array
+    {
+        $probe = (clone $source)->limit(0);
+        $sql   = $probe->toSql();
+        if (isset($this->_sourceColumnsBySql[$sql])) {
+            return $this->_sourceColumnsBySql[$sql];
+        }
+        $cols = [];
+        try {
+            $conn = $probe->getConnection();
+            $stmt = $conn->getReadPdo()->prepare($sql);
+            $conn->bindValues($stmt, $conn->prepareBindings($probe->getBindings()));
+            $stmt->execute();
+            for ($i = 0, $n = $stmt->columnCount(); $i < $n; $i++) {
+                $meta = $stmt->getColumnMeta($i);
+                if (is_array($meta) && ($meta['name'] ?? '') !== '') {
+                    $cols[] = (string) $meta['name'];
+                }
+            }
+            $stmt->closeCursor();
+        } catch (\Throwable $e) {
+            error_log('[MadDataGrid::_sourceColumns] ' . static::class . ': ' . $e->getMessage());
+        }
+
+        return $this->_sourceColumnsBySql[$sql] = $cols;
+    }
+
+    /** O closure de busca que a fonte já recebe adaptado (para não embrulhar de novo). */
+    private ?\Closure $_searchQueryForSource = null;
+
+    /**
+     * Com `sourceQuery()` a consulta é a do construtor de consultas, não a do
+     * Eloquent. O `searchQuery` gerado é tipado `Builder $q` (o do Eloquent) e
+     * quebrava a tela: o closure passa a receber a fonte embrulhada num Builder
+     * do Eloquent, e os `where` dele caem na mesma consulta (#355).
+     */
+    private function _adaptSearchQueryToSource(): void
+    {
+        $fn = $this->searchQuery;
+        if (!$fn instanceof \Closure || $fn === $this->_searchQueryForSource) {
+            return;
+        }
+        $param = (new \ReflectionFunction($fn))->getParameters()[0] ?? null;
+        if ($param === null || !static::_hookWantsEloquent($param->getType())) {
+            return;
+        }
+        $this->searchQuery = $this->_searchQueryForSource = static function ($q) use ($fn) {
+            return $fn($q instanceof \Illuminate\Database\Query\Builder ? static::_eloquentOver($q) : $q);
+        };
+    }
+
     /**
      * Decora UM registro para a linha reapresentada pelo `manageRow`.
      *
@@ -747,6 +825,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     public function mount(array $params = []): void
     {
+        $this->_gridMounted = true;
+
         // MadFiltersTrait — init form + carrega state de filtros
         $this->_initFiltersForm();
 
@@ -785,12 +865,50 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     public function hydrate(): void
     {
+        $this->_gridHydrated = true;
+
         // Antes de qualquer ação: o método chamado (ação em lote, botão do
         // cabeçalho, ação de linha) já enxerga a seleção que o usuário vê.
         $this->_syncSelection();
         if ($this->_autoLoadAllowed()) {
             $this->loadData();
         }
+    }
+
+    /** O mount() do framework rodou nesta requisição (a tela chamou parent::mount()). */
+    private bool $_gridMounted = false;
+
+    /** Requisição de uma ação (estado restaurado), não a abertura da tela. */
+    private bool $_gridHydrated = false;
+
+    /**
+     * Período padrão ($defaultPeriod) na ABERTURA de uma tela cujo mount()
+     * não chama parent::mount() — o formato que a plataforma gera. Sem isto
+     * ela abria sem período, com a tabela inteira, e só o Limpar aplicava o
+     * padrão (#339). Mesma ordem do mount(): padrão, depois o período lembrado
+     * (rememberFilters) e o do link, que vencem. Só na abertura: numa ação o
+     * período vazio é escolha do usuário (o × do filtro).
+     */
+    private function _seedDefaultPeriodOnOpen(): void
+    {
+        if ($this->_gridMounted || $this->_gridHydrated || isset($_POST['mad_state'])
+            || $this->_defaultPeriodPreset() === '') {
+            return;
+        }
+        if ($this->mes !== '' || $this->ano !== '' || $this->dtIni !== '' || $this->dtFim !== '' || $this->preset !== '') {
+            return;   // a própria tela já escolheu um período
+        }
+        $period = array_flip(['mes', 'ano', 'dtIni', 'dtFim', 'preset']);
+        $this->_seedDefaultPeriod();
+        if ($this->rememberFilters ?? false) {
+            $saved = session($this->filterSessionKey('state'));
+            if (is_array($saved)) {
+                $this->applyFilterStateSnapshot(array_intersect_key($saved, $period));
+            }
+        }
+        $this->hydrateFiltersFromArray(array_intersect_key(array_merge($_GET ?? [], $_POST ?? []), $period));
+        $this->syncFormFields();
+        $this->_dataLoaded = false;
     }
 
     // ── Seleção de linhas ────────────────────────────────────────────────
@@ -1341,7 +1459,192 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadToast::warning(mad_t('mad.error.bad_request'));
         }
 
-        return parent::_resolveAndCall($method, $data);
+        $refused = $this->_rowActionRefusal($method, $data);
+        if ($refused !== null) {
+            return $refused;
+        }
+
+        $result = parent::_resolveAndCall($method, $data);
+
+        // O mount() da tela acabou e o render ainda não começou: o período
+        // padrão entra AQUI para o bloco de filtros já desenhar o chip e os
+        // campos preenchidos (#339). Semeado no render da grade, ele filtrava
+        // mas chegava depois do bloco de filtros.
+        if ($method === 'mount' && !$this->_returnPending) {
+            $this->_seedDefaultPeriodOnOpen();
+        }
+
+        return $result;
+    }
+
+    /**
+     * A ação de linha chamada vale para ESTA linha?
+     *
+     * As condições do `<mad-act>` — `display-condition`, `when-*` (exibir) e
+     * `disabled-*` — só escondiam ou desabilitavam o botão: uma requisição
+     * montada à mão (ou o clique numa tela aberta antes de a linha mudar)
+     * rodava a ação na linha mesmo assim. Aqui elas são avaliadas de novo,
+     * como no Excluir embutido ({@see _gridDeleteAllowedFor()}): mesma ação,
+     * mesma linha, com o registro como está AGORA, buscado pela consulta da
+     * listagem. Basta uma das ações com esse método (na linha ou num grupo)
+     * aparecer habilitada.
+     *
+     * Ação sem condição, chamada sem id, ou listagem onde não dá para achar a
+     * linha (`query()` próprio com `id-field` fora da chave) seguem como antes.
+     *
+     * @return mixed null = pode chamar; senão, a resposta da recusa
+     */
+    protected function _rowActionRefusal(string $method, array $data): mixed
+    {
+        if ($method === 'onMadGridDelete' || $data === [] || !array_is_list($data)
+            || !is_scalar($data[0]) || (string) $data[0] === '') {
+            return null;
+        }
+        $acts = $this->_rowActionsCalling($method);
+        foreach ($acts as $act) {
+            // Uma das ações com o método vale em qualquer linha: nada a conferir.
+            if (!$act->hasRowConditions()) {
+                return null;
+            }
+        }
+        if ($acts === []) {
+            return null;
+        }
+
+        $id      = $data[0];
+        $found   = false;
+        $checked = false;
+        foreach ($acts as $act) {
+            try {
+                [$known, $record] = $this->_actionRowRecord($act->idField ?: 'id', $id);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning(
+                    'MadDataGrid: ' . static::class . '::' . static::_logSafe($method)
+                    . ' — não deu para conferir a condição da ação na linha: ' . static::_logSafe($e->getMessage())
+                );
+
+                return null;
+            }
+            if (!$known) {
+                return null;
+            }
+            $checked = true;
+            if ($record === null) {
+                continue;
+            }
+            $found = true;
+            if (static::_rowActionsAllow([$act], $this->_actionRowData($record))) {
+                return null;
+            }
+        }
+        if (!$checked) {
+            return null;
+        }
+
+        \Illuminate\Support\Facades\Log::warning(
+            'MadDataGrid: ' . static::class . '::' . static::_logSafe($method) . ' recusado — '
+            . ($found ? 'a condição do <mad-act> não vale para' : 'a listagem não mostra')
+            . ' o registro ' . static::_logSafe((string) $id) . ' (usuario ' . static::_logUser() . ').'
+        );
+        $this->loadData();
+
+        return \Mad\Ui\MadToast::warning(mad_t($found ? 'mad.error.action_refused' : 'mad.error.action_gone'));
+    }
+
+    /**
+     * As ações de linha (fora o Excluir embutido e a navegação) que chamam
+     * `$method`: as do config do `<mad-grid>` — o selado ou o do último render
+     * — ou, sem config, as de `actions()`/`actionGroups()` escritas à mão.
+     *
+     * @return list<GridAction>
+     */
+    protected function _rowActionsCalling(string $method): array
+    {
+        $dono  = $this->_permOwnerClass();
+        $hosts = $this->_actionHosts();
+        $acts  = [];
+
+        $config = $this->_bladeGridConfig();
+        if ($config === []) {
+            $cached = session(static::class . '_dg_cfg');
+            $config = is_array($cached) ? $cached : [];
+        }
+        if (isset($config['actConfigs']) || isset($config['actGroupConfigs'])) {
+            foreach (static::_gridActConfigs($config) as $a) {
+                if (($a['method'] ?? '') === $method && empty($a['isNav'])) {
+                    $acts[] = static::_actFromConfig($a, $dono)?->resolveIn(...$hosts);
+                }
+            }
+        } else {
+            $todas = $this->actions();
+            foreach ($this->actionGroups() as $grp) {
+                if ($grp instanceof GridActionGroup) {
+                    array_push($todas, ...array_values($grp->actions));
+                }
+            }
+            foreach ($todas as $act) {
+                if ($act instanceof GridAction && $act->method === $method && !$act->isNav) {
+                    $acts[] = static::_hostStamp(static::_permStamp($act, $dono), $hosts);
+                }
+            }
+        }
+
+        return array_values(array_filter($acts));
+    }
+
+    /**
+     * O registro da linha que a ação recebeu, pela consulta da listagem.
+     *
+     * @return array{0: bool, 1: ?object} [dá para procurar?, o registro ou null]
+     */
+    private function _actionRowRecord(string $idField, int|string $id): array
+    {
+        $eloquent = !empty($this->model) && is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class);
+        if ($eloquent && !$this->_usesSource() && $idField === (new $this->model())->getKeyName()) {
+            return [true, $this->_visibleRecord($id)];
+        }
+        if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class
+            || (!$eloquent && $this->_sourceBase() === null)) {
+            return [false, null];
+        }
+
+        $busca = function () use ($idField, $id): ?object {
+            $q = $this->_buildQuery();
+            $q->where($idField, '=', $id);
+            if ($this->searchQuery) {
+                ($this->searchQuery)($q);
+            }
+
+            return $q->first();
+        };
+
+        return [true, $busca() ?? $this->_withoutUserFilters($busca)];
+    }
+
+    /** A linha como o render a entrega às condições: `toArray()` + `decorateRow()` + `__record`. */
+    private function _actionRowData(object $record): array
+    {
+        $decorated = $this->decorateRow($record);
+        $subject   = is_object($decorated) ? $decorated : $record;
+        $row       = method_exists($subject, 'toArray') ? (array) $subject->toArray() : get_object_vars($subject);
+        if (is_array($decorated)) {
+            $row = $decorated + $row;
+        }
+        $row['__record'] = $subject;
+
+        return $row;
+    }
+
+    /** Alguma das ações aparece habilitada nesta linha? */
+    private static function _rowActionsAllow(array $acts, array $row): bool
+    {
+        foreach ($acts as $act) {
+            if ($act instanceof GridAction && $act->isVisible($row) && !$act->isDisabled($row)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Os argumentos posicionais cabem nos tipos que a ação declara? */
@@ -2080,6 +2383,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected static function _gridDeleteConfigs(array $config): array
     {
+        return array_values(array_filter(
+            static::_gridActConfigs($config),
+            static fn (array $a): bool => ($a['method'] ?? '') === 'onMadGridDelete',
+        ));
+    }
+
+    /**
+     * Todas as ações de linha do config compilado: as da linha e as dos grupos.
+     *
+     * @return list<array<string,mixed>>
+     */
+    protected static function _gridActConfigs(array $config): array
+    {
         $acoes = (array) ($config['actConfigs'] ?? []);
         foreach ((array) ($config['actGroupConfigs'] ?? []) as $grupo) {
             if (is_array($grupo)) {
@@ -2087,10 +2403,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
         }
 
-        return array_values(array_filter(
-            $acoes,
-            static fn ($a): bool => is_array($a) && ($a['method'] ?? '') === 'onMadGridDelete',
-        ));
+        return array_values(array_filter($acoes, 'is_array'));
     }
 
     /**
@@ -2121,24 +2434,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return true;
         }
 
-        $decorated = $this->decorateRow($record);
-        $subject   = is_object($decorated) ? $decorated : $record;
-        $row       = method_exists($subject, 'toArray') ? (array) $subject->toArray() : get_object_vars($subject);
-        if (is_array($decorated)) {
-            $row = $decorated + $row;
-        }
-        $row['__record'] = $subject;
-
         $dono  = $this->_permOwnerClass();
         $hosts = $this->_actionHosts();
-        foreach ($dels as $a) {
-            $act = static::_actFromConfig($a, $dono)?->resolveIn(...$hosts);
-            if ($act !== null && $act->isVisible($row) && !$act->isDisabled($row)) {
-                return true;
-            }
-        }
 
-        return false;
+        return static::_rowActionsAllow(
+            array_map(fn (array $a) => static::_actFromConfig($a, $dono)?->resolveIn(...$hosts), $dels),
+            $this->_actionRowData($record),
+        );
     }
 
     /**
@@ -3491,8 +3793,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Botao de download: cria um <a download> temporario, clica e remove.
         // Aponta pra rota AUTENTICADA mad.grid.export (não pro path cru do FS):
         // o arquivo fica fora do público e a rota devolve 410 se já foi purgado.
-        // Forca nome do arquivo amigavel em vez do uniqid gerado pelo exporter.
-        $dlUrl  = route('mad.grid.export', ['file' => basename($file), 'basename' => $safeName], false);
+        // Forca nome do arquivo amigavel em vez do nome aleatorio do exporter.
+        // O export fica amarrado a quem gerou e a esta tela, e o link é
+        // assinado e curto (mad-framework#342) — ver GridExportAccess.
+        GridExportAccess::grant($file, $this->_permOwnerClass());
+        $dlUrl  = GridExportAccess::url($file, $safeName);
         $urlJs  = json_encode($dlUrl, JSON_UNESCAPED_SLASHES);
         $nameJs = json_encode($safeName, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $downloadCb = '()=>{const a=document.createElement("a");a.href=' . $urlJs
@@ -3636,6 +3941,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'exportLabel'  => $this->_exportLabelText(),
             'permExport'   => $this->_permExportMode(),
             'refreshable'  => $this->refreshable,
+            'autoRefreshSeconds' => $this->getAutoRefresh(),
             'deferred'     => $this->_isDeferred(),
             'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
@@ -3692,6 +3998,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // config abaixo ainda precisa entrar (model, per-page, filtro avançado)
         // e a carga do fim desta função já usa a página restaurada.
         $returned = $this->_applyReturnSnapshot();
+        if (!$returned) {
+            $this->_seedDefaultPeriodOnOpen();
+        }
 
         // Propriedades não-serializadas: aplicar sempre (perdidas entre requests AJAX)
         if (!empty($config['model']))      $this->model      = $config['model'];
@@ -3877,6 +4186,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'exportLabel'   => $this->_exportLabelText(),
             'permExport'    => $this->_permExportMode(),
             'refreshable'   => $this->refreshable,
+            'autoRefreshSeconds' => $this->getAutoRefresh(),
             'deferred'      => $this->_isDeferred(),
             'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
@@ -4385,6 +4695,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $act->when(fn($row) => static::_evalCond($row, $cond));
             }
         }
+        if (!empty($a['whenField']) && is_array($a['whenField'])) {
+            $cond = $a['whenField'];
+            $act->whenField(fn($row) => static::_evalCond($row, $cond));
+        }
         if (!empty($a['disabled'])) {
             $cond = $a['disabled'];
             if (is_string($cond)) {
@@ -4804,14 +5118,20 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         // $base: fonte alternativa (ex: derived table do MadSeekGrid). Sem ela, a
         // consulta de sourceQuery() quando a tela declara; senão, a tabela do model.
-        $q     = $base ?? $this->_sourceBase() ?? $this->_modelQuery();
-        $model = $this->model ?: null;
+        // Filtro escondido por condição no bloco de filtros (#354): o valor
+        // não vale nem para o automático nem para o onSearch da tela.
+        $this->_forgetHiddenFilters();
+        $source = $base === null ? $this->_sourceBase() : null;
+        $q      = $base ?? $source ?? $this->_modelQuery();
+        $model  = $this->model ?: null;
 
         // (A) período + unit + auto-discovery — siblings builder-native.
         if ($this->autoMergeDashFilters) {
             $this->applyPeriodoToQuery($q, $model);
             $this->applyUnitToQuery($q, $model);
-            $this->applyAutoFiltersToQuery($q, $model);
+            // Fonte por consulta: sem model para conferir, o filtro só vira
+            // `where` quando a consulta tem a coluna (#355).
+            $this->applyAutoFiltersToQuery($q, $model, $source !== null ? ['columns' => $this->_sourceColumns($source)] : []);
         }
 
         // (A2) :filters declarativos do Blade — DSL do metric-card. Subselect
@@ -4823,6 +5143,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // (B) onSearch custom — builder-native: onSearch() monta a closure
         // searchQuery, aplicada no builder por _applyOnSearch.
         $this->_applyOnSearch($q, $model);
+        if ($source !== null) {
+            $this->_adaptSearchQueryToSource();
+        }
 
         // (C) busca global (searchbar).
         $this->_applySearch($q);

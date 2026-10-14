@@ -112,6 +112,92 @@ final class ActionGuard
     }
 
     /**
+     * Telas que se ABREM, sem cadastro em branco: navegar até elas não é
+     * incluir nada (mad-framework#356).
+     */
+    private const OPEN_ONLY_BASES = [
+        'Mad\\Grid\\MadDataGrid',
+        'Mad\\Dashboard\\MadDashboard',
+        'Mad\\Calendar\\MadKanban',
+        'Mad\\Calendar\\MadCalendarComponent',
+        'Mad\\Calendar\\MadGanttComponent',
+        'Mad\\OrgChart\\MadOrgChart',
+        'Mad\\Sheet\\MadSheet',
+        'Mad\\Pdv\\MadPdvComponent',
+        'Mad\\Reconcile\\MadReconcile',
+        'Mad\\Site\\MadSitePage',
+    ];
+
+    /**
+     * Botão que abre OUTRA tela sem nomear o método (`navigate="Tela"`).
+     *
+     * A decisão é pela tela de destino, em execução: um formulário abre um
+     * cadastro em branco (= incluir, como sempre foi); uma listagem, um
+     * dashboard, um kanban… só abrem — basta o perfil ter a tela. E quem não
+     * tem a tela no grupo recebe a dica de acesso, não a de "incluir".
+     *
+     * @return array{mode: 'allow'|'disable'|'hide', key: string|null, title: string}
+     */
+    public static function decideOpen(string $class): array
+    {
+        $class = ltrim(trim($class), '\\');
+        if ($class === '') {
+            return self::liberado(null);
+        }
+
+        // Sem sessão de perfil (fora do painel, app sem permissões carregadas)
+        // não há o que perguntar — fail-open, como o resto.
+        if (PermissionGate::isLogged() && is_array(session('programs')) && !PermissionGate::canAccess($class)) {
+            return [
+                'mode'  => self::mode(),
+                'key'   => 'view',
+                'title' => \Mad\I18n\MadLang::t('mad.no_screen_access'),
+            ];
+        }
+
+        return self::opensNewRecord($class)
+            ? self::decide($class, 'insert', true)
+            : self::liberado(null);
+    }
+
+    /**
+     * Abrir esta tela sem método é abrir um cadastro em branco? Não para as
+     * bases que só se abrem ({@see OPEN_ONLY_BASES}) nem para a listagem pelo
+     * nome (`…List`, a convenção do gerador). Classe que não se resolve fica
+     * como formulário — o comportamento de antes.
+     */
+    private static function opensNewRecord(string $class): bool
+    {
+        $base = ($p = strrpos($class, '\\')) === false ? $class : substr($class, $p + 1);
+        if (preg_match('/List$/', $base) === 1) {
+            return false;
+        }
+
+        $fqcn = null;
+        try {
+            $fqcn = ClassSource::locate($class)['fqcn'] ?? null;
+        } catch (\Throwable $e) {
+            $fqcn = null;
+        }
+        $fqcn ??= $class;
+        try {
+            if (!class_exists($fqcn)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            return true;
+        }
+
+        foreach (self::OPEN_ONLY_BASES as $somenteAbre) {
+            if (is_a($fqcn, $somenteAbre, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * A chave de permissão que este método consome, ou null quando ele não tem
      * uma (navegação, método irreconhecível, contexto desconhecido).
      */

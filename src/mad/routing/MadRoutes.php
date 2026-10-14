@@ -199,12 +199,15 @@ class MadRoutes
         $post = Route::post($uri, ['uses' => $fqcn . '@showPage'])
             ->middleware('throttle:site-post');
 
-        // Slug de conteúdo é minúsculo com hífen — a mesma forma que o gerador
-        // de endereços produz. Sem a restrição, `/blog/QUALQUER%20COISA` casava
-        // e a página respondia 404 só lá dentro.
+        // `{slug}` é o slug do conteúdo (minúsculo com hífen, o que o gerador de
+        // endereços produz) E o token de um link público (convite, avaliação),
+        // que vem em base64url ou `Str::random`: maiúscula e `_` entram
+        // (mad-framework#353). Sem a restrição, `/blog/QUALQUER%20COISA` casava
+        // e a página respondia 404 só lá dentro — espaço, `%`, `.` e `/` seguem
+        // fora.
         if (str_contains($path, '{slug}')) {
-            $route->where('slug', '[a-z0-9-]+');
-            $post->where('slug', '[a-z0-9-]+');
+            $route->where('slug', '[A-Za-z0-9_-]+');
+            $post->where('slug', '[A-Za-z0-9_-]+');
         }
 
         SiteRegistry::register($path, $fqcn, $opts + ['name' => $name]);

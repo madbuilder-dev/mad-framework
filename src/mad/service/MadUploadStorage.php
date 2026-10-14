@@ -224,6 +224,36 @@ final class MadUploadStorage
         return self::disk()->exists($relPath);
     }
 
+    /**
+     * Os primeiros bytes do arquivo ('' se não existe ou não deu para ler) —
+     * para conferir o tipo pelo conteúdo sem baixar o arquivo inteiro.
+     */
+    public static function head(string $relPath, int $bytes = 32): string
+    {
+        try {
+            $stream = self::disk()->readStream($relPath);
+        } catch (\Throwable) {
+            return '';
+        }
+        if (!is_resource($stream)) {
+            return '';
+        }
+        try {
+            $head = '';
+            while (strlen($head) < $bytes && !feof($stream)) {
+                $chunk = fread($stream, $bytes - strlen($head));
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                $head .= $chunk;
+            }
+
+            return $head;
+        } finally {
+            fclose($stream);
+        }
+    }
+
     /** Remove o arquivo do disco de uploads (idempotente; false engolido). */
     public static function delete(string $relPath): void
     {

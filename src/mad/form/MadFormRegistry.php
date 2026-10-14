@@ -1130,6 +1130,8 @@ class MadFormRegistry
             'checklist',
             'multi-search',
             'db-multi-search',
+            // Lista ordenável: chega como JSON na ordem escolhida (fw#236).
+            'sort-list',
             'db-checkbox-group' => self::_transformMultiSelect($value, (string) ($props['separator'] ?? '')),
             default     => $value,
         };

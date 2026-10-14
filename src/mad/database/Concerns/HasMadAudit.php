@@ -8,7 +8,11 @@ namespace Mad\Database\Concerns;
  * Auditoria MAD via eventos Eloquent (substitui os timestamps nativos —
  * use com `public $timestamps = false`):
  *   creating → created_at / created_by / created_by_user_id / created_by_unit_id
+ *              + updated_at = created_at (como o Eloquent nativo)
  *   updating → updated_at / updated_by / updated_by_user_id
+ *   update em massa pelo model (`Model::where()->update()`, increment/decrement)
+ *            → updated_at (MadAuditBuilder; o autor não é carimbado, como no Eloquent)
+ *   `DB::table()->update()` não passa pelo model: não carimba nada (Laravel).
  *
  * Remapeamento de colunas — precedência: const legada → $madAudit → prop → null.
  * Forma recomendada (1 mapa; chave lógica => coluna real, false = desliga a coluna):
@@ -45,6 +49,25 @@ trait HasMadAudit
     public function initializeHasMadAudit(): void
     {
         $this->timestamps = false;
+    }
+
+    /**
+     * Builder que devolve a coluna de alteração ao UPDATE em massa (o Eloquent
+     * só a põe com timestamps ligados). Model com builder próprio fica com o dele.
+     */
+    public function newEloquentBuilder($query)
+    {
+        $builder = parent::newEloquentBuilder($query);
+
+        return $builder::class === \Illuminate\Database\Eloquent\Builder::class
+            ? new \Mad\Database\MadAuditBuilder($query)
+            : $builder;
+    }
+
+    /** Data/hora do carimbo, no formato que o trait grava (usado pelo MadAuditBuilder). */
+    public function madAuditTimestamp(): string
+    {
+        return date($this->madAuditDateMask());
     }
 
     public function getCreatedAtColumn()       { return $this->madAuditColumn('CREATEDAT', 'created_at', 'createdAtColumn'); }
@@ -85,6 +108,8 @@ trait HasMadAudit
             if ($c = $this->getCreatedByColumn())       { $this->setAttribute($c, $this->madAuditSessionValue('login')); }
             if ($c = $this->getCreatedByUserIdColumn()) { $this->setAttribute($c, $this->madAuditSessionValue('userid')); }
             if ($c = $this->getCreatedByUnitIdColumn()) { $this->setAttribute($c, $this->madAuditSessionValue('userunitid')); }
+            // Como o Eloquent: a linha nasce com updated_at = created_at (valor informado vence).
+            if (($c = $this->getUpdatedAtColumn()) && ! $this->isDirty($c)) { $this->setAttribute($c, $now); }
         } else {
             if ($c = $this->getUpdatedAtColumn())       { $this->setAttribute($c, $now); }
             if ($c = $this->getUpdatedByColumn())       { $this->setAttribute($c, $this->madAuditSessionValue('login')); }

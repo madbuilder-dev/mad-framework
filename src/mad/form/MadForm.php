@@ -1517,12 +1517,16 @@ class MadForm
         if (!$parts) {
             return null;
         }
-        $parts[] = self::_text('mad.checklist.changed_tail', [], 'Atualize a tela para ver a situação atual.');
+        $tail     = self::_text('mad.checklist.changed_tail', [], 'Atualize a tela para ver a situação atual.');
+        $reopen   = self::_text('mad.checklist.changed_reopen_tail', [], 'Abra o cadastro de novo para ver a situação atual.');
+        $esc      = static fn (string $text): string => htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 
         return [
             'op'      => 'alert',
             // O diálogo aceita HTML: os nomes vêm do cadastro e vão escapados.
-            'message' => htmlspecialchars(implode(' ', $parts), ENT_QUOTES, 'UTF-8'),
+            'message' => $esc(implode(' ', [...$parts, $tail])),
+            // Resposta que fecha a tela (cortina, modal): ver settleNoticeTails().
+            'message_closed' => $esc(implode(' ', [...$parts, $reopen])),
             'type'    => 'warning',
             'title'   => self::_text('mad.checklist.changed_title', [], 'Alterado em outra aba ou por outra pessoa'),
         ];
@@ -4367,6 +4371,20 @@ class MadForm
         return $clean ?: 'file';
     }
 
+    /**
+     * Caminho gravado no banco para um arquivo novo do campo: `<pasta>/<nome>`
+     * ou, com `public` (#244), `_public/<pasta>/<hmac>/<nome>` — o endereço
+     * sem login de {@see \Mad\Service\MadPublicUpload}.
+     */
+    private function _uploadKey(string $folder, string $fileName, array $props): string
+    {
+        if (!empty($props['public'])) {
+            return \Mad\Service\MadPublicUpload::path($folder, $fileName);
+        }
+
+        return rtrim($folder, '/') . '/' . $fileName;
+    }
+
     private function _buildFileName(string $originalName, string $mode, ?object $record = null): string
     {
         $clean = $this->_sanitizeUploadName($originalName);
@@ -4931,7 +4949,7 @@ class MadForm
 
         $folder   = $this->_normalizeUploadFolder((string) ($props['folder'] ?? 'uploads'));
         $fileName = $this->_buildFileName($originalName, $props['fileName'] ?? 'prefix', $record);
-        $relPath  = "{$folder}/{$fileName}";          // path relativo gravado no banco
+        $relPath  = $this->_uploadKey($folder, $fileName, $props);   // path relativo gravado no banco
 
         if (!$this->_storeFile($file['tmp_name'], $relPath, $record, self::_uniqueFileNames($props['fileName'] ?? 'prefix'))) {
             return;
@@ -6014,7 +6032,7 @@ class MadForm
                     }
                     // _buildFileName ja sanitiza e bloqueia extensoes proibidas.
                     $fileName  = $this->_buildFileName($files['name'][$i], $props['fileName'] ?? 'prefix', $record);
-                    $filePath  = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                    $filePath  = $this->_uploadKey($folder, $fileName, $props);   // relativo (banco)
                     $this->_storeFile($files['tmp_name'][$i], $filePath, $record, $unique);
                     $newPaths[] = $filePath;
                     if (!in_array($filePath, $final, true)) {
@@ -6184,7 +6202,7 @@ class MadForm
 
                 if ($storage === 'disk') {
                     $fileName = $this->_buildFileName($originalName, $props['fileName'] ?? 'prefix', $record);
-                    $filePath = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                    $filePath = $this->_uploadKey($folder, $fileName, $props);   // relativo (banco)
                     $this->_storeFile($files['tmp_name'][$i], $filePath, $child, $unique);
                     $child->$pathColumn = $filePath;
                     $child->save();
@@ -7382,11 +7400,14 @@ class MadForm
                 ? self::_text('mad.detail.gone_options_one', ['field' => $field], 'Em :field, uma opção que esta tela ainda mostrava marcada já tinha sido desmarcada em outra aba ou por outra pessoa e não foi marcada de novo.')
                 : self::_text('mad.detail.gone_options_many', ['field' => $field, 'count' => $count], 'Em :field, :count opções que esta tela ainda mostrava marcadas já tinham sido desmarcadas em outra aba ou por outra pessoa e não foram marcadas de novo.');
         }
-        $parts[] = self::_text('mad.detail.gone_tail', [], 'O restante foi salvo. Atualize a tela para ver a situação atual.');
+        $tail   = self::_text('mad.detail.gone_tail', [], 'O restante foi salvo. Atualize a tela para ver a situação atual.');
+        $reopen = self::_text('mad.detail.gone_reopen_tail', [], 'O restante foi salvo. Abra o cadastro de novo para ver a situação atual.');
 
         return [
             'op'      => 'alert',
-            'message' => implode(' ', $parts),
+            'message' => implode(' ', [...$parts, $tail]),
+            // Resposta que fecha a tela (cortina, modal): ver settleNoticeTails().
+            'message_closed' => implode(' ', [...$parts, $reopen]),
             'type'    => 'warning',
             'title'   => self::_text('mad.detail.gone_title', [], 'Itens já removidos'),
         ];
@@ -9719,6 +9740,41 @@ class MadForm
 
         // Por último: o foco vem depois de valores/linhas que a ação mexeu.
         return [...$ops, ['op' => 'focus', 'name' => $this->_pendingFocus]];
+    }
+
+    /**
+     * Fecho dos avisos que o formulário monta (marcas mudadas em outra aba,
+     * itens já removidos), escolhido na hora de entregar a resposta: o aviso
+     * é montado antes de a tela devolver as ops dela, e só então se sabe se o
+     * Salvar fecha a tela. Fechando (op `close_overlay`), "Atualize a tela"
+     * não leva a lugar nenhum — vale o `message_closed`, que manda abrir o
+     * cadastro de novo (mesma regra da fw#224). A chave extra nunca sai.
+     *
+     * @param  list<array<string,mixed>> $ops
+     * @return list<array<string,mixed>>
+     */
+    public static function settleNoticeTails(array $ops): array
+    {
+        $closes = false;
+        foreach ($ops as $op) {
+            if (is_array($op) && ($op['op'] ?? null) === 'close_overlay') {
+                $closes = true;
+                break;
+            }
+        }
+
+        foreach ($ops as $i => $op) {
+            if (!is_array($op) || !array_key_exists('message_closed', $op)) {
+                continue;
+            }
+            if ($closes) {
+                $op['message'] = $op['message_closed'];
+            }
+            unset($op['message_closed']);
+            $ops[$i] = $op;
+        }
+
+        return $ops;
     }
 
     // ── Escopo do editor de <mad-detail-form> (mad:change no sub-form) ────────

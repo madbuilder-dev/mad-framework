@@ -262,6 +262,8 @@ return [
             'row_gone'       => 'Este registro não está mais na listagem: pode ter sido excluído ou alterado por outra pessoa. Atualize a tela.',
             'delete_gone'    => 'Nada foi excluído: o registro não está mais na listagem. Ele pode ter sido excluído por outra pessoa.',
             'delete_refused' => 'O registro não foi excluído: a exclusão foi recusada.',
+            'action_gone'    => 'A ação não foi executada: o registro não está mais na listagem.',
+            'action_refused' => 'A ação não foi executada: ela não vale para este registro.',
             'cell_not_saved' => 'A alteração não foi gravada.',
             'cell_invalid'   => 'Valor inválido.',
             'cell_number'    => 'Informe um número.',
@@ -309,6 +311,7 @@ return [
             'gone_options_one'  => 'Em :field, uma opção que esta tela ainda mostrava marcada já tinha sido desmarcada em outra aba ou por outra pessoa e não foi marcada de novo.',
             'gone_options_many' => 'Em :field, :count opções que esta tela ainda mostrava marcadas já tinham sido desmarcadas em outra aba ou por outra pessoa e não foram marcadas de novo.',
             'gone_tail'       => 'O restante foi salvo. Atualize a tela para ver a situação atual.',
+            'gone_reopen_tail' => 'O restante foi salvo. Abra o cadastro de novo para ver a situação atual.',
             // Salvar que não gravou as linhas de uma lista (o formulário recebido a descreve de outro jeito).
             'not_saved_title' => 'Linhas não gravadas',
             'not_saved_named' => 'As linhas de :lists não foram gravadas: recarregue a tela e tente de novo.',
@@ -329,6 +332,7 @@ return [
             'changed_elsewhere'     => 'Outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
             'changed_elsewhere_in'  => 'Em :list, outra aba ou outra pessoa alterou os dados de :items enquanto esta tela estava aberta. Isso foi mantido.',
             'changed_tail'       => 'Atualize a tela para ver a situação atual.',
+            'changed_reopen_tail' => 'Abra o cadastro de novo para ver a situação atual.',
             'items_one'          => '1 item',
             'items_many'         => ':count itens',
             'more'               => 'mais :count',
@@ -452,6 +456,7 @@ return [
         'action_delete'     => 'Excluir',
         'action_export'     => 'Exportar',
         'no_permission_to'  => 'Sem permissão para :action',
+        'no_screen_access'  => 'Sem acesso a esta tela',
         'no_permission_heading' => 'Sem permissão',
 
         // Seletor de ícones (<mad-icon-field>)

@@ -239,7 +239,10 @@ abstract class MadPdvComponent extends MadComponent
     // descrição e as linhas filhas saem do método `on-compose` — chamado ao
     // montar e DE NOVO ao finalizar. O preço nunca vem do navegador.
 
-    /** Coluna do produto que marca "item montável" (leitura tolerante: 1/true/T/S). */
+    /**
+     * Coluna do produto que marca "item montável" (leitura tolerante: 1/true/T/S).
+     * Pode ser calculada na consulta do PDV: `:where` com `addSelect(['montavel' => …])`.
+     */
     protected string $compositeField = '';
 
     /**
@@ -252,6 +255,13 @@ abstract class MadPdvComponent extends MadComponent
 
     /** Coluna do item que guarda a descrição montada (o cupom reimpresso lê daqui). */
     protected string $itemDescriptionField = '';
+
+    /**
+     * O que a busca e o catálogo mostram no lugar do preço de um item montável
+     * (o preço do cadastro não é o que vai ser cobrado). Vazio = "Monte o seu"
+     * (`pdv.compose_price`); `:price` vira o preço do cadastro ("a partir de :price").
+     */
+    protected string $compositePriceLabel = '';
 
     /** Teto do JSON de escolhas de UMA linha (bytes). */
     protected const COMPOSE_CHOICES_MAX = 20000;
@@ -303,6 +313,22 @@ abstract class MadPdvComponent extends MadComponent
     /** Host externo quando standalone — actions custom roteiam pra ele. */
     protected ?object $_externalHost = null;
 
+    /**
+     * Ações que o navegador do PDV chama. Com o `<mad-pdv>` embutido numa tela
+     * comum elas chegam à TELA, que não as tem: o PDV as atende a partir dela
+     * ({@see _embeddedFor()}).
+     */
+    public const WIRE_ACTIONS = ['onProductLookup', 'onComposeItem', 'onFinalizeSale'];
+
+    /** PDV embutido esperando a tela dona entregar a config ({@see _embeddedFor()}). */
+    private static ?self $_hostProbe = null;
+
+    /** Este PDV está recebendo a config da tela dona (desenho "a seco"). */
+    private bool $_probingHost = false;
+
+    /** A tela dona entregou a config a este PDV. */
+    private bool $_hostProbed = false;
+
     /** Memo de configErrors() (avaliação única por request + log único). */
     private ?array $_cfgErrors = null;
 
@@ -340,6 +366,13 @@ abstract class MadPdvComponent extends MadComponent
         $cfg = $this->pdvCfgKey !== ''
             ? session('mad_pdv_cfg.' . $this->pdvCfgKey)
             : null;
+
+        // A sessão veio sem a config DESTA tela (outra aba gravou por último):
+        // a tela é desenhada uma vez e reentrega a sua. A "última config" da
+        // classe pode ser a de outra aba — com outro filtro, outra loja.
+        if (!is_array($cfg) && $this->pdvCfgKey !== '' && $this->_recoverConfigFromScreen()) {
+            return;
+        }
         if (!is_array($cfg)) {
             $latest = session('mad_pdv_cfg_latest.' . static::class);
             $cfg    = is_string($latest) && $latest !== '' ? session('mad_pdv_cfg.' . $latest) : null;
@@ -348,6 +381,31 @@ abstract class MadPdvComponent extends MadComponent
             $this->_applyInlineConfig($cfg);
             $this->_restoreLiveClosures();
         }
+    }
+
+    /** Config que a sessão perdeu, pedida de novo à tela ({@see hydrate()}). */
+    private bool $_recoveringCfg = false;
+
+    /**
+     * Desenha a tela "a seco" para o `<mad-pdv>` reentregar a config (closures
+     * vivas inclusive) e a devolve à sessão. True quando a tela entregou.
+     */
+    private function _recoverConfigFromScreen(): bool
+    {
+        $this->_probingConfig = true;
+        $this->_recoveringCfg = true;
+        $recovered            = false;
+        try {
+            $this->render();
+            $recovered = $this->_recoveringCfg === false;
+        } catch (\Throwable $e) {
+            error_log('[MadPdv] a tela ' . static::class . ' não pôde ser redesenhada para recuperar a configuração: ' . $e->getMessage());
+        } finally {
+            $this->_probingConfig = false;
+            $this->_recoveringCfg = false;
+        }
+
+        return $recovered;
     }
 
     /**
@@ -387,6 +445,50 @@ abstract class MadPdvComponent extends MadComponent
         return ['components.pdv', ['__component' => $this]];
     }
 
+    // ── PDV embutido numa tela comum ──────────────────────────────────────
+
+    /**
+     * A ação do PDV embutido em `$host` (tela comum, não um PDV), pronta para
+     * atender `$action` — ou null quando a ação não é do PDV, a tela tem o
+     * próprio método ou não desenha nenhum `<mad-pdv>`.
+     *
+     * A config vem da própria tela: ela é desenhada uma vez "a seco" e o
+     * primeiro `<mad-pdv>` dela entrega os atributos com as closures vivas,
+     * ligadas à tela desta requisição — o montador (`on-compose`), o gancho
+     * pós-venda e o `:where` são dela. Não depende da config na sessão.
+     */
+    public static function _embeddedFor(object $host, string $action): ?self
+    {
+        if ($host instanceof self || !in_array($action, self::WIRE_ACTIONS, true)
+            || method_exists($host, $action) || !method_exists($host, 'render')) {
+            return null;
+        }
+
+        $probe = new MadPdvStandalone();
+        $probe->_setExternalHost($host);
+        $probe->_probingHost = true;
+
+        $prev = self::$_hostProbe;
+        self::$_hostProbe = $probe;
+        try {
+            $host->render();
+        } catch (\Throwable $e) {
+            error_log('[MadPdv] a tela ' . get_class($host) . ' não pôde ser redesenhada para atender ' . $action . ': ' . $e->getMessage());
+        } finally {
+            self::$_hostProbe = $prev;
+            $probe->_probingHost = false;
+        }
+
+        return $probe->_hostProbed ? $probe : null;
+    }
+
+    /** @internal MadPdvCompiler: o PDV embutido que espera a config da tela dona. */
+    public static function _pendingHostProbe(): ?self
+    {
+        $p = self::$_hostProbe;
+        return ($p !== null && !$p->_hostProbed) ? $p : null;
+    }
+
     // ── Render inline (MadPdvCompiler) ────────────────────────────────────
 
     public function _renderInlinePdv(array $config): string
@@ -399,7 +501,7 @@ abstract class MadPdvComponent extends MadComponent
 
         // Desenho "a seco" pedido por _restoreLiveClosures(): só interessava a
         // config (com as closures vivas) que a tela acabou de entregar.
-        if ($this->_probingConfig) {
+        if ($this->_probingConfig && !$this->_recoveringCfg) {
             return '';
         }
 
@@ -410,7 +512,8 @@ abstract class MadPdvComponent extends MadComponent
         $cfgSession = $config;
         foreach (self::CLOSURE_KEYS as $k) {
             if (($config[$k] ?? null) instanceof \Closure) {
-                $config[$k]     = SessionClosure::marker($config[$k], $this);
+                // Embutido: a closure é da tela dona (é ela que volta viva).
+                $config[$k]     = SessionClosure::marker($config[$k], $this->_externalHost ?? $this);
                 $cfgSession[$k] = $config[$k];
             }
         }
@@ -420,6 +523,19 @@ abstract class MadPdvComponent extends MadComponent
         // o "venda concluída". A chave fica; a config nova entra no lugar.
         if ($this->pdvCfgKey === '') {
             $this->pdvCfgKey = md5(static::class . '|' . json_encode($config));
+        }
+
+        // Embutido atendendo uma ação: só a config e a chave interessavam.
+        if ($this->_probingHost) {
+            $this->_hostProbed = true;
+            return '';
+        }
+
+        // Config recuperada (a sessão a perdeu): volta para a sessão, sem desenhar.
+        if ($this->_recoveringCfg) {
+            session(['mad_pdv_cfg.' . $this->pdvCfgKey => $cfgSession]);
+            $this->_recoveringCfg = false;
+            return '';
         }
         session([
             'mad_pdv_cfg.' . $this->pdvCfgKey     => $cfgSession,
@@ -461,7 +577,7 @@ abstract class MadPdvComponent extends MadComponent
             'customerOrderBy', 'discountMode', 'discountInput', 'printMode', 'receiptHeader',
             'receiptFooter', 'onFinalized', 'currencySymbol',
             'locale', 'density',
-            'compositeField', 'onCompose', 'itemDescriptionField',
+            'compositeField', 'onCompose', 'itemDescriptionField', 'compositePriceLabel',
         ];
         static $bools = [
             'customerRequired', 'allowPriceOverride', 'allowFraction',
@@ -1109,10 +1225,22 @@ abstract class MadPdvComponent extends MadComponent
                     continue;
                 }
                 foreach ($fields as $attr => $field) {
-                    if ($field !== '' && !in_array($field, $cols, true)) {
-                        $e[] = "coluna '{$field}' ({$attr}) não existe em '"
-                            . $instances[$prop]->getTable() . "'";
+                    if ($field === '' || in_array($field, $cols, true)) {
+                        continue;
                     }
+                    // Marcador do item montável pode ser calculado na própria
+                    // consulta do PDV (`:where` com `addSelect`): vale a coluna
+                    // que a consulta traz, não só a da tabela.
+                    if ($attr === 'composite-field' && $prop === 'model') {
+                        if ($this->_productQuerySelects($field)) {
+                            continue;
+                        }
+                        $e[] = "coluna '{$field}' ({$attr}) não existe em '" . $instances[$prop]->getTable()
+                            . "': crie a coluna ou traga-a calculada no :where (addSelect(['{$field}' => …]))";
+                        continue;
+                    }
+                    $e[] = "coluna '{$field}' ({$attr}) não existe em '"
+                        . $instances[$prop]->getTable() . "'";
                 }
             }
         }
@@ -1198,6 +1326,36 @@ abstract class MadPdvComponent extends MadComponent
         ];
     }
 
+    /**
+     * A consulta do produto (com o `:where` aplicado) seleciona `$alias`?
+     * Lê o SELECT montado — `addSelect(['x' => …])`, `selectRaw('… as x')` —
+     * sem ir ao banco.
+     */
+    protected function _productQuerySelects(string $alias): bool
+    {
+        $fqcn = $this->_resolveModelFqcn($this->model);
+        if ($fqcn === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias)) {
+            return false;
+        }
+        try {
+            $q = $fqcn::query();
+            $this->_applyProductWhere($q);
+            $base    = $q->toBase();
+            $grammar = $base->getGrammar();
+            foreach ((array) $base->columns as $col) {
+                $sql = $col instanceof \Illuminate\Contracts\Database\Query\Expression
+                    ? (string) $col->getValue($grammar)
+                    : (string) $col;
+                if (preg_match('/(?:^|[\s.])[`"\[]?' . $alias . '[`"\]]?\s*$/i', $sql)) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return false;
+    }
+
     /** Column listing com cache por request; falha de schema → [] (pula check). */
     protected function _columnListing(object $model): array
     {
@@ -1236,6 +1394,7 @@ abstract class MadPdvComponent extends MadComponent
             'compose_missing' => 'Este item precisa ser montado e esta tela não tem um montador.',
             'compose_edit'    => 'Montar de novo',
             'compose_failed'  => 'Não foi possível montar o item.',
+            'compose_price'   => 'Monte o seu',
         ];
         $flags = $this->discountFlags();
 
@@ -1273,6 +1432,7 @@ abstract class MadPdvComponent extends MadComponent
                 'searchMinLength'    => max(1, $this->searchMinLength),
                 'searchDebounceMs'   => 300,
                 'composite'          => $this->compositeEnabled(),
+                'compositePriceLabel'=> $this->compositePriceLabel,
             ],
             'payments' => array_values(array_map(
                 fn (PdvPayment $p) => $p->toClientConfig(),

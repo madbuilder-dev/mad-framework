@@ -505,6 +505,13 @@ class MadServiceProvider extends ServiceProvider
             ->get('/app/_mad-blob', MadBlobDownloadController::class)
             ->name('mad.blob');
 
+        // Arquivo PÚBLICO de upload (campo com `public`, #244): sem login e
+        // fora do `web` (sem sessão/cookie — cacheável). Só `_public/…` com
+        // HMAC válido; o controller recusa (404) todo o resto.
+        Route::get('/arquivos/{path}', \Mad\Http\Controllers\MadPublicFileController::class)
+            ->where('path', '_public/.+')
+            ->name('mad.public-file');
+
         // Download dos exports da grade (CSV/XLSX/PDF). Arquivo fora do público,
         // servido só logado; 410 Gone quando já foi purgado (mad:grid:purge-exports).
         Route::middleware(['web', 'mad.auth'])

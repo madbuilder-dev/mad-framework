@@ -4381,6 +4381,91 @@ window.madFloatSelector = [
 })();
 
 /**
+ * Esc fecha a superfície flutuante aberta e devolve o foco ao botão que a abriu
+ * (fw#334). O sino, as mensagens e o menu Exportar da listagem só fechavam no
+ * clique fora; cada menu tratava (ou não) o Esc por conta própria. Vale para
+ * tudo em madFloatSelector — superfície nova já nasce com o Esc.
+ *
+ * Fecha pelo próprio estado do Alpine: o `x-show` da superfície é um nome
+ * (`open`, `exportOpen`…) e vira false. Sem isso (markup escrito à mão com
+ * `data-mad-float`), dispara `mad-float-close` na superfície, para a tela
+ * fechar como quiser. Uma por Esc: a que tem o foco, senão a do botão focado,
+ * senão a última aberta. Roda no bubble do window: a gaveta/modal (capture)
+ * já deixa o Esc para o popup aberto dentro dela.
+ */
+window.madFloatEsc = function (e, doc) {
+    doc = doc || document;
+    if (!e || e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return false;
+    var sel = window.madFloatSelector.join(',');
+    var open = Array.prototype.filter.call(doc.querySelectorAll(sel), function (el) {
+        return el.isConnected && el.getClientRects().length > 0;
+    });
+    if (!open.length) return false;
+    var focus = doc.activeElement;
+    var rootOf = function (el) { return el.parentElement ? el.parentElement.closest('[x-data]') : null; };
+    var pick = open.filter(function (el) { return focus && el.contains(focus); }).pop()
+        || open.filter(function (el) { var r = rootOf(el); return focus && r && r.contains(focus); }).pop()
+        || open[open.length - 1];
+
+    var expr = (pick.getAttribute('x-show') || '').trim();
+    var closed = false;
+    if (/^[A-Za-z_$][\w$]*$/.test(expr) && window.Alpine && typeof window.Alpine.$data === 'function') {
+        try {
+            var data = window.Alpine.$data(pick);
+            if (data && data[expr] === true) { data[expr] = false; closed = true; }
+        } catch (err) { /* sem escopo Alpine */ }
+    }
+    if (!closed) {
+        if (!pick.hasAttribute('data-mad-float')) return false;
+        pick.dispatchEvent(new CustomEvent('mad-float-close', { bubbles: true }));
+    }
+
+    // Foco de volta ao botão que abriu: o que alterna o estado, senão o
+    // primeiro controle do componente fora da superfície.
+    var root = rootOf(pick);
+    if (root && focus && (pick.contains(focus) || focus === doc.body || root.contains(focus))) {
+        var cands = Array.prototype.filter.call(
+            root.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"]), [x-on\\:click], [\\@click], [\\@click\\.stop], [\\@click\\.prevent]'),
+            function (c) { return !pick.contains(c); });
+        var byExpr = expr && cands.filter(function (c) {
+            return Array.prototype.some.call(c.attributes, function (a) {
+                return /^(@click|x-on:click)/.test(a.name) && a.value.indexOf(expr) !== -1;
+            });
+        })[0];
+        var focusable = function (c) { return c && c.matches && c.matches('button, a[href], [tabindex]:not([tabindex="-1"])'); };
+        var trigger = byExpr && (focusable(byExpr) ? byExpr : byExpr.querySelector('button, a[href], [tabindex]:not([tabindex="-1"])'));
+        if (!trigger) trigger = cands.filter(focusable)[0];
+        if (trigger && typeof trigger.focus === 'function') { try { trigger.focus({ preventScroll: true }); } catch (err) { trigger.focus(); } }
+    }
+    return true;
+};
+if (!window._madFloatEscBound) {
+    window._madFloatEscBound = true;
+    window.addEventListener('keydown', function (e) { window.madFloatEsc(e); });
+}
+
+/**
+ * De onde veio o foco (fw#335). O navegador mostra `:focus-visible` também no
+ * CLIQUE em campo de texto; o anel de foco do mad-ui.css é só para quem navega
+ * pelo teclado. Clique/toque põe `data-mad-pointer` no <html>; Tab tira.
+ * Digitar no campo não tira (o anel não pisca enquanto se escreve).
+ */
+window.madFocusSource = function (e, root) {
+    root = root || document.documentElement;
+    if (!e || !root) return;
+    if (e.type === 'pointerdown' || e.type === 'mousedown' || e.type === 'touchstart') {
+        if (!root.hasAttribute('data-mad-pointer')) root.setAttribute('data-mad-pointer', '');
+    } else if (e.type === 'keydown' && e.key === 'Tab') {
+        if (root.hasAttribute('data-mad-pointer')) root.removeAttribute('data-mad-pointer');
+    }
+};
+if (!window._madFocusSourceBound) {
+    window._madFocusSourceBound = true;
+    window.addEventListener('pointerdown', function (e) { window.madFocusSource(e); }, true);
+    window.addEventListener('keydown', function (e) { window.madFocusSource(e); }, true);
+}
+
+/**
  * madToast(options) — dispara um toast Sonner-style.
  *
  * madToast({ message: 'Salvo!', type: 'success' })
@@ -4985,6 +5070,12 @@ document.addEventListener('alpine:init', () => {
             const fi = this.filteredItems;
             if (fi.length === 0) return false;
             return fi.every(item => this.checkedIds.includes(String(item[this.idCol])));
+        },
+        // Caixa do cabeçalho meio marcada (fw#239): parte do que está à mostra
+        // marcada — mesma régua do "marcar todos" (allChecked/toggleAll).
+        get partlyChecked() {
+            const fi = this.filteredItems;
+            return !this.allChecked && fi.some(item => this.checkedIds.includes(String(item[this.idCol])));
         },
 
         isChecked(id) {
@@ -6743,6 +6834,46 @@ window.madConfirmPopover = function (btn, message, options) {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
+   MadNewItems — itens que apareceram numa atualização automática
+   ═══════════════════════════════════════════════════════════════════
+
+   `<mad-grid auto-refresh>` e `<mad-kanban auto-refresh>` tiram uma foto dos
+   ids na tela antes de cada atualização automática e, com a resposta na tela,
+   avisam os que chegaram: evento `mad-new-items` no componente (borbulha até
+   o window), `detail = { ids, source: 'grid'|'kanban', component }`. Ação do
+   usuário (filtro, página, ordem) não dispara: só o ciclo automático.
+
+     window.addEventListener('mad-new-items', (e) => { tocarSom(); });
+
+   ─────────────────────────────────────────────────────────────── */
+const MadNewItems = {
+    /** Ids na tela: `sel` casa os itens, `attr` guarda o id (sem `prefix`). */
+    snapshot(root, sel, attr, prefix = '') {
+        const out = new Set();
+        if (!root || typeof root.querySelectorAll !== 'function') return out;
+        root.querySelectorAll(sel).forEach((el) => {
+            let id = el.getAttribute(attr);
+            if (id === null || id === '') return;
+            if (prefix && id.indexOf(prefix) === 0) id = id.slice(prefix.length);
+            out.add(id);
+        });
+        return out;
+    },
+
+    /** Avisa os ids que não estavam em `before`; devolve a lista. */
+    announce(root, before, sel, attr, detail = {}, prefix = '') {
+        if (!root || !before || typeof root.dispatchEvent !== 'function') return [];
+        const ids = [];
+        MadNewItems.snapshot(root, sel, attr, prefix).forEach((id) => { if (!before.has(id)) ids.push(id); });
+        if (ids.length) {
+            root.dispatchEvent(new CustomEvent('mad-new-items', { bubbles: true, detail: Object.assign({}, detail, { ids }) }));
+        }
+        return ids;
+    },
+};
+if (typeof window !== 'undefined') window.MadNewItems = MadNewItems;
+
+/* ═══════════════════════════════════════════════════════════════════
    madDataGrid — Alpine component para MadDataGrid
    ═══════════════════════════════════════════════════════════════════
 
@@ -6839,6 +6970,9 @@ document.addEventListener('alpine:init', () => {
         editValue:      '',
         _wrapper:       null,
         _cfg:           cfg,
+        // auto-refresh="N": chave declarada — fora do objeto ela cairia no
+        // escopo da página, dividido entre a grade que sai e a que entra.
+        _refreshTimer:  null,
 
         // ── Busca rápida server-side ─────────────────────────────────
         search:         cfg.search || '',
@@ -6897,15 +7031,81 @@ document.addEventListener('alpine:init', () => {
 
             // hide-below: acompanha a largura da tela.
             this._watchNarrow();
+
+            this._startAutoRefresh();
         },
 
         destroy() {
+            this._stopAutoRefresh();
             if (this._narrowOff) this._narrowOff();
             if (_root && _onFocusOut && typeof _root.removeEventListener === 'function') {
                 _root.removeEventListener('focusout', _onFocusOut);
             }
             // A grade saiu da tela: resposta guardada não tem mais onde entrar.
             Object.keys(_held).forEach(k => { delete _held[k]; });
+        },
+
+        // ── Atualização automática (auto-refresh="15") ───────────────
+        // A grade relê a página em que está (onPage), com os filtros e a
+        // ordem de agora. O intervalo e a página vêm do HTML da grade, que
+        // cada resposta redesenha.
+
+        _startAutoRefresh() {
+            this._stopAutoRefresh();
+            const sec = _root && typeof _root.getAttribute === 'function'
+                ? parseInt(_root.getAttribute('data-mad-dg-refresh'), 10) || 0
+                : 0;
+            if (sec < 5 || !this._wrapper) return;
+            this._refreshTimer = setInterval(() => this._autoRefreshTick(), sec * 1000);
+        },
+
+        _stopAutoRefresh() {
+            if (this._refreshTimer) clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+        },
+
+        _autoRefreshTick() {
+            const w = this._wrapper;
+            if (!w || !w.isConnected || !_root || !_root.getAttribute('data-mad-dg-refresh')) { this._stopAutoRefresh(); return; }
+            // Aba em segundo plano, pedido em voo, célula em edição ou alguém
+            // digitando num campo da tela: pula este ciclo.
+            if (document.hidden || w.hasAttribute('data-mad-busy')) return;
+            if (this.editingCell !== null || Object.keys(_held).length) return;
+            const ae = document.activeElement;
+            if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')) return;
+            if (typeof MadWire === 'undefined') return;
+
+            const page   = parseInt(_root.getAttribute('data-mad-dg-page'), 10) || 1;
+            const prefix = _root.getAttribute('data-mad-dg-row-prefix') || '';
+            const key    = _root.getAttribute('data-grid-key') || '';
+            const id     = w.getAttribute('mad-id') || '';
+            const before = MadNewItems.snapshot(_root, 'tr[data-row-id]', 'data-row-id', prefix);
+            MadWire.call(w, 'onPage', [page], {}, { background: true }).then((r) => {
+                if (!r || r.reason === 'unload') return;
+                if (!r.ok) { this._autoRefreshLost(r.reason); return; }
+                const live = id ? document.querySelector('[mad-id="' + _cssId(id) + '"]') : null;
+                const grid = live && typeof live.querySelector === 'function'
+                    ? (live.querySelector('.mad-dg-wrap[data-grid-key="' + _cssId(key) + '"]') || live.querySelector('.mad-dg-wrap'))
+                    : null;
+                if (grid) MadNewItems.announce(grid, before, 'tr[data-row-id]', 'data-row-id', { source: 'grid', component: id }, prefix);
+            });
+        },
+
+        // Sem resposta: para o timer e entrega ao wire, que mantém a faixa na
+        // tela e repete até o servidor responder (mesmo caminho do kanban).
+        _autoRefreshLost(reason) {
+            const sec = _root ? parseInt(_root.getAttribute('data-mad-dg-refresh'), 10) || 0 : 0;
+            const id  = this._wrapper ? this._wrapper.getAttribute('mad-id') : '';
+            if (!id || typeof MadWire.reconnect !== 'function') return;
+            this._stopAutoRefresh();
+            const live = () => document.querySelector('[mad-id="' + _cssId(id) + '"]');
+            const page = () => (_root ? parseInt(_root.getAttribute('data-mad-dg-page'), 10) || 1 : 1);
+            MadWire.reconnect(
+                () => { const el = live(); return el ? MadWire.call(el, 'onPage', [page()], {}, { background: true }) : { ok: false, reason: 'gone' }; },
+                { key: 'grid:' + id, reason, waits: [sec, Math.min(60, sec * 2), Math.min(60, sec * 4)], alive: () => !!live() }
+            ).then(() => {
+                if (this._wrapper && this._wrapper.isConnected && !this._refreshTimer) this._startAutoRefresh();
+            });
         },
 
         // Um listener por limiar: só CRUZAR o limiar dispara (girar o celular,
@@ -9935,19 +10135,16 @@ document.addEventListener('alpine:init', () => {
                 var selected = Array.from(e.target.files || []);
                 if (!selected.length) return;
 
-                // Validar tamanho
-                if (maxSizeKB > 0) {
-                    for (var i = 0; i < selected.length; i++) {
-                        if (selected[i].size > maxSizeKB * 1024) {
-                            var maxLabel = maxSizeKB >= 1024
-                                ? Math.round(maxSizeKB / 1024) + ' MB'
-                                : maxSizeKB + ' KB';
-                            if (typeof madToast === 'function') {
-                                madToast('Arquivo "' + selected[i].name + '" excede ' + maxLabel, 'warning');
-                            }
-                            e.target.value = '';
-                            return;
-                        }
+                // Tipos aceitos e Tamanho máximo da coluna: o `accept` do
+                // <input> só filtra a janela ("Todos os arquivos" e o arquivo
+                // solto no campo passavam). O Salvar confere de novo.
+                var rules = { accept: cfg.accept || '', maxBytes: maxSizeKB > 0 ? maxSizeKB * 1024 : 0 };
+                for (var i = 0; i < selected.length; i++) {
+                    var problem = _madUploadProblem(selected[i], rules);
+                    if (problem) {
+                        _madUploadWarn(problem);
+                        e.target.value = '';
+                        return;
                     }
                 }
 
@@ -10113,12 +10310,14 @@ document.addEventListener('alpine:init', () => {
 
             onSelect: function(e) {
                 var sel = Array.from(e.target.files || []);
+                // Tipos aceitos e Tamanho máximo da coluna (o `accept` do
+                // <input> só filtra a janela). O Salvar confere de novo.
+                var rules = { accept: cfg.accept || '', maxBytes: maxSizeKB > 0 ? maxSizeKB * 1024 : 0 };
                 for (var i = 0; i < sel.length; i++) {
                     var f = sel[i];
-                    if (maxSizeKB > 0 && f.size > maxSizeKB * 1024) {
-                        if (typeof madToast === 'function') {
-                            madToast('Arquivo "' + f.name + '" excede o limite', 'warning');
-                        }
+                    var problem = _madUploadProblem(f, rules);
+                    if (problem) {
+                        _madUploadWarn(problem);
                         continue;
                     }
                     this.files.push(_novo(f));
@@ -10337,6 +10536,18 @@ document.addEventListener('alpine:init', () => {
             ? crypto.randomUUID()
             : (Date.now().toString(36) + Math.random().toString(36).slice(2));
 
+        // Valor de seleção múltipla da linha → lista de chaves: array, JSON
+        // ('["1","2"]') ou vírgula ('1,2') — como o MadForm::selectionKeys().
+        const _dfSelectionKeys = (v) => {
+            if (Array.isArray(v)) return v.map(String).filter(x => x !== '');
+            const s = (v === null || v === undefined) ? '' : String(v).trim();
+            if (s === '') return [];
+            if (s[0] === '[') {
+                try { const a = JSON.parse(s); if (Array.isArray(a)) return a.map(String).filter(x => x !== ''); } catch (e) {}
+            }
+            return s.split(',').map(x => x.trim()).filter(x => x !== '');
+        };
+
         // `field` de coluna e TEMPLATE DE EXIBICAO (`{col}`, `{rel->col}`,
         // `"{a}/{b}"`), nao chave de linha. A linha carregada do servidor traz o
         // template resolvido na propria chave (GridRenderHelpers::normalizeRows /
@@ -10460,6 +10671,29 @@ document.addEventListener('alpine:init', () => {
                 }
             },
 
+            // ── Seleção múltipla no editor (fw#237) ─────────────────────
+            // Grupo de checkbox e busca múltipla postam `campo[]`: a coluna da
+            // linha é `campo`. O valor da linha é a lista por vírgula (o mesmo
+            // contrato do formulário principal); a linha vinda do servidor
+            // pode trazer vírgula ou JSON.
+
+            /** Valor atual de um campo `campo[]` do editor: marcados/escolhidos por vírgula. */
+            _dfMultiValue(container, name) {
+                const out = [];
+                container.querySelectorAll('[name]').forEach(el => {
+                    if (el.getAttribute('name') !== name || el.closest('[data-mad-fl-nested]')) return;
+                    if (el.type === 'checkbox') {
+                        if (el.checked && el.value !== '') out.push(el.value);
+                    } else if (el._madSelect) {
+                        const v = el._madSelect.getValue();
+                        (Array.isArray(v) ? v : _dfSelectionKeys(v)).forEach(x => out.push(String(x)));
+                    } else if (el.tagName === 'SELECT') {
+                        Array.from(el.selectedOptions || []).forEach(o => { if (o.value !== '') out.push(o.value); });
+                    }
+                });
+                return out.join(',');
+            },
+
             // ── Auto-bind: conecta inputs [name] ao formData ────────────
 
             _bindFormInputs() {
@@ -10473,8 +10707,11 @@ document.addEventListener('alpine:init', () => {
                     if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
 
                     // Listener bidirecional: input → formData
+                    const multi = /\[\]$/.test(field) ? field.slice(0, -2) : null;
                     const sync = () => {
-                        if (inp.type === 'checkbox') {
+                        if (multi) {
+                            this.formData[multi] = this._dfMultiValue(container, field);
+                        } else if (inp.type === 'checkbox') {
                             this.formData[field] = inp.checked ? (inp.value || '1') : '';
                         } else {
                             this.formData[field] = inp.value;
@@ -10498,10 +10735,33 @@ document.addEventListener('alpine:init', () => {
             _syncFormInputs() {
                 const container = this._getFieldsContainer();
                 if (!container) return;
+                const doneGroups = new Set();
 
                 container.querySelectorAll('[name]').forEach(inp => {
                     const field = inp.getAttribute('name');
                     if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
+
+                    // ── Seleção múltipla (`campo[]`): marca o que a linha tem.
+                    const multi = /\[\]$/.test(field) ? field.slice(0, -2) : null;
+                    if (multi) {
+                        const keys = _dfSelectionKeys(this.formData[multi]);
+                        if (inp.type === 'checkbox') {
+                            // O grupo inteiro de uma vez, e só então o `change`:
+                            // avisar caixa a caixa fazia o listener do bind ler
+                            // o grupo pela metade e regravar a linha.
+                            if (doneGroups.has(field)) return;
+                            doneGroups.add(field);
+                            const group = Array.from(container.querySelectorAll('[name]'))
+                                .filter(el => el.type === 'checkbox' && el.getAttribute('name') === field && !el.closest('[data-mad-fl-nested]'));
+                            group.forEach(el => { el.checked = keys.includes(el.value); });
+                            group.forEach(el => el.dispatchEvent(new Event('change', { bubbles: true })));
+                        } else if (inp._madSelect) {
+                            inp._madSelect.setValue(keys, true);
+                        } else if (inp.tagName === 'SELECT') {
+                            Array.from(inp.options || []).forEach(o => { o.selected = keys.includes(o.value); });
+                        }
+                        return;
+                    }
 
                     const val = this.formData[field] ?? '';
 
@@ -10687,6 +10947,18 @@ document.addEventListener('alpine:init', () => {
                         const field = inp.getAttribute('name');
                         if (!field || field.startsWith('__') || inp.type === 'file' || inp.closest('[data-mad-fl-nested]')) return;
                         let v;
+                        const multi = /\[\]$/.test(field) ? field.slice(0, -2) : null;
+                        if (multi) {
+                            // Marcados/escolhidos de fábrica, por vírgula.
+                            const on = [];
+                            container.querySelectorAll('[name]').forEach(el => {
+                                if (el.getAttribute('name') !== field) return;
+                                if (el.type === 'checkbox') { if (el.defaultChecked) on.push(el.value); }
+                                else if (el.tagName === 'SELECT') Array.from(el.options || []).forEach(o => { if (o.defaultSelected && o.value !== '') on.push(o.value); });
+                            });
+                            if (on.length) d[multi] = on.join(',');
+                            return;
+                        }
                         if (inp.type === 'checkbox') {
                             v = inp.defaultChecked ? (inp.value || '1') : '';
                         } else if (inp.type === 'radio') {
@@ -10725,6 +10997,13 @@ document.addEventListener('alpine:init', () => {
                 container.querySelectorAll('[name]').forEach(inp => {
                     const field = inp.getAttribute('name');
                     if (!field || field.startsWith('__') || inp.closest('[data-mad-fl-nested]')) return;
+
+                    // Seleção múltipla (`campo[]`): a coluna é `campo` (fw#237).
+                    const multi = /\[\]$/.test(field) ? field.slice(0, -2) : null;
+                    if (multi) {
+                        this.formData[multi] = this._dfMultiValue(container, field);
+                        return;
+                    }
 
                     // Inputs de arquivo: o valor (.value = "C:\fakepath\…") não serve.
                     // O File real é capturado em addOrUpdate (_captureRowFiles); aqui
@@ -11583,7 +11862,15 @@ document.addEventListener('alpine:init', () => {
                 if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')) return;
                 if (typeof MadWire === 'undefined') return;
 
+                // Cartões que chegarem nesta volta viram o evento mad-new-items.
+                const news   = typeof window !== 'undefined' ? window.MadNewItems : null;
+                const before = news ? news.snapshot(w, '[data-card-id]', 'data-card-id') : null;
                 MadWire.call(w, 'onReload', [], {}, { background: true }).then((r) => {
+                    if (r && r.ok && news) {
+                        const id   = w.getAttribute('mad-id') || '';
+                        const live = id ? document.querySelector('[mad-id="' + _kbCss(id) + '"]') : null;
+                        if (live) news.announce(live, before, '[data-card-id]', 'data-card-id', { source: 'kanban', component: id });
+                    }
                     if (!r || r.ok || r.reason === 'unload') return;
                     this._autoRefreshLost(r.reason);
                 });

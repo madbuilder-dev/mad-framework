@@ -165,6 +165,12 @@ final class SecretMasker
             if (in_array($n, ['cookie', 'set-cookie', 'authorization', 'proxy-authorization', 'x-csrf-token', 'x-xsrf-token'], true)
                 || str_contains($n, 'auth') || self::isSecretKey($n)) {
                 $headers[$name] = is_array($value) ? array_fill(0, count($value), self::MASK) : self::MASK;
+            } elseif (in_array($n, ['referer', 'referrer', 'origin'], true)) {
+                // O Referer é a URL da página anterior: o token dela (query ou
+                // caminho de página site) vai junto (mad-framework#349).
+                $headers[$name] = is_array($value)
+                    ? array_map(static fn ($v) => is_string($v) ? self::maskUri($v) : $v, $value)
+                    : (is_string($value) ? self::maskUri($value) : $value);
             }
         }
 
@@ -199,12 +205,16 @@ final class SecretMasker
     }
 
     /**
-     * URI/URL: mascara a query (a parte depois do `?`) e a chave do endereço de
+     * URI/URL: mascara a query (a parte depois do `?`), a chave do endereço de
      * um webhook recebido (`/api/webhooks/<slug>/<chave>`), que identifica o
-     * endpoint da unidade e, na verificação por token na URL, É a credencial.
+     * endpoint da unidade e, na verificação por token na URL, É a credencial,
+     * e os parâmetros do caminho de uma página `site` (`link/{slug}`), que
+     * carregam o token do link de convite/avaliação (mad-framework#349).
      */
     public static function maskUri(string $uri): string
     {
+        $uri = self::maskSitePath($uri);
+
         if (str_contains($uri, '/api/webhooks/')) {
             $uri = (string) preg_replace(
                 '#(/api/webhooks/[a-z0-9][a-z0-9-]{0,79}/)[A-Za-z0-9]{24,64}(?=$|[/?\#])#',
@@ -225,6 +235,90 @@ final class SecretMasker
         }
 
         return substr($uri, 0, $q + 1) . self::maskQueryString($rest) . $frag;
+    }
+
+    /**
+     * Caminho de página `site` com parâmetro (`link/{slug}` → `link/••••`).
+     * Aceita caminho sem barra (`$request->path()`), URI (`/link/x?a=1`) e URL
+     * absoluta (o `Referer`). O valor do parâmetro é tratado como credencial:
+     * a página pública não tem como dizer se ele é slug de conteúdo ou token.
+     */
+    public static function maskSitePath(string $uri): string
+    {
+        if ($uri === '' || ! preg_match('#^((?:[a-z][a-z0-9+.\-]*:)?//[^/?\#]*)?([^?\#]*)(.*)$#is', $uri, $m)) {
+            return $uri;
+        }
+        [, $origin, $path, $rest] = $m + [1 => '', 2 => '', 3 => ''];
+        $trim = trim($path, '/');
+        if ($trim === '') {
+            return $uri;
+        }
+        $segs = explode('/', $trim);
+
+        foreach (self::sitePathPatterns() as $pattern) {
+            $pat = explode('/', $pattern);
+            if (count($pat) !== count($segs)) {
+                continue;
+            }
+            $out = [];
+            foreach ($pat as $i => $p) {
+                if (preg_match('/^\{[^}]+\}$/', $p)) {
+                    $out[] = self::MASK;
+                } elseif ($p === $segs[$i]) {
+                    $out[] = $p;
+                } else {
+                    continue 2;
+                }
+            }
+            $lead  = str_starts_with($path, '/') ? '/' : '';
+            $trail = (strlen($path) > 1 && str_ends_with($path, '/')) ? '/' : '';
+
+            return $origin . $lead . implode('/', $out) . $trail . $rest;
+        }
+
+        return $uri;
+    }
+
+    /**
+     * Caminhos de página `site` com parâmetro: os registrados nesta execução
+     * (SiteRegistry) e, com as rotas em cache (sem o routes/web.php rodar), os
+     * das rotas `site.*` do roteador.
+     *
+     * @return list<string>
+     */
+    /** @var array{0: ?string, 1: list<string>} [chave da coleção de rotas, caminhos site.*] */
+    private static array $siteRouteMemo = [null, []];
+
+    private static function sitePathPatterns(): array
+    {
+        $out = [];
+        if (class_exists(\Mad\Site\SiteRegistry::class)) {
+            foreach (\Mad\Site\SiteRegistry::all() as $page) {
+                $out[] = trim((string) $page['path'], '/');
+            }
+        }
+        try {
+            if (function_exists('app') && app()->bound('router')) {
+                // Memo por coleção de rotas: o log e a telemetria chamam isto
+                // algumas vezes por requisição, e a coleção não muda nela.
+                $routes = app('router')->getRoutes();
+                $key    = spl_object_id($routes) . ':' . $routes->count();
+                if (self::$siteRouteMemo[0] !== $key) {
+                    $found = [];
+                    foreach ($routes->getRoutes() as $route) {
+                        if (str_starts_with((string) $route->getName(), 'site.')) {
+                            $found[] = trim($route->uri(), '/');
+                        }
+                    }
+                    self::$siteRouteMemo = [$key, $found];
+                }
+                array_push($out, ...self::$siteRouteMemo[1]);
+            }
+        } catch (\Throwable) {
+            // sem roteador (script avulso): fica com o SiteRegistry
+        }
+
+        return array_values(array_unique(array_filter($out, static fn (string $p): bool => str_contains($p, '{'))));
     }
 
     /** String com JSON (objeto/lista) dentro: mascara por dentro; senão, devolve igual. */

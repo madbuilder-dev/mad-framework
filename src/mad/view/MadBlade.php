@@ -689,9 +689,17 @@ class MadBladeCompiler extends BladeCompiler
                     // dentro de @foreach virava link morto.
                     // Nessa forma o "::method" não é parseável — use method="…".
                     $navClassExpr = null;
-                    if ($m[1] === ':' || (strpos($val, '{{') !== false && strpos($val, '::') === false)) {
+                    // `:navigate="'Tela'"` / `:navigate="'Tela::onEdit'"`: o bind é
+                    // só uma string literal — vale como o atributo sem bind, e o
+                    // `::método` passa a ser lido (#356).
+                    $navBind = $m[1] === ':';
+                    if ($navBind && preg_match('/^\s*([\'"])([A-Za-z_\\\\][\w\\\\]*(?:::\w+(?:\(\s*\))?)?)\1\s*$/', $val, $navLit)) {
+                        $val = $navLit[2];
+                        $navBind = false;
+                    }
+                    if ($navBind || (strpos($val, '{{') !== false && strpos($val, '::') === false)) {
                         $segs = [];
-                        foreach (preg_split('/(\{\{.*?\}\})/s', $m[1] === ':' ? '{{'.$val.'}}' : $val,
+                        foreach (preg_split('/(\{\{.*?\}\})/s', $navBind ? '{{'.$val.'}}' : $val,
                                             -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) as $seg) {
                             $segs[] = preg_match('/^\{\{\s*(.+?)\s*\}\}$/s', $seg, $sm)
                                 ? '(' . $sm[1] . ')'
@@ -770,12 +778,13 @@ class MadBladeCompiler extends BladeCompiler
                     $navClassExpr ??= "'" . addslashes($navClass) . "'";
                     // Botão que abre OUTRA tela: quem manda na permissão é a tela
                     // de DESTINO (é ela que o perfil marca), não a que contém o
-                    // botão. Sem método nomeado, abrir um formulário é abrir um
-                    // cadastro em branco — ou seja, INCLUIR.
+                    // botão. Sem método nomeado, `@open`: a tela de destino decide
+                    // em execução — formulário abre cadastro em branco (INCLUIR),
+                    // listagem/dashboard só abrem (#356, ActionGuard::decideOpen).
                     if ($_wantsPerm) {
                         $compiled[] = '"permClass"=>' . $navClassExpr;
                         $compiled[] = '"permAction"=>"'
-                            . ($navMethodExplicito ? addslashes($navMethod) : 'insert') . '"';
+                            . ($navMethodExplicito ? addslashes($navMethod) : '@open') . '"';
                     }
                     $compiled[] = '"attrs"=>\\Mad\\Ui\\MadAction::to(' . $navClassExpr . ',\'' . addslashes($navMethod) . '\',' . $navParamsExpr . ')->auto()';
                     continue;
@@ -1247,7 +1256,14 @@ HTML;
         // Strip comments + collapse whitespace
         $css = preg_replace('!/\*.*?\*/!s', '', $css);
         $css = preg_replace('/\s+/', ' ', trim($css));
-        $css = preg_replace('/\s*([{}:;,>+~])\s*/', '$1', $css);
+        // `:` e `+` ficam de fora: no SELETOR o espaço antes de `:` é o
+        // combinador de descendente (`.a :is(.b)` ≠ `.a:is(.b)`), e dentro de
+        // calc()/clamp()/min()/max() o `+` exige espaço em volta (fw#350).
+        $css = preg_replace('/\s*([{};,>~])\s*/', '$1', $css);
+        $css = preg_replace(['/\(\s+/', '/\s+\)/'], ['(', ')'], $css);
+        // Bloco de declarações (`{…}` sem chave dentro): ali o `:` separa
+        // propriedade e valor e pode colar. Seletor e @media ficam como estão.
+        $css = preg_replace_callback('/\{[^{}]*\}/', static fn (array $m): string => preg_replace('/\s*:\s*/', ':', $m[0]), $css);
 
         if ($scope === false) {
             $hash = substr(md5_file($resolved), 0, 8);
@@ -1262,6 +1278,29 @@ HTML;
         return "<span {$attr} style=\"display:contents;\">"
              . "<style data-css-src=\"" . htmlspecialchars(basename($path)) . "\" data-scope=\"{$hash}\">{$scopedCss}</style>"
              . "</span>";
+    }
+
+    /** Separa a lista de seletores nas vírgulas de fora de parênteses. */
+    private static function _splitSelectors(string $selectors): array
+    {
+        $parts = [];
+        $depth = 0;
+        $start = 0;
+        $len   = strlen($selectors);
+        for ($i = 0; $i < $len; $i++) {
+            $c = $selectors[$i];
+            if ($c === '(') {
+                $depth++;
+            } elseif ($c === ')') {
+                $depth = max(0, $depth - 1);
+            } elseif ($c === ',' && $depth === 0) {
+                $parts[] = substr($selectors, $start, $i - $start);
+                $start   = $i + 1;
+            }
+        }
+        $parts[] = substr($selectors, $start);
+
+        return $parts;
     }
 
     private static function _resolveCssPath(string $path): ?string
@@ -1326,8 +1365,9 @@ HTML;
             if ($bodyEnd === -1) break;
             $body = substr($css, $end, $bodyEnd - $end + 1);
 
-            // Prefix each comma-separated selector
-            $parts = array_map('trim', explode(',', $selectors));
+            // Prefix each comma-separated selector (a vírgula de dentro de
+            // `:is(…)`/`:not(…)`/`:where(…)` não separa seletor).
+            $parts = array_map('trim', self::_splitSelectors($selectors));
             $prefixed = array_map(function (string $sel) use ($prefix): string {
                 if ($sel === '' || preg_match('/^(:root|html|body)\b/', $sel)) {
                     return $sel;
