@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.162.1] — 2026-10-14
+
+### Correções
+
+- **Documentos (PDF):** a ação da listagem ou o botão do formulário que abre um documento (`navigate="MeuDocumento::show({id})"`) mostrava o PDF como texto ilegível dentro da aba do sistema. Agora o documento abre numa aba do navegador, e qualquer arquivo devolvido por uma navegação também.
+
 ## [5.162.0] — 2026-10-14
 
 ### Novidades

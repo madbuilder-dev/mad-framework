@@ -482,6 +482,38 @@ const Mad = {
     },
 
     /**
+     * A resposta é um ARQUIVO (PDF, planilha, imagem) e não uma tela? Vale para
+     * `Content-Disposition: attachment` e para qualquer tipo que não seja HTML,
+     * texto puro, JavaScript ou JSON. Só respostas de sucesso: erro segue o fluxo de erro.
+     */
+    _fileResponse(res) {
+        if (!res || !res.ok || !res.headers) return false;
+        const cd = String(res.headers.get('Content-Disposition') || '');
+        if (/^\s*attachment/i.test(cd)) return true;
+        const ct = String(res.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        if (ct === '') return false;
+        return !/^(text\/(html|plain|javascript)|application\/(json|javascript|xhtml\+xml|[\w.-]+\+json))$/.test(ct);
+    },
+
+    /**
+     * Abre um DOCUMENTO (o PDF de `/app/docs/...`, um arquivo) numa aba do
+     * navegador. É o que o clique de uma ação que aponta para um documento chama
+     * (MadAction::jsDocument) e o que a navegação faz quando a resposta é
+     * arquivo: encaixada na aba do app, ela aparecia como texto ilegível.
+     * Navegador que bloqueia a aba nova: abre no lugar (o Voltar traz o app).
+     */
+    openDocument(url) {
+        if (!url) return;
+        let win = null;
+        try { win = window.open(url, '_blank'); } catch (e) { win = null; }
+        if (win) {
+            try { win.opener = null; } catch (e) {}
+            return;
+        }
+        window.location.assign(url);
+    },
+
+    /**
      * Resposta de erro do servidor (500 com a página de erro do Laravel, fatal
      * do PHP, 4xx com HTML). Antes esse corpo era injetado no #mad_main e
      * destruía o layout — ou sumia. Agora abre o MadErrorModal (90vw × 90vh)
@@ -513,6 +545,7 @@ const Mad = {
         try {
             const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.navigate' })) return;
             // opts.tab: veio de link de menu → aba nova (quando as abas estao ligadas).
@@ -545,6 +578,7 @@ const Mad = {
         try {
             const res  = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.load' })) return;
 
@@ -818,6 +852,7 @@ const Mad = {
         try {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const text = await res.text();
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.get' })) return;
 
@@ -878,6 +913,7 @@ const Mad = {
         try {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
             if (this._errorFragment(html, res, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
@@ -942,6 +978,7 @@ const Mad = {
         try {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const text = await res.text();
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.rowAttach' })) return;
             if (this._deniedFragment(text, res)) return;
@@ -1084,6 +1121,7 @@ const Mad = {
         try {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.go' })) return;
 

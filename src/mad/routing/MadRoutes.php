@@ -54,6 +54,18 @@ class MadRoutes
     private static array $siteRoutes = [];
 
     /**
+     * Classes de DOCUMENTO (PDF) registradas por exposeDocument().
+     *
+     * O clique que abre um documento não pode seguir o caminho das telas: a
+     * navegação do app busca a URL e encaixa a resposta na aba, e um PDF entrava
+     * ali como texto. Quem monta o clique (MadAction) pergunta aqui se o destino
+     * é documento e abre o arquivo numa aba do navegador.
+     *
+     * @var array<string, true>
+     */
+    private static array $documents = [];
+
+    /**
      * URIs já registradas por este registrador (`app/<slug>`, `app/<Classe>`).
      * Impede o alias pelo nome da classe de tomar o caminho de um slug.
      *
@@ -129,6 +141,8 @@ class MadRoutes
      */
     public static function exposeDocument(string $key, string $class, array $opts = []): void
     {
+        self::$documents[$class] = true;
+
         foreach (self::slugsFor($key, $opts) as $slug) {
             Route::get('/app/docs/' . $slug . '/{id}', [MadAppController::class, 'document'])
                 ->where('id', '[A-Za-z0-9_-]+')
@@ -347,6 +361,24 @@ class MadRoutes
     }
 
     // ─── Consultas ────────────────────────────────────────────────────────────
+
+    /**
+     * A classe é uma página de DOCUMENTO (PDF), registrada por exposeDocument()?
+     * Aceita o nome curto ou o nome completo (com namespace) da classe.
+     */
+    public static function isDocument(string $class): bool
+    {
+        $class = ltrim(trim($class), '\\');
+        if ($class === '') {
+            return false;
+        }
+        if (isset(self::$documents[$class])) {
+            return true;
+        }
+        $pos = strrpos($class, '\\');
+
+        return $pos !== false && isset(self::$documents[substr($class, $pos + 1)]);
+    }
 
     /** List da qual um form de resource herda permissão (PermissionGate). */
     public static function resourceFormList(string $formClass): ?string

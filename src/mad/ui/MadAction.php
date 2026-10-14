@@ -113,6 +113,18 @@ class MadAction
         return false;
     }
 
+    /**
+     * O destino é uma página de DOCUMENTO (PDF) — MadRoutes::exposeDocument()?
+     *
+     * Documento não é tela: o clique abre o arquivo numa aba do navegador. Pela
+     * navegação das telas (Mad.go/Mad.get) a resposta era encaixada na aba do
+     * app e o PDF aparecia como texto ilegível.
+     */
+    public function isDocument(): bool
+    {
+        return \Mad\Routing\MadRoutes::isDocument($this->class);
+    }
+
     // ── Params com forward ──────────────────────────────────────────────────
 
     /**
@@ -174,9 +186,18 @@ class MadAction
         return $this->url();
     }
 
+    /** JS que abre o DOCUMENTO numa aba do navegador: Mad.openDocument(url). */
+    public function jsDocument(): string
+    {
+        return "Mad.openDocument('" . addslashes($this->webUrl()) . "')";
+    }
+
     /** JS para navegação completa: Mad.go(cls,method,params,friendlyUrl). */
     public function js(): string
     {
+        if ($this->isDocument()) {
+            return $this->jsDocument();
+        }
         $params = $this->paramsToJsObject($this->allParams());
         return "Mad.go('" . addslashes($this->class) . "','" . addslashes($this->method)
              . "'," . $params . ",'" . addslashes($this->webUrl()) . "')";
@@ -185,6 +206,9 @@ class MadAction
     /** JS para chamada parcial via Mad.get() (modal/drawer). */
     public function jsGet(): string
     {
+        if ($this->isDocument()) {
+            return $this->jsDocument();
+        }
         $classMethod = $this->class . '@' . $this->method;
         $paramsJson  = $this->paramsToJsObject($this->allParams());
         $web = $this->webUrl();
@@ -195,6 +219,9 @@ class MadAction
     /** JS para overlay via Mad.overlay(). */
     public function jsOverlay(): string
     {
+        if ($this->isDocument()) {
+            return $this->jsDocument();
+        }
         $classMethod = $this->class . '@' . $this->method;
         $paramsJson  = $this->paramsToJsObject($this->allParams());
         $web = $this->webUrl();
@@ -208,6 +235,9 @@ class MadAction
      */
     public function jsRowAttach(): string
     {
+        if ($this->isDocument()) {
+            return $this->jsDocument();
+        }
         $classMethod = $this->class . '@' . $this->method;
         $paramsJson  = $this->paramsToJsObject($this->allParams());
         return "Mad.rowAttach(this, '" . $classMethod . "', " . $paramsJson
