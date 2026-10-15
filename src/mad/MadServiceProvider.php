@@ -162,14 +162,20 @@ class MadServiceProvider extends ServiceProvider
 
     /**
      * Rotinas (`app/config/routines.json`, Mad\Routine): a exclusão do registro
-     * de origem desfaz o que a rotina gerou (`on_delete`). Um listener curinga,
-     * que não carrega classe nenhuma no boot e lê o arquivo na hora — sem o
-     * arquivo, volta sem consultar nada. O gatilho "ao salvar" mora no
+     * de origem desfaz o que a rotina gerou (`on_delete`). O desfazer tem de
+     * rodar ANTES do guard de integridade que o model gerado registra no
+     * `booted()` (filho existe = recusa): listener ESPECÍFICO por origem, pelo
+     * nome da classe (nada é carregado no boot), registrado agora e no
+     * `eloquent.booting` de cada model; o curinga fica de reserva. Sem o
+     * arquivo, nada é registrado nem consultado. O gatilho "ao salvar" mora no
      * `MadForm::save()`.
      */
     private function bootRoutines(): void
     {
-        Event::listen('eloquent.deleting: *', [\Mad\Routine\RoutineTriggers::class, 'deleting']);
+        $events = $this->app['events'];
+        \Mad\Routine\RoutineTriggers::listen($events);
+        $events->listen('eloquent.booting: *', [\Mad\Routine\RoutineTriggers::class, 'booting']);
+        $events->listen('eloquent.deleting: *', [\Mad\Routine\RoutineTriggers::class, 'deleting']);
     }
 
     /**

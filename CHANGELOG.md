@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.164.1] — 2026-10-15
+
+### Correções
+
+- **Rotinas:** excluir um registro cuja rotina gerou registros ligados a ele era recusado com "Não é possível excluir este registro: ele está em uso em outra parte do sistema.", e o que a rotina gerou não era desfeito. Agora a rotina desfaz o que gerou e a exclusão segue; se houver registro ligado que a rotina não gerou, a exclusão continua recusada e nada é desfeito.
+
 ## [5.164.0] — 2026-10-15
 
 ### Novidades
