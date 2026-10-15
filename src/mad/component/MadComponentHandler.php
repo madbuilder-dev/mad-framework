@@ -1081,7 +1081,10 @@ class MadComponentHandler
             // Não afrouxa a segurança: as 4 ações exigem o state CRIPTOGRAFADO
             // que o componente emitiu (model/FK/colunas viajam assinados) e
             // passam pelo PermissionGate como qualquer outra action.
-            return self::_isDbBlocksAction($method);
+            // Mesma razão: `onRunRoutine` vem do trait Mad\Routine\RunsRoutines,
+            // içado na base para toda tela ter o "Executar rotina". Só roda
+            // rotina marcada para botão e passa pelo PermissionGate (Editar).
+            return self::_isDbBlocksAction($method) || $method === 'onRunRoutine';
         }
 
         return true;

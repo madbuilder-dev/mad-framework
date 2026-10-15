@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.164.0] — 2026-10-15
+
+### Novidades
+
+- **Rotinas:** o app passa a executar ações automáticas entre tabelas configuradas na tela de Rotinas: criar, atualizar e acumular registros a partir de um cadastro, refazendo tudo ao salvar e desfazendo ao excluir, com uma mensagem clara quando algo impede a operação.
+- **Rotinas:** um botão do formulário ou uma ação da listagem pode executar a rotina com `onRunRoutine`, para lançar de novo, refazer ou desfazer o que ela gerou.
+- **Rotinas:** o comando `php artisan mad:routine:install` prepara o banco do app para registrar o que cada rotina gerou.
+
 ## [5.163.0] — 2026-10-15
 
 ### Novidades

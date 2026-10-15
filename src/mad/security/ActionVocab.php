@@ -78,6 +78,7 @@ final class ActionVocab
             'onConfirmAll',
             'onRejectGroup',
             'onUnmatch',
+            'onRunRoutine',        // botão / ação de linha "Executar rotina" (Mad\Routine)
         ],
         'delete' => [
             'onDelete',

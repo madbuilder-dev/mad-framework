@@ -227,6 +227,9 @@ class MadForm
     /** Nome reservado, em `$_known`, do que a TELA declarou: campos e colunas dos detalhes (não é nome de campo). */
     private const DECLARED = '@fields';
 
+    /** Nome reservado, em `$_known`, do registro que o `save()` gravou por último (`tabela#chave`). */
+    private const SAVED = '@saved';
+
     /** Tipo com que `<mad-html-editor-field>` se registra (MadFormRegistry::register). */
     private const HTML_EDITOR = 'html-editor';
 
@@ -547,6 +550,7 @@ class MadForm
         }
         if ($ref !== null) {
             $this->_known[self::LOADED] = ['p' => $ref, 'k' => $loaded];
+            unset($this->_known[self::SAVED]); // abriu outro registro: vale este
         }
 
         // Os extras são do código da tela (padrões, conversões de unidade).
@@ -5058,7 +5062,31 @@ class MadForm
         }
         $this->_applyBaseUpdates($record, true);
         $this->_afterStore($record);
+        if (($savedRef = self::_recordRef($record)) !== null) {
+            $this->_known[self::SAVED] = ['p' => $savedRef, 'k' => []];
+        }
+        // Rotinas "ao salvar" do registro: depois das linhas filhas gravadas,
+        // dentro da transação do onSave() da página (Mad\Routine).
+        \Mad\Routine\RoutineTriggers::afterSave($record);
         return $record;
+    }
+
+    /**
+     * Chave do registro que este formulário abriu (`fill($registro)`) ou gravou
+     * por último (`save()`), lida do estado da tela — nunca do navegador. Null
+     * em cadastro novo ainda não salvo.
+     */
+    public function loadedRecordKey(): ?string
+    {
+        foreach ([self::SAVED, self::LOADED] as $name) {
+            $ref = (string) ($this->_known[$name]['p'] ?? '');
+            $pos = strrpos($ref, '#');
+            if ($pos !== false && $pos < strlen($ref) - 1) {
+                return substr($ref, $pos + 1);
+            }
+        }
+
+        return null;
     }
 
     /**

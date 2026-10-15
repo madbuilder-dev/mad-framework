@@ -107,6 +107,10 @@ abstract class MadComponent
      */
     use \Mad\Form\MadDbBlocksTrait;
 
+    // Ação `onRunRoutine` (botão / ação de linha "Executar rotina"): toda tela
+    // ganha, como os blocos acima; o handler a libera pelo nome.
+    use \Mad\Routine\RunsRoutines;
+
     /** Tipos de wrapper de página. Use nas subclasses:
      *   protected static string $wrapper = self::MODAL;
      *

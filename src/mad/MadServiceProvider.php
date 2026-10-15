@@ -100,6 +100,7 @@ class MadServiceProvider extends ServiceProvider
         $this->commands([
             WebhookCommand::class,
             WebhookTickCommand::class,
+            \Mad\Console\RoutineInstallCommand::class,
         ]);
     }
 
@@ -156,6 +157,19 @@ class MadServiceProvider extends ServiceProvider
         $this->bootTrace();
         $this->bootSchedulePause();
         $this->bootWebhooks();
+        $this->bootRoutines();
+    }
+
+    /**
+     * Rotinas (`app/config/routines.json`, Mad\Routine): a exclusão do registro
+     * de origem desfaz o que a rotina gerou (`on_delete`). Um listener curinga,
+     * que não carrega classe nenhuma no boot e lê o arquivo na hora — sem o
+     * arquivo, volta sem consultar nada. O gatilho "ao salvar" mora no
+     * `MadForm::save()`.
+     */
+    private function bootRoutines(): void
+    {
+        Event::listen('eloquent.deleting: *', [\Mad\Routine\RoutineTriggers::class, 'deleting']);
     }
 
     /**
