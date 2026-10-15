@@ -18,6 +18,12 @@ namespace Mad\Support;
  *   - multi-file mode="comma": CSV de paths → vira galeria naturalmente
  *   - JSON array de paths → idem
  *
+ * Texto da miniatura (dica ao parar o mouse, `alt` e legenda do lightbox):
+ * o nome do arquivo quando existe (storage="disk", URL). Imagem gravada no
+ * banco (base64/data URI) não tem nome — sai SEM texto, nunca um rótulo
+ * genérico. `<mad-col media-caption="...">` troca esse texto (ver
+ * GridColumn::mediaCaption).
+ *
  * O HTML sai RAW no grid (GridColumn::renderValue tem branch dedicado antes
  * do escape) — todo valor dinâmico aqui é escapado com htmlspecialchars.
  * O clique é resolvido pelo lightbox do runtime (mad-ui.js, delegação em
@@ -54,12 +60,26 @@ class MadMediaFormatter
         return str_starts_with($s, 'data:') || self::looksLikeBareBase64($s);
     }
 
-    /** Entry point do GridColumn. Devolve HTML pronto (ou '' quando vazio). */
-    public static function render(mixed $value, string $mode): string
+    /**
+     * Entry point do GridColumn. Devolve HTML pronto (ou '' quando vazio).
+     *
+     * @param string $caption Texto que substitui o nome do arquivo na dica, no
+     *                        `alt`, na legenda do lightbox e no texto do link
+     *                        (`media-caption` da coluna, já resolvido contra a
+     *                        linha). '' = nome do arquivo, ou nada quando não há.
+     */
+    public static function render(mixed $value, string $mode, string $caption = ''): string
     {
         $items = self::items($value);
         if (empty($items)) {
             return '';
+        }
+        $caption = trim($caption);
+        if ($caption !== '') {
+            foreach ($items as &$item) {
+                $item['name'] = $caption;
+            }
+            unset($item);
         }
 
         return match (strtolower(trim($mode))) {
@@ -75,7 +95,22 @@ class MadMediaFormatter
     public static function renderPlain(mixed $value): string
     {
         $items = self::items($value);
-        return implode(', ', array_map(fn ($i) => $i['name'], $items));
+        return implode(', ', array_map(fn ($i) => self::label($i), $items));
+    }
+
+    /**
+     * Rótulo do item onde o texto não pode faltar (export, texto visível do
+     * link): o nome, ou "imagem"/"arquivo" quando o arquivo não tem nome.
+     * Dica, `alt` e legenda NÃO usam isto — lá, sem nome, sem texto.
+     *
+     * @param array{url:string, downloadUrl:string, isImage:bool, name:string} $item
+     */
+    private static function label(array $item): string
+    {
+        if ($item['name'] !== '') {
+            return $item['name'];
+        }
+        return $item['isImage'] ? 'imagem' : 'arquivo';
     }
 
     // ── Parsing do valor da coluna ─────────────────────────────────────────
@@ -84,6 +119,7 @@ class MadMediaFormatter
      * Normaliza o valor da coluna numa lista de itens
      * `{url, downloadUrl, isImage, name}`. `url` vazio = sem como servir
      * (blob não-imagem sem endpoint) — vira chip de arquivo sem link.
+     * `name` vazio = arquivo gravado no banco, que não guarda nome.
      *
      * @return array<int, array{url:string, downloadUrl:string, isImage:bool, name:string}>
      */
@@ -135,7 +171,7 @@ class MadMediaFormatter
                 'url'         => $raw,
                 'downloadUrl' => '',
                 'isImage'     => str_starts_with($raw, 'data:image'),
-                'name'        => 'imagem',
+                'name'        => '',
             ];
         }
 
@@ -149,10 +185,10 @@ class MadMediaFormatter
                     'url'         => 'data:' . $mime . ';base64,' . preg_replace('/\s+/', '', $raw),
                     'downloadUrl' => '',
                     'isImage'     => true,
-                    'name'        => 'imagem',
+                    'name'        => '',
                 ];
             }
-            return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'name' => 'arquivo'];
+            return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'name' => ''];
         }
 
         // URL absoluta
@@ -211,7 +247,9 @@ class MadMediaFormatter
     /** @param array{url:string, downloadUrl:string, isImage:bool, name:string} $item */
     private static function renderThumb(array $item, string $cls, string $group = ''): string
     {
-        $name = htmlspecialchars($item['name'], ENT_QUOTES);
+        $name  = htmlspecialchars($item['name'], ENT_QUOTES);
+        // Sem nome, sem dica: um `title` genérico ("imagem") só atrapalhava.
+        $title = $name !== '' ? ' title="' . $name . '"' : '';
 
         if ($item['isImage'] && $item['url'] !== '') {
             $url   = htmlspecialchars($item['url'], ENT_QUOTES);
@@ -219,7 +257,7 @@ class MadMediaFormatter
             $grp   = $group !== '' ? ' data-mad-lightbox-group="' . htmlspecialchars($group, ENT_QUOTES) . '"' : '';
             return '<span class="mad-cell-media ' . $cls . '" role="button" tabindex="0"'
                 . ' data-mad-lightbox="' . $url . '" data-mad-lightbox-name="' . $name . '"'
-                . ' data-mad-lightbox-dl="' . $dl . '"' . $grp . ' title="' . $name . '">'
+                . ' data-mad-lightbox-dl="' . $dl . '"' . $grp . $title . '>'
                 . '<img src="' . $url . '" loading="lazy" alt="' . $name . '">'
                 . '</span>';
         }
@@ -229,9 +267,9 @@ class MadMediaFormatter
         if ($item['downloadUrl'] !== '') {
             $dl = htmlspecialchars($item['downloadUrl'], ENT_QUOTES);
             return '<a class="mad-cell-media ' . $cls . ' mad-cell-media-file" href="' . $dl . '"'
-                . ' target="_blank" rel="noopener" title="' . $name . '">' . $icon . '</a>';
+                . ' target="_blank" rel="noopener"' . $title . '>' . $icon . '</a>';
         }
-        return '<span class="mad-cell-media ' . $cls . ' mad-cell-media-file" title="' . $name . '">' . $icon . '</span>';
+        return '<span class="mad-cell-media ' . $cls . ' mad-cell-media-file"' . $title . '>' . $icon . '</span>';
     }
 
     /** @param array<int, array{url:string, downloadUrl:string, isImage:bool, name:string}> $items */
@@ -239,7 +277,7 @@ class MadMediaFormatter
     {
         $out = [];
         foreach ($items as $item) {
-            $name = htmlspecialchars($item['name'], ENT_QUOTES);
+            $name = htmlspecialchars(self::label($item), ENT_QUOTES);
             $icon = $item['isImage'] ? self::imageIconSvg() : self::fileIconSvg();
             if ($item['downloadUrl'] !== '') {
                 $dl    = htmlspecialchars($item['downloadUrl'], ENT_QUOTES);

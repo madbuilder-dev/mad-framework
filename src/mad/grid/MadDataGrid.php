@@ -4617,6 +4617,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($c['transform'])) {
             $col->transform($c['transform']);
         }
+        if (!empty($c['mediaCaption'])) {
+            $col->mediaCaption((string) $c['mediaCaption']);
+        }
 
         // Evaluate: expressão computada '{valor} * {quantidade}'
         if (!empty($c['evaluate'])) {

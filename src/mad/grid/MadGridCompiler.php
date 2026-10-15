@@ -2190,6 +2190,12 @@ class MadGridCompiler
             $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
         }
 
+        // Texto da miniatura de mídia (file-avatar/thumb/gallery/link):
+        // 'Foto de {nome}' — os `{campo}` resolvem contra a linha no render.
+        if (isset($a['media-caption'])) {
+            $c[] = static::kv('mediaCaption', static::emit($a['media-caption']));
+        }
+
         // Evaluate: expressão computada '{campo} * {campo}' ou '{rel->campo}'
         if (isset($a['evaluate'])) {
             $c[] = static::kv('evaluate', static::emit($a['evaluate']));

@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.163.0] — 2026-10-15
+
+### Novidades
+
+- **Listagens:** nova opção `media-caption` na coluna de imagem (avatar, miniatura, galeria, link de arquivo) define o texto da dica, da legenda da foto ampliada e do link. Aceita texto fixo e campos da linha: `media-caption="Foto de {nome}"`.
+
+### Correções
+
+- **Listagens:** a coluna de imagem gravada no banco mostrava "imagem" ao parar o mouse sobre a foto e como legenda da foto ampliada. Agora fica sem texto, a menos que a coluna defina um.
+
 ## [5.162.2] — 2026-10-15
 
 ### Correções

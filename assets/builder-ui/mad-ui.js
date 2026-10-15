@@ -14969,14 +14969,20 @@ document.addEventListener("alpine:init", function () {
         var it = state.items[state.index];
         if (!it) return;
         var img = state.overlay.querySelector('.mad-lightbox-img');
+        var bar = state.overlay.querySelector('.mad-lightbox-bar');
         var cap = state.overlay.querySelector('.mad-lightbox-caption');
         var dl  = state.overlay.querySelector('.mad-lightbox-dl');
         var cnt = state.overlay.querySelector('.mad-lightbox-count');
+        var multi = state.items.length > 1;
         img.src = it.url;
         img.alt = it.name;
+        // Imagem sem nome (gravada no banco) e sem `media-caption`: sem legenda.
         cap.textContent = it.name;
+        cap.style.display = it.name ? '' : 'none';
         if (it.dl) { dl.href = it.dl; dl.style.display = ''; } else { dl.style.display = 'none'; }
-        cnt.textContent = state.items.length > 1 ? (state.index + 1) + ' / ' + state.items.length : '';
+        cnt.textContent = multi ? (state.index + 1) + ' / ' + state.items.length : '';
+        // Nada a mostrar na barra (sem legenda, sem Baixar, imagem única): some.
+        bar.style.display = (it.name || it.dl || multi) ? '' : 'none';
     }
 
     function nav(delta) {

@@ -47,6 +47,12 @@ class GridColumn
     public string  $builtinFormat = '';
     /** Token de mídia (file-avatar/…) — render HTML dedicado, ver MadMediaFormatter. */
     public string  $mediaFormat = '';
+    /**
+     * Texto da miniatura de mídia (dica, `alt`, legenda do lightbox, texto do
+     * link): fixo ou com `{campo}`/`{relacao->campo}` da linha. '' = nome do
+     * arquivo, ou nenhum texto quando a imagem está gravada no banco.
+     */
+    public string  $mediaCaption = '';
     public bool    $isBadge    = false;
     public array   $badgeMap   = [];
     public bool    $isMoney    = false;
@@ -396,6 +402,18 @@ class GridColumn
     /** Callable ou string 'Classe::metodo' que recebe () e retorna bool.
      *  Aceita as mesmas formas curtas do transform ('GridTransformer::x',
      *  'custom:slug') — resolvidas pro FQCN de App\Transformer\*. */
+    /**
+     * Texto mostrado na miniatura de mídia no lugar do nome do arquivo.
+     *
+     *   ->transform('file-avatar')->mediaCaption('{nome}')
+     *   ->transform('file-thumb')->mediaCaption('Foto de {cliente->nome}')
+     */
+    public function mediaCaption(string $caption): self
+    {
+        $this->mediaCaption = trim($caption);
+        return $this;
+    }
+
     public function displayCondition($fn): self
     {
         if (is_string($fn)) {
@@ -847,7 +865,10 @@ class GridColumn
         // Mídia (file-avatar/thumb/link/gallery) — HTML raw dedicado; todo
         // valor dinâmico já sai escapado do MadMediaFormatter.
         if ($this->mediaFormat !== '') {
-            return \Mad\Support\MadMediaFormatter::render($value, $this->mediaFormat);
+            $caption = $this->mediaCaption !== ''
+                ? GridRenderHelpers::resolveTemplate($this->mediaCaption, $row['__record'] ?? $row, $row)
+                : '';
+            return \Mad\Support\MadMediaFormatter::render($value, $this->mediaFormat, $caption);
         }
 
         // Badge — formatos suportados:
