@@ -1323,10 +1323,12 @@ class MadGridCompiler
                 continue;
             }
             // (:?)name = "..." ou (:?)name = '...'
-            if (preg_match('/\G(:?)([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(["\'])((?:(?!\3)[\s\S])*?)\3/s', $str, $m, 0, $pos)) {
+            // Valor por classe de caractere, não `(?:(?!\3)[\s\S])*?`: aquela forma gasta
+            // pilha do PCRE JIT a cada caractere e, acima de ~26 KB, falhava calada.
+            if (preg_match('/\G(:?)([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $str, $m, 0, $pos)) {
                 $pos  += strlen($m[0]);
                 $key   = $m[2];
-                $val   = $m[4];
+                $val   = $m[3];
                 $type  = $m[1] === ':' ? 'php' : 'string';
                 $result[$key] = ['type' => $type, 'value' => $val];
                 continue;
@@ -3751,8 +3753,8 @@ class MadGridCompiler
             $indicatorParts[] = ':clickable="true"';
         }
         // mad:click — parseAttrs nao aceita ':' no nome; extrai da string crua.
-        if (preg_match('/\bmad:click\s*=\s*(["\'])((?:(?!\1)[\s\S])*?)\1/s', $attrStr, $_mc)) {
-            $indicatorParts[] = 'mad-click="' . addslashes($_mc[2]) . '"';
+        if (preg_match('/\bmad:click\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $attrStr, $_mc)) {
+            $indicatorParts[] = 'mad-click="' . addslashes($_mc[1]) . '"';
         }
 
         // Painéis (1-based, casa com o current do indicador).
@@ -3836,8 +3838,8 @@ class MadGridCompiler
         // mad:click — parseAttrs nao aceita ":" no nome, entao extraimos
         // direto da string de atributos. Emite como "mad-click" (kebab),
         // que o parseParams do BladeOne converte em $madClick (camelCase).
-        if (preg_match('/\bmad:click\s*=\s*(["\'])((?:(?!\1)[\s\S])*?)\1/s', $attrStr, $_mcMatch)) {
-            $parts[] = 'mad-click="' . addslashes($_mcMatch[2]) . '"';
+        if (preg_match('/\bmad:click\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $attrStr, $_mcMatch)) {
+            $parts[] = 'mad-click="' . addslashes($_mcMatch[1]) . '"';
         }
 
         // Steps array

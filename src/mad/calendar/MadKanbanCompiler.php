@@ -480,11 +480,13 @@ class MadKanbanCompiler
                 $pos += strlen($m[0]);
                 continue;
             }
-            if (preg_match('/\G(:?)([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(["\'])((?:(?!\3)[\s\S])*?)\3/s', $str, $m, 0, $pos)) {
+            // Valor por classe de caractere, não `(?:(?!\3)[\s\S])*?`: aquela forma gasta
+            // pilha do PCRE JIT a cada caractere e, acima de ~26 KB, falhava calada.
+            if (preg_match('/\G(:?)([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $str, $m, 0, $pos)) {
                 $pos += strlen($m[0]);
                 $result[$m[2]] = [
                     'type'  => $m[1] === ':' ? 'php' : 'string',
-                    'value' => $m[4],
+                    'value' => $m[3],
                 ];
                 continue;
             }

@@ -90,8 +90,11 @@ class MadDocTableCompiler
                 // alternation on the lookahead is important: `\b` alone would
                 // also trip on `<mad-doc-data-table-column` (since `-` is
                 // non-word and `e` is word, `\b` matches there).
+                // Body unrolled (`[^<]*+` between tags): the per-character
+                // `(?:(?!…)[\s\S])*` burned PCRE JIT stack and failed silently
+                // on bodies over ~26 KB.
                 '/<mad-doc-data-table(' . $attr . ')>'
-                . '((?:(?!<mad-doc-data-table[\s>]|<\/mad-doc-data-table>)[\s\S])*)'
+                . '([^<]*+(?:<(?!mad-doc-data-table[\s>]|\/mad-doc-data-table>)[^<]*+)*+)'
                 . '<\/mad-doc-data-table>/s',
                 [static::class, 'compileBlock'],
                 $template,
@@ -287,14 +290,16 @@ class MadDocTableCompiler
                 continue;
             }
             // (:?)name (\s*=\s* "…" | '…')?
+            // Valor por classe de caractere, não `(?:(?!\3)[\s\S])*?`: aquela forma gasta
+            // pilha do PCRE JIT a cada caractere e, acima de ~26 KB, falhava calada.
             if (preg_match(
-                '/\G(:?)([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(["\'])((?:(?!\3)[\s\S])*?)\3/s',
+                '/\G(:?)([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s',
                 $attrBlob, $m, 0, $pos,
             )) {
                 $pos += strlen($m[0]);
                 $bound = $m[1] === ':';
                 $name  = $m[2];
-                $out[$name] = $m[4];
+                $out[$name] = $m[3];
                 $out['__bound__'][$name] = $bound;
                 continue;
             }

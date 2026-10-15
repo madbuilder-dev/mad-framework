@@ -485,12 +485,12 @@ class MadBladeCompiler extends BladeCompiler
     private static function autofocusExpr(string $tag, string $params, string $on): ?string
     {
         if (! str_ends_with($tag, '-field')
-            || ! preg_match('/(?<![\w:.-])name\s*=\s*(["\'])((?:(?!\1).)*)\1/s', $params, $nm)
-            || trim($nm[2]) === '' || preg_match('/\{\{|\{!!/', $nm[2])) {
+            || ! preg_match('/(?<![\w:.-])name\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $params, $nm)
+            || trim($nm[1]) === '' || preg_match('/\{\{|\{!!/', $nm[1])) {
             return null;
         }
         $call = '\\Mad\\Component\\MadRenderContext::autofocus("'
-            . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $nm[2]) . '")';
+            . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $nm[1]) . '")';
 
         return match ($on) {
             'true'  => $call,
@@ -507,12 +507,12 @@ class MadBladeCompiler extends BladeCompiler
     private static function fieldNameLiteral(string $tag, string $params): ?string
     {
         if (! str_ends_with($tag, '-field')
-            || ! preg_match('/(?<![\w:.-])name\s*=\s*(["\'])((?:(?!\1).)*)\1/s', $params, $nm)
-            || trim($nm[2]) === '' || preg_match('/\{\{|\{!!/', $nm[2])) {
+            || ! preg_match('/(?<![\w:.-])name\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $params, $nm)
+            || trim($nm[1]) === '' || preg_match('/\{\{|\{!!/', $nm[1])) {
             return null;
         }
 
-        return $nm[2];
+        return $nm[1];
     }
 
     /** `$text` como literal PHP entre aspas duplas. */
@@ -568,7 +568,7 @@ class MadBladeCompiler extends BladeCompiler
         // Mesmo casamento de atributo do laço de parseParams: o valor entre
         // aspas é consumido inteiro, então um `value=` dentro de outro
         // atributo (hint, placeholder) não conta.
-        preg_match_all('/(:?)([a-zA-Z0-9_.:-]+)\s*=\s*(["\'])(?:(?!\3)[\s\S])*?\3/s', $params, $m);
+        preg_match_all('/(:?)([a-zA-Z0-9_.:-]+)\s*=\s*(?:"[^"]*"|\'[^\']*\')/s', $params, $m);
 
         return in_array('value', $m[2], true) ? false : 'value';
     }
@@ -605,10 +605,15 @@ class MadBladeCompiler extends BladeCompiler
             }
             // Atributo com valor: (:?)name = "…" ou (:?)name = '…'
             // Inclui ':' e '.' no nome para suportar mad:click, mad:model.live etc.
-            if (preg_match('/\G(:?)([a-zA-Z0-9_.:-]+)\s*=\s*(["\'])((?:(?!\3)[\s\S])*?)\3/s', $params, $m, 0, $pos)) {
+            // O valor sai por classe de caractere (`(?|"…"|'…')`, um grupo só):
+            // a forma antiga `(?:(?!\3)[\s\S])*?` gastava pilha do PCRE JIT a
+            // cada caractere e, acima de ~26 KB, o preg_match falhava CALADO —
+            // o atributo caía no ramo booleano abaixo e o valor virava `true`
+            // (data URI da logo de um documento saía como `<img src="1">`).
+            if (preg_match('/\G(:?)([a-zA-Z0-9_.:-]+)\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s', $params, $m, 0, $pos)) {
                 $pos  += strlen($m[0]);
                 $key   = $m[2];
-                $val   = $m[4];
+                $val   = $m[3];
 
                 // Diretiva mad:* → acumula como atributo HTML passthrough
                 if (isset(self::$madDirectives[$key])) {
@@ -755,8 +760,8 @@ class MadBladeCompiler extends BladeCompiler
 
                     // Extrai params — :params="expr" (bind PHP) ou params="{literal}" ou vazio
                     $navParamsExpr = '[]'; // expressão PHP para o array de params
-                    if (preg_match('/(?:^|\s):params\s*=\s*"((?:[^"\\\\]|\\\\.)*)"/s', $params, $np)
-                     || preg_match("/(?:^|\s):params\s*=\s*'((?:[^'\\\\]|\\\\.)*)'/s", $params, $np)) {
+                    if (preg_match('/(?:^|\s):params\s*=\s*"([^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)"/s', $params, $np)
+                     || preg_match("/(?:^|\s):params\s*=\s*'([^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+)'/s", $params, $np)) {
                         // :params="expr" → expr é PHP que retorna string JSON ou array
                         // Converte para array se necessário
                         $navParamsExpr = '(function($v){return is_array($v)?$v:(is_string($v)?json_decode($v,true)?:[]:[]);})((' . $np[1] . '))';

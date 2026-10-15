@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.162.2] — 2026-10-15
+
+### Correções
+
+- **Documentos (PDF):** imagem colada como data URI com mais de uns 25 KB (a logo do cabeçalho, por exemplo) saía como o texto alternativo em vez da imagem. Valia para qualquer atributo longo de tag `<mad-*>`, inclusive em listagens, kanban, calendário e PDV.
+
 ## [5.162.1] — 2026-10-14
 
 ### Correções

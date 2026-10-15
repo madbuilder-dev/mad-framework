@@ -72,7 +72,10 @@ class MadDocRepeaterCompiler
             $template = preg_replace_callback(
                 // Body must not contain another <mad-doc-repeater — the iteration
                 // handles nesting by peeling the innermost match each round.
-                '/<mad-doc-repeater(' . $attr . ')>((?:(?!<mad-doc-repeater\b|<\/mad-doc-repeater>)[\s\S])*)<\/mad-doc-repeater>/s',
+                // Unrolled (`[^<]*+` between tags) instead of `(?:(?!…)[\s\S])*`:
+                // that one burns PCRE JIT stack per character and a body over
+                // ~26 KB (a data-URI image inside) made the match fail silently.
+                '/<mad-doc-repeater(' . $attr . ')>([^<]*+(?:<(?!mad-doc-repeater\b|\/mad-doc-repeater>)[^<]*+)*+)<\/mad-doc-repeater>/s',
                 [static::class, 'compileBlock'],
                 $template,
             ) ?? $template;
@@ -253,14 +256,16 @@ class MadDocRepeaterCompiler
             }
             // :name="…" (bind) or name="…" (static). Value tolerates newlines
             // and single/double-quoted.
+            // Valor por classe de caractere, não `(?:(?!\3)[\s\S])*?`: aquela forma gasta
+            // pilha do PCRE JIT a cada caractere e, acima de ~26 KB, falhava calada.
             if (preg_match(
-                '/\G(:?)([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(["\'])((?:(?!\3)[\s\S])*?)\3/s',
+                '/\G(:?)([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(?|"([^"]*)"|\'([^\']*)\')/s',
                 $attrBlob, $m, 0, $pos,
             )) {
                 $pos += strlen($m[0]);
                 $bound = $m[1] === ':';
                 $name  = $m[2];
-                $val   = $m[4];
+                $val   = $m[3];
                 $out[$name] = $bound ? $val : $val;
                 $out['__bound__'][$name] = $bound;
                 continue;
