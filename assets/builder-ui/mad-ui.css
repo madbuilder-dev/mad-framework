@@ -591,6 +591,8 @@ body.mad-quick-popover-open { --mad-z-float: 10060; }
   --mad-ring-danger: rgba(239,68,68,.25);
 
   color-scheme: dark;
+  /* fundo do destaque por condição (linha da grade, opção do select) */
+  --mad-hl-tone-mix: 28%;
 }
 
 /* Tema escuro do app gerado (html[data-theme="dark"], tema Notch): tem
@@ -611,6 +613,8 @@ html[data-theme="dark"] .mad-ui {
   --mad-badge-info-fg:    #93c5fd;
   /* Filtro ativo da barra: o azul puro dava 2,7:1 no fundo escuro (fw#310). */
   --mad-dashf-ink: #fff;
+  /* fundo do destaque por condição (linha da grade, opção do select) */
+  --mad-hl-tone-mix: 28%;
 }
 
 /* Tinta da cor primária no escuro (fw#322). `--mad-primary` é PREENCHIMENTO
@@ -1626,17 +1630,17 @@ textarea.mad-textarea:read-only:focus {
 }
 .mad-sel-option-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* <mad-option-highlights>: destaque da opção por condição — o par do
-   <mad-row-highlights> da grade, com os mesmos tokens (o escuro vem pronto: os
-   *-subtle mudam no tema escuro). O JS marca a linha da lista com
+   <mad-row-highlights> da grade, com o mesmo fundo (cor do tom misturada ao
+   transparente; os *-subtle somem sobre branco). O JS marca a linha da lista com
    data-mad-hl="row|badge" e data-mad-hl-tone="<tom>|color"; a cor livre chega
-   em --mad-sel-hl-color, misturada ao transparente — lê nos dois temas.
+   em --mad-sel-hl-color, misturada do mesmo jeito — lê nos dois temas.
    row = pinta a linha (fundo suave + barra de acento); badge = só o selo.
    Item ativo (mouse/teclado) e item selecionado continuam visíveis: o ativo
    escurece o fundo do tom, o selecionado mantém o negrito. */
-.mad-sel-option[data-mad-hl-tone="danger"],  .mad-sel-dot[data-mad-hl-tone="danger"]  { --mad-sel-hl-bg: var(--mad-danger-subtle);  --mad-sel-hl-accent: var(--mad-danger); }
-.mad-sel-option[data-mad-hl-tone="warning"], .mad-sel-dot[data-mad-hl-tone="warning"] { --mad-sel-hl-bg: var(--mad-warning-subtle); --mad-sel-hl-accent: var(--mad-warning); }
-.mad-sel-option[data-mad-hl-tone="success"], .mad-sel-dot[data-mad-hl-tone="success"] { --mad-sel-hl-bg: var(--mad-success-subtle); --mad-sel-hl-accent: var(--mad-success); }
-.mad-sel-option[data-mad-hl-tone="info"],    .mad-sel-dot[data-mad-hl-tone="info"]    { --mad-sel-hl-bg: var(--mad-info-subtle);    --mad-sel-hl-accent: var(--mad-info); }
+.mad-sel-option[data-mad-hl-tone="danger"],  .mad-sel-dot[data-mad-hl-tone="danger"]  { --mad-sel-hl-bg: color-mix(in srgb, var(--mad-danger) var(--mad-hl-tone-mix, 18%), transparent);  --mad-sel-hl-accent: var(--mad-danger); }
+.mad-sel-option[data-mad-hl-tone="warning"], .mad-sel-dot[data-mad-hl-tone="warning"] { --mad-sel-hl-bg: color-mix(in srgb, var(--mad-warning) var(--mad-hl-tone-mix, 18%), transparent); --mad-sel-hl-accent: var(--mad-warning); }
+.mad-sel-option[data-mad-hl-tone="success"], .mad-sel-dot[data-mad-hl-tone="success"] { --mad-sel-hl-bg: color-mix(in srgb, var(--mad-success) var(--mad-hl-tone-mix, 18%), transparent); --mad-sel-hl-accent: var(--mad-success); }
+.mad-sel-option[data-mad-hl-tone="info"],    .mad-sel-dot[data-mad-hl-tone="info"]    { --mad-sel-hl-bg: color-mix(in srgb, var(--mad-info) var(--mad-hl-tone-mix, 18%), transparent);    --mad-sel-hl-accent: var(--mad-info); }
 .mad-sel-option[data-mad-hl-tone="color"],   .mad-sel-dot[data-mad-hl-tone="color"] {
   --mad-sel-hl-bg: color-mix(in srgb, var(--mad-sel-hl-color, var(--mad-warning)) 18%, transparent);
   --mad-sel-hl-accent: var(--mad-sel-hl-color, var(--mad-warning));
@@ -7245,14 +7249,15 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: color-mix(in srgb, var(--mad-primary) 9%, transparent);
 }
 /* <mad-row-highlights>: destaque da linha (ou só da célula) por condição.
-   Tom = fundo suave + barra de acento com os tokens --mad-* (o escuro vem
-   pronto: os *-subtle mudam no tema escuro). Cor livre: --mad-dg-hl-color no
-   style da linha/célula, misturada ao transparente — lê nos dois temas. A
-   linha selecionada continua com a cor da seleção. */
-.mad-dg-hl--danger  { --mad-dg-hl-bg: var(--mad-danger-subtle);  --mad-dg-hl-accent: var(--mad-danger); }
-.mad-dg-hl--warning { --mad-dg-hl-bg: var(--mad-warning-subtle); --mad-dg-hl-accent: var(--mad-warning); }
-.mad-dg-hl--success { --mad-dg-hl-bg: var(--mad-success-subtle); --mad-dg-hl-accent: var(--mad-success); }
-.mad-dg-hl--info    { --mad-dg-hl-bg: var(--mad-info-subtle);    --mad-dg-hl-accent: var(--mad-info); }
+   Tom = fundo + barra de acento. O fundo é a cor do tom (--mad-danger…)
+   misturada ao transparente (18%; 28% nos temas escuros, --mad-hl-tone-mix):
+   lê nos dois temas e sobre a linha zebrada. Não use os *-subtle aqui: #fef2f2 sobre branco dá ~1,1:1 e a
+   linha parecia sem destaque (só a barra aparecia; a célula, nada). A linha
+   selecionada continua com a cor da seleção. */
+.mad-dg-hl--danger  { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-danger) var(--mad-hl-tone-mix, 18%), transparent);  --mad-dg-hl-accent: var(--mad-danger); }
+.mad-dg-hl--warning { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-warning) var(--mad-hl-tone-mix, 18%), transparent); --mad-dg-hl-accent: var(--mad-warning); }
+.mad-dg-hl--success { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-success) var(--mad-hl-tone-mix, 18%), transparent); --mad-dg-hl-accent: var(--mad-success); }
+.mad-dg-hl--info    { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-info) var(--mad-hl-tone-mix, 18%), transparent);    --mad-dg-hl-accent: var(--mad-info); }
 .mad-dg-hl--color {
   --mad-dg-hl-bg: color-mix(in srgb, var(--mad-dg-hl-color, var(--mad-warning)) 18%, transparent);
   --mad-dg-hl-accent: var(--mad-dg-hl-color, var(--mad-warning));

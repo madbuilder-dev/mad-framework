@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.170.1] — 2026-10-16
+
+### Correções
+
+- **Listagens:** o destaque por condição (`<mad-row-highlights>`) pintava a linha ou a célula com um fundo tão claro que parecia não ter funcionado; só a barra lateral aparecia. Os tons Perigo, Atenção, Sucesso e Informação agora ficam visíveis no tema claro e no escuro.
+- **Formulários:** o destaque das opções dos campos de banco (`<mad-option-highlights>`) recebe o mesmo fundo mais visível.
+
 ## [5.170.0] — 2026-10-16
 
 ### Novidades
