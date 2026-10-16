@@ -426,7 +426,9 @@ final class GridExportCell
     private static function scalar(mixed $value): string
     {
         if (is_bool($value)) {
-            return $value ? '1' : '';
+            // '0', não '': o falso de uma coluna `boolean` não é célula vazia
+            // (fórum #129) — mesma grafia da tela.
+            return $value ? '1' : '0';
         }
         if (is_array($value)) {
             return implode(', ', array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $value));

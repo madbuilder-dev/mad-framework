@@ -956,7 +956,10 @@ class GridColumn
             return htmlspecialchars($serialized, ENT_QUOTES);
         }
 
-        return htmlspecialchars((string)$value, ENT_QUOTES);
+        // Coluna `boolean` sem selo nem formato: '1'/'0', como no selo.
+        // `(string) false` é '' e a linha desligada saía em branco, parecendo
+        // nula (fórum #129).
+        return htmlspecialchars(self::badgeValue($value), ENT_QUOTES);
     }
 
     /** Data do `toArray()` do Eloquent: ISO 8601 em UTC, com o `T` e o `Z`. */

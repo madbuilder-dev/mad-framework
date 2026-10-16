@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.164.2] — 2026-10-16
+
+### Correções
+
+- **Listagens:** numa coluna ligada a um campo verdadeiro/falso (como o liga/desliga "Ativo"), as linhas desligadas apareciam em branco, como se nada tivesse sido gravado; o mesmo acontecia na planilha e no CSV exportados. Agora aparecem como `0`, assim como as ligadas aparecem como `1`.
+
 ## [5.164.1] — 2026-10-15
 
 ### Correções
