@@ -41,6 +41,8 @@ abstract class BaseChart
     protected $displayFunction;
     protected $tooltipFunction;
     protected $barDirection;
+    /** Barra horizontal: 1ª categoria no topo (`first-on-top`). */
+    protected $barFirstOnTop = false;
     protected $colors;
     protected $labelValue;
     protected $rotateLegend;
@@ -421,22 +423,46 @@ abstract class BaseChart
                 $value = 0;
             }
 
-            if(is_numeric($value))
-            {
-                if ($value >= 1_000_000_000) {
-                    $value = round($value / 1_000_000_000,0) . 'B';
-                } elseif ($value >= 1_000_000) {
-                    $value = round($value / 1_000_000,0) . 'M';
-                } elseif ($value >= 1_000) {
-                    $value = round($value/ 1_000,0) . 'K';
-                }
-                return $value;
-            }
-            else
-            {
-                return $value;
-            }
+            return is_numeric($value) ? $this->abbreviateNumber((float) $value) : $value;
         });
+    }
+
+    /**
+     * Valor abreviado do rótulo — a mesma regra do eixo (EChart
+     * jsAbbreviateFormatter): prefixo/sufixo do formato e 1 casa quando não é
+     * redonda (R$10,7K, R$2K, R$1,5M). Abaixo de mil, o número inteiro no
+     * formato do gráfico. Antes o rótulo perdia a moeda e arredondava sem casa:
+     * R$ 10.659 e R$ 10.507 saíam os dois "11K".
+     */
+    protected function abbreviateNumber(float $value): string
+    {
+        $dec  = $this->decimalSeparator  ?? ',';
+        $tho  = $this->thousandSeparator ?? '.';
+        $pre  = $this->prefix            ?? '';
+        $suf  = $this->sufix             ?? '';
+        $sign = $value < 0 ? '-' : '';
+        $abs  = abs($value);
+
+        $units = [[1_000, 'K'], [1_000_000, 'M'], [1_000_000_000, 'B']];
+        $i = -1;
+        foreach ($units as $k => [$unit]) {
+            if ($abs >= $unit) $i = $k;
+        }
+        if ($i < 0) {
+            return $sign . $pre . number_format($abs, $this->displayPrecision(), $dec, $tho) . $suf;
+        }
+
+        $x = round($abs / $units[$i][0], 1);
+        if ($x >= 1000 && $i < 2) {
+            $i++;
+            $x = round($abs / $units[$i][0], 1);
+        }
+        $txt = number_format($x, 1, $dec, '');
+        if (str_ends_with($txt, $dec . '0')) {
+            $txt = substr($txt, 0, -strlen($dec . '0'));
+        }
+
+        return $sign . $pre . $txt . $units[$i][1] . $suf;
     }
 
     /**

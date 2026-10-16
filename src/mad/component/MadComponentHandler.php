@@ -447,6 +447,18 @@ class MadComponentHandler
             return ['error' => "Classe inválida: {$class}"];
         }
 
+        // ── 2b. Ordem das gravações entre abas (fw#362) ───────────────────────
+        // Chamada com `{ key, seq: true }`: gravação mais velha que a última
+        // aceita da mesma chave (outra aba/janela) é recusada sem rodar a ação.
+        $seqKey = isset($data['mad_seq_key']) && is_string($data['mad_seq_key']) ? $data['mad_seq_key'] : '';
+        if ($seqKey !== '' && !MadWriteOrder::admit($class, $seqKey, (int) ($data['mad_seq'] ?? 0))) {
+            return [
+                'error'  => mad_t('mad.error.stale_write'),
+                'stale'  => true,
+                'status' => 409,
+            ];
+        }
+
         // ── 3. Hidratar componente ─────────────────────────────────────────────
         /** @var MadComponent $component */
         $component = new $class();
@@ -758,6 +770,14 @@ class MadComponentHandler
                     if (empty($depoisDis[$dName])) {
                         $bindOps[] = ['op' => 'mad_disabled', 'name' => $dName, 'disabled' => false];
                     }
+                }
+
+                // Colunas da Lista de itens com :filters cujo resultado mudou
+                // nesta ação (Salvar de registro novo: o $recordId entra no
+                // filtro) — opções e token da cascata novos (fw#378).
+                if (($valor['flf'] ?? []) !== (($stateAntes[$prop] ?? [])['flf'] ?? [])
+                    && ($component->{$prop} ?? null) instanceof \Mad\Form\MadForm) {
+                    array_push($bindOps, ...$component->{$prop}->fieldListFilteredOps(($stateAntes[$prop] ?? [])['flf'] ?? []));
                 }
 
                 // 2) Diff do bucket ITEMS → reload_* ops (combos, radios, grupos, etc)

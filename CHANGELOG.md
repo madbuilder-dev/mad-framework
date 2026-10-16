@@ -12,6 +12,58 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.165.0] — 2026-10-16
+
+### Novidades
+
+- **Lista de itens:** a coluna de combo (`<mad-field-list-column type="dbcombo">`) aceita `:filters`, no formato do combo do formulário, com acesso ao registro aberto — por exemplo `:filters="[['projeto_id', '=', $recordId]]"`. O filtro vale também quando o combo recarrega em cascata e logo depois do Salvar de um registro novo.
+- **Listagens:** nova opção `card-below` na listagem: abaixo da largura informada (ex.: `card-below="576"`), a lista abre em Cards, sem passar por cima da escolha que o usuário já fez entre Tabela e Cards.
+- **Formulários:** `<mad-cnpj-field>` e `<mad-cep-field>` ganham `fill-mode="empty"`, que preenche só os campos vazios (campo só com espaços conta como vazio) e mantém o que a pessoa já digitou. Sem a opção, a consulta continua sobrescrevendo.
+- **Gantt:** a coluna de duração pode contar só dias úteis com `format="working-days"`, pulando fins de semana e feriados do Gantt. Mover uma tarefa sem mudar o prazo de trabalho mantém o número.
+- **Dashboards:** gráfico de barras horizontal ganha a opção `first-on-top`, que mostra a primeira categoria no topo (ranking de cima para baixo).
+- **Telas com gravação automática:** com o mesmo registro aberto em duas abas ou janelas, uma gravação antiga que chegasse atrasada podia desfazer a mais nova. A chamada com `{ key, seq: true }` em `Mad.call` passa a recusar a gravação mais velha e avisa na aba que perdeu.
+
+### Correções
+
+- **Formulários:** uma data que não existe digitada no campo de data (como 31/02) era gravada como outra data, sem aviso. Agora o Salvar é recusado com "Data inválida." no campo.
+- **Formulários:** digitar por cima de uma data já preenchida em `<mad-date-field>` e `<mad-datetime-field>` substitui os dígitos a partir do cursor, em vez de embaralhar a data; letra digitada no campo é ignorada sem mover o cursor.
+- **Formulários:** o Salvar não gravava quando o modelo exigia uma coluna que não está na tela e que o banco preenche com valor padrão; a mensagem citava campos que o usuário não tinha como preencher. Agora grava, e quando o campo fora da tela falta de verdade o aviso diz isso.
+- **Formulários:** campo obrigatório no banco deixado vazio mostrava um erro técnico com o comando do banco e o caminho do arquivo. Agora aparece a mensagem de campo obrigatório.
+- **Formulários:** um campo com o mesmo nome de uma propriedade pública ainda sem valor abria vazio, mesmo com o valor posto pela tela na abertura. Agora mostra o valor do formulário.
+- **Formulários:** valor posto pelo código (`$this->form->set()`) em `<mad-radio-field>` fazia a primeira opção do grupo passar a enviar o valor errado ("Sim" gravava vazio); em `<mad-checkbox-field>` e `<mad-switch-field>` não marcava a caixa. Agora marca a opção certa.
+- **Formulários:** numa tela com mais de um `<mad-form>`, enviar um deles apagava o que tinha sido digitado e ainda não salvo nos outros quando a ação redesenhava a tela. Agora o que foi digitado continua lá.
+- **Formulários:** em `<mad-signature-field>`, a assinatura desenhada vai no envio do formulário mesmo sem clicar em **Confirmar** no quadro; com um modo só, **Editar** uma assinatura já gravada volta a mostrar o quadro.
+- **Lista de itens:** caixa de marcar ou chave liga/desliga desmarcada numa linha (`type="checkbox"`/`"toggle"` em `<mad-field-list-column>`) barrava o Salvar com "O campo … é obrigatório"; agora grava desmarcada.
+- **Lista de itens:** `:disabled`, `:required` e `:readonly` com expressão em `<mad-field-list-column>` travavam a coluna mesmo quando a expressão valia falso; agora a coluna segue o valor da expressão.
+- **Lista de itens:** ao abrir um registro salvo, o `on-change` de coluna podia alterar campos do formulário principal, trocar as linhas ou mostrar avisos; agora, na abertura, ele só carrega as opções e preenche células vazias da própria linha.
+- **Listagens:** na edição direto na célula (`edit-mode="inline"`), a data e a data e hora alteradas não eram gravadas, e uma data que não existe (31/02) virava outra data; clicar numa coluna do cabeçalho que fica preso no topo ao rolar não ordenava. Agora gravam, a data inexistente é recusada, e a coluna ordena.
+- **Listagens:** a ação do cartão do `<mad-kanban>` e a da linha do `<mad-detail-form>` só rodam no registro em que o botão aparece, e a busca do `<mad-seek>` só seleciona o que ela mostra; no `<mad-detail-form>` o botão passa a seguir a condição (`when-field`, `display-condition`, `disabled-field`) em cada linha.
+- **Dashboards:** no `<mad-dashboard-tabs>`, a ação pedida por um painel ao dashboard (`hostWire`) não acontecia, inclusive de dentro de um painel que é outra tela; e o dashboard sem `history`/`prefetch` não abria. Agora as duas coisas funcionam.
+- **Dashboards:** com `abbreviate`, os valores do gráfico mantêm a moeda e uma casa decimal (R$10,7K em vez de 11K), igual no eixo e na barra, os rótulos do eixo não se sobrepõem mais e, no celular, o rótulo da maior barra não fica cortado na borda.
+- **Gráficos:** `<mad-bar-chart>`, `<mad-pie-chart>` e os demais atalhos por tipo derrubavam a tela quando o título, link ou imagem tinha uma barra (`Vendas/mês`, uma URL). Agora compilam com qualquer conteúdo.
+- **Gantt:** quem não pode editar a tela conseguia arrastar a barra, e ela ficava na posição nova mesmo com a mudança recusada. Agora o Gantt abre só para leitura nesse caso, e qualquer arrasto recusado devolve a barra ao lugar.
+- **Gantt:** depois de arrastar uma barra, as colunas de início, fim e duração passam a se atualizar na hora.
+- **Telas:** abrir pela listagem ou pelo endereço uma ação que responde com aviso, diálogo ou mensagem mostrava um cadastro novo vazio e escondia o aviso. Agora o aviso aparece e a tela de onde se veio continua aberta; um diálogo de confirmação sem a tela por trás não oferece mais um botão que não faz nada.
+- **Telas:** o CSS incluído com `@css` mantém o texto entre aspas como foi escrito (por exemplo `content: "a  b"`); antes espaços repetidos e trechos parecidos com comentário eram removidos.
+- **Casco do app:** o Voltar do navegador depois de abrir outra tela por um botão trocava só o endereço; agora a tela e o menu acompanham, com ou sem abas internas, também ao voltar para uma tela que não está no menu. Republique o projeto para aplicar.
+- **Casco do app:** clicar dentro do painel de um dashboard passa a fechar o sino, as mensagens e outros menus abertos do topo.
+- **Temas:** no tema ERP, o item marcado do menu ficava com pouco contraste, principalmente no modo escuro e com marcas laranja ou verde; agora o texto usa um tom da cor da marca que se lê bem nos dois modos, e o X de fechar da aba no modo claro ficou mais visível. Republique o projeto para aplicar.
+- **PDV:** em tablets e notebooks, o carrinho da frente de caixa rolava para o lado com itens de nome longo e escondia o total e o remover; agora o nome quebra linha e, quando as colunas não cabem, cada item ocupa duas linhas. O botão **Escolher produto** não passa mais por cima do painel lateral com o menu aberto.
+- **Permissões:** quem tem o usuário apagado ou inativado é levado ao login na próxima tela ou ação, em vez de seguir usando o app até a sessão expirar. Republique o projeto para aplicar.
+- **Permissões:** apps que já tinham a mesma tela duas vezes em Programas passam a ter uma só ao atualizar, sem mudar o acesso de ninguém; cadastrar a mesma tela de novo é recusado com o aviso "Esta tela já está cadastrada em Programas." no campo da tela. Republique o projeto para aplicar.
+- **Permissões:** no celular, as ações de cada programa nos cadastros de grupo, perfil e programa ficavam fora da tela; agora aparecem logo abaixo do nome do programa. Listas de seleção que não cabem na largura passam a mostrar a barra de rolagem lateral. Republique o projeto para aplicar.
+- **Documentos (GED):** documento novo sem arquivo deixa de ser gravado; o Salvar pede "Selecione um arquivo.". Republique o projeto para aplicar.
+- **E-mail:** `attachment_allowed_mime` ou `attachment_max_bytes` como `null` no `config/mad.php` passam a valer o padrão, em vez de recusar todos os anexos. Republique o projeto para aplicar.
+- **App gerado:** o pacote de ícones do app foi atualizado; ícones recentes oferecidos no Studio, como `clock-check`, deixam de sair em branco, e arquivos .ppt/.pptx nos campos de upload voltam a ter ícone. Os ícones já usados continuam iguais. Republique o projeto para aplicar.
+- **App gerado:** o administrador de um app novo nasce "Administrador" quando o idioma principal é português ou espanhol (antes vinha "Administrator"). Apps existentes não são renomeados.
+
+### Atenção
+
+- **Lista de itens:** `disabled="false"` ou `disabled="0"` escrito sem dois-pontos em `<mad-field-list-column>` não trava mais a coluna. Para travar, use `disabled` sozinho ou `:disabled` com uma expressão.
+- **Lista de itens:** na abertura de um registro salvo, o `on-change` de coluna não altera mais o formulário principal. Se a tela dependia disso para preencher um campo do mestre, faça esse preenchimento na abertura da tela.
+- **Formulários:** coluna obrigatória no modelo que o banco preenche com valor padrão deixa de dar erro em `validate()` quando não está na tela; a exigência de campo fora da tela passa a ser feita no Salvar.
+- **Permissões:** teste automatizado do app que monta a sessão com um usuário que não existe no banco passa a ser levado ao login (as ações respondem 401). Use um usuário ativo cadastrado.
+
 ## [5.164.2] — 2026-10-16
 
 ### Correções

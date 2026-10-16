@@ -265,6 +265,7 @@ return [
             'action_gone'    => 'La acción no se ejecutó: el registro ya no está en el listado.',
             'action_refused' => 'La acción no se ejecutó: no aplica a este registro.',
             'cell_not_saved' => 'El cambio no fue guardado.',
+            'stale_write'    => 'El cambio no fue guardado: el mismo campo fue modificado después en otra pestaña o ventana. Recargue la pantalla para ver el valor actual.',
             'cell_invalid'   => 'Valor inválido.',
             'cell_number'    => 'Ingrese un número.',
             'cell_min'       => 'El valor mínimo es :min.',
@@ -281,6 +282,7 @@ return [
         // Campo de la pantalla (o columna de una lista) que no es columna de la tabla:
         // Guardar rechaza el campo generado por la plataforma y avisa de lo no guardado.
         'form' => [
+            'date_invalid'           => 'Fecha inválida.',
             'field_without_column'   => 'El campo :field no está vinculado a ninguna columna de la tabla :table: el valor escrito no se guardaría. Avise al administrador del sistema (campo `:name`).',
             'not_stored_title'       => 'Valor no guardado',
             'not_stored_field_one'   => 'Lo que se escribió en :fields no se guardó: el campo no está vinculado a ninguna columna de la tabla :table.',

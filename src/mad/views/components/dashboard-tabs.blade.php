@@ -37,8 +37,10 @@
     $sig       = (string) ($sig ?? '');
     $model     = (string) ($model ?? '');
     $urlParam  = (string) ($urlParam ?? '');
-    $history   = in_array(($history ?? 'push'), ['push', 'replace', 'off'], true) ? $history : 'push';
-    $prefetch  = in_array(($prefetch ?? 'none'), ['none', 'next', 'all'], true) ? $prefetch : 'none';
+    $history   = (string) ($history ?? 'push');
+    $history   = in_array($history, ['push', 'replace', 'off'], true) ? $history : 'push';
+    $prefetch  = (string) ($prefetch ?? 'none');
+    $prefetch  = in_array($prefetch, ['none', 'next', 'all'], true) ? $prefetch : 'none';
     $keepAlive = filter_var($keepAlive ?? true,  FILTER_VALIDATE_BOOL);
     $remember  = filter_var($remember  ?? false, FILTER_VALIDATE_BOOL);
     $variant   = ($variant ?? 'pills') === 'underline' ? 'underline' : 'pills';
@@ -115,6 +117,9 @@
 if (typeof window.madDashboardTabs !== 'function') {
 window.madDashboardTabs = function (cfg) {
     cfg = cfg || {};
+    // Raiz deste componente (.mad-dbtabs), guardada no init: chamado de dentro
+    // de um pane, `$el` é o botão do pane.
+    let hostRoot = null;
     return {
         active: '',
         loaded: {},      // tab -> sig com que foi carregada
@@ -127,6 +132,7 @@ window.madDashboardTabs = function (cfg) {
         tabByName(n) { return (cfg.tabs || []).find(t => t.name === n) || null; },
 
         init() {
+            hostRoot = this.$el;
             let initial = cfg.active || '';
             // precedência: ?param da URL > localStorage (remember) > prop active
             if (cfg.urlParam) {
@@ -321,9 +327,13 @@ window.madDashboardTabs = function (cfg) {
 
         // Wire no HOST (container) a partir de um pane — ex.: drill que aplica
         // filtro global: $dispatch não cruza componentes MAD, isto cruza.
+        // Sobe a partir da RAIZ das abas, não do botão: num pane que é tela
+        // MAD, o componente mais próximo do botão é o do pane.
         hostWire(action, params) {
-            const wrapper = this.$el.closest('[mad-component]');
-            if (wrapper && window.MadWire) window.MadWire.call(wrapper, action, params || []);
+            const root = hostRoot || (this.$el && this.$el.closest('.mad-dbtabs')) || this.$el;
+            const wrapper = root ? root.closest('[mad-component]') : null;
+            // `MadWire` é const global do mad-livewire.js (`window.MadWire` não existia — fw#361).
+            if (wrapper && typeof MadWire !== 'undefined') MadWire.call(wrapper, action, params || []);
         },
 
         focusNext(dir) {

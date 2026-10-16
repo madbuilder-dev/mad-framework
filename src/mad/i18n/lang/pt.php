@@ -265,6 +265,7 @@ return [
             'action_gone'    => 'A ação não foi executada: o registro não está mais na listagem.',
             'action_refused' => 'A ação não foi executada: ela não vale para este registro.',
             'cell_not_saved' => 'A alteração não foi gravada.',
+            'stale_write'    => 'A alteração não foi gravada: o mesmo campo foi alterado depois em outra aba ou janela. Recarregue a tela para ver o valor atual.',
             'cell_invalid'   => 'Valor inválido.',
             'cell_number'    => 'Informe um número.',
             'cell_min'       => 'O valor mínimo é :min.',
@@ -281,6 +282,7 @@ return [
         // Campo da tela (ou coluna de uma lista) que não é coluna da tabela: o Salvar
         // recusa o campo gerado pela plataforma e avisa do que não foi gravado.
         'form' => [
+            'date_invalid'           => 'Data inválida.',
             'field_without_column'   => 'O campo :field não está ligado a nenhuma coluna da tabela :table: o valor digitado não seria gravado. Avise o administrador do sistema (campo `:name`).',
             'not_stored_title'       => 'Valor não gravado',
             'not_stored_field_one'   => 'O que foi digitado em :fields não foi gravado: o campo não está ligado a nenhuma coluna da tabela :table.',

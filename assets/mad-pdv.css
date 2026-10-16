@@ -117,6 +117,7 @@
 }
 .mad-pdv-scan-input {
     flex: 1;
+    min-width: 0;
     border: 0;
     outline: none;
     background: transparent;
@@ -158,6 +159,10 @@
     .mad-pdv-scan-pick-label,
     .mad-pdv-scan-pick kbd { display: none; }
 }
+/* Coluna estreita em janela larga (menu lateral aberto a 1024 px): o JS mede
+   a barra e liga esta classe (fw#368). */
+.mad-pdv-scanbar--tight .mad-pdv-scan-pick-label,
+.mad-pdv-scanbar--tight .mad-pdv-scan-pick kbd { display: none; }
 
 .mad-pdv-results {
     position: absolute;
@@ -274,11 +279,17 @@
     flex-direction: column;
     min-width: 0;
 }
+/* Nome quebra linha (fw#368): numa linha só a tabela crescia até caber o
+   nome inteiro e o carrinho rolava na horizontal, escondendo total e remover.
+   A largura mínima (e o valor sem quebra, abaixo) fazem a tabela "não caber"
+   antes de espremer o nome numa coluna de uma palavra por linha: aí o
+   carrinho empilha (.mad-pdv-cart--stack). */
 .mad-pdv-line-name > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 11em;
+    white-space: normal;
+    overflow-wrap: break-word;
 }
+.mad-pdv-cart-table td.mad-pdv-col-money { white-space: nowrap; }
 .mad-pdv-line-name small {
     color: var(--mad-text-dim, #9ca3af);
     font-size: 11px;
@@ -406,6 +417,32 @@
     .mad-pdv-cart-table tbody td.mad-pdv-line-total { margin-left: auto; }
     .mad-pdv-cart-empty td { flex: 1 1 100%; }
 }
+
+/* Mesma quebra em duas linhas sempre que a tabela não cabe na largura do
+   carrinho, em qualquer tela (fw#368): o mad-pdv.js mede e liga
+   .mad-pdv-cart--stack. Entre 481 e 1366 px o carrinho rolava na horizontal. */
+.mad-pdv-cart--stack { overflow-x: hidden; }
+.mad-pdv-cart--stack .mad-pdv-cart-table,
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody { display: block; }
+.mad-pdv-cart--stack .mad-pdv-cart-table thead { display: none; }
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--mad-border-soft, #f3f4f6);
+}
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody td {
+    width: auto;
+    padding: 0;
+    border-bottom: 0;
+}
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody td.mad-pdv-col-num { flex: 0 0 auto; }
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody td.mad-pdv-cell-product { flex: 1 1 calc(100% - 40px); }
+.mad-pdv-cart--stack .mad-pdv-line-name > span { min-width: 0; overflow-wrap: anywhere; }
+.mad-pdv-cart--stack .mad-pdv-cart-table tbody td.mad-pdv-line-total { margin-left: auto; }
+.mad-pdv-cart--stack .mad-pdv-cart-empty td { flex: 1 1 100%; }
 
 /* ═══ Hotkeys legend ═══ */
 .mad-pdv-hotkeys {

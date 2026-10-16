@@ -221,6 +221,26 @@ class MadForm
      */
     private array $_known = [];
 
+    /**
+     * Colunas dbcombo da Lista de itens com `:filters` (fw#378): a assinatura
+     * do que cada uma desenhou no último HTML entregue — os filtros avaliados
+     * e as opções. Os filtros enxergam o estado da tela (`$recordId`): depois
+     * do Salvar de um registro novo eles mudam, e a coluna tem de passar a
+     * listar o que é do registro gravado. Só existe para quem usa `:filters`.
+     *
+     * @var array<string, string>  "lista/coluna" => assinatura
+     */
+    private array $_flFiltered = [];
+
+    /**
+     * O que as colunas com `:filters` desenharam NESTE render: opções (null
+     * quando a coluna depende de outra coluna da linha — a lista é por linha)
+     * e token da cascata ('' sem `depends-on`).
+     *
+     * @var array<string, array{list: string, col: string, options: ?array, token: string}>
+     */
+    private array $_flFilteredNow = [];
+
     /** Nome reservado, em `$_known`, do que veio do registro no `fill()` (não é nome de campo). */
     private const LOADED = '@record';
 
@@ -360,6 +380,14 @@ class MadForm
 
     /** @var array<string, array<string,true>|null> colunas da tabela (minúsculas), por "conexão|tabela"; null = não deu para ler */
     private array $_tableColumnsCache = [];
+
+    /**
+     * `required` de campo que a TELA não tem, guardado pelo `validate()` para o
+     * `save()` conferir com o registro na mão (fw#373). Não serializado.
+     *
+     * @var array{rules: array<string,mixed>, messages: array, attrs: array, fields: list<string>, known: list<string>}|null
+     */
+    private ?array $_offScreenRequired = null;
 
     /** @var array<string,string|null> fonte PHP da tela e das classes do app de que ela herda, por arquivo */
     private static array $_screenSourceCache = [];
@@ -683,6 +711,10 @@ class MadForm
         }
 
         $data = $this->getData();
+
+        // Data que não existe (31/02/2026) não é gravada como outra: erro no
+        // campo, antes de tocar o registro.
+        $this->_rejectNonexistentDates();
 
         if (!$this->_saving) {
             $this->_baseUpdates = [];
@@ -2101,6 +2133,52 @@ class MadForm
         $this->_renderingDetailFiles[$name] = $print;
     }
 
+    /**
+     * As ações da linha de um Detail Form que só valem em algumas linhas
+     * (`when-*`, `display-condition`, `disabled-*`), por método — só os métodos
+     * que NENHUMA ação sem condição chama. Ficam no estado cifrado (`da`), para
+     * a tela reconferir a linha antes de rodar a ação (fw#363).
+     *
+     * @internal chamado pela view do framework (detail-form)
+     *
+     * @param array<string, list<array<string,mixed>>> $byMethod método => condições de cada ação
+     */
+    public function declareDetailActions(string $name, array $byMethod, string $model = '', string $foreignKey = ''): void
+    {
+        if ($name === '' || $this->_openedBefore) {
+            return;
+        }
+        if ($byMethod === []) {
+            unset($this->_known[self::DECLARED]['da'][$name]);
+
+            return;
+        }
+        $this->_openDeclared();
+        $this->_known[self::DECLARED]['da'][$name] = ['a' => $byMethod, 'm' => $model, 'f' => $foreignKey];
+    }
+
+    /**
+     * Os Detail Forms desta tela com ação de linha condicionada que chama
+     * `$method` — ver declareDetailActions().
+     *
+     * @return array<string, array{a: list<array<string,mixed>>, m: string, f: string}> detail => ações e o Model/FK dele
+     */
+    public function detailActionsCalling(string $method): array
+    {
+        $out = [];
+        foreach ((array) ($this->_known[self::DECLARED]['da'] ?? []) as $name => $entry) {
+            if (is_array($entry) && is_array($entry['a'][$method] ?? null)) {
+                $out[(string) $name] = [
+                    'a' => $entry['a'][$method],
+                    'm' => (string) ($entry['m'] ?? ''),
+                    'f' => (string) ($entry['f'] ?? ''),
+                ];
+            }
+        }
+
+        return $out;
+    }
+
     /** @internal a chave da linha de uma lista carregada à mão (MadFieldListTrait::loadDetailRows) */
     public function noteDetailKey(string $name, string $keyName): void
     {
@@ -3380,7 +3458,8 @@ class MadForm
             $column = (string) $column;
             if (!isset($typed[$column]) || isset($marked[$column]) || isset($this->_notStored['rows'][$detailName][$column])
                 || $instance->isFillable($column)
-                || !is_scalar($value) || is_bool($value) || trim((string) $value) === '') {
+                || !is_scalar($value) || is_bool($value) || trim((string) $value) === ''
+                || ($value === '0' && MadFormRegistry::isBoolColumn($detailName, $column))) {
                 continue;
             }
             $columns ??= $this->_tableColumns($instance) ?? false;
@@ -5053,12 +5132,20 @@ class MadForm
             }
         }
 
+        $this->_checkOffScreenRequired($record);
+
         try {
             $record->save();
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
             throw $this->_uniqueViolation($e, $record);
         } catch (\Mad\Database\UnitScopeViolation) {
             throw $this->_unitViolation();
+        } catch (\Illuminate\Database\QueryException $e) {
+            $column = self::_notNullColumn($e);
+            if ($column === null) {
+                throw $e;
+            }
+            throw $this->_notNullViolation($column, $e);
         }
         $this->_applyBaseUpdates($record, true);
         $this->_afterStore($record);
@@ -5145,6 +5232,61 @@ class MadForm
         }
 
         return new MadValidationException($errors, array_keys($errors), '', $known);
+    }
+
+    /**
+     * Coluna NOT NULL sem DEFAULT que ficou vazia e não tem `required` nas
+     * regras: quem recusa é o banco. Sem isto o usuário via o SQLSTATE cru,
+     * com o SQL e o caminho do arquivo do banco. Vira a mesma mensagem do
+     * `required` ("O campo X é obrigatório."), no campo quando a tela o tem e
+     * no toast quando não tem (fw#373).
+     */
+    private function _notNullViolation(string $column, \Illuminate\Database\QueryException $e): MadValidationException
+    {
+        $known  = $this->_knownFieldNames($this->fields);
+        $labels = $this->_fieldLabels();
+
+        return new MadValidationException(
+            [$column => MadValidator::ruleMessage('required', (string) ($labels[$column] ?? $column))],
+            [$column],
+            '',
+            $known,
+        );
+    }
+
+    /**
+     * Nome da coluna de uma violação de NOT NULL, ou null quando a falha é outra.
+     * SQLite: `NOT NULL constraint failed: tabela.coluna`; PostgreSQL: SQLSTATE
+     * 23502, `null value in column "coluna"`; MySQL/MariaDB: 1048 `Column 'coluna'
+     * cannot be null` e 1364 `Field 'coluna' doesn't have a default value`.
+     */
+    private static function _notNullColumn(\Illuminate\Database\QueryException $e): ?string
+    {
+        $info    = $e->errorInfo ?? [];
+        $state   = (string) ($info[0] ?? $e->getCode());
+        $code    = (int) ($info[1] ?? 0);
+        $message = (string) ($info[2] ?? $e->getPrevious()?->getMessage() ?? $e->getMessage());
+
+        $patterns = [];
+        if (str_contains($message, 'NOT NULL constraint failed')) {
+            $patterns[] = '/NOT NULL constraint failed: (?:[^\s.]+\.)*([^\s.,]+)/';
+        }
+        if ($state === '23502') {
+            $patterns[] = '/null value in column "([^"]+)"/';
+        }
+        if ($code === 1048) {
+            $patterns[] = "/Column '([^']+)' cannot be null/";
+        }
+        if ($code === 1364) {
+            $patterns[] = "/Field '([^']+)' doesn't have a default value/";
+        }
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message, $m)) {
+                return $m[1];
+            }
+        }
+
+        return null;
     }
 
     /** "Já existe um registro com estes dados." */
@@ -6334,6 +6476,19 @@ class MadForm
 
         [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withoutMask($this->fields), $parsedRules);
 
+        $this->_offScreenRequired = null;
+        $offScreen = $this->_offScreenRequiredRules($parsedRules, $data);
+        if ($offScreen !== []) {
+            $this->_offScreenRequired = [
+                'rules'    => $offScreen,
+                'messages' => $messages,
+                'attrs'    => $attrs,
+                'fields'   => array_keys($parsedRules),
+                'known'    => $this->_knownFieldNames($data),
+            ];
+            $parsedRules = array_diff_key($parsedRules, $offScreen);
+        }
+
         $errors = MadValidator::validate($data, $parsedRules, $messages, $attrs);
 
         // Arquivo que o navegador recusou e tirou do envio (fw#297): a tela que
@@ -6363,6 +6518,106 @@ class MadForm
         }
 
         return $this;
+    }
+
+    /**
+     * Regras com `required` de campo que a TELA não tem (fora do schema do
+     * render e sem valor no formulário) — fw#373.
+     *
+     * O `Model::rules()` gerado exige `required` em toda coluna NOT NULL,
+     * inclusive a que tem DEFAULT no banco e a tela não mostra. O formulário
+     * não manda esse campo, então o `required` reprovava SEMPRE e o Salvar
+     * nunca gravava. Essas regras saem do `validate()` e o `save()` as confere
+     * com o registro: passa quando o banco preenche (DEFAULT) ou o registro já
+     * tem o valor. Sem o schema da tela (caller antigo) nada muda.
+     *
+     * @param  array<string,mixed>  $rules
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    private function _offScreenRequiredRules(array $rules, array $data): array
+    {
+        $schema = MadFormRegistry::fromRequest();
+        if (!is_array($schema) || $schema === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rules as $field => $rule) {
+            $field = (string) $field;
+            if (isset($schema[$field]) || array_key_exists($field, $data)
+                || str_contains($field, '.') || str_contains($field, '*')) {
+                continue;
+            }
+            $parts = is_string($rule) ? explode('|', $rule) : (is_array($rule) ? $rule : [$rule]);
+            foreach ($parts as $part) {
+                if (is_string($part) && strtolower(trim($part)) === 'required') {
+                    $out[$field] = $rule;
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Confere, com o registro que vai ser gravado, o `required` dos campos que
+     * a tela não tem ({@see _offScreenRequiredRules()}). Passa quando o
+     * registro já tem o valor (edição, ou o código pôs antes de gravar) ou
+     * quando a coluna tem DEFAULT no banco; senão recusa com a mesma mensagem
+     * que o `validate()` daria.
+     *
+     * @throws MadValidationException
+     */
+    private function _checkOffScreenRequired(object $record): void
+    {
+        $pending = $this->_offScreenRequired;
+        $this->_offScreenRequired = null;
+        if ($pending === null) {
+            return;
+        }
+
+        $data = [];
+        foreach (array_keys($pending['rules']) as $field) {
+            $value = $record instanceof \Illuminate\Database\Eloquent\Model
+                ? ($record->getAttributes()[$field] ?? null)
+                : ($record->$field ?? null);
+            if ($value !== null && $value !== '') {
+                $data[$field] = $value;
+                continue;
+            }
+            if ($record instanceof \Illuminate\Database\Eloquent\Model && !$record->exists
+                && $this->_columnHasDefault($record, $field)) {
+                unset($pending['rules'][$field]);
+            }
+        }
+
+        $errors = $pending['rules'] === []
+            ? []
+            : MadValidator::validate($data, $pending['rules'], $pending['messages'], $pending['attrs']);
+        if ($errors) {
+            throw new MadValidationException($errors, $pending['fields'], '', $pending['known']);
+        }
+    }
+
+    /** A coluna tem DEFAULT no banco (o INSERT sem ela não fica vazio)? */
+    private function _columnHasDefault(\Illuminate\Database\Eloquent\Model $record, string $field): bool
+    {
+        try {
+            foreach ($record->getConnection()->getSchemaBuilder()->getColumns($record->getTable()) as $column) {
+                if (strcasecmp((string) ($column['name'] ?? ''), $field) !== 0) {
+                    continue;
+                }
+                $default = $column['default'] ?? null;
+
+                return $default !== null && strtoupper(trim((string) $default)) !== 'NULL';
+            }
+        } catch (\Throwable) {
+            // sem schema: na dúvida, o required continua valendo
+        }
+
+        return false;
     }
 
     /**
@@ -7487,6 +7742,41 @@ class MadForm
     }
 
     /** Texto do catálogo, com o texto em português de reserva quando a chave não existe. */
+    /**
+     * Campo de data / data e hora do formulário com uma data que não existe
+     * no formato da tela (31/02/2026, 20/10/2026 24:00): o PHP a deslocaria
+     * para outra data, e a conversão do getData() a deixa crua. Quem grava
+     * recusa com o erro no campo.
+     *
+     * @throws MadValidationException
+     */
+    private function _rejectNonexistentDates(): void
+    {
+        $schema = MadFormRegistry::fromRequest();
+        if (!is_array($schema) || !$schema) {
+            return;
+        }
+
+        $errors = [];
+        foreach ($schema as $name => $props) {
+            $type = is_array($props) ? ($props['type'] ?? '') : '';
+            if (($type !== 'date' && $type !== 'datetime') || !array_key_exists($name, $this->fields)) {
+                continue;
+            }
+            $value = $this->fields[$name];
+            if (!is_string($value) || !preg_match('#^\d{2}/\d{2}/\d{4}( \d{2}:\d{2}(:\d{2})?)?$#', $value = trim($value))) {
+                continue;
+            }
+            if (self::parseDate($value) === null) {
+                $errors[(string) $name] = self::_text('mad.form.date_invalid', [], 'Data inválida.');
+            }
+        }
+
+        if ($errors) {
+            throw new MadValidationException($errors, array_keys($errors), '', $this->_knownFieldNames($this->fields));
+        }
+    }
+
     private static function _text(string $key, array $replace, string $fallback): string
     {
         try {
@@ -9727,6 +10017,55 @@ class MadForm
     }
 
     /**
+     * Uma coluna dbcombo da Lista de itens com `:filters` terminou de montar
+     * (fw#378). Ver $_flFiltered.
+     *
+     * @internal chamado por MadRenderContext::fieldListFilteredRendered()
+     */
+    public function fieldListFilteredRendered(string $list, string $col, mixed $filters, ?array $options, string $token): void
+    {
+        $key = $list . '/' . $col;
+        $this->_flFiltered[$key] = md5((string) json_encode([$filters, $options]));
+        $this->_flFilteredNow[$key] = ['list' => $list, 'col' => $col, 'options' => $options, 'token' => $token];
+    }
+
+    /**
+     * Ops que levam ao navegador o que mudou nas colunas com `:filters` desde
+     * o HTML que ele tem (`$before` = assinaturas do estado que ele mandou).
+     * A lista nova entra mantendo o valor de cada linha; o token da cascata
+     * passa a carregar os filtros de agora.
+     *
+     * @internal chamado pelo MadComponentHandler, depois do render da ação
+     *
+     * @param array<string, string> $before
+     * @return list<array<string, mixed>>
+     */
+    public function fieldListFilteredOps(array $before): array
+    {
+        $ops = [];
+        foreach ($this->_flFilteredNow as $key => $now) {
+            if (($before[$key] ?? null) === ($this->_flFiltered[$key] ?? null)) {
+                continue;
+            }
+            if ($now['options'] !== null) {
+                // Pares [valor, texto]: um mapa em JSON perde a ordem do
+                // order-by quando a chave é número (o navegador ordena).
+                $pairs = [];
+                foreach ($now['options'] as $k => $label) {
+                    $pairs[] = [(string) $k, is_scalar($label) ? (string) $label : (string) $k];
+                }
+                $ops[] = ['op' => 'fl_combo', 'list' => $now['list'], 'target' => $now['col'], 'options' => $pairs, 'keep' => true];
+            }
+            if ($now['token'] !== '') {
+                $ops[] = ['op' => 'fl_dep_token', 'list' => $now['list'], 'target' => $now['col'], 'token' => $now['token']];
+            }
+        }
+        $this->_flFilteredNow = [];
+
+        return $ops;
+    }
+
+    /**
      * Retorna ops fl_combo pendentes (geradas por setItems('campo[]')).
      * Consumidas pelo MadComponentHandler após a action.
      */
@@ -9917,6 +10256,9 @@ class MadForm
         if ($this->_known !== []) {
             $state['known'] = $this->_known;
         }
+        if ($this->_flFiltered !== []) {
+            $state['flf'] = $this->_flFiltered;
+        }
 
         return $state;
     }
@@ -9934,6 +10276,7 @@ class MadForm
         $instance->readonly     = $data['readonly']     ?? [];
         $instance->disabled     = $data['disabled']     ?? [];
         $instance->_known       = is_array($data['known'] ?? null) ? $data['known'] : [];
+        $instance->_flFiltered  = is_array($data['flf'] ?? null) ? array_filter($data['flf'], 'is_string') : [];
         $instance->_dataCache   = null;
         return $instance;
     }

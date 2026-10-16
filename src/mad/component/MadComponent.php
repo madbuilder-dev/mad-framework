@@ -216,6 +216,12 @@ abstract class MadComponent
      */
     private ?\Throwable $_renderFailure = null;
 
+    /**
+     * O método de entrada devolveu uma MadResponse: o show() emitiu só ela,
+     * sem a tela ({@see respondedWithoutScreen()}).
+     */
+    private bool $_responseOnly = false;
+
     // ── Getters estáticos públicos (usados por MadComponentWrapper) ───────────
 
     public static function getWrapper(): string { return static::$wrapper; }
@@ -427,6 +433,19 @@ abstract class MadComponent
 
                     return;
                 }
+                if ($result instanceof MadResponse) {
+                    // Ação aberta pela URL (`/app/<tela>/onAlgo?id=N`): a
+                    // resposta dela É o que vai ao navegador — o aviso de "sem
+                    // permissão", o diálogo, o toast, o redirect. Desenhar a
+                    // tela por baixo mostrava o formulário vazio ("Novo …")
+                    // que ninguém pediu, e a resposta era descartada (fw#386).
+                    // Quem abre pelo Mad.go/Mad.load aplica os ops e mantém a
+                    // tela que está aberta (cabeçalho X-Mad-Ops-Only).
+                    $this->_responseOnly = true;
+                    $result->emit();
+
+                    return;
+                }
                 if ($result !== false) {
                     // Depois do método (create-action pode ser onNovo, não show):
                     // prefill não pode ser atropelado pelo que o método montou.
@@ -458,6 +477,18 @@ abstract class MadComponent
     public function renderFailure(): ?\Throwable
     {
         return $this->_renderFailure;
+    }
+
+    /**
+     * true quando o show() entregou só a MadResponse do método de entrada, sem
+     * desenhar a tela. O `MadAppController` marca a resposta com
+     * `X-Mad-Ops-Only: 1` para o navegador não trocar a tela aberta.
+     *
+     * @internal
+     */
+    public function respondedWithoutScreen(): bool
+    {
+        return $this->_responseOnly;
     }
 
     /**
@@ -2323,6 +2354,24 @@ abstract class MadComponent
             $props[$name] = ($value instanceof MadForm) ? $value->fields : $value;
         }
 
+        // Prop sem valor (`public $vencimento;`, null) com o nome de um campo
+        // do formulário: o escalar venceria o achatamento dos campos e o valor
+        // que o mount() pôs com `form->set('vencimento', …)` sumia (fw#374).
+        // Ela sai do contexto e o campo do formulário fica. Prop com valor —
+        // inclusive o '' de um filtro `string` — continua mandando.
+        foreach ($props as $name => $value) {
+            if ($value !== null) continue;
+            foreach ($this->_getPublicPropNames() as $formName) {
+                if (in_array($formName, $excluded, true)) continue;
+                if (!(new \ReflectionProperty($this, $formName))->isInitialized($this)) continue;
+                $form = $this->$formName;
+                if ($form instanceof MadForm && ($form->fields[$name] ?? null) !== null) {
+                    unset($props[$name]);
+                    break;
+                }
+            }
+        }
+
         return $props;
     }
 
@@ -2365,6 +2414,14 @@ abstract class MadComponent
      */
     public function _resolveAndCall(string $method, array $data = []): mixed
     {
+        // Ação da linha de um Detail Form (`callAction(método, linha, índice)`).
+        if ($data !== [] && array_is_list($data) && is_array($data[0])) {
+            $refused = $this->_detailRowActionRefusal($method, $data[0]);
+            if ($refused !== null) {
+                return $refused;
+            }
+        }
+
         $ref    = new \ReflectionMethod($this, $method);
         $params = $ref->getParameters();
 
@@ -2432,6 +2489,112 @@ abstract class MadComponent
         }
 
         return $this->$method(...$args);
+    }
+
+    /**
+     * A ação da linha de um `<mad-detail-form>` vale para ESTA linha?
+     *
+     * As condições do `<mad-act>` da linha (`when-*`, `display-condition`,
+     * `disabled-*`) são avaliadas de novo aqui, como nas ações da linha da
+     * grade (fw#240/#363): a linha que já está gravada é conferida pelo banco
+     * — a que a tela entregou, sob o mesmo registro principal —, e a criada no
+     * navegador, pelo que foi digitado nela. Basta uma das ações com esse
+     * método valer. Ação sem condição (ou tela desenhada antes desta versão)
+     * segue como antes.
+     *
+     * @return mixed null = pode chamar; senão, a resposta da recusa
+     */
+    protected function _detailRowActionRefusal(string $method, array $row): mixed
+    {
+        $verdict = null;
+        foreach (get_object_vars($this) as $form) {
+            if (!$form instanceof \Mad\Form\MadForm) {
+                continue;
+            }
+            foreach ($form->detailActionsCalling($method) as $name => $entry) {
+                $v = $this->_detailRowActionVerdict($form, $name, $entry, $method, $row);
+                if ($v === '') {
+                    return null;
+                }
+                $verdict ??= $v;
+            }
+        }
+        if ($verdict === null) {
+            return null;
+        }
+
+        $id = $row['id'] ?? ($row['__id'] ?? '');
+        \Illuminate\Support\Facades\Log::warning(
+            'MadComponent: ' . static::class . '::' . preg_replace('/[^A-Za-z0-9_]/', '?', substr($method, 0, 64))
+            . ' recusado — ' . ($verdict === 'refused' ? 'a condição do <mad-act> não vale para' : 'o Detail Form não mostra')
+            . ' a linha ' . preg_replace('/[^A-Za-z0-9_\-.:]/', '?', substr(is_scalar($id) ? (string) $id : '', 0, 64))
+            . ' (usuario ' . self::_logUser() . ').'
+        );
+
+        return \Mad\Ui\MadToast::warning(mad_t($verdict === 'refused' ? 'mad.error.action_refused' : 'mad.error.action_gone'));
+    }
+
+    /**
+     * @param array{a: list<array<string,mixed>>, m: string, f: string} $entry
+     * @return string '' = vale; 'refused' = a condição não vale; 'gone' = linha que o detalhe não mostra
+     */
+    private function _detailRowActionVerdict(\Mad\Form\MadForm $form, string $name, array $entry, string $method, array $row): string
+    {
+        $hosts = [static::class];
+        $acts  = [];
+        foreach ($entry['a'] as $cfg) {
+            if (is_array($cfg)) {
+                $acts[] = \Mad\Grid\MadDataGrid::_actFromConfig(['method' => $method] + $cfg)?->resolveIn(...$hosts);
+            }
+        }
+        $allows = static function (array $data) use ($acts): bool {
+            foreach ($acts as $act) {
+                if ($act !== null && $act->isVisible($data) && !$act->isDisabled($data)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Sem Model, as linhas só existem no formulário: vale o que veio.
+        if ($entry['m'] === '') {
+            return $allows($row) ? '' : 'refused';
+        }
+        try {
+            $cls = \Mad\Form\ModelOptionsLoader::resolveModelClass($entry['m']);
+            $pk  = (string) (new $cls())->getKeyName();
+            // A chave da linha: a que a tela anotou para o __id que ela entregou;
+            // sem ela, a que a linha traz. Sem nenhuma, é linha nova.
+            $rowId = is_scalar($row['__id'] ?? null) ? (string) $row['__id'] : '';
+            $key   = $rowId !== '' ? $form->knownRowKey($name, $rowId) : null;
+            if ($key === null && is_scalar($row[$pk] ?? null) && (string) $row[$pk] !== '') {
+                $key = $row[$pk];
+            }
+            if ($key === null) {
+                return $allows($row) ? '' : 'refused';
+            }
+            $q = $cls::query()->whereKey($key);
+            if ($entry['f'] !== '') {
+                $parent = $form->knownParent($name);
+                if ($parent === null) {
+                    return 'gone';
+                }
+                $q->where($entry['f'], '=', $parent);
+            }
+            $record = $q->first();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('MadComponent: ' . static::class . ' — não deu para conferir a condição da ação na linha do detalhe ' . $name . ': ' . substr($e->getMessage(), 0, 200));
+
+            return '';
+        }
+        if ($record === null) {
+            return 'gone';
+        }
+        $data = method_exists($record, 'toArray') ? (array) $record->toArray() : get_object_vars($record);
+        $data['__record'] = $record;
+
+        return $allows($data) ? '' : 'refused';
     }
 
     /** Verifica se uma propriedade é pública e de instância. */

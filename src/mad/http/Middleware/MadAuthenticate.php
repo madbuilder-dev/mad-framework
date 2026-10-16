@@ -33,6 +33,12 @@ class MadAuthenticate
     public function handle(Request $request, Closure $next)
     {
         if (PermissionGate::isLogged()) {
+            // Usuário apagado ou inativado com a sessão aberta: a sessão cai e
+            // este request é o de um não-logado.
+            if ($this->enforceSessionUser()) {
+                return $this->deny($request);
+            }
+
             $this->bridgeGuard();
             $this->refreshStalePermissions();
 
@@ -224,6 +230,28 @@ class MadAuthenticate
 
         try {
             return (bool) $guard::enforceIfStale();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Derruba a sessão de quem foi apagado ou inativado depois do login.
+     *
+     * Ponte por `class_exists` sobre o NOME, igual ao enforcePasswordPolicy: o
+     * pacote não depende de classe do app, e app gerado com framework anterior
+     * ao serviço simplesmente não tem a classe. Na dúvida, deixa passar.
+     */
+    private function enforceSessionUser(): bool
+    {
+        $guard = 'App\\Service\\Iam\\SessionUserGuard';
+
+        if (! class_exists($guard) || ! method_exists($guard, 'enforce')) {
+            return false;
+        }
+
+        try {
+            return (bool) $guard::enforce();
         } catch (\Throwable) {
             return false;
         }

@@ -114,6 +114,12 @@
     // viaja no token cifrado. Só colunas que declaram algo entram.
     $_flColMeta = [];
     foreach ($columns as $_mc) {
+        // Caixa de marcar / chave liga-desliga: desmarcada grava '0' — a linha
+        // nova nasce com '' e o boolean do banco volta como false (fw#375).
+        if (in_array($_mc->type, ['checkbox', 'toggle'], true)) {
+            $_flColMeta[$_mc->field] = ['bool' => true];
+            continue;
+        }
         if (!$_mc->supportsTextPresentation()) {
             continue;
         }
@@ -533,6 +539,10 @@
                                 $__m  = class_exists($col->model) ? $col->model : \Mad\Form\ModelOptionsLoader::resolveModelClass($col->model);
                                 $__cq = $__m::query();
                                 \Mad\Form\FieldListColumn::applyWhereStringToQuery($__cq, (string) $col->where);
+                                // :filters (fw#378): mesmo formato do <mad-dbcombo-field>.
+                                if ($col->filters) {
+                                    \Mad\Database\QuerySource::applyArrayFilters($__cq, $col->filters);
+                                }
 
                                 // depends-on="@campo" (fw#250): o pai é um campo do
                                 // formulário PRINCIPAL, não uma coluna da linha. As
@@ -583,7 +593,7 @@
                                         'order_dir' => $col->orderDir,
                                         'column'   => $col->dependsColumn ?: ($__flMaster !== '' ? $__flMaster : $col->dependsOn),
                                         'where'    => $col->where,
-                                    ]);
+                                    ] + ($col->filters ? ['filters' => $col->filters] : []));
                                     // A linha vive num <template x-for>: sem linhas não há
                                     // <select> no DOM para dizer ao navegador que a coluna
                                     // depende do campo do principal. O marcador sai fora do
@@ -591,6 +601,21 @@
                                     if ($__flMaster !== '') {
                                         $__flMasterDeps[] = ['field' => $__flMaster, 'target' => $fld, 'token' => $depToken];
                                     }
+                                }
+
+                                // :filters enxergam o estado da tela ($recordId): o
+                                // formulário guarda o que a coluna desenhou para que,
+                                // mudando (Salvar de registro novo), a resposta leve as
+                                // opções e o token novos (fw#378). Coluna que depende de
+                                // coluna irmã tem lista por linha: só o token vai.
+                                if ($col->filters) {
+                                    \Mad\Component\MadRenderContext::fieldListFilteredRendered(
+                                        (string) $name,
+                                        (string) $fld,
+                                        $col->filters,
+                                        ($col->dependsOn && $__flMaster === '') ? null : (array) $col->options,
+                                        $depToken
+                                    );
                                 }
                             }
 

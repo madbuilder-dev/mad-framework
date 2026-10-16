@@ -139,6 +139,7 @@ window.madTabBar = function (opts) {
                 return {
                     cls: o.cls || '', method: o.method || 'show', params: o.params || {},
                     label: o.label || null, html: o.html || null, url: o.url || null,
+                    history: !!o.history,
                 };
             }
             return { cls: cls || '', method: method || 'show', params: params || {}, label: label || null, html: html || null, url: url || null };
@@ -177,6 +178,8 @@ window.madTabBar = function (opts) {
                 this._renderInMainContainer(html);
                 return;
             }
+
+            if (a.history && this._fromHistory(a)) return;
 
             const key = this._tabKey(url, cls);
             const id = 'mtab-' + key;
@@ -276,6 +279,34 @@ window.madTabBar = function (opts) {
             this.persist();
             this._emit('mad:tab-activated', t);
             this.$nextTick(() => this._lucide());
+        },
+
+        // ─── Voltar/avancar do NAVEGADOR (popstate) ─────────────────────
+        // A barra ja esta na entrada: a tela tem de seguir. Pela identidade a
+        // aba so era reativada — mostrando a tela de onde se saiu — e o
+        // _syncUrl ainda devolvia a URL dela para a barra. Aba que ja mostra
+        // a rota > aba cuja identidade e a rota > aba ativa. Nunca empilha.
+        _fromHistory(a) {
+            const path = this._pathOf(a.url);
+            if (!path || !a.html) return false;
+            const id = 'mtab-' + this._tabKey(a.url, a.cls);
+            const t = this.tabs.find(x => x.url && this._pathOf(x.url) === path)
+                || this.tabs.find(x => x.id === id)
+                || this.tabs.find(x => x.id === this.activeId);
+            if (!t) return false;
+            this.activeId = t.id;
+            this._hideOtherPanes();
+            t.url = a.url;
+            if (a.cls) t.cls = a.cls;
+            this._injectIntoPane(t.id, a.html, a.url);
+            const refined = a.label || this._extractLabel(a.html);
+            if (refined) { t.label = refined; t.labelExplicit = !!a.label; }
+            t.dirty = false;
+            this._syncUrl(t, false);
+            this.persist();
+            this._emit('mad:tab-activated', t);
+            this.$nextTick(() => this._lucide());
+            return true;
         },
 
         activePane() {

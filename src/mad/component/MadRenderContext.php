@@ -370,6 +370,19 @@ class MadRenderContext
     }
 
     /**
+     * Coluna dbcombo da Lista de itens com `:filters` terminou de montar
+     * (fw#378): o formulário guarda o que ela desenhou, para levar ao
+     * navegador as opções novas quando os filtros mudarem (Salvar de um
+     * registro novo). `$options` null = a lista é por linha (depende de
+     * coluna irmã) e não vai inteira para todas as linhas.
+     */
+    public static function fieldListFilteredRendered(string $list, string $col, mixed $filters, ?array $options, string $token): void
+    {
+        $form = ($list !== '' && $col !== '') ? self::getForm() : null;
+        $form?->fieldListFilteredRendered($list, $col, $filters, $options, $token);
+    }
+
+    /**
      * Um checklist que o código da tela grava (`saveChecklist()`; fora do
      * `mode="table"`) terminou de montar a tela: `$selected` é o que ele
      * mostra marcado, `$drawn` as chaves dos itens que desenhou, `$label` o

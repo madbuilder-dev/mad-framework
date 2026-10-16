@@ -26,6 +26,9 @@ use Mad\Ui\MadToast;
  */
 class MadValidationException extends \RuntimeException
 {
+    /** Toast padrão do `asInline()`. */
+    public const DEFAULT_TOAST = 'Corrija os erros antes de continuar.';
+
     /**
      * @param array  $errors          ['campo' => 'mensagem'] — campos que falharam
      * @param array  $validatedFields Todos os campos que foram validados (para limpar erros anteriores)
@@ -92,7 +95,7 @@ class MadValidationException extends \RuntimeException
      *
      * @param string $toast Mensagem do toast de aviso ('' para omitir)
      */
-    public function asInline(string $toast = 'Corrija os erros antes de continuar.'): MadResponse
+    public function asInline(string $toast = self::DEFAULT_TOAST): MadResponse
     {
         $response = new MadResponse();
 
@@ -110,7 +113,16 @@ class MadValidationException extends \RuntimeException
         $orphans = $this->orphanErrors();
         if ($orphans !== []) {
             $this->logOrphans($orphans);
-            $toast = trim($toast . ' ' . self::summarize($orphans));
+            // Só erro de campo que a tela não tem: não há o que corrigir nela
+            // (fw#373). O texto padrão vira o motivo de verdade; um toast que
+            // a tela passou continua sendo dela.
+            if ($toast === self::DEFAULT_TOAST && count($orphans) === count($this->errors)) {
+                $toast = 'Não foi possível salvar.';
+            }
+            $toast = trim($toast . ' ' . self::summarize($orphans) . ' '
+                . (count($orphans) === 1
+                    ? 'Esse campo não está nesta tela: avise o responsável pelo sistema.'
+                    : 'Esses campos não estão nesta tela: avise o responsável pelo sistema.'));
         }
 
         if ($toast !== '') {

@@ -36,6 +36,8 @@ use Mad\View\MadBlade;
  * │  group-total              Subtotais por grupo                               │
  * │  card-view               Habilita visualização em cards                     │
  * │  card-default             Cards como visualização padrão                    │
+ * │  card-below="576"         Cards em telas mais estreitas que 576px, até o    │
+ * │                           usuário escolher (liga o card-view)              │
  * │  card-cols="3"            Colunas do grid de cards (default: 3)             │
  * │  selectable               Coluna de seleção (checkbox) + ações em lote      │
  * │  row-click                Clique na linha executa a 1ª ação dela (o "clique │
@@ -1726,9 +1728,21 @@ class MadGridCompiler
         if (static::has($a, 'no-load-button'))     $c[] = "'loadButton' => false";
         if (isset($a['load-hint']))               $c[] = static::kv('loadHint', static::emit($a['load-hint']));
 
-        // Card view
-        if (static::has($a, 'card-view'))    $c[] = "'cardView' => true";
+        // Card view. card-below="576": abre em Cards em tela mais estreita que
+        // 576px (aceita "576px"), sem passar por cima da escolha do usuário; liga
+        // o card-view. Valor que não é número positivo não emite nada.
+        $cardBelow = null;
+        if (isset($a['card-below'])) {
+            if ($a['card-below']['type'] === 'php') {
+                $cardBelow = '(int) (' . static::emit($a['card-below']) . ')';
+            } else {
+                $cb = preg_replace('/\s*px$/i', '', trim(static::str($a, 'card-below')));
+                if (ctype_digit((string) $cb) && (int) $cb > 0) $cardBelow = (string) (int) $cb;
+            }
+        }
+        if (static::has($a, 'card-view') || $cardBelow !== null) $c[] = "'cardView' => true";
         if (static::has($a, 'card-default')) $c[] = "'cardDefault' => true";
+        if ($cardBelow !== null)             $c[] = "'cardBelow' => " . $cardBelow;
         if (isset($a['card-cols']))          $c[] = "'cardCols' => " . static::qs(static::str($a, 'card-cols'));
 
         // Seleção de linhas (checkbox) — ações em lote vêm dos <mad-bulk-action>.
@@ -3069,8 +3083,11 @@ class MadGridCompiler
             }
         }
 
-        // Boolean flags (sem argumentos). O nome do atributo é o nome do método,
-        // exceto os kebab, que precisam do mapa (o setter é camelCase).
+        // Boolean flags. O nome do atributo é o nome do método, exceto os
+        // kebab, que precisam do mapa (o setter é camelCase). Nu ou verdadeiro
+        // liga; "false"/"0" desliga; `:flag="expr"` vale o que a expressão der.
+        // Antes bastava a PRESENÇA — `:disabled="! $editavel"` travava a coluna
+        // com `$editavel` verdadeiro (fw#387; mesmo contrato do fw#317).
         $boolFlags = [
             'required'        => 'required',
             'readonly'        => 'readonly',
@@ -3081,7 +3098,14 @@ class MadGridCompiler
             'toggle-password' => 'togglePassword',
         ];
         foreach ($boolFlags as $flag => $method) {
-            if (static::has($attrs, $flag)) {
+            if (!isset($attrs[$flag])) {
+                continue;
+            }
+            $a = $attrs[$flag];
+            if ($a['type'] === 'php') {
+                $chain .= "->{$method}((bool) (" . static::emit($a) . "))";
+            } elseif ($a['type'] === 'bool'
+                || !in_array(strtolower(trim((string) $a['value'])), ['false', '0'], true)) {
                 $chain .= "->{$method}()";
             }
         }
@@ -3095,6 +3119,10 @@ class MadGridCompiler
             if (isset($attrs[$prop])) {
                 $chain .= "->{$prop}(" . static::emitOptions($attrs[$prop]) . ")";
             }
+        }
+        // :filters="[['projeto_id', '=', $recordId]]" do combo (fw#378).
+        if (isset($attrs['filters'])) {
+            $chain .= '->filters(' . static::emit($attrs['filters']) . ')';
         }
 
         return $chain;

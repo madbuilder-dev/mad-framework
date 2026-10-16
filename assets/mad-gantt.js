@@ -1566,7 +1566,7 @@
             }
 
             const align = c.align || 'left';
-            return `<span class="mad-gantt-tl-cell" style="${w};text-align:${align}">${fmtCell(t, c)}</span>`;
+            return `<span class="mad-gantt-tl-cell" style="${w};text-align:${align}">${fmtCell(t, c, opts)}</span>`;
         }).join('');
 
         return `
@@ -1578,8 +1578,10 @@
     }
 
     /** Formata o valor de uma celula conforme col.format. */
-    function fmtCell(t, c) {
-        if (c.field === 'duration') return computeDuration(t) + 'd';
+    function fmtCell(t, c, opts) {
+        if (c.field === 'duration') {
+            return (c.format === 'working-days' ? computeWorkingDuration(t, opts || {}) : computeDuration(t)) + 'd';
+        }
         let v = t[c.field];
         if (c.field === 'code' && (v == null || v === '')) v = t.id; // code cai p/ id
         if (v == null || v === '') return '';
@@ -1613,6 +1615,23 @@
         const e = parseDate(t.end) || s;
         if (!s) return 0;
         return Math.max(1, daysBetween(s, e) + 1);
+    }
+
+    /**
+     * `format="working-days"`: só os dias de trabalho do Gantt (`working-days`,
+     * padrão segunda a sexta), sem os feriados. Mover a tarefa sem mudar o
+     * prazo de trabalho mantém o número.
+     */
+    function computeWorkingDuration(t, opts) {
+        const s = parseDate(t.start);
+        const e = parseDate(t.end) || s;
+        if (!s) return 0;
+        const wd = Array.isArray(opts.workingDays) && opts.workingDays.length
+            ? opts.workingDays.map(Number) : [1, 2, 3, 4, 5];
+        const hol = Array.isArray(opts.holidays) ? opts.holidays.map(String) : [];
+        const a = e < s ? e : s;
+        const b = e < s ? s : e;
+        return root.MadGantt.calendar.countWorkingDays(a, b, wd, hol);
     }
 
     function collectAssignees(t) {
@@ -3560,6 +3579,7 @@
             _rows:  [],
             _geom:  { byId: {}, totalHeight: 0 },
             _bindings: [],
+            _dragFrom: {},
             _rafFlush: 0,
             _dirty: { all: true },
             _themeMo: null,
@@ -3661,25 +3681,9 @@
                         getZoom: () => this.zoom,
                         getGeom: () => this._geom,
                         getRange: () => this._range,
-                        onDragTick: (id, start, end /*, mode */) => {
-                            // Visual already patched by drag-bar.js
-                            // Update task in memory so subsequent renders match.
-                            // Zoom hora preserva o horário — fmtISO date-only
-                            // aqui apagava a hora da task só de encostar nela.
-                            const t = this._getTask(id);
-                            const fmt = this.zoom === 'hour' ? dates.fmtDateTime : dates.fmtISO;
-                            if (t) { t.start = fmt(start); t.end = fmt(end); }
-                        },
-                        onDragCommit: (id, start, end, mode) => {
-                            const method = cfg.taskUpdateMethod || cfg.eventUpdateMethod;
-                            const saved = wire.fireTaskUpdate(this.$el, method, id, start, end, mode);
-                            // Agendamento automático: empurra os sucessores e grava
-                            // cada um pelo mesmo método, um depois do outro.
-                            if (this.autoSchedule) this._autoSchedule(id, method, saved);
-                            this._markDirty('chart'); this._markDirty('deps');
-                            if (this.criticalPath) this._recomputeCritical();
-                            this._scheduleFlush();
-                        },
+                        // Visual já ajustado pelo drag-bar; aqui a tarefa em memória.
+                        onDragTick: (id, start, end /*, mode */) => this._onDragTick(id, start, end),
+                        onDragCommit: (id, start, end, mode) => this._onDragCommit(id, start, end, mode),
                     }));
                     this._bindings.push(dragDependency.attach(svgEl, {
                         getTask: (id) => this._getTask(id),
@@ -3902,22 +3906,83 @@
             },
 
             /**
+             * Cada passo do arrasto já move a tarefa em memória (o próximo
+             * desenho tem de bater com a barra). Zoom hora preserva o horário —
+             * fmtISO date-only aqui apagava a hora da task só de encostar nela.
+             * O primeiro passo guarda onde a tarefa estava, para devolvê-la se
+             * o servidor recusar a gravação.
+             */
+            _onDragTick(id, start, end) {
+                const t = this._getTask(id);
+                if (!t) return;
+                const key = String(id);
+                if (!this._dragFrom[key]) this._dragFrom[key] = { start: t.start, end: t.end };
+                const fmt = this.zoom === 'hour' ? dates.fmtDateTime : dates.fmtISO;
+                t.start = fmt(start);
+                t.end = fmt(end);
+            },
+
+            _onDragCommit(id, start, end, mode) {
+                const key = String(id);
+                const from = this._dragFrom[key] || null;
+                delete this._dragFrom[key];
+                const method = cfg.taskUpdateMethod || cfg.eventUpdateMethod;
+                const saved = wire.fireTaskUpdate(this.$el, method, id, start, end, mode);
+                // Agendamento automático: empurra os sucessores e grava
+                // cada um pelo mesmo método, um depois do outro.
+                const done = this.autoSchedule ? this._autoSchedule(id, method, saved) : null;
+                // Lateral também: as colunas de início, fim e duração mudaram.
+                this._markDirty('chart'); this._markDirty('deps'); this._markDirty('sidebar');
+                if (this.criticalPath) this._recomputeCritical();
+                this._scheduleFlush();
+                // Servidor recusou (sem permissão para editar, erro ao gravar):
+                // nada foi gravado, então a barra volta para onde estava — antes
+                // ficava na posição nova até recarregar a página, como se tivesse
+                // sido salva.
+                return Promise.resolve(saved).then((r) => {
+                    if (from && r && r.ok === false) this._restoreTasks([{ id, start: from.start, end: from.end }]);
+                    return done;
+                });
+            },
+
+            /** Devolve tarefas às datas de antes e redesenha. */
+            _restoreTasks(list) {
+                let changed = false;
+                for (const o of list) {
+                    const t = this._getTask(o.id);
+                    if (!t) continue;
+                    t.start = o.start;
+                    t.end = o.end;
+                    changed = true;
+                }
+                if (!changed) return;
+                // A geometria foi mexida pelo arrasto (drag-bar): recalcula tudo.
+                this._markDirty('all');
+                this._scheduleFlush();
+            },
+
+            /**
              * `auto-schedule`: empurra os sucessores da tarefa `movedId` que
              * ficaram em conflito (em memória, já no próximo desenho) e grava
              * cada um pelo método do arrasto, em fila depois de `after`.
+             * Recusada a gravação da tarefa arrastada (`after`), nenhum
+             * sucessor é gravado e todos voltam para onde estavam.
              */
             _autoSchedule(movedId, method, after) {
                 if (!autoSched) return;
                 const changes = autoSched.cascade(this.tasks, this.dependencies, movedId);
-                let chain = Promise.resolve(after);
+                const before = [];
+                let refused = false;
+                let chain = Promise.resolve(after).then((r) => { refused = !!(r && r.ok === false); });
                 for (const c of changes) {
                     const t = this._getTask(c.id);
                     if (!t) continue;
+                    before.push({ id: c.id, start: t.start, end: t.end });
                     t.start = c.start;
                     t.end = c.end;
-                    chain = chain.then(() => wire.fireTaskUpdate(this.$el, method, c.id, c.start, c.end, 'auto'));
+                    chain = chain.then(() => (refused ? null : wire.fireTaskUpdate(this.$el, method, c.id, c.start, c.end, 'auto')));
                 }
-                return chain;
+                return chain.then(() => { if (refused) this._restoreTasks(before); });
             },
 
             _recomputeCritical() {
@@ -4069,6 +4134,8 @@
                             criticalSet: this.criticalSet,
                             criticalMode: this.criticalMode,
                             theme: this.theme,
+                            workingDays: this.workingDays,
+                            holidays: this.holidays,
                         });
                     }
                 }

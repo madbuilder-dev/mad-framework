@@ -196,7 +196,17 @@ class MadConfirm
      */
     public function build(): MadResponse
     {
-        $btns = $this->buttons ?: [
+        // Botão de ação sem componente alvo não tem a quem chamar: o clique não
+        // faria nada. Acontece com `confirm()` sem `$this` e com a ação aberta
+        // pela URL, quando a tela não está no navegador (fw#386). Ele não é
+        // oferecido; sobra a mensagem com um OK (um "Cancelar" sozinho não
+        // cancelaria nada).
+        $btns = $this->buttons;
+        $live = array_values(array_filter($btns, fn (array $b) => !isset($b['action']) || ($b['mad_id'] ?? '') !== ''));
+        if (count($live) !== count($btns)) {
+            $btns = array_filter($live, fn (array $b) => isset($b['action'])) !== [] ? $live : [];
+        }
+        $btns = $btns ?: [
             ['label' => 'OK', 'variant' => 'secondary', 'callback_js' => 'null'],
         ];
 

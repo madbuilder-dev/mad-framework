@@ -1037,6 +1037,26 @@ class MadGantt
         return $this;
     }
 
+    /**
+     * @internal Método que o arrasto da barra chama — o do `onTaskUpdate`, ou
+     * o do `onEventUpdate` sem ele (mesma escolha do navegador).
+     */
+    public function _dragUpdateMethod(): string
+    {
+        return $this->taskUpdateMethod !== '' ? $this->taskUpdateMethod : $this->eventUpdateMethod;
+    }
+
+    /**
+     * @internal Tira o arrasto da barra: sem método de gravação o navegador
+     * desenha o Gantt só leitura.
+     */
+    public function _disableDragUpdate(): static
+    {
+        $this->taskUpdateMethod  = '';
+        $this->eventUpdateMethod = '';
+        return $this;
+    }
+
     /** Callback ao criar dependencia via drag. */
     public function onDependencyCreate(string $method): static
     {

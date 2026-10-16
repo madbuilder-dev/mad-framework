@@ -54,6 +54,12 @@ abstract class EChart extends BaseChart
         return "::function(v) { if (v === null || v === undefined) return ''; return '{$pre}' + number_format(v, '{$p}', '{$dec}', '{$tho}') + '{$suf}'; }::";
     }
 
+    /**
+     * Abreviação do eixo — a MESMA regra do rótulo da barra
+     * ({@see BaseChart::abbreviateNumber()}): prefixo/sufixo do formato e 1 casa
+     * quando não é redonda (R$10,7K). Com `toFixed(0)`, R$ 10.659 e R$ 10.507
+     * viravam os dois "11K".
+     */
     private function jsAbbreviateFormatter(): string
     {
         $p   = $this->displayPrecision();
@@ -64,7 +70,7 @@ abstract class EChart extends BaseChart
 
         // Must be a single line — json_encode would escape real newlines to \n,
         // which is invalid when the string is later used as raw JS source.
-        return "::function(v) { if (v === null || v === undefined) return ''; var a = Math.abs(v); if (a >= 1e9) return '{$pre}' + (v/1e9).toFixed(0) + 'B' + '{$suf}'; if (a >= 1e6) return '{$pre}' + (v/1e6).toFixed(0) + 'M' + '{$suf}'; if (a >= 1e3) return '{$pre}' + (v/1e3).toFixed(0) + 'K' + '{$suf}'; return '{$pre}' + number_format(v, '{$p}', '{$dec}', '{$tho}') + '{$suf}'; }::";
+        return "::function(v) { if (v === null || v === undefined) return ''; var s = v < 0 ? '-' : ''; var a = Math.abs(v); var U = [[1e3, 'K'], [1e6, 'M'], [1e9, 'B']]; var i = -1; for (var k = 0; k < 3; k++) { if (a >= U[k][0]) i = k; } if (i < 0) return s + '{$pre}' + number_format(a, '{$p}', '{$dec}', '{$tho}') + '{$suf}'; var x = Math.round(a / U[i][0] * 10) / 10; if (x >= 1000 && i < 2) { i++; x = Math.round(a / U[i][0] * 10) / 10; } var t = x.toFixed(1); if (t.slice(-2) === '.0') t = t.slice(0, -2); return s + '{$pre}' + t.replace('.', '{$dec}') + U[i][1] + '{$suf}'; }::";
     }
 
     private function buildValueAxis(): array
@@ -73,7 +79,8 @@ abstract class EChart extends BaseChart
             ? $this->jsAbbreviateFormatter()
             : $this->jsNumberFormatter();
 
-        $axis = ['type' => 'value', 'axisLabel' => ['formatter' => $formatter]];
+        // hideOverlap: rótulo que encostaria no vizinho some (R$8KR$10K).
+        $axis = ['type' => 'value', 'axisLabel' => ['formatter' => $formatter, 'hideOverlap' => true]];
         // Sem casas no rótulo o eixo anda de 1 em 1: com marcas em 0,5 o
         // rótulo repetiria "1", "1", "2", "2".
         if ($this->displayPrecision() === 0) {
@@ -228,6 +235,21 @@ abstract class EChart extends BaseChart
         return $option;
     }
 
+    /**
+     * Eixo de categorias da barra. Na horizontal o ECharts desenha a 1ª
+     * categoria EMBAIXO; `first-on-top` inverte o eixo para ela ficar no topo
+     * (ranking lido de cima para baixo). Sem a opção, a ordem é a de sempre.
+     */
+    private function barCategoryAxis(array $data, bool $horizontal): array
+    {
+        $axis = ['type' => 'category', 'data' => $data];
+        if ($horizontal && $this->barFirstOnTop) {
+            $axis['inverse'] = true;
+        }
+
+        return $axis;
+    }
+
     private function buildBarOptions(): array
     {
         $p   = $this->displayPrecision();
@@ -242,6 +264,7 @@ abstract class EChart extends BaseChart
         $horizontal     = ($this->barDirection === 'horizontal');
         $hasTransformer = $this->hasDisplayTransformer();
         $n              = $this->name;
+        $labelTexts     = [];
 
         if ($countGroups > 1) {
             // ── Multi-series ─────────────────────────────────────────────────
@@ -298,7 +321,7 @@ abstract class EChart extends BaseChart
                 $i++;
             }
 
-            $catAxis   = ['type' => 'category', 'data' => $catFormatted];
+            $catAxis   = $this->barCategoryAxis($catFormatted, $horizontal);
             $valueAxis = $this->buildValueAxis();
             $xAxis     = $horizontal ? $valueAxis : $catAxis;
             $yAxis     = $horizontal ? $catAxis   : $valueAxis;
@@ -348,6 +371,10 @@ abstract class EChart extends BaseChart
             }
 
             $this->ecDisplayValues = $hasTransformer ? array_values($displayValues) : null;
+            // Texto dos rótulos das barras (folga da direita no celular).
+            $labelTexts = $hasTransformer
+                ? array_map('strval', $displayValues)
+                : array_map(fn ($d) => $pre . number_format((float) $d['value'], $p, $dec, $tho) . $suf, $seriesData);
 
             if ($hasTransformer) {
                 $labelFmt   = "::function(p) { var dv = __dv_{$n}[p.dataIndex]; return dv !== null && dv !== undefined ? dv : p.value; }::";
@@ -357,7 +384,7 @@ abstract class EChart extends BaseChart
                 $tooltipFmt = "::function(params) { var p = params[0]; return p.axisValue + '<br/>{$pre}' + number_format(p.value, '{$p}', '{$dec}', '{$tho}') + '{$suf}'; }::";
             }
 
-            $catAxis   = ['type' => 'category', 'data' => $categories];
+            $catAxis   = $this->barCategoryAxis($categories, $horizontal);
             $valueAxis = $this->buildValueAxis();
             $xAxis     = $horizontal ? $valueAxis : $catAxis;
             $yAxis     = $horizontal ? $catAxis   : $valueAxis;
@@ -379,6 +406,18 @@ abstract class EChart extends BaseChart
 
         if ($this->grid) {
             $option['grid'] = ['containLabel' => true, 'left' => '3%', 'right' => '4%', 'bottom' => '3%'];
+        }
+
+        // Celular: o rótulo da maior barra (à direita dela) e o último rótulo do
+        // eixo passavam da borda direita — o containLabel só mede os eixos.
+        // Folga só em contêiner estreito (media do ECharts): no largo, o
+        // desenho é o de sempre.
+        if ($horizontal && $countGroups <= 1 && $this->grid && !empty($labelTexts)) {
+            $widest = max(array_map('mb_strlen', $labelTexts));
+            $option['media'] = [[
+                'query'  => ['maxWidth' => 420],
+                'option' => ['grid' => ['right' => max(32, $widest * 7 + 12)]],
+            ]];
         }
 
         if ($this->rotateLegend) {

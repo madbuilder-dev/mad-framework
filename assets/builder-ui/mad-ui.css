@@ -6650,7 +6650,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-checklist-body { overflow-y: auto; }
 /* Barra própria, sempre visível: a sobreposta do macOS some e a lista cortada
    parecia completa (fw#302 — perfis escondidos abaixo da dobra). */
-.mad-checklist-body::-webkit-scrollbar { width: 8px; }
+/* A horizontal também (fw#365): sem altura ela ficava com 0 px e a coluna
+   cortada à direita não dava sinal de que havia mais. */
+.mad-checklist-body::-webkit-scrollbar { width: 8px; height: 8px; }
 .mad-checklist-body::-webkit-scrollbar-track { background: transparent; }
 .mad-checklist-body::-webkit-scrollbar-thumb { background: var(--mad-border-strong, var(--mad-border)); border-radius: 4px; }
 .mad-checklist-body::-webkit-scrollbar-thumb:hover { background: var(--mad-text-muted); }
@@ -6687,6 +6689,25 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   .mad-checklist-table tbody tr.mad-checklist-checked:nth-child(even) { background: rgba(59, 130, 246, 0.09); }
 }
 .mad-checklist-table tbody tr:last-child td { border-bottom: none; }
+
+/* Permissões por ação (cadastros de grupo, perfil e programa) em lista estreita
+   (fw#365): a coluna de ações saía da tela a 390 px. A célula de ações leva a
+   marca .mad-checklist-actions; com ela o checklist vira contêiner e, estreito,
+   cada linha empilha — marca e colunas em cima, as ações embaixo. Checklist
+   sem a marca não muda. */
+.mad-checklist:has(.mad-checklist-actions) { container: mad-checklist / inline-size; }
+@container mad-checklist (max-width: 560px) {
+  .mad-checklist-table thead { display: none; }
+  .mad-checklist-table tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    border-bottom: 1px solid var(--mad-border);
+  }
+  .mad-checklist-table tbody tr:last-child { border-bottom: none; }
+  .mad-checklist-table tbody td { border-bottom: none; padding: 6px 8px; }
+  .mad-checklist-table tbody td:first-child { flex: 0 0 auto; padding-left: 12px; }
+  .mad-checklist-table tbody td:empty { display: none; }
+  .mad-checklist-table tbody td:has(> .mad-checklist-actions) { flex: 1 0 100%; padding: 0 12px 8px 44px; }
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    MULTI-SEARCH / UNIQUE-SEARCH / MULTI-ENTRY (MAD Select)

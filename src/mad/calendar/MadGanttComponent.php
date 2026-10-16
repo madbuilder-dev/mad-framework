@@ -390,7 +390,35 @@ abstract class MadGanttComponent extends MadComponent
         // pela subclass se quiser.
         $this->_applyInlineConfigToBuilder($gantt);
 
+        // Perfil sem permissão de editar nesta tela: o servidor recusaria a
+        // gravação do arrasto, então o Gantt já nasce só leitura (fw#379).
+        $this->_dropDeniedDragUpdate($gantt);
+
         return $gantt;
+    }
+
+    /**
+     * Tira o arrasto da barra quando o perfil nega o método que ele chama — a
+     * mesma pergunta que o canal reativo faz ao receber a gravação. Quem recebe
+     * a chamada é o componente da tela: este Gantt, ou o host do `<mad-gantt>`
+     * declarativo numa tela que não é um Gantt.
+     */
+    protected function _dropDeniedDragUpdate(MadGantt $gantt): void
+    {
+        $method = $gantt->_dragUpdateMethod();
+        if ($method === '') {
+            return;
+        }
+
+        try {
+            $negada = \Mad\Security\PermissionGate::deniedActionKey($this->_externalHost ?? $this, $method);
+        } catch (\Throwable $e) {
+            return; // sem sessão de permissões: liberado, como as ações de linha
+        }
+
+        if ($negada !== null) {
+            $gantt->_disableDragUpdate();
+        }
     }
 
     /**

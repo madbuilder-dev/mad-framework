@@ -33,6 +33,12 @@ class BarChart extends EChart
         $this->barDirection = $direction;
     }
 
+    /** Barra horizontal: 1ª categoria no topo (o ECharts a desenha embaixo). */
+    public function setFirstOnTop(bool $on = true)
+    {
+        $this->barFirstOnTop = $on;
+    }
+
     /** Enable stacked bars. */
     public function setStack($stack = true)
     {

@@ -36,9 +36,13 @@
         ? get_class($_dfPermComp)
         : '';
     $actions = [];
+    $_dfActConds = [];   // índice da ação => config, das que só valem em algumas linhas (fw#363)
     foreach ($actConfigs as $a) {
         $act = \Mad\Grid\MadDataGrid::_actFromConfig($a, $_dfPermOwner);
-        if ($act) $actions[] = $act;
+        if ($act) {
+            if ($act->hasRowConditions()) $_dfActConds[count($actions)] = $a;
+            $actions[] = $act;
+        }
     }
 
     // ── Colunas com caminho de relacionamento (`{cidade->estado->pais->nome}`) ──
@@ -181,6 +185,55 @@
         $alpineCfg['rows'] = $normalizedRows;
     }
     unset($_form);
+
+    // ── Ações da linha que só valem em algumas linhas (fw#363) ──────────────
+    // `when-*`/`disabled-*` o navegador avalia na linha como ela está (também a
+    // adicionada ali); `display-condition` e `disabled` por método são PHP:
+    // vêm calculados por linha carregada. O servidor reconfere antes de rodar
+    // a ação (MadComponent::_detailRowActionRefusal), pelo que o formulário
+    // anota aqui.
+    if ($_dfActConds) {
+        $_dfHosts  = array_values(array_filter([$_dfPermOwner]));
+        $_dfRules  = [];
+        $_dfRowFn  = [];
+        $_dfByMeth = [];
+        foreach ($_dfActConds as $_dfI => $_dfA) {
+            $_dfRule = array_filter([
+                'w'  => is_array($_dfA['when'] ?? null) ? $_dfA['when'] : null,
+                'wf' => is_array($_dfA['whenField'] ?? null) ? $_dfA['whenField'] : null,
+                'd'  => is_array($_dfA['disabled'] ?? null) ? $_dfA['disabled'] : null,
+            ]);
+            $_dfFnCfg = array_filter([
+                'method'   => (string) ($_dfA['method'] ?? ''),
+                'when'     => is_string($_dfA['when'] ?? null) ? $_dfA['when'] : null,
+                'disabled' => is_string($_dfA['disabled'] ?? null) ? $_dfA['disabled'] : null,
+            ]);
+            if (count($_dfFnCfg) > 1 && ($_dfFnAct = \Mad\Grid\MadDataGrid::_actFromConfig($_dfFnCfg)?->resolveIn(...$_dfHosts))) {
+                $_dfRule['f'] = 1;
+                foreach ($normalizedRows as $_dfRow) {
+                    $_dfRid = (string) ($_dfRow['__id'] ?? '');
+                    if ($_dfRid === '') continue;
+                    try {
+                        $_dfSt = !$_dfFnAct->isVisible($_dfRow) ? 'hide' : ($_dfFnAct->isDisabled($_dfRow) ? 'off' : '');
+                    } catch (\Throwable $e) {
+                        $_dfSt = '';
+                    }
+                    if ($_dfSt !== '') $_dfRowFn[$_dfRid][$_dfI] = $_dfSt;
+                }
+            }
+            $_dfRules[$_dfI] = $_dfRule;
+            $_dfByMeth[(string) ($_dfA['method'] ?? '')][] = array_intersect_key($_dfA, array_flip(['when', 'whenField', 'disabled']));
+        }
+        $alpineCfg['actRules'] = $_dfRules;
+        if ($_dfRowFn) $alpineCfg['actFn'] = $_dfRowFn;
+        // Método que também tem ação SEM condição vale em qualquer linha.
+        foreach ($actions as $_dfI => $_dfAct) {
+            if (!isset($_dfActConds[$_dfI])) unset($_dfByMeth[$_dfAct->method]);
+        }
+        unset($_dfHosts, $_dfRules, $_dfRowFn, $_dfI, $_dfA, $_dfRule, $_dfFnCfg, $_dfFnAct, $_dfRow, $_dfRid, $_dfSt, $_dfAct);
+    }
+    \Mad\Component\MadRenderContext::getForm()?->declareDetailActions($name, $_dfByMeth ?? [], (string) $model, (string) $foreignKey);
+    unset($_dfByMeth);
     $alpineCfg = json_encode($alpineCfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $_dfFileCols = [];
@@ -469,9 +522,10 @@
                                          não há linha em PHP para os callbacks por linha. Permissão não
                                          depende da linha — é da ação — e por isso vem de permMode(). --}}
                                     @if($act->permMode() !== 'hide')
+                                    @php $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : ''; @endphp
                                     <button type="button"
                                             class="mad-dg-action-btn{{ $act->isPrimary ? ' mad-dg-action-primary' : '' }}{{ $act->isDanger ? ' mad-dg-action-danger' : '' }}"
-                                            title="{{ $act->denyTitle() ?: $act->label }}"@if($act->permMode() === 'disable') aria-disabled="true" data-mad-deny @endif
+                                            title="{{ $act->denyTitle() ?: $act->label }}"@if($act->permMode() === 'disable') aria-disabled="true" data-mad-deny @endif{!! $_dfCondAttr !!}
                                             @click="callAction('{{ $act->method }}', row, idx)">
                                         @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
                                     </button>

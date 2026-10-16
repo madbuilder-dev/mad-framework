@@ -1108,15 +1108,19 @@ function _madFlOnChange(el, hydrate) {
             // Atualiza o state criptografado no wrapper
             _madSyncWireState(wrapper, data);
             // Aplica ops do field-list na row de origem; o resto (toast, bind,
-            // alert…) com as regras do wire, no escopo do componente.
+            // alert…) com as regras do wire, no escopo do componente. Na carga
+            // do registro (keep) só entram as opções e o valor de célula vazia:
+            // campo do principal, troca das linhas e aviso são resposta a uma
+            // edição que ninguém fez — abrir a proposta não pode regravar o
+            // que ela trouxe do banco (fw#376).
             var ops = data.ops || [];
             var others = [];
             ops.forEach(function(op) {
-                if (op.op === 'fl_combo') {
+                if (op.op === 'fl_combo' && !op.keep) {
                     rows.forEach(function(r) { _madFlApplyCombo(r, op.target, op.options, keep); });
                 } else if (op.op === 'fl_val') {
                     rows.forEach(function(r) { _madFlApplyVal(r, op.target, op.content, keep); });
-                } else {
+                } else if (!keep) {
                     others.push(op);
                 }
             });
@@ -1169,6 +1173,18 @@ function _madFlApplyCombo(row, targetName, options, keepValue, leaveRow) {
     var target = row.querySelector('select[name="' + targetName + '[]"]');
     if (!target) return;
 
+    // Lista em pares [[valor, texto], ...] (ordem do order-by preservada,
+    // fw#378) ou mapa {valor: texto}.
+    var order = [];
+    if (Array.isArray(options)) {
+        var map = {};
+        options.forEach(function(p) { map[String(p[0])] = p[1]; order.push(String(p[0])); });
+        options = map;
+    } else {
+        order = Object.keys(options || {});
+        options = options || {};
+    }
+
     // Carga do registro (keepValue): a lista nova entra e o valor que a linha
     // trouxe do banco fica — fora da lista nova, numa opção própria com o
     // rótulo que o combo já mostrava (fw#256).
@@ -1182,7 +1198,7 @@ function _madFlApplyCombo(row, targetName, options, keepValue, leaveRow) {
 
     // Reconstrói as options no <select> nativo (fonte da verdade)
     target.innerHTML = '<option value="">Selecione...</option>';
-    Object.keys(options).forEach(function(k) {
+    order.forEach(function(k) {
         var opt = document.createElement('option');
         opt.value = k;
         opt.textContent = options[k];
@@ -1232,15 +1248,33 @@ function _madFlCacheScope(el) {
  *
  * Usada pelo setItems('campo[]') via MadWire (global, diferente do on-change que é por row).
  */
-function _madFlApplyComboAll(container, targetName, options) {
+function _madFlApplyComboAll(container, targetName, options, keepValue) {
     // 1) Cacheia para novas rows (do componente)
     var scope = _madFlCacheScope(container);
     (_madFlComboOptionsCache[scope] = _madFlComboOptionsCache[scope] || {})[targetName] = options;
 
-    // 2) Atualiza rows existentes
+    // 2) Atualiza rows existentes. `keepValue`: a lista da coluna com
+    // :filters mudou depois da ação (fw#378) — cada linha fica com o valor
+    // que tem.
     container.querySelectorAll('.mad-fl-row').forEach(function(row) {
-        _madFlApplyCombo(row, targetName, options, false, true);
+        _madFlApplyCombo(row, targetName, options, !!keepValue, true);
     });
+}
+
+/**
+ * Troca o token da cascata de uma coluna da Lista de itens (fw#378): os
+ * :filters da coluna mudaram depois da ação (Salvar de registro novo) e a
+ * próxima recarga tem de usá-los. Linhas desenhadas, o molde das linhas que
+ * ainda vão nascer (<template x-for>) e o marcador do depends-on="@campo".
+ */
+function _madFlSetDepToken(container, targetName, token) {
+    var sel = 'select[name="' + targetName + '[]"][data-mad-fl-dep-token]';
+    var set = function(el) { el.setAttribute('data-mad-fl-dep-token', token); };
+    container.querySelectorAll(sel).forEach(set);
+    container.querySelectorAll('template').forEach(function(t) {
+        if (t.content) t.content.querySelectorAll(sel).forEach(set);
+    });
+    container.querySelectorAll('[data-mad-fl-master-target="' + targetName + '"]').forEach(set);
 }
 
 /**
@@ -1375,7 +1409,7 @@ document.addEventListener('change', function(e) {
                 var rowOps    = [];
                 var globalOps = [];
                 (data.ops || []).forEach(function(op) {
-                    if (op.op === 'fl_combo') rowOps.push(op);
+                    if (op.op === 'fl_combo' && !op.keep) rowOps.push(op);
                     else                      globalOps.push(op);
                 });
 
@@ -1479,7 +1513,7 @@ function _madFlMasterChanged(el) {
 
                 var globalOps = [];
                 (data.ops || []).forEach(function(op) {
-                    if (op.op === 'fl_combo') _madFlMasterApply(live, op.target, op.options);
+                    if (op.op === 'fl_combo' && !op.keep) _madFlMasterApply(live, op.target, op.options);
                     else                      globalOps.push(op);
                 });
                 _madApplyWireOps(globalOps, wrapper);
@@ -4445,6 +4479,43 @@ if (!window._madFloatEscBound) {
 }
 
 /**
+ * Clique dentro de um iframe fecha a superfície flutuante aberta (fw#370). O
+ * `@click.outside` do sino/mensagens não vê clique em iframe (o evento fica no
+ * documento dele, e o do dashboard é de outra origem); o que a janela vê é
+ * perder o foco para o iframe. Fecha as abertas pelo mesmo caminho do Esc
+ * (nome do `x-show`, senão `mad-float-close`), sem mexer no foco — ele já está
+ * no iframe. Superfície que CONTÉM o iframe continua aberta; trocar de aba do
+ * navegador não fecha nada (o foco não vai para um iframe).
+ */
+window.madFloatIframeBlur = function (doc) {
+    doc = doc || document;
+    var frame = doc.activeElement;
+    if (!frame || frame.tagName !== 'IFRAME') return 0;
+    var sel = window.madFloatSelector.join(',');
+    var closed = 0;
+    Array.prototype.forEach.call(doc.querySelectorAll(sel), function (el) {
+        if (!el.isConnected || !el.getClientRects().length || el.contains(frame)) return;
+        var expr = (el.getAttribute('x-show') || '').trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(expr) && window.Alpine && typeof window.Alpine.$data === 'function') {
+            try {
+                var data = window.Alpine.$data(el);
+                if (data && data[expr] === true) { data[expr] = false; closed++; return; }
+            } catch (err) { /* sem escopo Alpine */ }
+        }
+        if (el.hasAttribute('data-mad-float')) {
+            el.dispatchEvent(new CustomEvent('mad-float-close', { bubbles: true }));
+            closed++;
+        }
+    });
+    return closed;
+};
+if (!window._madFloatIframeBound) {
+    window._madFloatIframeBound = true;
+    // O activeElement só aponta o iframe depois do blur: lê no tick seguinte.
+    window.addEventListener('blur', function () { setTimeout(function () { window.madFloatIframeBlur(); }, 0); });
+}
+
+/**
  * De onde veio o foco (fw#335). O navegador mostra `:focus-visible` também no
  * CLIQUE em campo de texto; o anel de foco do mad-ui.css é só para quem navega
  * pelo teclado. Clique/toque põe `data-mad-pointer` no <html>; Tab tira.
@@ -5109,8 +5180,8 @@ document.addEventListener('alpine:init', () => {
         xls:  { icon: 'file-spreadsheet', color: 'var(--mad-success-light, #dcfce7)' },
         xlsx: { icon: 'file-spreadsheet', color: 'var(--mad-success-light, #dcfce7)' },
         csv:  { icon: 'file-spreadsheet', color: 'var(--mad-success-light, #dcfce7)' },
-        ppt:  { icon: 'file-presentation', color: '#fef3c7' },
-        pptx: { icon: 'file-presentation', color: '#fef3c7' },
+        ppt:  { icon: 'presentation', color: '#fef3c7' },
+        pptx: { icon: 'presentation', color: '#fef3c7' },
         zip:  { icon: 'file-archive', color: '#f3e8ff' },
         rar:  { icon: 'file-archive', color: '#f3e8ff' },
         '7z': { icon: 'file-archive', color: '#f3e8ff' },
@@ -6308,6 +6379,8 @@ document.addEventListener('alpine:init', () => {
             // Campos que ESTA consulta preenche (chaves do fill-fields, vindas
             // do Blade). null = desconhecido (markup antigo).
             _targets:    Array.isArray(cfg.targets) ? cfg.targets.map(String) : null,
+            // `fill-mode="empty"` (fw#388): só preenche alvo vazio. Padrão sobrescreve.
+            _fillMode:   cfg.fillMode === 'empty' ? 'empty' : 'overwrite',
 
             init() {
                 const root  = this.$el;
@@ -6440,6 +6513,16 @@ document.addEventListener('alpine:init', () => {
                 if (sv !== '' && String(el.value == null ? '' : el.value) === sv) {
                     this._rememberFill(el, fieldName, sv);
                     return;
+                }
+
+                // fill-mode="empty": campo com valor fica — salvo o que a
+                // consulta anterior deste campo escreveu e ninguém mudou
+                // (trocar de CNPJ troca a razão social do CNPJ anterior).
+                if (this._fillMode === 'empty' && sv !== '') {
+                    var curE = el.value == null ? '' : String(el.value);
+                    var mine = this._filled && Object.prototype.hasOwnProperty.call(this._filled, fieldName)
+                        && this._filled[fieldName] === curE;
+                    if (curE.trim() !== '' && !mine) return;   // só espaços = vazio
                 }
 
                 if (el.tagName === 'SELECT') {
@@ -6986,6 +7069,7 @@ document.addEventListener('alpine:init', () => {
 
         // ── View mode (table / card) ────────────────────────────────
         viewMode: 'table',
+        _cardBelowOff: null,
 
         // ── Seleção de linhas (<mad-grid selectable>) ────────────────
         // Marcar/desmarcar é só local; o campo oculto `__mad_grid_sel[...]`
@@ -7018,6 +7102,9 @@ document.addEventListener('alpine:init', () => {
                 var saved = sk ? localStorage.getItem('mad-dg-view:' + sk) : null;
                 this.viewMode = (saved === 'card' || saved === 'table') ? saved
                               : this._cfg.cardDefault ? 'card' : 'table';
+                // card-below="576": sem escolha do usuário, Cards em tela mais
+                // estreita que o limiar — e acompanha a largura até ele escolher.
+                if (saved !== 'card' && saved !== 'table' && !this._cfg.cardDefault) this._watchCardBelow();
             }
 
             // Busca rápida: debounce controlado via handleSearch (chamado pelo @input do template)
@@ -7038,6 +7125,7 @@ document.addEventListener('alpine:init', () => {
         destroy() {
             this._stopAutoRefresh();
             if (this._narrowOff) this._narrowOff();
+            if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
             if (_root && _onFocusOut && typeof _root.removeEventListener === 'function') {
                 _root.removeEventListener('focusout', _onFocusOut);
             }
@@ -7129,6 +7217,29 @@ document.addEventListener('alpine:init', () => {
                 }
             });
             this._narrowOff = offs.length ? () => offs.forEach(off => off()) : null;
+        },
+
+        // card-below: Cards abaixo da largura (mesma régua do hide-below).
+        _watchCardBelow() {
+            // O Alpine chama init() sozinho E pelo x-init: um ouvinte só.
+            if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
+            const q = parseInt(this._cfg.cardBelow, 10) > 0 ? _narrowMq(parseInt(this._cfg.cardBelow, 10)) : null;
+            if (!q) return;
+            const apply = (on) => {
+                const mode = on ? 'card' : 'table';
+                if (this.viewMode === mode) return;
+                this.viewMode = mode;
+                this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            };
+            apply(!!q.matches);
+            const onChange = (e) => apply(!!e.matches);
+            if (typeof q.addEventListener === 'function') {
+                q.addEventListener('change', onChange);
+                this._cardBelowOff = () => q.removeEventListener('change', onChange);
+            } else if (typeof q.addListener === 'function') {
+                q.addListener(onChange);
+                this._cardBelowOff = () => q.removeListener(onChange);
+            }
         },
 
         // ── Volta de formulário: linha salva visível + URL limpa ─────
@@ -7233,6 +7344,8 @@ document.addEventListener('alpine:init', () => {
         },
 
         setViewMode(mode) {
+            // Escolha explícita: a largura da tela não troca mais a visualização.
+            if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
             this.viewMode = mode;
             var sk = this._cfg.storageKey;
             if (sk) localStorage.setItem('mad-dg-view:' + sk, mode);
@@ -7344,7 +7457,9 @@ document.addEventListener('alpine:init', () => {
                             e.stopPropagation();
                             const field   = sortBtn.getAttribute('data-sort-field');
                             const wrapper = root.closest('[mad-component]');
-                            if (wrapper && window.MadWire) MadWire.call(wrapper, 'onSort', [field]);
+                            // `MadWire` é const global do mad-livewire.js — `window.MadWire` não
+                            // existia e o clique no cabeçalho flutuante não ordenava (fw#361).
+                            if (wrapper && typeof MadWire !== 'undefined') MadWire.call(wrapper, 'onSort', [field]);
                             return;
                         }
                         // Fallback: data-proxy-fwd genérico
@@ -7359,7 +7474,7 @@ document.addEventListener('alpine:init', () => {
                             ? argsRaw.split(',').map(a => a.trim().replace(/^['"]|['"]$/g, ''))
                             : [];
                         const wrapper = root.closest('[mad-component]');
-                        if (wrapper && window.MadWire) MadWire.call(wrapper, method, args);
+                        if (wrapper && typeof MadWire !== 'undefined') MadWire.call(wrapper, method, args);
                     });
                     document.body.appendChild(t);
                     theadProxy = t;
@@ -10536,6 +10651,33 @@ document.addEventListener('alpine:init', () => {
             ? crypto.randomUUID()
             : (Date.now().toString(36) + Math.random().toString(36).slice(2));
 
+        // Condição `when-*`/`disabled-*` de uma ação da linha ({field, op,
+        // value}) — gêmeo do HighlightRules::evalCond do servidor (fw#363).
+        const _dfActCond = (row, c) => {
+            const field = c && c.field;
+            if (!field) return true;
+            const one = (v) => (v === null || v === undefined || typeof v === 'object')
+                ? '' : (typeof v === 'boolean' ? (v ? '1' : '') : String(v).trim());
+            const fv  = one(row ? row[field] : '');
+            const val = c.value;
+            const cmp = (a, b) => {
+                const num = (x) => x !== '' && !isNaN(Number(x));
+                if (num(a) && num(b)) return Math.sign(Number(a) - Number(b));
+                return a < b ? -1 : (a > b ? 1 : 0);
+            };
+            switch (c.op || 'eq') {
+                case 'eq':  return fv === one(val);
+                case 'neq': return fv !== one(val);
+                case 'in':  return [].concat(val ?? []).map(one).includes(fv);
+                case 'nin': return ![].concat(val ?? []).map(one).includes(fv);
+                case 'gt':  return fv !== '' && cmp(fv, one(val)) > 0;
+                case 'gte': return fv !== '' && cmp(fv, one(val)) >= 0;
+                case 'lt':  return fv !== '' && cmp(fv, one(val)) < 0;
+                case 'lte': return fv !== '' && cmp(fv, one(val)) <= 0;
+                default:    return true;
+            }
+        };
+
         // Valor de seleção múltipla da linha → lista de chaves: array, JSON
         // ('["1","2"]') ou vírgula ('1,2') — como o MadForm::selectionKeys().
         const _dfSelectionKeys = (v) => {
@@ -11262,6 +11404,19 @@ document.addEventListener('alpine:init', () => {
             callAction(method, row, index) {
                 const w = this.$el.closest('[mad-component]');
                 if (w) MadWire.call(w, method, [row, index]);
+            },
+
+            // Ação com condição (fw#363): 'show' | 'hide' | 'off' (desabilitada).
+            // `when-*`/`disabled-*` valem sobre a linha como está; o que é PHP
+            // (`display-condition`) vem calculado por linha carregada (actFn).
+            _actState(row, i) {
+                const r = (cfg.actRules || {})[i];
+                if (!r) return 'show';
+                const pre = (r.f && row && cfg.actFn) ? (cfg.actFn[row.__id] || {})[i] : undefined;
+                if (pre === 'hide') return 'hide';
+                if ((r.w && !_dfActCond(row, r.w)) || (r.wf && !_dfActCond(row, r.wf))) return 'hide';
+                if (pre === 'off' || (r.d && _dfActCond(row, r.d))) return 'off';
+                return 'show';
             },
         };
     });
@@ -13395,6 +13550,13 @@ document.addEventListener('alpine:init', () => {
                         inp.value = _drpFormatWithMask(this.selectedDate, this._displayMask);
                     }
                     var self = this;
+                    // Letra (ou barra, espaço) digitada: a máscara só tem dígitos.
+                    // Cancelar aqui deixa valor, seleção e cursor como estavam;
+                    // depois do `input` a letra já tinha andado o cursor e
+                    // trocado o dígito seguinte (fw#382).
+                    inp.addEventListener('beforeinput', function(e) {
+                        if (e.inputType === 'insertText' && e.data && /\D/.test(e.data)) e.preventDefault();
+                    });
                     inp.addEventListener('input', function(e) { self._onInput(e); });
                     inp.addEventListener('blur',  function(e) { self._onBlur(e);  });
                     // Todo `change` do campo (o do seletor, o do navegador depois
@@ -13614,8 +13776,31 @@ document.addEventListener('alpine:init', () => {
                 var inp = e.target;
                 var pos = inp.selectionStart;
                 var before = inp.value;
+                // Campo cheio e tecla sem seleção (fw#382): a tecla SUBSTITUI o
+                // dígito do cursor. Antes ela era inserida e empurrava os outros
+                // para a direita — 16102026 sobre 15/10/2026 virava 16/02/2601.
+                var overwrote = false;
+                if (e && e.inputType === 'insertText' && pos != null) {
+                    var slots = this._displayMask.replace(/[^ymdhiHMsS]/g, '').length;
+                    var over = before.replace(/\D/g, '').length - slots;
+                    if (over > 0) {
+                        var chars = before.split('');
+                        for (var j = pos; j < chars.length && over > 0; j++) {
+                            if (/\d/.test(chars[j])) { chars.splice(j, 1); j--; over--; overwrote = true; }
+                        }
+                        before = chars.join('');
+                    }
+                }
                 var masked = _dpApplyMaskTyping(before, this._displayMask);
-                if (masked !== before) {
+                if (overwrote) {
+                    // Cursor logo depois do dígito digitado, pulando a barra.
+                    var nd = before.slice(0, pos).replace(/\D/g, '').length;
+                    var cp = 0;
+                    while (cp < masked.length && nd > 0) { if (/\d/.test(masked.charAt(cp))) nd--; cp++; }
+                    if (cp < masked.length && !/\d/.test(masked.charAt(cp))) cp++;
+                    inp.value = masked;
+                    try { inp.setSelectionRange(cp, cp); } catch (err) {}
+                } else if (masked !== before) {
                     inp.value = masked;
                     // Mantem cursor onde estava (ajusta se inseriu separador antes dele)
                     var delta = masked.length - before.length;
@@ -13947,6 +14132,9 @@ document.addEventListener('alpine:init', () => {
             },
 
             edit: function() {
+                // Campo que abriu com assinatura não tem modo escolhido; com um
+                // modo só não há pílulas para escolher e o Editar não mostrava nada.
+                if (!this.mode) this.mode = _modesArr[0];
                 this.editing = true;
                 var self = this;
                 this.$nextTick(function() {
@@ -13978,6 +14166,10 @@ document.addEventListener('alpine:init', () => {
                 this._pad.onEnd = function() {
                     self._undoData = self._pad.toData().slice();
                 };
+                // SignaturePad 4 avisa o fim do traço por evento (o `onEnd` é da 2.x).
+                if (typeof this._pad.addEventListener === 'function') {
+                    this._pad.addEventListener('endStroke', function() { self._syncPending(self._pad); });
+                }
 
                 // The canvas can be measured while its container is still sizing
                 // (collapsed tab/accordion, modal/drawer animation, flex not yet
@@ -14078,6 +14270,7 @@ document.addEventListener('alpine:init', () => {
                     data.pop();
                     pad.fromData(data);
                     this._undoData = data.slice();
+                    this._syncPending(pad);
                 }
             },
 
@@ -14086,6 +14279,7 @@ document.addEventListener('alpine:init', () => {
                 if (pad) {
                     pad.clear();
                     this._undoData = [];
+                    this._syncPending(pad);
                 }
             },
 
@@ -14132,6 +14326,9 @@ document.addEventListener('alpine:init', () => {
                     self._fsPad.onEnd = function() {
                         self._undoData = self._fsPad.toData().slice();
                     };
+                    if (typeof self._fsPad.addEventListener === 'function') {
+                        self._fsPad.addEventListener('endStroke', function() { self._syncPending(self._fsPad); });
+                    }
 
                     // Refit on viewport/orientation change while in fullscreen.
                     self._roFs = self._observeResize(fsCanvas, function() { return self._fsPad; });
@@ -14304,8 +14501,30 @@ document.addEventListener('alpine:init', () => {
                 this._fireMadChange();
             },
 
-            _injectFile: function() {
-                var b64 = this.signatureData;
+            // Traço ainda sem Confirmar (fw#377): o campo do formulário acompanha
+            // o quadro, para o envio da tela levar o que está desenhado — antes
+            // ia vazio com o desenho na tela. Quadro vazio volta ao que já foi
+            // confirmado. Prévia e `mad:change` continuam só no Confirmar.
+            _syncPending: function(pad) {
+                if (!pad) return;
+                var data = pad.isEmpty() ? this.signatureData : _exportSignature(pad);
+                // $root: chamado de um @click, o $el é o botão (Desfazer, Limpar).
+                var hiddens = this.$root.querySelectorAll('input[type="hidden"]');
+                for (var h = 0; h < hiddens.length; h++) {
+                    if (hiddens[h].getAttribute('mad:model') === cfg.name
+                     || hiddens[h].getAttribute('data-mad-model') === cfg.name) {
+                        hiddens[h].value = data;
+                        break;
+                    }
+                }
+                if (cfg.storage) {
+                    if (/^data:/.test(data || '')) this._injectFile(data);
+                    else if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+                }
+            },
+
+            _injectFile: function(pending) {
+                var b64 = pending || this.signatureData;
                 var match = b64.match(/^data:(image\/\w+);base64,(.+)$/);
                 if (!match) return;
                 var mime = match[1];

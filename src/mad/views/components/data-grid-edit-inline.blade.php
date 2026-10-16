@@ -54,6 +54,9 @@
     @php
         $eid = 'dgdt_' . $rowId . '_' . preg_replace('/[^a-z0-9_]/i', '_', $col->field);
         $iso = !empty($cellVal) ? (string)$cellVal : '';
+        // Valor como o seletor devolve (`databaseMask`): a célula só grava
+        // quando a data muda (o seletor avisa a cada tecla com a data completa).
+        $isoShown = ($__t = strtotime($iso)) ? date('Y-m-d', $__t) : '';
         $dpCfg = [
             'displayMask'  => 'dd/mm/yyyy',
             'databaseMask' => 'yyyy-mm-dd',
@@ -63,8 +66,28 @@
     <div class="mad-input-group mad-dg-datepicker-wrap" style="position:relative;"
          x-data="madDatePicker(Object.assign({{ json_encode($dpCfg, JSON_UNESCAPED_UNICODE) }}, {
             onCommit: function(iso) {
+                // No nó do seletor: o aviso pode vir de um escopo filho (dia do calendário).
+                var box = this.$root || this.$el;
+                // Data que não existe (31/02/2026): o seletor a desloca para
+                // 03/03/2026 e a célula gravaria outra data calada. Vai a
+                // digitada, e o servidor a recusa com o erro da célula.
+                var typed = box.querySelector ? box.querySelector('input.mad-dg-inline-input') : null;
+                var tm = typed ? /^(\d{2})\/(\d{2})\/(\d{4})(?: (\d{2}):(\d{2}))?$/.exec(typed.value || '') : null;
+                if (tm && iso) {
+                    var asTyped = tm[3] + '-' + tm[2] + '-' + tm[1] + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
+                    if (asTyped !== iso) iso = asTyped;
+                }
+                if (box._dgLast === undefined) box._dgLast = {{ json_encode($isoShown) }};
+                if (iso === box._dgLast) return;
+                box._dgLast = iso;
+                // Grava pela própria grade, como as outras células (marca de
+                // salvando, aviso de rede). `window.MadWire` não existia e a
+                // data editada nunca chegava ao servidor (fw#361).
+                var g = this.$el.closest('.mad-dg-wrap');
+                var d = (g && window.Alpine) ? window.Alpine.$data(g) : null;
+                if (d && typeof d.commitInline === 'function') { d.commitInline({{ $rowIdJs }}, '{{ $col->field }}', iso); return; }
                 var w = this.$el.closest('[mad-component]');
-                if (w && window.MadWire) MadWire.call(w, 'onInlineSave', [{{ $rowIdJs }}, '{{ $col->field }}', iso]);
+                if (w && typeof MadWire !== 'undefined') MadWire.call(w, 'onInlineSave', [{{ $rowIdJs }}, '{{ $col->field }}', iso]);
             }
          }))"
          @keydown.escape.window="close()"
@@ -82,6 +105,9 @@
     @php
         $eid = 'dgdt_' . $rowId . '_' . preg_replace('/[^a-z0-9_]/i', '_', $col->field);
         $iso = !empty($cellVal) ? (string)$cellVal : '';
+        // Valor como o seletor devolve (`databaseMask`): a célula só grava
+        // quando a data muda (o seletor avisa a cada tecla com a data completa).
+        $isoShown = ($__t = strtotime($iso)) ? date('Y-m-d H:i', $__t) : '';
         $dpCfg = [
             'displayMask'  => 'dd/mm/yyyy hh:ii',
             'databaseMask' => 'yyyy-mm-dd hh:ii',
@@ -91,8 +117,28 @@
     <div class="mad-input-group mad-dg-datepicker-wrap" style="position:relative;"
          x-data="madDateTimePicker(Object.assign({{ json_encode($dpCfg, JSON_UNESCAPED_UNICODE) }}, {
             onCommit: function(iso) {
+                // No nó do seletor: o aviso pode vir de um escopo filho (dia do calendário).
+                var box = this.$root || this.$el;
+                // Data que não existe (31/02/2026): o seletor a desloca para
+                // 03/03/2026 e a célula gravaria outra data calada. Vai a
+                // digitada, e o servidor a recusa com o erro da célula.
+                var typed = box.querySelector ? box.querySelector('input.mad-dg-inline-input') : null;
+                var tm = typed ? /^(\d{2})\/(\d{2})\/(\d{4})(?: (\d{2}):(\d{2}))?$/.exec(typed.value || '') : null;
+                if (tm && iso) {
+                    var asTyped = tm[3] + '-' + tm[2] + '-' + tm[1] + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
+                    if (asTyped !== iso) iso = asTyped;
+                }
+                if (box._dgLast === undefined) box._dgLast = {{ json_encode($isoShown) }};
+                if (iso === box._dgLast) return;
+                box._dgLast = iso;
+                // Grava pela própria grade, como as outras células (marca de
+                // salvando, aviso de rede). `window.MadWire` não existia e a
+                // data editada nunca chegava ao servidor (fw#361).
+                var g = this.$el.closest('.mad-dg-wrap');
+                var d = (g && window.Alpine) ? window.Alpine.$data(g) : null;
+                if (d && typeof d.commitInline === 'function') { d.commitInline({{ $rowIdJs }}, '{{ $col->field }}', iso); return; }
                 var w = this.$el.closest('[mad-component]');
-                if (w && window.MadWire) MadWire.call(w, 'onInlineSave', [{{ $rowIdJs }}, '{{ $col->field }}', iso]);
+                if (w && typeof MadWire !== 'undefined') MadWire.call(w, 'onInlineSave', [{{ $rowIdJs }}, '{{ $col->field }}', iso]);
             }
          }))"
          @keydown.escape.window="close()"

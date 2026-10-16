@@ -986,8 +986,34 @@ class MadFormRegistry
         // field-list declara na coluna (FieldListColumn); detail-form herda do
         // campo do editor (`<mad-detail-fields>`) — ver registerDetailColMeta().
         $meta = self::$fieldLists[$name]['colMeta'] ?? self::$detailForms[$name]['colMeta'] ?? [];
+        if (!isset(self::$fieldLists[$name]) && !isset(self::$detailForms[$name])) {
+            $meta = self::requestBoolColumns($name);
+        }
 
         return self::transformRowsWith((array) $meta, $rows);
+    }
+
+    /**
+     * As caixas de marcar da lista `$name` segundo o formulário recebido, só
+     * leitura: a lista gravada à mão lê `getFieldList()` antes de qualquer
+     * `fromRequest()` e, sem isto, o desmarcado ia vazio ao banco (fw#375).
+     *
+     * @return array<string,array{bool: true}>
+     */
+    private static function requestBoolColumns(string $name, string $field = '__mad_form'): array
+    {
+        $token = $_REQUEST[$field] ?? '';
+        if (!is_string($token) || $token === '') {
+            return [];
+        }
+        if (self::$requestSchemaToken !== $token) {
+            self::$requestSchema      = self::decode($token);
+            self::$requestSchemaToken = $token;
+        }
+        $meta = self::$requestSchema['__mad_field_lists'][$name]['colMeta']
+            ?? self::$requestSchema['__mad_detail_forms'][$name]['colMeta'] ?? [];
+
+        return array_filter(is_array($meta) ? $meta : [], static fn ($cfg) => is_array($cfg) && !empty($cfg['bool']));
     }
 
     /**
@@ -1007,7 +1033,23 @@ class MadFormRegistry
             if (!is_array($row)) {
                 continue;
             }
+            $blank = self::blankRow($row);
             foreach ($meta as $field => $cfg) {
+                // Caixa de marcar / chave: vazio, nulo e false são "desmarcada"
+                // e gravam '0' (antes iam ao banco como NULL; fw#375). O resto
+                // ('1', 'S', 't'…) segue como veio. A linha toda em branco fica
+                // como está: o Salvar continua a descartá-la.
+                if (!empty($cfg['bool'])) {
+                    if (!$blank && array_key_exists($field, $row) && !is_array($row[$field])) {
+                        $value = $row[$field];
+                        if ($value === null || $value === false || (is_string($value) && trim($value) === '')) {
+                            $rows[$i][$field] = '0';
+                        } elseif ($value === true) {
+                            $rows[$i][$field] = '1';
+                        }
+                    }
+                    continue;
+                }
                 if (!array_key_exists($field, $row) || !is_string($row[$field]) || $row[$field] === '') {
                     continue;
                 }
@@ -1032,6 +1074,27 @@ class MadFormRegistry
         }
 
         return $rows;
+    }
+
+    /** Linha sem nenhum valor (fora as chaves internas `__…`)? */
+    private static function blankRow(array $row): bool
+    {
+        foreach ($row as $key => $value) {
+            if (str_starts_with((string) $key, '__')) {
+                continue;
+            }
+            if (is_array($value) ? $value !== [] : trim((string) ($value ?? '')) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** A coluna `$field` da lista `$name` é caixa de marcar / chave (fw#375)? */
+    public static function isBoolColumn(string $name, string $field): bool
+    {
+        return !empty((self::$fieldLists[$name]['colMeta'] ?? self::$detailForms[$name]['colMeta'] ?? [])[$field]['bool']);
     }
 
     /**
@@ -1329,7 +1392,9 @@ class MadFormRegistry
             return null;
         }
         $dt = \DateTime::createFromFormat('d/m/Y', $value);
-        if (!$dt) {
+        // O PHP aceita 31/02 e devolve 03/03: data que não volta igual não
+        // existe e passa crua — quem grava a recusa (MadForm::fillRecord).
+        if (!$dt || $dt->format('d/m/Y') !== $value) {
             return $value;
         }
         return $dt->format(self::_maskToPhpFormat($dbMask));
@@ -1346,8 +1411,17 @@ class MadFormRegistry
         if ($value === '') {
             return null;
         }
-        $dt = \DateTime::createFromFormat('d/m/Y H:i', $value)
-            ?: \DateTime::createFromFormat('d/m/Y H:i:s', $value);
+        $dt = \DateTime::createFromFormat('!d/m/Y H:i', $value);
+        if ($dt && $dt->format('d/m/Y H:i') !== $value) {
+            $dt = false;
+        }
+        if (!$dt) {
+            $dt = \DateTime::createFromFormat('!d/m/Y H:i:s', $value);
+            // Data (ou hora) que não existe passa crua — ver _convertDate().
+            if ($dt && $dt->format('d/m/Y H:i:s') !== $value) {
+                $dt = false;
+            }
+        }
         if (!$dt) {
             return $value;
         }

@@ -92,6 +92,7 @@ class MadChart
     private ?array $nestedWidths    = null;
     private ?int   $nestedCap       = null;
     private bool   $horizontal      = false;
+    private bool   $firstOnTop      = false;
     private bool   $area            = false;
     private bool   $smooth          = true;
     // mixed: modo A (séries do group-by como linha) / modo B (2ª métrica)
@@ -268,6 +269,9 @@ class MadChart
     /** Bar: orientação horizontal. */
     public function horizontal(): self { $this->horizontal = true; return $this; }
 
+    /** Bar horizontal: 1ª categoria no TOPO (ranking de cima para baixo). Sem efeito na vertical. */
+    public function firstOnTop(bool $on = true): self { $this->firstOnTop = $on; return $this; }
+
     /**
      * Mixed modo A: séries do group-by (2ª dimensão) que viram LINHA sobre as
      * colunas. Match por nome (case-insensitive, pós sub-legend-transformer)
@@ -441,6 +445,7 @@ class MadChart
 
         if ($this->chartType === 'bar') {
             if ($this->horizontal) $chart->setLayout('horizontal');
+            if ($this->horizontal && $this->firstOnTop) $chart->setFirstOnTop();
             if ($this->stackedInternal) {
                 $chart->setStackInternal($this->nestedWidths, $this->nestedCap);
             } elseif ($this->stacked) {

@@ -36,6 +36,8 @@
      *   suffix            string      ''            Sufixo nos valores
      *   abbreviate        bool        false         Valores abreviados (K, M, B)
      *   horizontal        bool        false         Bar horizontal
+     *   first-on-top      bool        false         Bar horizontal: 1ª categoria no topo
+     *                                                (ranking de cima para baixo)
      *   stacked           bool|string false         Bar empilhado; "internal" = barras
      *                                                ANINHADAS (sobrepostas e centralizadas
      *                                                no slot: maior série mais larga e
@@ -128,6 +130,7 @@
 
     // ── Tipo-específico ────────────────────────────────────────────────────
     $horizontal   = $horizontal   ?? false;
+    $firstOnTop   = $firstOnTop   ?? false;
     $stacked      = $stacked      ?? false;
     $nestedWidths = $nestedWidths ?? null;
     $nestedCap    = $nestedCap    ?? null;
@@ -305,6 +308,7 @@
 
     // Tipo-específico
     if ($horizontal) $chart->horizontal();
+    if ($horizontal && $firstOnTop) $chart->firstOnTop();
     if ($stacked === 'internal') {
         $chart->stackedInternal(
             is_array($nestedWidths) && $nestedWidths !== [] ? $nestedWidths : null,

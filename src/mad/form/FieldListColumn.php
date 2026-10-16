@@ -64,6 +64,15 @@ class FieldListColumn
     public string $dependsOn     = '';   // campo pai no form: nome do input cujo change dispara o reload (ex: 'produto_tipo_produto_id')
     public string $dependsColumn = '';   // coluna do model filho no WHERE (default = dependsOn). Use quando o campo pai e a coluna têm nomes diferentes.
     public string $where         = '';   // filtros estáticos: 'ativo=1|tipo=P' ou 'preco:>:0'
+    /**
+     * Filtros do combo (type='dbcombo'), no formato do `<mad-dbcombo-field>`:
+     * `:filters="[['projeto_id', '=', $recordId], ['ativo', '=', 1]]"`. A
+     * expressão é avaliada na tela — enxerga o registro principal (fw#378).
+     * Vale nas opções desenhadas e na recarga da cascata (vai no token).
+     *
+     * @var list<array{0: string, 1?: string, 2?: mixed}>
+     */
+    public array  $filters       = [];
 
     // ── Atributos extras ──────────────────────────────────────────────────
     public string $attrs        = '';   // HTML attrs extras: 'data-mad-autocomplete="methods" autocomplete="off"'
@@ -120,11 +129,11 @@ class FieldListColumn
     public function placeholder(string $p): self  { $this->placeholder = $p;                   return $this; }
     public function default(string $d): self      { $this->default = $d;                       return $this; }
     public function options(array|string $o): self { $this->options = self::normalizeOptions($o); return $this; }
-    public function required(): self              { $this->required = true;                    return $this; }
-    public function sum(): self                   { $this->doSum = true;                       return $this; }
-    public function count(): self                 { $this->doCount = true;                     return $this; }
-    public function readonly(): self              { $this->readonly = true;                    return $this; }
-    public function disabled(): self              { $this->disabled = true;                    return $this; }
+    public function required(bool $on = true): self { $this->required = $on;                 return $this; }
+    public function sum(bool $on = true): self    { $this->doSum = $on;                        return $this; }
+    public function count(bool $on = true): self  { $this->doCount = $on;                      return $this; }
+    public function readonly(bool $on = true): self { $this->readonly = $on;                 return $this; }
+    public function disabled(bool $on = true): self { $this->disabled = $on;                 return $this; }
     public function min(float $v): self           { $this->min = $v;                           return $this; }
     public function max(float $v): self           { $this->max = $v;                           return $this; }
     public function step(float $v): self          { $this->step = $v;                          return $this; }
@@ -150,6 +159,15 @@ class FieldListColumn
     public function dependsOn(string $v): self     { $this->dependsOn = $v;                    return $this; }
     public function dependsColumn(string $v): self { $this->dependsColumn = $v;                return $this; }
     public function where(string $v): self        { $this->where = $v;                       return $this; }
+    /** `[['coluna', 'op', valor], ...]` — ou o mesmo em JSON (atributo escrito sem os dois-pontos). */
+    public function filters(array|string $v): self
+    {
+        if (is_string($v)) {
+            $v = trim($v) === '' ? [] : json_decode($v, true);
+        }
+        $this->filters = is_array($v) ? array_values($v) : [];
+        return $this;
+    }
     public function onChange(string $v): self      { $this->onChange = $v;                     return $this; }
     public function disabledWhen(string $v): self  { $this->disabledWhen = $v;                 return $this; }
     public function readonlyWhen(string $v): self  { $this->readonlyWhen = $v;                 return $this; }
@@ -159,14 +177,14 @@ class FieldListColumn
     public function group(string $v): self         { $this->group = $v;                        return $this; }
     public function groupKey(string $v): self      { $this->groupKey = $v;                     return $this; }
     public function mask(string $v): self          { $this->mask = $v;                         return $this; }
-    public function stripMask(): self              { $this->stripMask = true;                  return $this; }
+    public function stripMask(bool $on = true): self { $this->stripMask = $on;               return $this; }
     public function forceCase(string $v): self     { $this->forceCase = $v;                    return $this; }
     public function icon(string $v): self          { $this->icon = $v;                         return $this; }
     public function iconColor(string $v): self     { $this->iconColor = $v;                    return $this; }
     public function iconSide(string $v): self      { $this->iconSide = $v;                     return $this; }
     public function maxWidth(string $v): self      { $this->maxWidth = $v;                     return $this; }
     public function maxlength(int $v): self        { $this->maxlength = $v;                    return $this; }
-    public function togglePassword(): self         { $this->togglePassword = true;             return $this; }
+    public function togglePassword(bool $on = true): self { $this->togglePassword = $on;     return $this; }
 
     // ── Apresentação de célula ──────────────────────────────────────────────
 
@@ -760,6 +778,7 @@ class FieldListColumn
         $orderDir = (string)($config['order_dir'] ?? 'asc');
         $column   = (string)($config['column']   ?? '');
         $where    = (string)($config['where']    ?? '');
+        $filters  = is_array($config['filters'] ?? null) ? $config['filters'] : [];
 
         if ($model === '' || $column === '') {
             return self::loadOptionsArray($target, []);
@@ -769,6 +788,9 @@ class FieldListColumn
         $__m = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
         $__q = $__m::query();
         self::applyWhereStringToQuery($__q, $where);
+        if ($filters) {
+            \Mad\Database\QuerySource::applyArrayFilters($__q, $filters);
+        }
         $__q->where($column, '=', $value);
 
         $items = \Mad\Form\ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir);

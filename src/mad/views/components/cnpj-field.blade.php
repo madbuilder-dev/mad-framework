@@ -16,6 +16,8 @@
      *                         Receita (julho/2026): 12 posicoes [0-9A-Z] + 2 digitos
      *                         verificadores — ex. UK.PVM.E1E/8HI9-96.
      *   full         bool     Retorna o payload completo do provedor em vez do basico (default: false)
+     *   fill-mode    string   'overwrite' (default) troca os campos do fill-fields pelo que a
+     *                         consulta trouxe; 'empty' so preenche os campos vazios
      *   placeholder  string   Placeholder (default: '00.000.000/0000-00')
      *   hint         string   Texto de ajuda
      *   error        string   Mensagem de erro
@@ -59,6 +61,7 @@
     $disabled    = !empty($disabled);
     $stripMask   = !empty($stripMask);
     $attrs       = $attrs       ?? '';
+    $fillMode    = ($fillMode ?? 'overwrite') === 'empty' ? 'empty' : 'overwrite';
 
     // Resolucao automatica de cidade/estado — mesmos props/defaults do cep-field.
     $cityModel        = $cityModel        ?? '';
@@ -135,7 +138,7 @@
     $xDataCfg = json_encode([
         'token' => $cnpjToken,
         'auto'  => (bool)$auto,
-    ], JSON_UNESCAPED_UNICODE);
+    ] + ($fillMode === 'empty' ? ['fillMode' => 'empty'] : []), JSON_UNESCAPED_UNICODE);
     $width    = $width ?? '';
     $maxWidth = $maxWidth ?? '';
 @endphp

@@ -1046,6 +1046,14 @@ const MadWire = (() => {
 
     // ── Ops de lista (field-list / detail-form) ──────────────────────────────
 
+    // Lista de itens que a op nomeia (`list`) dentro do componente; sem
+    // `list` (ou sem achar), o componente inteiro — como o setItems sempre fez.
+    function _flScope(op, wrapper) {
+        if (!op.list) return wrapper;
+        const name = String(op.list).replace(/"/g, '');
+        return wrapper.querySelector('[data-mad-fl-name="' + name + '"]') || wrapper;
+    }
+
     /**
      * fl_rows, fl_drop, df_add, df_delete, df_display e df_field_error — implementação
      * ÚNICA para os dois caminhos da resposta: o parcial (aqui no _requestNow)
@@ -1238,8 +1246,14 @@ const MadWire = (() => {
                 // — tratados em _applyListOp (mesmo código do redesenho completo).
             } else if (op.op === 'fl_combo') {
                 // setItems('campo[]') — aplica em TODAS as rows dos field-lists
+                // (`list`: só na lista daquele nome; `keep`: as linhas ficam
+                // com o valor que têm — coluna com :filters, fw#378).
                 if (typeof _madFlApplyComboAll === 'function') {
-                    _madFlApplyComboAll(wrapper, op.target, op.options);
+                    _madFlApplyComboAll(_flScope(op, wrapper), op.target, op.options, op.keep);
+                }
+            } else if (op.op === 'fl_dep_token') {
+                if (typeof _madFlSetDepToken === 'function') {
+                    _madFlSetDepToken(_flScope(op, wrapper), op.target, op.token);
                 }
             } else if (op.op === 'close_overlay') {
                 // Componente anexado à linha da grid (row-attach):
@@ -1385,6 +1399,16 @@ const MadWire = (() => {
     // callOnce(): pedidos pendentes (na fila ou em voo) por componente e chave.
     const _onceByWrapper = new WeakMap();
 
+    // Ordem das gravações entre abas (fw#362): a chamada com `{ key, seq: true }`
+    // leva um carimbo crescente tirado na hora da edição (não na saída da
+    // fila). O servidor guarda o último aceito da chave e recusa o mais velho
+    // que chega depois — a fila acima só ordena dentro da MESMA aba.
+    let _seqLast = 0;
+    function _nextSeq() {
+        _seqLast = Math.max(Date.now(), _seqLast + 1);
+        return _seqLast;
+    }
+
     function _request(wrapper, action = '', params = [], extraModels = {}, sourceForm = null, opts = {}) {
         const madId = wrapper.getAttribute('mad-id');
         wrapper.setAttribute('data-mad-busy', '1');
@@ -1396,6 +1420,7 @@ const MadWire = (() => {
         };
         const qkey = _queueKey(wrapper);
         const ticket = { key: opts.key != null && opts.key !== '' ? opts.key : null };
+        if (opts.seq && ticket.key !== null && opts.seqStamp == null) opts = { ...opts, seqStamp: _nextSeq() };
         let pending = _pendingByWrapper.get(qkey);
         if (!pending) { pending = []; _pendingByWrapper.set(qkey, pending); }
         // Um mais velho de mesma chave pode estar esperando a próxima tentativa
@@ -1446,6 +1471,10 @@ const MadWire = (() => {
             ? params.length > 0
             : (params && typeof params === 'object' && Object.keys(params).length > 0);
         if (_hasParams) body.append('mad_params', JSON.stringify(params));
+        if (opts.seqStamp != null) {
+            body.append('mad_seq_key', String(opts.key));
+            body.append('mad_seq',     String(opts.seqStamp));
+        }
         // Extras de checklists (slot inputs) vão direto no POST, não dentro de mad_model
         const clExtras = models.__clExtras || {};
         delete models.__clExtras;
@@ -1656,8 +1685,17 @@ const MadWire = (() => {
             }
 
             if (data.error) {
-                console.error('[MadWire] Erro do servidor:', data.error);
                 _setLoading(wrapper, false, sourceForm);
+                // Gravação recusada por ser mais velha que a de outra aba
+                // (fw#362): a ação não rodou. Aviso, não erro.
+                if (data.stale) {
+                    if (!opts.quietStale) {
+                        if (typeof __mad_warning === 'function') __mad_warning(data.title || 'Aviso', data.error);
+                        else console.warn('[MadWire]', data.error);
+                    }
+                    return { ok: false, reason: 'stale' };
+                }
+                console.error('[MadWire] Erro do servidor:', data.error);
                 // Exception não tratada com payload de debug (APP_DEBUG=true):
                 // modal grande com trace + markdown, em vez do alert de 1 linha.
                 if (data._exception && window.MadErrorModal) {
@@ -1714,7 +1752,19 @@ const MadWire = (() => {
                 return { ok: true };
             }
 
+            // Submit de um formulário: os campos dos OUTROS formulários da tela
+            // não foram enviados, e o redesenho devolveria a eles o valor
+            // antigo — o que a pessoa digitou e não salvou sumia (fw#384).
+            // Guarda agora (pega o que ela digitou durante o pedido também) e
+            // devolve depois do morph.
+            const keepOthers = (sourceForm && typeof _otherFormsEdits === 'function')
+                ? _otherFormsEdits(wrapper, sourceForm) : null;
+
             const fresh = _morph(wrapper, data.html) || wrapper;
+
+            if (keepOthers) {
+                try { _restoreOtherForms(fresh, keepOthers); } catch (e) { console.error('[MadWire] keep forms:', e); }
+            }
 
             // Aplica ops tambem em full-render (ex: handler injeta um
             // script via _prependStrayOutputModal ou componente quer
@@ -1736,6 +1786,112 @@ const MadWire = (() => {
             if (!_answered && !opts.quietNetwork && !opts.background) _networkNotice();
             return { ok: false, reason: _answered ? 'client' : 'network' };
         }
+    }
+
+    // ── Formulários vizinhos no redesenho (fw#384) ──────────────────────────
+    // Tela com vários <mad-form>: o submit de um manda só os campos dele. No
+    // redesenho completo, campo de OUTRO formulário que a pessoa alterou volta
+    // com o que ela digitou — desde que o servidor o tenha redesenhado com o
+    // mesmo valor de antes. Se a ação mudou o campo (form->set), vale o dela.
+    //
+    // "Valor do servidor" de cada campo = o que o HTML trouxe: defaultValue /
+    // defaultChecked / defaultSelected. O oculto (numeric/money) acompanha o
+    // Alpine e não guarda isso: vale o que ele tinha quando a pessoa entrou no
+    // campo (ver o `focusin` em Event delegation).
+    const _fieldBaseline = new WeakMap();
+
+    function _keepControls(form) {
+        return Array.from(form.querySelectorAll('input[name], select[name], textarea[name]')).filter(c => {
+            const n = c.getAttribute('name') || '';
+            if (!n || n.indexOf('__') === 0) return false;
+            if (/^(file|button|submit|reset|image)$/i.test(c.type || '')) return false;
+            // Linhas de detail-form/field-list e checklist têm estado próprio.
+            if (c.closest && c.closest('[data-mad-df-name], [data-mad-fl-name], .mad-checklist')) return false;
+            return true;
+        });
+    }
+
+    // [valor atual, valor desenhado pelo servidor] — null quando não há como saber.
+    function _keepState(c) {
+        const t = String(c.type || '').toLowerCase();
+        if (t === 'checkbox' || t === 'radio') return [c.checked ? '1' : '', c.defaultChecked ? '1' : ''];
+        if (c.tagName === 'SELECT') {
+            const opts = Array.from(c.options || []);
+            const cur  = opts.filter(o => o.selected).map(o => o.value);
+            let def    = opts.filter(o => o.defaultSelected).map(o => o.value);
+            // Single sem `selected` no HTML: o navegador elege a 1ª option do
+            // servidor (a sintética do MAD Select não conta — nasce no cliente).
+            if (!c.multiple) {
+                const first = opts.find(o => !o.hasAttribute('data-mad-synthetic'));
+                def = def.length ? [def[def.length - 1]] : (first ? [first.value] : []);
+            }
+            return [JSON.stringify(cur), JSON.stringify(def)];
+        }
+        if (t === 'hidden') return _fieldBaseline.has(c) ? [c.value, _fieldBaseline.get(c)] : null;
+        return [c.value, c.defaultValue];
+    }
+
+    function _keepFormKey(form, i) {
+        return form.id ? '#' + form.id : i + ':' + (form.getAttribute('data-mad-submit') || '');
+    }
+
+    function _otherFormsEdits(wrapper, sourceForm) {
+        const forms = _componentNodes(wrapper, 'form[data-mad-submit]');
+        const items = [];
+        forms.forEach((form, i) => {
+            if (form === sourceForm) return;
+            const seen = {};
+            _keepControls(form).forEach(c => {
+                const name = c.getAttribute('name');
+                const ord  = seen[name] = (seen[name] || 0) + 1;
+                const st   = _keepState(c);
+                if (!st || st[0] === st[1]) return;
+                items.push({ form: _keepFormKey(form, i), name, ord, cur: st[0], base: st[1], hidden: c.type === 'hidden' });
+            });
+        });
+        return items.length ? { count: forms.length, items } : null;
+    }
+
+    function _restoreOtherForms(wrapper, keep) {
+        const forms = _componentNodes(wrapper, 'form[data-mad-submit]');
+        // A tela mudou de forma (formulário a mais/a menos): não dá para casar.
+        if (forms.length !== keep.count) return;
+        const byKey = {};
+        forms.forEach((form, i) => { byKey[_keepFormKey(form, i)] = form; });
+        const lists = new Map();
+        keep.items.forEach(it => {
+            const form = byKey[it.form];
+            if (!form) return;
+            if (!lists.has(form)) lists.set(form, _keepControls(form));
+            const c = lists.get(form).filter(x => x.getAttribute('name') === it.name)[it.ord - 1];
+            if (!c || (c.type === 'hidden') !== it.hidden) return;
+            const st = it.hidden ? null : _keepState(c);
+            const server = it.hidden ? c.value : (st ? st[1] : null);
+            if (server !== it.base) return; // a ação mexeu no campo: vale o do servidor
+            _keepApply(c, it.cur);
+            if (it.hidden) _fieldBaseline.set(c, it.base);
+        });
+    }
+
+    function _keepApply(c, v) {
+        const t = String(c.type || '').toLowerCase();
+        if (t === 'checkbox' || t === 'radio') {
+            c.checked = v === '1';
+            const lbl = c.closest ? c.closest('.mad-radio-btn') : null;
+            if (lbl && lbl.classList) lbl.classList.toggle('is-active', c.checked);
+            return;
+        }
+        if (c.tagName === 'SELECT') {
+            let vals = [];
+            try { vals = JSON.parse(v); } catch (e) { return; }
+            if (c._madSelect) { c._madSelect.setValue(c.multiple ? vals : (vals.length ? vals[0] : ''), true); return; }
+            Array.from(c.options).forEach(o => { o.selected = vals.indexOf(o.value) !== -1; });
+            return;
+        }
+        c.value = v;
+        // Mascarado (numeric/money/data): o texto da tela mora no Alpine.
+        if (typeof Mad !== 'undefined' && Mad && typeof Mad._syncMaskedDisplay === 'function') Mad._syncMaskedDisplay(c);
+        if (t !== 'hidden') c.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     // Queda de rede numa ação (Salvar, clique de botão, filtro): o erro ia só
@@ -2165,6 +2321,16 @@ const MadWire = (() => {
         _debouncedHandlers.get(el)(wrapper);
     });
 
+    // Valor do oculto (numeric/money) quando a pessoa entra no campo — é a
+    // referência "do servidor" dele no redesenho (ver _fieldBaseline, fw#384).
+    document.addEventListener('focusin', (e) => {
+        const box = e.target && e.target.closest ? e.target.closest('.mad-field') : null;
+        if (!box || !box.closest('form[data-mad-submit]')) return;
+        box.querySelectorAll('input[type="hidden"][name]').forEach(h => {
+            if (!_fieldBaseline.has(h)) _fieldBaseline.set(h, h.value);
+        });
+    }, true);
+
     // ── Init ─────────────────────────────────────────────────────────────────
 
     function _initAll() {
@@ -2248,6 +2414,13 @@ const MadWire = (() => {
          * chamada do componente com a mesma chave, esta desiste e resolve
          * `{ ok: false, reason: 'superseded' }` — a mais nova leva o valor
          * atual, e o valor velho não chega ao servidor depois dela.
+         *
+         * `options.seq: true` (com `key`) vale também entre abas e janelas: a
+         * chamada leva um carimbo da hora da edição e o servidor recusa a
+         * gravação mais velha que chega depois da mais nova da mesma chave —
+         * resolve `{ ok: false, reason: 'stale' }` sem rodar a ação, com um
+         * aviso na tela (`options.quietStale` cala o aviso). A chave tem de
+         * dizer o registro e o campo (`'peso:' + id`).
          */
         /**
          * Mostra `el` ocupado (spinner + aria-busy) até `run` terminar — para
@@ -2264,6 +2437,8 @@ const MadWire = (() => {
             const opts  = options && options.quietNetwork ? { quietNetwork: true } : {};
             if (options && options.background) opts.background = true;
             if (options && options.key != null && options.key !== '') opts.key = String(options.key);
+            if (options && options.seq) opts.seq = true;
+            if (options && options.quietStale) opts.quietStale = true;
             if (wrapper) return await _request(wrapper, action, params, extra, null, opts);
         },
 
@@ -2368,3 +2543,8 @@ const MadWire = (() => {
     };
 
 })();
+
+// Também no `window` (fw#361): `const` de script clássico não vira propriedade
+// do `window`, e o código que testava `window.MadWire` (de terceiros ou antigo)
+// ficava morto, sem erro.
+if (typeof window !== 'undefined' && !window.MadWire) window.MadWire = MadWire;

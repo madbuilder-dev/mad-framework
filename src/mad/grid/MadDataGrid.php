@@ -3960,6 +3960,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'focusRowId'   => $this->focusRowId,
             'cardView'     => false,
             'cardDefault'  => false,
+            'cardBelow'    => 0,
             'cardCols'     => '',
         ] + $this->_selectionViewData()];
     }
@@ -4213,6 +4214,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // Card view
             'cardView'     => $this->_inlineConfig['cardView'] ?? false,
             'cardDefault'  => $this->_inlineConfig['cardDefault'] ?? false,
+            'cardBelow'    => max(0, (int) ($this->_inlineConfig['cardBelow'] ?? 0)),
             'cardCols'     => $this->_inlineConfig['cardCols'] ?? '',
         ] + $this->_selectionViewData());
     }

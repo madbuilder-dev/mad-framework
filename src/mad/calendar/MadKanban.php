@@ -1513,6 +1513,100 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     // ── Actions ──────────────────────────────────────────────────────────
 
     /**
+     * A ação do cartão chamada vale para ESTE cartão?
+     *
+     * `display-condition` e `when-*` do `<mad-kanban-action>` só escondiam o
+     * botão: um clique montado à mão (ou numa tela aberta antes de o cartão
+     * mudar) rodava a ação mesmo assim. Aqui elas são avaliadas de novo, com o
+     * registro como está AGORA, buscado pela consulta do quadro — a mesma
+     * reconferência das ações da linha da grade. Basta uma das ações do cartão
+     * com esse método aparecer.
+     *
+     * Ação sem condição, chamada sem id, ou método que também é ação de etapa
+     * (recebe o id da etapa) seguem como antes.
+     */
+    public function _resolveAndCall(string $method, array $data = []): mixed
+    {
+        $refused = $this->_cardActionRefusal($method, $data);
+        if ($refused !== null) {
+            return $refused;
+        }
+
+        return parent::_resolveAndCall($method, $data);
+    }
+
+    /** @return mixed null = pode chamar; senão, a resposta da recusa */
+    protected function _cardActionRefusal(string $method, array $data): mixed
+    {
+        if ($data === [] || !array_is_list($data) || !is_scalar($data[0]) || (string) $data[0] === ''
+            || $this->model === '') {
+            return null;
+        }
+        $acts = [];
+        foreach ((array) ($this->_inlineConfig['card']['actions'] ?? []) as $cfg) {
+            if (is_array($cfg) && (string) ($cfg['method'] ?? '') === $method && (string) ($cfg['target'] ?? '') === '') {
+                // Uma das ações com o método vale em qualquer cartão: nada a conferir.
+                if (!self::_cardActionHasConditions($cfg)) {
+                    return null;
+                }
+                $acts[] = $cfg;
+            }
+        }
+        if ($acts === []) {
+            return null;
+        }
+        foreach ((array) ($this->_inlineConfig['stageActions'] ?? []) as $cfg) {
+            if (is_array($cfg) && (string) ($cfg['method'] ?? '') === $method) {
+                return null;
+            }
+        }
+
+        $id = $data[0];
+        try {
+            $scoped = $this->_resolveModelFqcn($this->model)::query();
+            $this->_buildBaseCardQuery($scoped);
+            $record = $scoped->find($id);
+            if ($record !== null) {
+                foreach ($acts as $cfg) {
+                    if ($this->_resolveAction($record, $cfg, $id) !== null) {
+                        return null;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[MadKanban] ' . static::class . '::' . self::_logSafe($method)
+                . ' — não deu para conferir a condição da ação no cartão: ' . self::_logSafe($e->getMessage()));
+
+            return null;
+        }
+
+        $quem = function_exists('session') ? session('userid') : null;
+        Log::warning('[MadKanban] ' . static::class . '::' . self::_logSafe($method) . ' recusado — '
+            . ($record !== null ? 'a condição do <mad-kanban-action> não vale para' : 'o quadro não mostra')
+            . ' o registro ' . self::_logSafe((string) $id)
+            . ' (usuario ' . (is_scalar($quem) && $quem !== '' ? (string) $quem : '-') . ').');
+
+        return \Mad\Ui\MadToast::warning(mad_t($record !== null ? 'mad.error.action_refused' : 'mad.error.action_gone'));
+    }
+
+    private static function _cardActionHasConditions(array $cfg): bool
+    {
+        foreach (['displayCondition', 'display-condition', 'whenField', 'when-field'] as $key) {
+            if (($cfg[$key] ?? '') !== '' && $cfg[$key] !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Texto vindo do navegador que vai para o log: curto e sem quebra de linha. */
+    private static function _logSafe(string $value): string
+    {
+        return (string) preg_replace('/[^A-Za-z0-9_\-.:{}>]/', '?', substr($value, 0, 64));
+    }
+
+    /**
      * Chamado pelo JS quando um card é dropado (entre colunas ou reordenado na mesma).
      */
     public function onCardMove(int|string $cardId, string $newStageId, string $orderJson): MadResponse

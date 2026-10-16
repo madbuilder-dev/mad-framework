@@ -39,6 +39,8 @@
      *   fill-fields    array   Mapa [ 'form_field' => 'api_field', ... ]
      *                          ex: ['endereco' => 'rua', 'bairro' => 'bairro', 'uf' => 'uf']
      *   auto           bool    Dispara busca no blur quando CEP tem 8 digitos (default: true)
+     *   fill-mode      string  'overwrite' (default) troca os campos do fill-fields pelo que a
+     *                          consulta trouxe; 'empty' so preenche os campos vazios
      *   placeholder    string  Placeholder (default: '00000-000')
      *   hint           string  Texto de ajuda
      *   error          string  Mensagem de erro
@@ -109,6 +111,7 @@
     $label       = $label       ?? '';
     $value       = $value       ?? '';
     $fillFields  = $fillFields  ?? [];
+    $fillMode    = ($fillMode ?? 'overwrite') === 'empty' ? 'empty' : 'overwrite';
     $auto        = isset($auto) ? !empty($auto) : true;
     $placeholder = $placeholder ?? '00000-000';
     $hint        = $hint        ?? '';
@@ -202,7 +205,7 @@
         'token'   => $cepToken,
         'auto'    => (bool)$auto,
         'targets' => array_values(array_map('strval', array_keys(is_array($fillFields) ? $fillFields : []))),
-    ], JSON_UNESCAPED_UNICODE);
+    ] + ($fillMode === 'empty' ? ['fillMode' => 'empty'] : []), JSON_UNESCAPED_UNICODE);
     $width    = $width ?? '';
     $maxWidth = $maxWidth ?? '';
 @endphp

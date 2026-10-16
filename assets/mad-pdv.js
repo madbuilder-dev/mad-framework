@@ -126,8 +126,20 @@
                     // da linha (remover, montar de novo) ficam invisíveis.
                     if (typeof this.$watch === 'function') {
                         this.$watch('cart', function () {
-                            self.$nextTick(function () { self._reiconCart(); });
+                            self.$nextTick(function () { self._reiconCart(); self._fitCart(); });
                         });
+                    }
+                    // Carrinho que não cabe na própria largura empilha (fw#368).
+                    var cartEl = this.$el.querySelector ? this.$el.querySelector('.mad-pdv-cart') : null;
+                    if (cartEl && typeof root.ResizeObserver === 'function') {
+                        var lastW = -1;
+                        this._cartRo = new root.ResizeObserver(function () {
+                            if (cartEl.clientWidth === lastW) return;   // só largura: a altura muda ao empilhar
+                            lastW = cartEl.clientWidth;
+                            self._fitCart();
+                            self._fitScan();
+                        });
+                        this._cartRo.observe(cartEl);
                     }
                     this._loadHeld();
                     this._tickClock();
@@ -144,7 +156,37 @@
                     try { lib.createIcons({ nameAttr: 'data-lucide', nodes: nodes }); } catch (e) {}
                 },
 
+                /**
+                 * Empilha o carrinho (cada linha em duas, como no celular) quando a
+                 * tabela não cabe na largura DELE (fw#368). O ponto de quebra
+                 * depende das colunas da tela (SKU, desconto, vendedor…), então é
+                 * medido: tira a classe, mede a tabela, decide.
+                 */
+                _fitCart() {
+                    var cart = this.$el && this.$el.querySelector ? this.$el.querySelector('.mad-pdv-cart') : null;
+                    var table = cart && cart.querySelector('.mad-pdv-cart-table');
+                    if (!cart || !table) return;
+                    cart.classList.remove('mad-pdv-cart--stack');
+                    cart.classList.toggle('mad-pdv-cart--stack', table.offsetWidth > cart.clientWidth + 1);
+                },
+
+                /**
+                 * Barra de bipagem estreita (coluna espremida pelo menu lateral,
+                 * janela de 1024 px): o botão do catálogo fica só com o ícone,
+                 * para o campo de código não encolher. Medido como o carrinho —
+                 * o ponto depende da coluna, não da janela.
+                 */
+                _fitScan() {
+                    var bar = this.$el && this.$el.querySelector ? this.$el.querySelector('.mad-pdv-scanbar') : null;
+                    var input = bar && bar.querySelector('.mad-pdv-scan-input');
+                    if (!bar || !input) return;
+                    bar.classList.remove('mad-pdv-scanbar--tight');
+                    bar.classList.toggle('mad-pdv-scanbar--tight',
+                        input.clientWidth < 240 || bar.scrollWidth > bar.clientWidth + 1);
+                },
+
                 destroy() {
+                    if (this._cartRo) this._cartRo.disconnect();
                     this.$el.removeEventListener('mad-pdv:compose-result', this._onCompose);
                     this.$el.removeEventListener('mad-pdv:lookup-result', this._onLookup);
                     this.$el.removeEventListener('mad-pdv:sale-done', this._onDone);

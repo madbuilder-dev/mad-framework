@@ -272,6 +272,11 @@ class MadAppController
             // Header é ASCII/Latin-1 por contrato: acentos vão RFC 2047-free via rawurlencode.
             $headers['X-Mad-Title'] = rawurlencode($title);
         }
+        // A ação aberta pela URL respondeu sem tela (aviso, diálogo, toast,
+        // redirect): o Mad.go/Mad.load aplicam os ops e mantêm a tela aberta.
+        if ($screen->respondedWithoutScreen()) {
+            $headers['X-Mad-Ops-Only'] = '1';
+        }
 
         // Tela que falhou ao montar responde 200 com o cartão de erro (o show()
         // captura a exceção). Dentro do Teste Online a resposta diz isso num

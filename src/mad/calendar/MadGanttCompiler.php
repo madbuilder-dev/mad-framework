@@ -42,6 +42,8 @@ namespace Mad\Calendar;
  * │                                                                              │
  * │  Sub-tags:                                                                   │
  * │    <mad-gantt-column field=".." label=".." width=".." format=".." tree align=".."/> │
+ * │      format: date | days | percent; em field="duration", "working-days"      │
+ * │      conta só os dias de trabalho (working-days/holidays do Gantt)          │
  * │    <mad-gantt-filter field=".." op=".." value=".." value2=".."/>             │
  * │    <mad-gantt-header-action label=".." icon=".." method=".."/>               │
  * │    <mad-gantt-baseline task-id=".." start=".." end=".."/>                    │

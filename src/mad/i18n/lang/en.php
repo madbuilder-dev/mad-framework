@@ -272,6 +272,7 @@ return [
             'action_gone'    => 'The action was not run: the record is no longer in the list.',
             'action_refused' => 'The action was not run: it does not apply to this record.',
             'cell_not_saved' => 'The change was not saved.',
+            'stale_write'    => 'The change was not saved: the same field was changed later in another tab or window. Reload the screen to see the current value.',
             'cell_invalid'   => 'Invalid value.',
             'cell_number'    => 'Enter a number.',
             'cell_min'       => 'The minimum value is :min.',
@@ -288,6 +289,7 @@ return [
         // Screen field (or list column) that is not a table column: Save refuses the
         // platform-generated field and tells what was not saved.
         'form' => [
+            'date_invalid'           => 'Invalid date.',
             'field_without_column'   => 'The field :field is not bound to any column of table :table: the value you typed would not be saved. Tell the system administrator (field `:name`).',
             'not_stored_title'       => 'Value not saved',
             'not_stored_field_one'   => 'What was typed in :fields was not saved: the field is not bound to any column of table :table.',

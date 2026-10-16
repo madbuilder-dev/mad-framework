@@ -425,31 +425,57 @@ const Mad = {
     },
 
     /**
+     * Resposta de uma AÇÃO aberta pela URL (`/app/<tela>/onAlgo`) que não
+     * desenhou tela nenhuma — só o `<script>` dos ops (aviso, diálogo, toast,
+     * redirect). O servidor marca com `X-Mad-Ops-Only: 1` (fw#386). Os ops
+     * rodam e a tela aberta fica; trocá-la pelo fragmento deixava o conteúdo
+     * em branco. Devolve true quando tratou.
+     */
+    _opsOnly(res, html) {
+        if (!res || !res.headers || res.headers.get('X-Mad-Ops-Only') !== '1') return false;
+        const box = document.createElement('div');
+        box.hidden = true;
+        box.innerHTML = html;
+        document.body.appendChild(box);
+        this._rerunScripts(box);
+        setTimeout(() => box.remove(), 0);
+        return true;
+    },
+
+    /**
      * Entrega um fragmento de TELA: aba nova (opts.tab — menu/boot) ou
      * conteudo principal (#mad_main, ou a aba ativa quando as abas estao
      * ligadas). Overlays seguem o fluxo de sempre do chamador.
      */
     _deliver(html, url, res, opts) {
         opts = opts || {};
+        const meta = this._tabMeta(res);
         if (this._tabsOn() && !this._isOverlayHtml(html)) {
-            const meta = this._tabMeta(res);
             const payload = { url: url || null, cls: opts.cls || meta.cls, label: meta.label, html };
+            // Voltar/avançar do navegador: a aba que mostra (ou que é) a rota
+            // passa a mostrar ESTA tela, em vez de só ser reativada.
+            if (opts.history) payload.history = true;
             if (opts.tab) window.MadTabs.open(payload);
             else          window.MadTabs.navigate(payload);
             return;
         }
-        this._injectFull(html, url, { history: !!opts.history });
+        // A classe vai junto para o menu do tema achar o módulo da tela
+        // quando a rota não está no menu (/app/grupos/novo).
+        this._injectFull(html, url, { history: !!opts.history, cls: opts.cls || meta.cls });
     },
 
     /** Injeta e reinicializa um fragmento num container (aba ou #mad_main). */
-    _injectInto(el, html, url) {
+    _injectInto(el, html, url, opts) {
         if (!el) return;
         // Tela NOVA: aba pendente de um redesenho anterior não vale para ela.
         this._uiPendingTabs = [];
         el.innerHTML = html;
         this._reinit(el);
         try {
-            window.dispatchEvent(new CustomEvent('mad:navigated', { detail: { el, url: url || null } }));
+            window.dispatchEvent(new CustomEvent('mad:navigated', { detail: {
+                el, url: url || null,
+                cls: (opts && opts.cls) || null, history: !!(opts && opts.history),
+            } }));
         } catch (e) {}
     },
 
@@ -581,6 +607,7 @@ const Mad = {
             if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.load' })) return;
+            if (this._opsOnly(res, html)) return;
 
             // Mad.load = clique de menu (runtime legado / ?class=): com as abas
             // ligadas vira aba nova. A classe vem do header X-Mad-Class; no
@@ -607,6 +634,14 @@ const Mad = {
      */
     async bootShell(url) {
         url = url || (window.location.pathname + window.location.search);
+        // A entrada do histórico de quem abriu a tela pela URL (F5, link,
+        // login) nasce sem state: o voltar depois de um Mad.go caía nela e o
+        // popstate não recarregava nada — a barra voltava, a tela e o menu não.
+        try {
+            if (!(history.state && history.state.url)) {
+                history.replaceState(Object.assign({}, history.state, { url }), '', window.location.href);
+            }
+        } catch (e) {}
         MadLoader.show();
         try {
             const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
@@ -873,6 +908,7 @@ const Mad = {
             // Sem alvo, a resposta iria para o #mad_partial (fim da página):
             // a recusa de acesso vira diálogo em vez de sumir (fw#308).
             if (!target && this._deniedFragment(text, res)) return;
+            if (target && this._opsOnly(res, text)) return;
 
             if (target) {
                 const el = (target instanceof HTMLElement) ? target : document.querySelector(target);
@@ -1043,7 +1079,11 @@ const Mad = {
      *                            (não repete nem avisa sem resposta),
      *                            `quietNetwork` e `key` (o que a chamada grava:
      *                            no 503, a repetição cede a vez à chamada mais
-     *                            nova de mesma chave).
+     *                            nova de mesma chave). `seq: true` (com
+     *                            `key`) ordena também entre abas e janelas: o
+     *                            servidor recusa a gravação mais velha que chega
+     *                            depois (`reason: 'stale'`, com aviso;
+     *                            `quietStale` cala o aviso).
      *
      * Resolve com o desfecho `{ ok, reason }` do MadWire.call.
      *
@@ -1052,6 +1092,7 @@ const Mad = {
      *   Mad.call('onAprovar', [42])              // resolve $id por posição
      *   Mad.call('onRecarregar')                 // sem args
      *   Mad.call('onPeso', [id, valor], el, { key: 'peso:' + id })
+     *   Mad.call('onPeso', [id, valor], el, { key: 'peso:' + id, seq: true })
      */
     async call(method, params = {}, context = null, options = {}) {
         if (typeof MadWire === 'undefined' || !MadWire.call) {
@@ -1124,6 +1165,7 @@ const Mad = {
             if (this._fileResponse(res)) { this.openDocument(url); return; }
             const html = await res.text();
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.go' })) return;
+            if (this._opsOnly(res, html)) return;
 
             // Detecta wrapper type no response
             const tmp = document.createElement('div');
@@ -1587,6 +1629,42 @@ const Mad = {
                     break;
 
                 case 'val':
+                    // Rádio e checkbox/switch: o valor mora no `checked`. O alvo
+                    // `[name="r"]` casa o 1º rádio do grupo, e escrever `el.value`
+                    // trocava o valor DAQUELA opção ("Sim" passava a enviar vazio)
+                    // sem marcar nada — fw#385. Marca a opção certa; `value` intacto.
+                    if (el && (el.type === 'radio' || el.type === 'checkbox')) {
+                        const want = String(op.content ?? '');
+                        let group = [el];
+                        if (el.type === 'radio') {
+                            const box = (el.closest && el.closest('[data-mad-radio-group]')) || el.form
+                                || el.ownerDocument || document;
+                            group = Array.from(box.querySelectorAll('input[type="radio"]')).filter(r => r.name === el.name);
+                            if (!group.length) group = [el];
+                        }
+                        const onOf = (c) => (c.hasAttribute && c.hasAttribute('data-value-on') ? c.getAttribute('data-value-on') : c.value);
+                        const markedBefore = group.find(r => r.checked) || null;
+                        if (op.onlyEmpty && markedBefore) break;
+                        let target = el;
+                        if (el.type === 'radio') {
+                            group.forEach(r => { r.checked = want !== '' && String(r.value) === want; });
+                            target = group.find(r => r.checked) || el;
+                        } else {
+                            el.checked = want !== '' && String(onOf(el)) === want;
+                        }
+                        const markedAfter = group.find(r => r.checked) || null;
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                        const ckEv = new Event('change', { bubbles: true });
+                        if (markedAfter === markedBefore) ckEv.madSameValue = true;
+                        target.dispatchEvent(ckEv);
+                        // Rádio-botão: o realce segue a marca (o ouvinte do change
+                        // realçaria o 1º rádio quando o grupo é limpo).
+                        group.forEach(r => {
+                            const lbl = r.closest ? r.closest('.mad-radio-btn') : null;
+                            if (lbl && lbl.classList) lbl.classList.toggle('is-active', !!r.checked);
+                        });
+                        break;
+                    }
                     if (el) {
                         if (op.onlyEmpty && el.value) break;
                         const valBefore = el.value;
@@ -2437,7 +2515,7 @@ const Mad = {
             return;
         }
         const el = document.querySelector(this.contentTarget);
-        if (el) this._injectInto(el, html, url);
+        if (el) this._injectInto(el, html, url, opts);
 
         // Atualiza a URL do browser — menos no voltar/avançar do navegador
         // (opts.history): ele já está na entrada. Empilhar de novo apagava o

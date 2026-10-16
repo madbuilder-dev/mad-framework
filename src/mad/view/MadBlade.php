@@ -167,10 +167,13 @@ class MadBladeCompiler extends BladeCompiler
 
         // 2.6. Aliases de chart por tipo: <mad-{bar|line|pie|...|radar|mixed}-chart>
         //      → <mad-db-chart type="{tipo}">. Injeta type="..." preservando demais attrs.
+        //      Só o nome da tag é trocado: os atributos ficam onde estão, então
+        //      não há o que ler neles (um `/` num título, URL ou data URI
+        //      impedia a troca quando a regex os percorria com `[^/>]*?`).
         $chartTypes = 'bar|line|pie|donut|rose|funnel|treemap|radar|mixed';
-        $value = preg_replace_callback(
-            '#<mad-(' . $chartTypes . ')-chart\b([^/>]*?)(/?)>#s',
-            fn($m) => '<mad-db-chart type="' . $m[1] . '"' . $m[2] . $m[3] . '>',
+        $value = preg_replace(
+            '#<mad-(' . $chartTypes . ')-chart(?=[\s/>])#',
+            '<mad-db-chart type="$1"',
             $value
         );
         $value = preg_replace('#</mad-(' . $chartTypes . ')-chart>#s', '</mad-db-chart>', $value);
@@ -1258,8 +1261,23 @@ HTML;
         }
 
         $css = (string) file_get_contents($resolved);
+        // Texto entre aspas sai da minificação (`content: "a  b"`, `"/*"`,
+        // `[title="a, b"]`): vira marcador e volta igual no fim (fw#367).
+        $strings = [];
+        $css = preg_replace_callback(
+            '~("[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"|\'[^\'\\\\]*+(?:\\\\.[^\'\\\\]*+)*+\')|/\*.*?\*/~s',
+            static function (array $m) use (&$strings): string {
+                if (($m[1] ?? '') === '') {
+                    return '';
+                }
+                $key           = "\x01" . count($strings) . "\x01";
+                $strings[$key] = $m[1];
+
+                return $key;
+            },
+            $css
+        );
         // Strip comments + collapse whitespace
-        $css = preg_replace('!/\*.*?\*/!s', '', $css);
         $css = preg_replace('/\s+/', ' ', trim($css));
         // `:` e `+` ficam de fora: no SELETOR o espaço antes de `:` é o
         // combinador de descendente (`.a :is(.b)` ≠ `.a:is(.b)`), e dentro de
@@ -1272,13 +1290,14 @@ HTML;
 
         if ($scope === false) {
             $hash = substr(md5_file($resolved), 0, 8);
+            $css  = strtr($css, $strings);
             return "<style data-css-src=\"" . htmlspecialchars(basename($path)) . "\" data-hash=\"{$hash}\">{$css}</style>";
         }
 
         // Scoped mode — prefix every selector with [data-css-{hash}]
         $hash      = is_string($scope) ? preg_replace('/[^a-z0-9-]/i', '', $scope) : substr(md5($resolved . microtime(true)), 0, 8);
         $attr      = "data-css-{$hash}";
-        $scopedCss = self::_scopeCss($css, "[{$attr}]");
+        $scopedCss = strtr(self::_scopeCss($css, "[{$attr}]"), $strings);
 
         return "<span {$attr} style=\"display:contents;\">"
              . "<style data-css-src=\"" . htmlspecialchars(basename($path)) . "\" data-scope=\"{$hash}\">{$scopedCss}</style>"

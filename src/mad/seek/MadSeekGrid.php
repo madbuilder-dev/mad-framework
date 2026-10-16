@@ -139,6 +139,18 @@ class MadSeekGrid extends MadDataGrid
             return (new MadResponse)->toast('Model não configurado.', 'danger');
         }
 
+        // Só o que a busca mostra: um "Selecionar" montado à mão trazia ao
+        // campo (com todas as colunas) registro que o `:query`/`:filters` da
+        // busca deixa de fora — a reconferência das ações da linha da grade.
+        if (!$this->_seekShows($id)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadSeekGrid: onSelect recusado — a busca ' . static::_logSafe((string) $seekName)
+                . ' não mostra o registro ' . static::_logSafe((string) $id) . ' (usuario ' . static::_logUser() . ').'
+            );
+
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_gone'));
+        }
+
         try {
             $record  = $model::find($id);
             $row     = [];
@@ -173,6 +185,39 @@ class MadSeekGrid extends MadDataGrid
         return (new MadResponse)->script(
             "window.dispatchEvent(new CustomEvent('mad:seek-selected', { detail: {$detail} }))"
         );
+    }
+
+    /**
+     * A busca mostra o registro `$id`? Pela mesma base da lista (Model com
+     * `:filters`, ou a consulta do `:query`), sem a busca digitada no modal.
+     * Sem como conferir (consulta que não tem a chave), não barra.
+     */
+    private function _seekShows(int|string $id): bool
+    {
+        try {
+            $sql = (string) ($this->gridConfig['query_sql'] ?? '');
+            if ($sql === '' || preg_match('/;|\/\*|\*\/|\x00/', $sql)) {
+                return $this->_visibleRecord($id) !== null;
+            }
+
+            $model = (string) ($this->gridConfig['model'] ?? '');
+            $key   = is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class) ? (new $model())->getKeyName() : 'id';
+            $binds = (array) ($this->gridConfig['query_bindings'] ?? []);
+            $db    = $this->database ?: (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
+            $saved = [$this->search, $this->colFilters, $this->customFilterState];
+            [$this->search, $this->colFilters, $this->customFilterState] = ['', [], is_array($this->customFilterState) ? [] : ''];
+            try {
+                $q = $this->_buildQuery(\Illuminate\Support\Facades\DB::connection($db)->query()->fromRaw("({$sql}) as mad_q", $binds));
+            } finally {
+                [$this->search, $this->colFilters, $this->customFilterState] = $saved;
+            }
+
+            return $q->where($key, '=', $id)->exists();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('MadSeekGrid: não deu para conferir se a busca mostra o registro: ' . static::_logSafe($e->getMessage()));
+
+            return true;
+        }
     }
 
     /**
