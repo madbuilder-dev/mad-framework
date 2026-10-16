@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.167.0] — 2026-10-16
+
+### Novidades
+
+- **Componentes:** novo `<mad-heatmap>`, uma matriz de linhas × colunas com a cor da faixa e o número de registros em cada célula, para matriz de risco (probabilidade × impacto), priorização ou competência. Os dados vêm de um model (contagem, soma ou média, com filtros), de uma consulta pronta ou de um array.
+- **Componentes:** no `<mad-heatmap>`, `preset="risk"` liga as faixas Baixo, Médio, Alto e Crítico; faixas e cores próprias vão em `:bands`. A célula abre a lista filtrada pelos dois valores (como tela ou cortina lateral) ou chama um método da tela, e mostra os primeiros registros ao passar o mouse. Funciona no tema escuro e no celular.
+
 ## [5.166.1] — 2026-10-16
 
 ### Novidades

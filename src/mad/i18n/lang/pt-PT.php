@@ -259,6 +259,22 @@ return [
             'export_disabled' => 'A exportação está desativada nesta listagem.',
         ],
 
+        'heatmap' => [
+            'band_low'      => 'Baixo',
+            'band_medium'   => 'Médio',
+            'band_high'     => 'Alto',
+            'band_critical' => 'Crítico',
+            'record'        => 'registo',
+            'records'       => 'registos',
+            'none'          => 'nenhum registo',
+            'band'          => 'faixa',
+            'more'          => 'e mais :n',
+            'legend_less'   => 'menos',
+            'legend_more'   => 'mais',
+            'x_title'       => 'Coluna',
+            'y_title'       => 'Linha',
+        ],
+
         'chart' => [
             'no_data'    => 'Sem dados para apresentar',
             'debug' => [

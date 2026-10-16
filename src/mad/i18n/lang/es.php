@@ -432,6 +432,22 @@ return [
             'reparented'       => 'Nodo movido',
         ],
 
+        'heatmap' => [
+            'band_low'      => 'Bajo',
+            'band_medium'   => 'Medio',
+            'band_high'     => 'Alto',
+            'band_critical' => 'Crítico',
+            'record'        => 'registro',
+            'records'       => 'registros',
+            'none'          => 'ningún registro',
+            'band'          => 'franja',
+            'more'          => 'y :n más',
+            'legend_less'   => 'menos',
+            'legend_more'   => 'más',
+            'x_title'       => 'Columna',
+            'y_title'       => 'Fila',
+        ],
+
         'chart' => [
             'no_data'    => 'Sin datos para mostrar',
             'debug' => [

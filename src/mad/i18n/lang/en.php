@@ -443,6 +443,22 @@ return [
         ],
 
         // Charts (mad-db-chart, mad-chart)
+        'heatmap' => [
+            'band_low'      => 'Low',
+            'band_medium'   => 'Medium',
+            'band_high'     => 'High',
+            'band_critical' => 'Critical',
+            'record'        => 'record',
+            'records'       => 'records',
+            'none'          => 'no records',
+            'band'          => 'band',
+            'more'          => 'and :n more',
+            'legend_less'   => 'less',
+            'legend_more'   => 'more',
+            'x_title'       => 'Column',
+            'y_title'       => 'Row',
+        ],
+
         'chart' => [
             'no_data'    => 'No data to display',
             'debug' => [

@@ -211,7 +211,7 @@ Telas de um app de exemplo gerado pelo MadBuilder. Todas são desenhadas por est
 | **Layout** | `mad-page-container`, `mad-page-header`, `mad-tabs`, `mad-drawer`, `mad-modal`, `mad-card`, `mad-accordion`, `mad-steps`, `mad-wizard`, `mad-sidebar-nav` |
 | **Formulários** | Mais de 40 campos: texto, número, moeda, data, período, hora, seleção, combo do banco, busca única e múltipla, checklists, switch, cor, ícone, OTP, senha, texto rico, assinatura, upload de arquivo e de imagem com recorte, **CEP** e **CNPJ** que preenchem o formulário, listas de itens (`mad-field-list`) e mestre-detalhe (`mad-detail-form`) |
 | **Listagens** | `mad-grid` com ordenação, filtro por coluna, filtro avançado, edição na linha, agrupamento, totais, ações em lote e exportação para Excel/CSV/PDF; `mad-data-table`, `mad-tree-view`, `mad-pivot-table` e `mad-sheet` para lançamento em lote estilo planilha |
-| **Dashboards** | `mad-db-metric-card`, `mad-kpi-card`, `mad-db-chart` (barra, linha, pizza, rosca, rosa, funil, treemap), `mad-dash-filters`, `mad-goal-ladder`, `mad-stat-grid` |
+| **Dashboards** | `mad-db-metric-card`, `mad-kpi-card`, `mad-db-chart` (barra, linha, pizza, rosca, rosa, funil, treemap), `mad-heatmap` (matriz de risco, priorização), `mad-dash-filters`, `mad-goal-ladder`, `mad-stat-grid` |
 | **Planejamento** | `mad-kanban`, `mad-calendar` (com recursos), `mad-gantt` (fases, dependências, linha de base), `mad-timeline`, `mad-org-chart` e `mad-wf-map` para fluxos de aprovação |
 | **Documentos** | Bandas `mad-doc-*`, tabelas, QR code, código de barras, assinatura e numeração de página, gerando PDF |
 | **Operação** | `mad-pdv` (frente de caixa), `mad-reconcile` (conciliação bancária), comentários, anexos e histórico de alterações |

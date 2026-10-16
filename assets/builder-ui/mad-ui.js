@@ -15294,3 +15294,90 @@ document.addEventListener("alpine:init", function () {
         }
     });
 })();
+
+// ══════════════════════════════════════════════════════════════════════════
+// <mad-heatmap> — clique na célula, lista ao tocar, setas entre as células.
+// O HTML (components/heatmap.blade.php) carrega a configuração em data-*:
+//   data-hm-action  → MadWire.call(tela, ação, [x, y, valor])
+//   data-hm-target  → Mad.go(Tela, método, {x-param: x, y-param: y}, url)
+// Todo clique dispara `mad-heatmap-click` {name, x, y, value} (bubbles) — o
+// Alpine/JS do app pode escutar sem nenhuma das duas.
+// No toque (sem mouse), a célula com lista mostra a lista no 1º toque e
+// segue o clique no 2º. Delegado no document: vale para HTML trocado pelo wire.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+    if (window.__madHeatmapBound) return;
+    window.__madHeatmapBound = true;
+
+    var touchOnly = function () {
+        return !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    };
+    var closeAll = function (except) {
+        document.querySelectorAll('.mad-hm-td.is-open').forEach(function (td) {
+            if (td !== except) td.classList.remove('is-open');
+        });
+    };
+
+    document.addEventListener('click', function (e) {
+        var cell = e.target && e.target.closest ? e.target.closest('[data-hm-cell]') : null;
+        if (!cell) {
+            if (!(e.target && e.target.closest && e.target.closest('.mad-hm-pop'))) closeAll();
+            return;
+        }
+        var root = cell.closest('[data-mad-heatmap]');
+        if (!root) return;
+        var td = cell.parentElement;
+        var hasPop = !!(td && td.querySelector('.mad-hm-pop'));
+        var clickable = cell.classList.contains('is-clickable');
+        var x = cell.getAttribute('data-hm-x');
+        var y = cell.getAttribute('data-hm-y');
+        var value = parseFloat(cell.getAttribute('data-hm-value') || '0') || 0;
+
+        if (hasPop && (!clickable || (touchOnly() && !td.classList.contains('is-open')))) {
+            var wasOpen = td.classList.contains('is-open');
+            closeAll(td);
+            td.classList.toggle('is-open', !wasOpen);
+            if (!clickable) {
+                root.dispatchEvent(new CustomEvent('mad-heatmap-click', { bubbles: true, detail: { name: root.getAttribute('data-hm-name') || root.id, x: x, y: y, value: value } }));
+            }
+            return;
+        }
+
+        root.dispatchEvent(new CustomEvent('mad-heatmap-click', { bubbles: true, detail: { name: root.getAttribute('data-hm-name') || root.id, x: x, y: y, value: value } }));
+        if (!clickable) return;
+        closeAll();
+
+        var action = root.getAttribute('data-hm-action');
+        if (action) {
+            var wrapper = root.closest('[mad-component]');
+            if (wrapper && typeof MadWire !== 'undefined' && MadWire.call) MadWire.call(wrapper, action, [x, y, value]);
+            return;
+        }
+        var target = root.getAttribute('data-hm-target');
+        if (target && window.Mad && typeof window.Mad.go === 'function') {
+            var params = {};
+            params[root.getAttribute('data-hm-x-param') || 'x'] = x;
+            params[root.getAttribute('data-hm-y-param') || 'y'] = y;
+            var tpl = root.getAttribute('data-hm-url') || '';
+            var url = (tpl && typeof window.Mad._resolveUrlTemplate === 'function') ? window.Mad._resolveUrlTemplate(tpl, params) : undefined;
+            window.Mad.go(target, root.getAttribute('data-hm-method') || 'show', params, url);
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeAll(); return; }
+        var cell = e.target && e.target.closest ? e.target.closest('[data-hm-cell]') : null;
+        if (!cell) return;
+        var dx = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        var dy = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+        if (!dx && !dy) return;
+        var td = cell.closest('td');
+        var tr = td && td.parentElement;
+        if (!tr) return;
+        var col = Array.prototype.indexOf.call(tr.children, td);
+        var row = dy ? (dy > 0 ? tr.nextElementSibling : tr.previousElementSibling) : tr;
+        var next = row && row.children[col + dx];
+        var btn = next && next.querySelector('[data-hm-cell]');
+        if (btn) { e.preventDefault(); btn.focus(); }
+    });
+})();

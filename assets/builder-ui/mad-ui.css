@@ -14914,3 +14914,123 @@ summary:focus-visible,
 }
 /* A busca dentro do controle (seletor pesquisável) não ganha um 2º anel. */
 .mad-sel-control :focus-visible { outline: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   <mad-heatmap> — matriz N×M com cor por faixa, bolha com a contagem e legenda
+   (components/heatmap.blade.php · Mad\Chart\MadHeatmap). Cor da célula =
+   tom da faixa misturado com a superfície: funciona no claro e no escuro.
+   A tabela ocupa 100% e as colunas encolhem: nunca rola a página de lado.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mad-heatmap {
+  --hm-ylabel-w: 24%;
+  --hm-gap: 4px;
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  color: var(--mad-text, #111827);
+}
+.mad-hm-title { font-weight: 600; font-size: .9rem; margin: 0 0 .5rem; }
+.mad-hm-empty { padding: 1.5rem .5rem; text-align: center; color: var(--mad-text-muted, #6b7280); font-size: .85rem; }
+.mad-hm-body { display: flex; align-items: stretch; gap: .25rem; min-width: 0; }
+.mad-hm-ytitle {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: .75rem; font-weight: 600; color: var(--mad-text-muted, #6b7280);
+  padding-bottom: 1.6rem; /* alinha ao centro das linhas, acima dos rótulos do eixo X */
+}
+.mad-hm-scroll { flex: 1 1 auto; min-width: 0; }
+.mad-hm-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: var(--hm-gap); margin: calc(var(--hm-gap) * -1) 0; }
+.mad-hm-col-y { width: var(--hm-ylabel-w); }
+.mad-hm-sr {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.mad-hm-ylabel {
+  font-size: .75rem; font-weight: 500; line-height: 1.2; text-align: right;
+  color: var(--mad-text-muted, #6b7280); padding: 0 .35rem 0 0;
+  overflow-wrap: anywhere; hyphens: auto;
+}
+.mad-hm-xlabel {
+  font-size: .75rem; font-weight: 500; line-height: 1.2; text-align: center; vertical-align: top;
+  color: var(--mad-text-muted, #6b7280); padding: .2rem 0 0; overflow-wrap: anywhere; hyphens: auto;
+}
+.mad-hm-xtitle { text-align: center; font-size: .75rem; font-weight: 600; color: var(--mad-text-muted, #6b7280); margin-top: .35rem; padding-left: var(--hm-ylabel-w); }
+.mad-hm-td { position: relative; padding: 0; }
+
+/* Tons (faixas). --hm-tone = cor da faixa; --hm-mix = quanto dela entra no fundo. */
+.mad-hm-tone-success  { --hm-tone: var(--mad-success, #16a34a); }
+.mad-hm-tone-info     { --hm-tone: var(--mad-info, #4a90d9); }
+.mad-hm-tone-warning  { --hm-tone: var(--mad-warning, #d97706); }
+.mad-hm-tone-orange   { --hm-tone: var(--mad-orange, #ea580c); }
+.mad-hm-tone-danger   { --hm-tone: var(--mad-danger, #dc2626); }
+.mad-hm-tone-critical { --hm-tone: color-mix(in srgb, var(--mad-danger, #dc2626) 70%, #000); }
+.mad-hm-tone-neutral  { --hm-tone: var(--mad-text-muted, #6b7280); }
+.mad-hm-tone-primary  { --hm-tone: var(--mad-primary, #2563eb); }
+.mad-hm-tone-heat-1, .mad-hm-tone-heat-2, .mad-hm-tone-heat-3, .mad-hm-tone-heat-4, .mad-hm-tone-heat-5 { --hm-tone: var(--mad-primary, #2563eb); }
+.mad-hm-tone-heat-1 { --hm-mix: 10%; }
+.mad-hm-tone-heat-2 { --hm-mix: 22%; }
+.mad-hm-tone-heat-3 { --hm-mix: 36%; }
+.mad-hm-tone-heat-4 { --hm-mix: 52%; }
+.mad-hm-tone-heat-5 { --hm-mix: 68%; }
+
+.mad-hm-cell {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 34px; max-height: 76px; aspect-ratio: 5 / 4; padding: 0; margin: 0;
+  border-radius: 8px; font: inherit; color: inherit; cursor: default;
+  border: 1px solid color-mix(in srgb, var(--hm-tone, var(--mad-border, #e5e7eb)) 40%, transparent);
+  background: color-mix(in srgb, var(--hm-tone, transparent) var(--hm-mix, 24%), var(--mad-surface, #fff));
+  transition: background-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.mad-hm-cell.is-empty { --hm-mix: 13%; }
+.mad-hm-cell.mad-hm-tone-none { background: var(--mad-bg-subtle, #f9fafb); border-color: var(--mad-border, #e5e7eb); }
+.mad-hm-cell.is-clickable { cursor: pointer; }
+.mad-hm-cell.is-clickable:hover { background: color-mix(in srgb, var(--hm-tone, var(--mad-primary, #2563eb)) calc(var(--hm-mix, 24%) + 14%), var(--mad-surface, #fff)); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.mad-hm-cell:focus-visible { outline: 2px solid var(--mad-focus-ring, var(--mad-primary, #2563eb)); outline-offset: 2px; }
+.mad-hm-bubble {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: calc(22px + 16px * var(--hm-s, 0)); height: calc(22px + 16px * var(--hm-s, 0));
+  max-width: 92%; padding: 0 5px; border-radius: 999px; box-sizing: border-box;
+  background: var(--mad-surface, #fff); color: var(--mad-text, #111827);
+  border: 2px solid var(--hm-tone, var(--mad-primary, #2563eb));
+  font-size: .75rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Lista dos registros da célula: passar o mouse, focar (teclado) ou tocar. */
+.mad-hm-pop {
+  display: none; position: absolute; z-index: 40; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  width: max-content; min-width: 160px; max-width: min(260px, 80vw); text-align: left;
+  background: var(--mad-surface, #fff); color: var(--mad-text, #111827);
+  border: 1px solid var(--mad-border, #e5e7eb); border-radius: 8px; padding: .5rem .65rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16); font-size: .75rem; line-height: 1.35; pointer-events: none;
+}
+.mad-hm-pop--below { bottom: auto; top: calc(100% + 6px); }
+.mad-hm-pop--end { left: auto; right: 0; transform: none; }
+.mad-hm-pop--start { left: 0; transform: none; }
+.mad-hm-pop-head { font-weight: 600; margin-bottom: .25rem; color: var(--mad-text, #111827); }
+.mad-hm-pop ul { margin: 0; padding-left: 1rem; }
+.mad-hm-pop li { margin: .1rem 0; overflow-wrap: anywhere; }
+.mad-hm-pop-more { margin-top: .25rem; color: var(--mad-text-muted, #6b7280); }
+@media (hover: hover) { .mad-hm-td:hover .mad-hm-pop { display: block; } }
+.mad-hm-td:focus-within .mad-hm-pop, .mad-hm-td.is-open .mad-hm-pop { display: block; }
+
+/* Legenda */
+.mad-hm-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; list-style: none; margin: .75rem 0 0; padding: 0; font-size: .8rem; }
+.mad-hm-legend li { display: inline-flex; align-items: center; gap: .4rem; }
+.mad-hm-legend-range { color: var(--mad-text-muted, #6b7280); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.mad-hm-legend--scale { gap: .3rem; color: var(--mad-text-muted, #6b7280); font-size: .75rem; }
+.mad-hm-swatch {
+  display: inline-block; width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--hm-tone, var(--mad-border, #e5e7eb)) 60%, transparent);
+  background: color-mix(in srgb, var(--hm-tone, transparent) var(--hm-mix, 30%), var(--mad-surface, #fff));
+}
+.mad-hm-error { margin-top: .5rem; padding: .4rem .55rem; border-radius: 6px; font-size: .7rem; color: var(--mad-danger, #dc2626); background: color-mix(in srgb, var(--mad-danger, #dc2626) 6%, transparent); border: 1px solid color-mix(in srgb, var(--mad-danger, #dc2626) 25%, transparent); }
+
+/* Estreito (celular, coluna de dashboard): rótulos menores, bolha menor. */
+@container (max-width: 440px) {
+  .mad-heatmap { --hm-ylabel-w: 25%; --hm-gap: 3px; }
+  .mad-hm-ylabel, .mad-hm-xlabel { font-size: .68rem; }
+  .mad-hm-cell { border-radius: 6px; min-height: 30px; }
+  .mad-hm-bubble { min-width: calc(20px + 10px * var(--hm-s, 0)); height: calc(20px + 10px * var(--hm-s, 0)); font-size: .7rem; padding: 0 3px; }
+  .mad-hm-ytitle { font-size: .7rem; }
+}
