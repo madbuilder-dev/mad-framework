@@ -23,5 +23,6 @@ class MadChartConfig
         public readonly array   $sqlBinds = [],      // bind values
         public readonly ?string $sqlInlined = null,  // SQL with binds inlined (debug only)
         public readonly ?string $sqlError = null,    // execution error captured (if any)
+        public readonly bool    $themeTokens = false, // cores var(--mad-…) a resolver no navegador
     ) {}
 }

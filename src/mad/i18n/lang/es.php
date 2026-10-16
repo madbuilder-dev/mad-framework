@@ -522,6 +522,12 @@ return [
 
         'chart' => [
             'no_data'    => 'Sin datos para mostrar',
+            'done'        => 'Completado',
+            'remaining'   => 'Restante',
+            'goal'        => 'Meta :value',
+            'aria_series' => 'Gráfico con :count series (:names), de :first a :last',
+            'aria_last'   => 'Último valor de cada serie: :values',
+            'aria_marker' => 'Marcador :label en :at',
             'debug' => [
                 'title'    => 'SQL Debug',
                 'inlined'  => 'Con binds inlined',

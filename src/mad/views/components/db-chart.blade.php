@@ -19,6 +19,25 @@
      *   filters           array       []            Filtros inline [['campo','op','val'], ...]
      *   joins             array       []            Joins [['alias' => ['left','right']]]
      *   data              array       null          Dados manuais ['Label' => val, ...]
+     *                                                Várias séries (bar|line|mixed):
+     *                                                ['labels' => ['S1','S2'], 'series' => [
+     *                                                  ['name' => 'Previsto', 'data' => [5, 12],
+     *                                                   'type' => 'line', 'dashed' => true], ...]]
+     *                                                Por série: type bar|line|scatter, axis
+     *                                                left|right, stack, area, smooth, dashed,
+     *                                                cumulative, labels, highlight-last, symbol,
+     *                                                color (cor CSS, var(--token) ou tom).
+     *                                                Guia: docs/mad-chart-series.md
+     *   markers           array       []            Linhas de marcação (bar|line|mixed):
+     *                                                [['x' => 'S7', 'label' => 'Hoje'],
+     *                                                 ['y' => 1200, 'label' => 'Contratado']]
+     *   value / max       number      — / 100       Donut de progresso: anel value de max
+     *   value-label       string      'Concluído'   Nome da parte preenchida (tooltip)
+     *   goal              number|'80%' —            Meta marcada no anel (pie/donut)
+     *   goal-label        string      'Meta …'      Texto da meta (abaixo do número)
+     *   center            string      auto          Texto no centro do donut (padrão com
+     *                                                value/goal: % da 1ª fatia)
+     *   center-label      string      goal-label    Linha de apoio no centro
      *   title             string      ''            Título
      *   subtitle          string      ''            Subtítulo
      *   height            int         300           Altura em px
@@ -108,6 +127,16 @@
 
     // ── Dados manuais ──────────────────────────────────────────────────────
     $data     = $data     ?? null;
+    $markers  = $markers  ?? [];
+
+    // ── Donut: progresso, meta e centro ────────────────────────────────────
+    $value       = $value       ?? null;
+    $max         = $max         ?? null;
+    $valueLabel  = $valueLabel  ?? null;
+    $goal        = $goal        ?? null;
+    $goalLabel   = $goalLabel   ?? null;
+    $center      = $center      ?? null;
+    $centerLabel = $centerLabel ?? null;
 
     // ── Visual ─────────────────────────────────────────────────────────────
     $title    = $title    ?? '';
@@ -244,7 +273,10 @@
     $chart = \Mad\Chart\MadChart::{$type}($name);
 
     // Fonte de dados
-    if ($data !== null) {
+    $__progress = in_array($type, ['donut', 'pie'], true) && $value !== null && $value !== '' && is_numeric($value);
+    if ($__progress) {
+        $chart->progress((float) $value, is_numeric($max) && (float) $max > 0 ? (float) $max : 100.0, $valueLabel !== null ? (string) $valueLabel : null);
+    } elseif ($data !== null) {
         $chart->data($data);
     } else {
         if (\Mad\Database\QuerySource::isQuery($query)) {
@@ -336,6 +368,13 @@
     if ($transformer)          $chart->transformer($transformer);
     if ($legendTransformer)    $chart->legendTransformer($legendTransformer);
     if ($subLegendTransformer) $chart->subLegendTransformer($subLegendTransformer);
+
+    // Marcadores, meta e centro do donut
+    if (is_array($markers) && $markers !== []) $chart->markers($markers);
+    if ($goal !== null && $goal !== '') $chart->goal(is_numeric($goal) ? (float) $goal : (string) $goal, $goalLabel !== null ? (string) $goalLabel : null);
+    if (($center !== null && $center !== '') || ($centerLabel !== null && $centerLabel !== '')) {
+        $chart->center((string) ($center ?? ''), $centerLabel !== null ? (string) $centerLabel : null);
+    }
 
     // ECharts extras
     if ($options) $chart->options($options);
@@ -537,6 +576,9 @@
     const NAME    = '{{ $chartName }}';
     const OPTIONS = {!! $cfg->optionsJson !!};
     const __dv_{{ $chartName }} = {!! $cfg->displayValuesJson !!};
+@if($cfg->themeTokens)
+@include('components.partials.chart-tokens')
+@endif
 
     // Helper global: dispose de TODOS os charts dentro de um root que vai ser
     // descartado (ex.: pane de <mad-dashboard-tabs> antes de reinjetar HTML).
@@ -576,7 +618,7 @@
         var __madTheme = isDark ? (window.__madEchartsThemeDark || 'dark') : (window.__madEchartsThemeLight || null);
         const chart = echarts.init(el, __madTheme, { renderer: 'svg' });
         if (isDark) { OPTIONS.backgroundColor = 'transparent'; }
-        chart.setOption(OPTIONS);
+        chart.setOption({!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!});
 
         if (!window.__madCharts) window.__madCharts = {};
         window.__madCharts[NAME] = chart;

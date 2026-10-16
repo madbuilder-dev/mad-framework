@@ -65,6 +65,12 @@ class MadChart
 
     // ── Dados manuais ───────────────────────────────────────────────────────────
     private ?array $manualData = null;
+    /** Séries montadas no PHP: ['labels' => [...], 'series' => [...]]. */
+    private ?array $manualSeries = null;
+    /** Linhas de marcação ("Hoje", "Contratado"). */
+    private array  $markers = [];
+    /** Donut: progresso, meta no anel e texto no centro. */
+    private array  $donutExtras = [];
 
     // ── Visual ──────────────────────────────────────────────────────────────────
     private string $title          = '';
@@ -180,10 +186,71 @@ class MadChart
 
     /**
      * Fornece dados sem ORM. Formato: ['Label' => value, ...]
+     *
+     * Várias séries: ['labels' => ['S1', 'S2', ...], 'series' => [...]] —
+     * o mesmo que {@see series()}.
      */
     public function data(array $data): self
     {
+        if (isset($data['series']) && is_array($data['series'])) {
+            return $this->series((array) ($data['labels'] ?? []), $data['series']);
+        }
         $this->manualData = $data;
+        return $this;
+    }
+
+    /**
+     * Várias séries montadas no PHP, alinhadas aos rótulos do eixo (bar, line, mixed).
+     *
+     *   ->series(['S1', 'S2', 'S3'], [
+     *       ['name' => 'Previsto',  'data' => [5, 12, 20], 'type' => 'line', 'dashed' => true],
+     *       ['name' => 'Realizado', 'data' => [4, 10, null], 'type' => 'line', 'highlight-last' => true],
+     *   ])
+     *
+     * Por série: name, data (lista alinhada ou mapa rótulo => valor; null = sem
+     * ponto), type (bar|line|scatter), axis (left|right), stack, area, smooth,
+     * dashed, cumulative, labels, highlight-last, symbol, color (cor CSS,
+     * var(--token) ou tom: primary, success, warning, orange, danger, info, neutral).
+     */
+    public function series(array $labels, array $series): self
+    {
+        $this->manualSeries = ['labels' => $labels, 'series' => $series];
+        return $this;
+    }
+
+    /**
+     * Linhas de marcação: ['x' => 'S7', 'label' => 'Hoje'] (vertical, numa
+     * categoria) ou ['y' => 1200, 'label' => 'Contratado'] (horizontal, num valor).
+     * Opcionais: color, dashed (padrão true), axis (right = eixo secundário).
+     */
+    public function markers(array $markers): self
+    {
+        $this->markers = $markers;
+        return $this;
+    }
+
+    /** Donut de progresso: `$value` de `$max` (anel com o restante em cinza). */
+    public function progress(float $value, float $max = 100, ?string $label = null): self
+    {
+        $this->donutExtras['value'] = $value;
+        $this->donutExtras['max'] = $max;
+        $this->donutExtras['label'] = $label;
+        return $this;
+    }
+
+    /** Meta marcada no anel do donut: valor na unidade dos dados, ou "80%" do anel. */
+    public function goal(float|string $goal, ?string $label = null): self
+    {
+        $this->donutExtras['goal'] = $goal;
+        $this->donutExtras['goalLabel'] = $label;
+        return $this;
+    }
+
+    /** Texto no centro do donut (padrão com progresso/meta: o % da 1ª fatia). */
+    public function center(string $text, ?string $sub = null): self
+    {
+        $this->donutExtras['center'] = $text !== '' ? $text : null;
+        $this->donutExtras['centerSub'] = $sub;
         return $this;
     }
 
@@ -372,7 +439,9 @@ class MadChart
 
         // ── Dados ──────────────────────────────────────────────────────────────
 
-        if ($this->manualData !== null) {
+        if ($this->manualSeries !== null) {
+            $chart->setManualSeries($this->manualSeries['labels'], $this->manualSeries['series']);
+        } elseif ($this->manualData !== null) {
             $rows = [];
             $integers = $this->manualData !== [];
             foreach ($this->manualData as $label => $value) {
@@ -472,6 +541,14 @@ class MadChart
 
         if ($this->chartType === 'line' && $this->area) {
             $chart->showArea($this->smooth);
+        }
+
+        if ($this->markers !== []) {
+            $chart->setMarkers($this->markers);
+        }
+        if ($this->donutExtras !== [] && in_array($this->chartType, ['donut', 'pie'], true)) {
+            // Depois dos dados: o progresso troca as fatias pelo anel valor × restante.
+            $chart->setDonutExtras($this->donutExtras);
         }
 
         return $chart;

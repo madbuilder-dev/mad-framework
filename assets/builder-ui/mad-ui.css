@@ -15324,3 +15324,34 @@ summary:focus-visible,
   .mad-wb-title { flex: 1 1 100%; }
   .mad-wb-hint { font-size: .74rem; }
 }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Paleta das séries dos gráficos — usada por <mad-db-chart>/<mad-chart> com
+   séries montadas no PHP, marcadores ("Hoje", "Contratado") e donut com meta.
+   O tema do app pode sobrescrever os tokens; o gráfico relê a cada desenho.
+   ════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --mad-chart-1: #2563eb;
+  --mad-chart-2: #f97316;
+  --mad-chart-3: #16a34a;
+  --mad-chart-4: #0891b2;
+  --mad-chart-5: #d97706;
+  --mad-chart-6: #dc2626;
+  --mad-chart-7: #0d9488;
+  --mad-chart-8: #64748b;
+  --mad-chart-track: #e5e7eb;
+  --mad-chart-marker: #ea580c;
+}
+html[data-theme="dark"] {
+  --mad-chart-1: #60a5fa;
+  --mad-chart-2: #fb923c;
+  --mad-chart-3: #4ade80;
+  --mad-chart-4: #22d3ee;
+  --mad-chart-5: #fbbf24;
+  --mad-chart-6: #f87171;
+  --mad-chart-7: #2dd4bf;
+  --mad-chart-8: #94a3b8;
+  --mad-chart-track: #3f3f46;
+  --mad-chart-marker: #fb923c;
+}

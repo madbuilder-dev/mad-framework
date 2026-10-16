@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.170.0] — 2026-10-16
+
+### Novidades
+
+- **Gráficos:** o `<mad-db-chart>` aceita várias séries montadas na tela, em linhas, barras agrupadas ou empilhadas, ou barra com linha no eixo da direita. Serve para curva S (previsto × realizado), horas lançadas × contratado e comparativos.
+- **Gráficos:** novos marcadores de linha vertical ("Hoje") e horizontal ("Contratado"), e donut de progresso com a meta marcada no anel e o número no centro (`value`, `goal`, `center`).
+- **Gráficos:** nesses gráficos a legenda esconde a série ao clicar, o tooltip mostra todas as séries do ponto, as cores seguem o tema claro ou escuro e o leitor de tela recebe uma descrição em texto. Os gráficos que já existiam não mudam.
+
 ## [5.169.0] — 2026-10-16
 
 ### Novidades

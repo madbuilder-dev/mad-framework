@@ -92,6 +92,9 @@
     const NAME    = '{{ $chartName }}';
     const OPTIONS = {!! $cfg->optionsJson !!};
     const __dv_{{ $chartName }} = {!! $cfg->displayValuesJson !!};
+@if($cfg->themeTokens)
+@include('components.partials.chart-tokens')
+@endif
 
     function initChart() {
         const el = document.getElementById(NAME + '-container');
@@ -111,7 +114,7 @@
         var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const chart = echarts.init(el, isDark ? 'dark' : null, { renderer: 'svg' });
         if (isDark) { OPTIONS.backgroundColor = 'transparent'; }
-        chart.setOption(OPTIONS);
+        chart.setOption({!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!});
 
         if (!window.__madCharts) window.__madCharts = {};
         window.__madCharts[NAME] = chart;

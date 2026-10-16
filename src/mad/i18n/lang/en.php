@@ -533,6 +533,12 @@ return [
 
         'chart' => [
             'no_data'    => 'No data to display',
+            'done'        => 'Done',
+            'remaining'   => 'Remaining',
+            'goal'        => 'Goal :value',
+            'aria_series' => 'Chart with :count series (:names), from :first to :last',
+            'aria_last'   => 'Latest value of each series: :values',
+            'aria_marker' => 'Marker :label at :at',
             'debug' => [
                 'title'    => 'SQL Debug',
                 'inlined'  => 'With inlined binds',

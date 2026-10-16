@@ -23,6 +23,8 @@ use stdClass;
  */
 abstract class EChart extends BaseChart
 {
+    use SeriesExtras;
+
     /**
      * Display values pre-computed from transformerValue/transformerLabelValue.
      * Passed to the template as a separate JS variable (__dv_{name}) so they
@@ -1115,7 +1117,13 @@ abstract class EChart extends BaseChart
 
         $this->ecDisplayValues = null;
 
-        if (in_array($this->type, ['pie', 'donut'])) {
+        if ($this->manualSeries !== null && !in_array($this->type, ['bar', 'line', 'mixed'], true)) {
+            throw new \InvalidArgumentException('séries montadas no PHP valem para os tipos bar, line e mixed');
+        }
+
+        if ($this->manualSeries !== null) {
+            $option = $this->buildManualSeriesOptions();
+        } elseif (in_array($this->type, ['pie', 'donut'])) {
             $option = $this->buildPieOptions();
         } elseif ($this->type === 'rose') {
             $option = $this->buildRoseOptions();
@@ -1133,6 +1141,12 @@ abstract class EChart extends BaseChart
         } else {
             $option = $this->buildLineOptions();
         }
+
+        // Marcadores, donut com meta/centro e descrição para leitor de tela:
+        // cada um volta sem mexer quando o gráfico não pede.
+        $option = $this->applyDonutExtras($option);
+        $option = $this->applyMarkers($option);
+        $option = $this->applyAria($option);
 
         if ($this->customOptions) {
             $option = array_replace_recursive($option, $this->customOptions);
@@ -1165,6 +1179,7 @@ abstract class EChart extends BaseChart
             sqlBinds:          $this->getLastSqlBinds(),
             sqlInlined:        $this->getLastSqlInlined(),
             sqlError:          $this->getLastSqlError(),
+            themeTokens:       $this->themeTokens,
         );
     }
 }
