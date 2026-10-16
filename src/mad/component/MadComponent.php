@@ -140,6 +140,14 @@ abstract class MadComponent
     protected static string $side = 'right';
 
     /**
+     * Registrar as requisições desta tela no log de requisições (Logs ›
+     * Requisições)? Tela com conteúdo sensível (ouvidoria, denúncia, conversa
+     * 1:1) declara `protected static bool $requestLog = false;` e nem a
+     * abertura nem as ações dela são gravadas: sem login, IP nem corpo do envio.
+     */
+    protected static bool $requestLog = true;
+
+    /**
      * Clique na área escurecida fecha a gaveta/modal da tela? Desligado: a
      * tela costuma ser um formulário e o clique fora perdia o que foi
      * digitado. X, Esc, Voltar e Salvar fecham sempre. Ligue em telas só de
@@ -228,6 +236,7 @@ abstract class MadComponent
     public static function getTitle(): string   { return static::translatedTitle(static::$title); }
     public static function getSize(): string    { return static::$size; }
     public static function getSide(): string    { return static::$side; }
+    public static function logsRequests(): bool { return static::$requestLog; }
     public static function getCloseOnBackdrop(): bool { return static::$closeOnBackdrop; }
 
     /**

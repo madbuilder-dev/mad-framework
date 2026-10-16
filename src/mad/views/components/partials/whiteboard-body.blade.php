@@ -87,7 +87,7 @@
                                                 <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
                                             </button>
                                         @endif
-                                        @if($wb['canDelete'])
+                                        @if($wb['canDelete'] && $n['deletable'])
                                             <button type="button" class="mad-wb-tool" data-wb-del aria-label="{{ mad_t('mad.whiteboard.delete') }}" title="{{ mad_t('mad.whiteboard.delete') }}">
                                                 <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                             </button>

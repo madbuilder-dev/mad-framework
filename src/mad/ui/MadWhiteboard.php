@@ -22,7 +22,8 @@ use Mad\Http\MadResponse;
  *
  * Permissão: o dono é a TELA que contém o quadro (perfil → Incluir, Editar,
  * Excluir). `locked` trava o quadro inteiro (só leitura); `:editable-notes`
- * limita as notas que a tela liberar (selado no primeiro desenho). Toda
+ * limita as notas que a tela liberar (selado no primeiro desenho);
+ * `:deletable-notes` limita só a exclusão (ausente = vale o `:editable-notes`). Toda
  * gravação reencontra a nota pela consulta do quadro (`:filters` + escopos
  * globais do model): nota de outro quadro ou de outra empresa não é alcançável.
  *
@@ -195,6 +196,10 @@ class MadWhiteboard extends MadComponent
             if (is_array($c['editableNotes'])) {
                 $this->wbConfig['editableNotes'][] = $this->fresh;
             }
+            // ...e a exclui (mesma regra para a lista de :deletable-notes).
+            if (is_array($c['deletableNotes'])) {
+                $this->wbConfig['deletableNotes'][] = $this->fresh;
+            }
         } catch (\Throwable $e) {
             return $this->refused($e);
         }
@@ -209,7 +214,11 @@ class MadWhiteboard extends MadComponent
             if (!$this->wbConfig['canDelete']) {
                 throw new \DomainException(mad_t('mad.whiteboard.locked'));
             }
-            $this->guardNote((string) $id)->delete();
+            $note = $this->guardNote((string) $id);
+            if (!$this->noteDeletable((string) $id)) {
+                throw new \DomainException(mad_t('mad.whiteboard.note_locked'));
+            }
+            $note->delete();
         } catch (\Throwable $e) {
             return $this->refused($e);
         }
@@ -266,6 +275,7 @@ class MadWhiteboard extends MadComponent
             $defaultColor = (string) array_key_first($colors);
         }
         $editable = $a['editableNotes'] ?? null;
+        $deletable = $a['deletableNotes'] ?? null;
         $grid = (int) ($a['grid'] ?? 24);
 
         return [
@@ -297,6 +307,7 @@ class MadWhiteboard extends MadComponent
             'canAdd' => $bool($a['canAdd'] ?? null, true),
             'canDelete' => $bool($a['canDelete'] ?? null, true),
             'editableNotes' => is_array($editable) ? array_values(array_map('strval', $editable)) : null,
+            'deletableNotes' => is_array($deletable) ? array_values(array_map('strval', $deletable)) : null,
             'zoom' => $bool($a['zoom'] ?? null, true),
             'minWidth' => max(320, (int) ($a['minWidth'] ?? 1100)),
             'minHeight' => max(240, (int) ($a['minHeight'] ?? 560)),
@@ -329,7 +340,7 @@ class MadWhiteboard extends MadComponent
 
     // ── Leitura ────────────────────────────────────────────────────────────
 
-    /** @return list<array{id:string,x:int,y:int,w:int,h:int,text:string,color:string,meta:string,editable:bool}> */
+    /** @return list<array{id:string,x:int,y:int,w:int,h:int,text:string,color:string,meta:string,editable:bool,deletable:bool}> */
     private function notes(): array
     {
         $c = $this->wbConfig;
@@ -355,6 +366,7 @@ class MadWhiteboard extends MadComponent
                 'color' => isset($c['colors'][$color]) ? $color : $c['defaultColor'],
                 'meta' => $c['metaField'] !== '' ? (string) ($m->getRawOriginal($c['metaField']) ?? '') : '',
                 'editable' => $this->noteEditable($id),
+                'deletable' => $this->noteDeletable($id),
             ];
         }
 
@@ -373,6 +385,17 @@ class MadWhiteboard extends MadComponent
         $e = $this->wbConfig['editableNotes'];
 
         return !$this->locked() && ($e === null || in_array($id, $e, true));
+    }
+
+    /**
+     * Excluir: nota editável, `can-delete` ligado e, com `:deletable-notes`,
+     * só as notas da lista. Sem a lista vale o de antes (toda nota editável).
+     */
+    private function noteDeletable(string $id): bool
+    {
+        $d = $this->wbConfig['deletableNotes'] ?? null;
+
+        return $this->wbConfig['canDelete'] && $this->noteEditable($id) && ($d === null || in_array($id, $d, true));
     }
 
     private function guardNote(string $id): Model

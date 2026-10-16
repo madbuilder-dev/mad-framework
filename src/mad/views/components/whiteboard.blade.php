@@ -24,7 +24,7 @@
             'noteWidth' => $noteWidth ?? 200, 'textMax' => $textMax ?? 600, 'placeholder' => $placeholder ?? '',
             'grid' => $grid ?? 24, 'snap' => $snap ?? null,
             'locked' => $locked ?? null, 'canAdd' => $canAdd ?? null, 'canDelete' => $canDelete ?? null,
-            'editableNotes' => $editableNotes ?? null, 'zoom' => $zoom ?? null,
+            'editableNotes' => $editableNotes ?? null, 'deletableNotes' => $deletableNotes ?? null, 'zoom' => $zoom ?? null,
             'minWidth' => $minWidth ?? 1100, 'minHeight' => $minHeight ?? 560, 'height' => $height ?? '',
             'emptyText' => $emptyText ?? '',
         ]);

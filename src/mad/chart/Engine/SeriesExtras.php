@@ -404,6 +404,7 @@ trait SeriesExtras
         $cats = array_is_list($cat) ? ($cat[0]['data'] ?? []) : ($cat['data'] ?? []);
 
         $groups = ['left' => [], 'right' => []];
+        $peak = ['left' => null, 'right' => null];
         foreach ($this->markers as $m) {
             if ($m['axis'] === 'x') {
                 $at = is_int($m['at']) ? ($cats[$m['at']] ?? null) : $m['at'];
@@ -413,11 +414,15 @@ trait SeriesExtras
             } else {
                 $point = [$valKey => $m['at']];
                 $pos = $horizontal ? 'end' : 'insideEndTop';
+                $side = $m['right'] ? 'right' : 'left';
+                $peak[$side] = max($peak[$side] ?? (float) $m['at'], (float) $m['at']);
             }
             $point['label'] = ['show' => $m['label'] !== '', 'formatter' => str_replace(['{', '}'], ['(', ')'], $m['label']), 'position' => $pos, 'color' => $m['color'], 'fontWeight' => 600];
             $point['lineStyle'] = ['color' => $m['color'], 'type' => $m['dashed'] ? 'dashed' : 'solid', 'width' => 1.5];
             $groups[$m['right'] ? 'right' : 'left'][] = $point;
         }
+
+        $option = $this->stretchValueAxis($option, $valKey, $horizontal ? 'xAxisIndex' : 'yAxisIndex', $peak);
 
         $names = array_values(array_filter(array_map(static fn ($s) => (string) ($s['name'] ?? ''), $option['series'] ?? []), static fn ($s) => $s !== ''));
         $added = false;
@@ -444,6 +449,75 @@ trait SeriesExtras
         }
 
         return $option;
+    }
+
+    /**
+     * O ECharts não estica o eixo até uma markLine: um marcador `y` acima do
+     * maior valor das séries ("Contratado 11.976 h" com dados em 4.150) ficava
+     * fora do gráfico. Quando o marcador passa do topo dos dados do eixo dele,
+     * o eixo ganha um máximo redondo acima do marcador; senão nada muda.
+     *
+     * @param array{left: ?float, right: ?float} $peak
+     */
+    private function stretchValueAxis(array $option, string $valKey, string $indexKey, array $peak): array
+    {
+        $axes = $option[$valKey] ?? null;
+        if (!is_array($axes)) {
+            return $option;
+        }
+        $list = array_is_list($axes);
+        foreach (['left' => 0, 'right' => 1] as $side => $idx) {
+            $mark = $peak[$side];
+            if ($mark === null || $mark <= 0) continue;
+            if ($list ? !isset($axes[$idx]) : $idx !== 0) continue;
+            $axis = $list ? $axes[$idx] : $axes;
+            if (!is_array($axis) || array_key_exists('max', $axis)) continue;
+
+            // Topo dos dados deste eixo (séries empilhadas somam por categoria).
+            $top = 0.0;
+            $stacks = [];
+            foreach ($option['series'] ?? [] as $s) {
+                if ((int) ($s[$indexKey] ?? 0) !== $idx) continue;
+                foreach (array_values((array) ($s['data'] ?? [])) as $i => $d) {
+                    $v = is_array($d) ? ($d['value'] ?? (array_is_list($d) ? end($d) : null)) : $d;
+                    if (!is_numeric($v)) continue;
+                    if (!empty($s['stack'])) {
+                        $k = $s['stack'] . "\x1f" . $i;
+                        $stacks[$k] = ($stacks[$k] ?? 0.0) + max(0.0, (float) $v);
+                        $top = max($top, $stacks[$k]);
+                    } else {
+                        $top = max($top, (float) $v);
+                    }
+                }
+            }
+            if ($mark <= $top) continue;
+
+            $axis['max'] = self::niceCeil($mark * 1.06);
+            if ($list) {
+                $axes[$idx] = $axis;
+            } else {
+                $axes = $axis;
+            }
+        }
+        $option[$valKey] = $axes;
+
+        return $option;
+    }
+
+    /** Próximo número "redondo" (1; 1,2; 1,5; 2; 2,5; 3; 4; 5; 6; 8 × 10ⁿ) acima de $v. */
+    private static function niceCeil(float $v): float
+    {
+        if ($v <= 0) {
+            return 0.0;
+        }
+        $p = 10 ** floor(log10($v));
+        foreach ([1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] as $f) {
+            if ($f * $p >= $v - 1e-9) {
+                return round($f * $p, 6);
+            }
+        }
+
+        return 10 * $p;
     }
 
     /** Donut de progresso, meta no anel e texto no centro. */

@@ -12,6 +12,39 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.173.1] — 2026-10-16
+
+### Correções
+
+- **Kanban:** um quadro cuja busca ordenava os cartões (`orderBy` no filtro da busca) não abria em banco PostgreSQL. Agora abre, com os cartões na ordem da busca e a contagem e o total de cada coluna corretos.
+
+## [5.173.0] — 2026-10-16
+
+### Novidades
+
+- **Quadro branco:** `:deletable-notes` limita quem exclui sem limitar os outros gestos. Todos movem, redimensionam, editam e trocam a cor das notas, mas só as notas da lista (as do próprio autor, por exemplo) mostram Excluir, e quem cria uma nota pode excluí-la. Sem o atributo, nada muda.
+
+## [5.172.0] — 2026-10-16
+
+### Novidades
+
+- **Log de requisições:** dá para desligar o log pelo ambiente (`MAD_REQUEST_LOG=0`) ou escolher os tipos registrados (`MAD_REQUEST_LOG_TYPES`). Sem as variáveis, ele continua como antes.
+- **Privacidade:** uma tela pode ficar fora do log de requisições com `protected static bool $requestLog = false;`. Nem a abertura nem os envios dela gravam login, IP ou o conteúdo digitado, como numa ouvidoria, num canal de denúncia ou numa conversa 1:1.
+
+## [5.171.0] — 2026-10-16
+
+### Novidades
+
+- **Busca (Ctrl K):** o app pode fazer a busca do topo achar registros, como atividades, clientes ou pedidos, registrando um provedor por tipo (`Mad\Ui\Search\MadSearch::provider()` ou `MAD_SEARCH_PROVIDERS`). Os resultados vêm agrupados por tipo, e o registro escolhido abre na cortina lateral, na janela ou na tela inteira, conforme a tela. Sem provedor, nada muda.
+- **Busca (Ctrl K):** os registros chegam depois das telas, sem atrasar a abertura. Se um provedor falhar, só o grupo dele mostra um aviso. Com registros na lista, as telas param em 5 com "Ver as N telas".
+- **Busca (Ctrl K):** a lista é navegável pelo teclado e lida pelo leitor de tela (item marcado, grupos com nome, quantos registros vieram). No celular, a lupa fica no botão ⋮ do topo.
+
+## [5.170.2] — 2026-10-16
+
+### Correções
+
+- **Gráficos:** um marcador horizontal acima do maior valor das séries (ex.: "Contratado 11.976 h" com as barras em 4.150 h) não aparecia. Agora o eixo vai até um número redondo acima do marcador, também no eixo da direita.
+
 ## [5.170.1] — 2026-10-16
 
 ### Correções

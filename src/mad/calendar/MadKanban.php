@@ -1464,7 +1464,11 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // scopes do model — num app Multi-unidade a coluna somava os cards das
         // outras unidades (e os excluídos), enquanto os cards e o recálculo
         // depois de arrastar (Eloquent count/sum) já eram escopados.
-        $rows = $q->toBase()->selectRaw($select)->groupBy($this->stageField)->get();
+        // reorder(): um orderBy() da busca (searchQuery/onSearch) ia junto para
+        // o GROUP BY e o Postgres recusava a consulta (coluna fora do grupo).
+        // O count()/sum() do recálculo não precisa: sem GROUP BY o próprio
+        // Laravel descarta a ordenação do agregado.
+        $rows = $q->toBase()->reorder()->selectRaw($select)->groupBy($this->stageField)->get();
 
         foreach ($rows as $row) {
             $sid = (string) ($row->__sid ?? '');
