@@ -713,6 +713,29 @@ class MadResponse
     }
 
     /**
+     * Atualiza o contador de um item do menu sem recarregar (provedor de menu
+     * do app, Mad\Ui\Menu\MadMenu). `$key` = basename da tela do item
+     * ('AprovacaoList'); `null`/`0` esconde o contador.
+     *
+     *   return MadToast::success('Aprovado.')->menuBadge('AprovacaoList', $restantes);
+     */
+    public function menuBadge(string $key, int|string|null $value): static
+    {
+        return $this->script('window.Mad&&Mad.menuBadge&&Mad.menuBadge('
+            . json_encode($key, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ','
+            . json_encode($value, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ')');
+    }
+
+    /**
+     * Pede ao casco para perguntar de novo ao provedor todos os contadores do
+     * menu (uma requisição a /app/MenuBadges/badges).
+     */
+    public function refreshMenuBadges(): static
+    {
+        return $this->script('window.Mad&&Mad.refreshMenuBadges&&Mad.refreshMenuBadges()');
+    }
+
+    /**
      * Executa JavaScript arbitrário no cliente. Use com cuidado.
      */
     public function script(string $js): static

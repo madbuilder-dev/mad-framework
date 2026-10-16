@@ -461,6 +461,7 @@ class PermissionGate
             "EmptyPage" => true,
             "WelcomeView" => true,
             "SearchBox" => true,
+            "MenuBadges" => true,          // contadores do menu (Mad.refreshMenuBadges)
             "NotificationCenter" => true,
             "NotificationView" => true,
             "NotificationList" => true,

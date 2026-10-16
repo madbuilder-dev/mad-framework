@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.166.1] — 2026-10-16
+
+### Novidades
+
+- **Menu:** o app pode mostrar um contador ao lado de um item do menu ("Aprovações 2") e esconder itens ou módulos inteiros por uma regra própria, registrando um provedor (`Mad\Ui\Menu\MadMenu::provider()` ou `MAD_MENU_PROVIDERS`). Vale no menu lateral, no rail, no menu superior, no mega-menu, nos atalhos do topo, no celular e na busca ⌘K; sem provedor, nada muda.
+- **Menu:** o contador muda sem recarregar a página, pelo navegador (`Mad.menuBadge()`, `Mad.refreshMenuBadges()`) ou pela resposta da ação (`->menuBadge()`, `->refreshMenuBadges()`); o ícone do módulo mostra a soma das telas dele.
+
 ## [5.165.0] — 2026-10-16
 
 ### Novidades
