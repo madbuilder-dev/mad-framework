@@ -60,6 +60,7 @@ final class ActionVocab
         'insert' => [
             'blockAdd',            // <mad-comments>/<mad-attachments> (MadDbBlocksTrait)
             'onFinalizeSale',      // PDV
+            'onNoteAdd',           // <mad-whiteboard>: nova nota
         ],
         'edit' => [
             'onInlineSave',        // edição na própria célula do grid
@@ -74,6 +75,9 @@ final class ActionVocab
             'onWeekCell',          // <mad-week-grid>: estado de um dia
             'onWeekNote',          // <mad-week-grid>: texto livre da linha
             'onWeekCopy',          // <mad-week-grid>: copiar semana anterior
+            'onNoteMove',          // <mad-whiteboard>: posição/tamanho ao soltar
+            'onNoteText',          // <mad-whiteboard>: texto editado no lugar
+            'onNoteColor',         // <mad-whiteboard>: cor da nota
             // conciliação
             'onAutoMatch',
             'onManualMatch',
@@ -87,6 +91,7 @@ final class ActionVocab
             'onDelete',
             'onMadGridDelete',     // exclusão embutida do <mad-grid del>
             'blockRemove',
+            'onNoteDelete',        // <mad-whiteboard>
         ],
         'export' => [
             'onExportCSV',

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.169.0] — 2026-10-16
+
+### Novidades
+
+- **Componentes:** novo `<mad-whiteboard>`, um quadro branco com notas sobre uma grade de pontos. Arraste com mouse ou toque, redimensione pelo canto, edite o texto com duplo clique e troque a cor; cada gesto grava só a nota, sem salvar a tela.
+- **Componentes:** o `<mad-whiteboard>` grava as notas num model e tem **Nova nota**, exclusão com confirmação, zoom, quadro travado (só leitura) e notas liberadas por pessoa. Funciona pelo teclado e no celular.
+
 ## [5.168.0] — 2026-10-16
 
 ### Novidades

@@ -15591,3 +15591,497 @@ document.addEventListener("alpine:init", function () {
         btn.setAttribute('tabindex', '0');
     });
 })();
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// <mad-whiteboard> — quadro branco com notas (Mad\Ui\MadWhiteboard).
+// Cada gesto grava só a nota, pelo canal do próprio quadro:
+//   arrastar / redimensionar → onNoteMove(id, x, y, w, h) ao soltar
+//   editar no lugar          → onNoteText(id, texto) ao sair (Ctrl+Enter), Esc desfaz
+//   paleta                   → onNoteColor(id, chave)
+//   Nova nota / excluir      → onNoteAdd(x, y) / onNoteDelete(id) (redesenha o quadro)
+// Recusa do servidor redesenha o quadro a partir do banco (desfaz o gesto).
+// Zoom é só do navegador (por quadro, na sessão). Teclado na nota em foco:
+// setas movem (Shift = passo maior), Enter edita, Delete pede confirmação.
+// ════════════════════════════════════════════════════════════════════════════
+(function () {
+    if (window.__madWhiteboardInit) return;
+    window.__madWhiteboardInit = true;
+
+    var ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
+    var pendingFocus = {};
+    var esc = function (s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&'); };
+    var parse = function (s, d) { try { return JSON.parse(s); } catch (e) { return d; } };
+    var rootOf = function (el) { return el && el.closest ? el.closest('[data-mad-whiteboard]') : null; };
+    var noteOf = function (el) { return el && el.closest ? el.closest('[data-mad-whiteboard] .mad-wb-note') : null; };
+    var ownWire = function (root) { return root.closest('[mad-component]'); };
+    var txt = function (root, k) { return root.getAttribute('data-wb-t-' + k) || ''; };
+    var num = function (el, a) { return parseInt(el.getAttribute(a), 10) || 0; };
+    var announce = function (root, msg) {
+        var live = root.querySelector('[data-wb-live]');
+        if (!live || !msg) return;
+        live.textContent = '';
+        setTimeout(function () { live.textContent = msg; }, 30);
+    };
+    var emit = function (root, detail) {
+        detail.name = root.getAttribute('data-wb-name') || root.id;
+        root.dispatchEvent(new CustomEvent('mad-whiteboard-change', { bubbles: true, detail: detail }));
+    };
+    var call = function (wrapper, action, params, opts) {
+        if (!wrapper || typeof MadWire === 'undefined' || !MadWire.call) return Promise.resolve({ ok: false });
+        return Promise.resolve(MadWire.call(wrapper, action, params, {}, opts || {}));
+    };
+    var failed = function (r) { return r && r.ok === false && r.reason !== 'superseded' && r.reason !== 'stale'; };
+
+    // ── Zoom ────────────────────────────────────────────────────────────────
+    var zoomKey = function (root) { return 'mad-wb-zoom:' + root.id; };
+    var zoomOf = function (root) {
+        var z = parseFloat(root.getAttribute('data-wb-z'));
+        return z > 0 ? z : 1;
+    };
+    var applyZoom = function (root, z) {
+        var canvas = root.querySelector('[data-wb-canvas]');
+        var stage = root.querySelector('[data-wb-stage]');
+        root.setAttribute('data-wb-z', String(z));
+        if (!canvas || !stage) return;
+        var w = num(canvas, 'data-wb-w'), h = num(canvas, 'data-wb-h');
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        canvas.style.transform = z === 1 ? '' : 'scale(' + z + ')';
+        stage.style.width = Math.ceil(w * z) + 'px';
+        stage.style.height = Math.ceil(h * z) + 'px';
+        var lvl = root.querySelector('[data-wb-zoom="reset"]');
+        if (lvl) lvl.textContent = Math.round(z * 100) + '%';
+        var out = root.querySelector('[data-wb-zoom="out"]'), inn = root.querySelector('[data-wb-zoom="in"]');
+        if (out) out.disabled = z <= ZOOMS[0];
+        if (inn) inn.disabled = z >= ZOOMS[ZOOMS.length - 1];
+    };
+    var setZoom = function (root, dir) {
+        var z = zoomOf(root), i = ZOOMS.indexOf(z);
+        if (i === -1) i = 3;
+        var next = dir === 'reset' ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i + (dir === 'in' ? 1 : -1)))];
+        var vp = root.querySelector('.mad-wb-viewport');
+        var cx = vp ? (vp.scrollLeft + vp.clientWidth / 2) / z : 0, cy = vp ? (vp.scrollTop + vp.clientHeight / 2) / z : 0;
+        applyZoom(root, next);
+        if (vp) { vp.scrollLeft = cx * next - vp.clientWidth / 2; vp.scrollTop = cy * next - vp.clientHeight / 2; }
+        try { sessionStorage.setItem(zoomKey(root), String(next)); } catch (e) { /* sem storage: zoom só nesta tela */ }
+    };
+
+    // O quadro cresce quando uma nota passa da borda.
+    var grow = function (root, note) {
+        var canvas = root.querySelector('[data-wb-canvas]');
+        if (!canvas) return;
+        var w = Math.max(num(canvas, 'data-wb-w'), num(note, 'data-wb-x') + note.offsetWidth + 40);
+        var h = Math.max(num(canvas, 'data-wb-h'), num(note, 'data-wb-y') + note.offsetHeight + 60);
+        if (w === num(canvas, 'data-wb-w') && h === num(canvas, 'data-wb-h')) return;
+        canvas.setAttribute('data-wb-w', String(w));
+        canvas.setAttribute('data-wb-h', String(h));
+        applyZoom(root, zoomOf(root));
+    };
+
+    var snap = function (root, v) {
+        var g = parseInt(root.getAttribute('data-wb-grid'), 10) || 0;
+        return root.hasAttribute('data-wb-snap') && g > 0 ? Math.round(v / g) * g : Math.round(v);
+    };
+    var place = function (note, x, y, w, h) {
+        note.style.left = x + 'px'; note.style.top = y + 'px';
+        note.setAttribute('data-wb-x', String(x)); note.setAttribute('data-wb-y', String(y));
+        if (w != null) { note.style.width = w + 'px'; note.setAttribute('data-wb-w', String(w)); }
+        if (h != null) { note.style.height = h + 'px'; note.setAttribute('data-wb-h', String(h)); }
+    };
+    var flash = function (note) {
+        note.classList.add('is-flash');
+        setTimeout(function () { note.classList.remove('is-flash'); }, 700);
+    };
+
+    // Grava posição/tamanho; em falha de rede devolve a nota ao lugar anterior.
+    var saveMove = function (root, note, prev, msgKey) {
+        var id = note.getAttribute('data-wb-note');
+        var hasH = root.hasAttribute('data-wb-has-h');
+        var x = num(note, 'data-wb-x'), y = num(note, 'data-wb-y'), w = num(note, 'data-wb-w');
+        var h = hasH ? (num(note, 'data-wb-h') || note.offsetHeight) : null;
+        var rootId = root.id;
+        note.classList.add('is-saving');
+        grow(root, note);
+        emit(root, { id: id, change: 'move', x: x, y: y, w: w, h: h });
+        pendingFocus[rootId] = '[data-wb-note="' + esc(id) + '"]';
+        return call(ownWire(root), 'onNoteMove', [id, x, y, w, h], { key: 'wb:' + rootId + ':' + id, seq: true, quietNetwork: true }).then(function (r) {
+            note.classList.remove('is-saving');
+            var again = document.getElementById(rootId);
+            if (failed(r)) {
+                if (note.isConnected) place(note, prev.x, prev.y, prev.w, hasH ? prev.h : null);
+                if (again) announce(again, txt(again, 'failed'));
+                return;
+            }
+            delete pendingFocus[rootId];
+            if (note.isConnected) { flash(note); announce(root, txt(root, msgKey || 'moved')); }
+        });
+    };
+
+    // ── Arrastar e redimensionar (ponteiro: mouse, caneta e toque) ─────────
+    var drag = null, topZ = 10;
+    document.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        var t = e.target;
+        var note = noteOf(t);
+        // A nota tocada vem para a frente (só na tela; a ordem não é gravada).
+        if (note && !note.classList.contains('is-editing')) note.style.zIndex = String(++topZ);
+        if (!note || !note.classList.contains('is-editable') || note.classList.contains('is-editing')) return;
+        var resize = t.closest('[data-wb-resize]');
+        if (!resize && t.closest('button, .mad-wb-palette, .mad-wb-confirm, a, input, textarea, select')) return;
+        var root = rootOf(note);
+        drag = {
+            root: root, note: note, mode: resize ? 'resize' : 'move', id: e.pointerId, moved: false,
+            sx: e.clientX, sy: e.clientY, z: zoomOf(root),
+            prev: { x: num(note, 'data-wb-x'), y: num(note, 'data-wb-y'), w: num(note, 'data-wb-w') || note.offsetWidth, h: num(note, 'data-wb-h') || note.offsetHeight }
+        };
+        try { (resize || note).setPointerCapture(e.pointerId); } catch (err) { /* navegador antigo */ }
+        if (resize) e.preventDefault();
+    });
+    document.addEventListener('pointermove', function (e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        var dx = (e.clientX - drag.sx) / drag.z, dy = (e.clientY - drag.sy) / drag.z;
+        if (!drag.moved) {
+            if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+            drag.moved = true;
+            drag.note.classList.add(drag.mode === 'move' ? 'is-dragging' : 'is-resizing');
+        }
+        e.preventDefault();
+        var root = drag.root, p = drag.prev;
+        if (drag.mode === 'move') {
+            place(drag.note, Math.max(0, snap(root, p.x + dx)), Math.max(0, snap(root, p.y + dy)), null, null);
+        } else {
+            var minW = num(root, 'data-wb-min-w') || 120, maxW = num(root, 'data-wb-max-w') || 800;
+            var w = Math.max(minW, Math.min(maxW, Math.round(p.w + dx)));
+            var h = root.hasAttribute('data-wb-has-h') ? Math.max(60, Math.min(1200, Math.round(p.h + dy))) : null;
+            place(drag.note, p.x, p.y, w, h);
+        }
+    }, { passive: false });
+    var endDrag = function (e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        var d = drag;
+        drag = null;
+        d.note.classList.remove('is-dragging', 'is-resizing');
+        if (!d.moved) return;
+        if (e.type === 'pointercancel') {
+            place(d.note, d.prev.x, d.prev.y, d.prev.w, d.root.hasAttribute('data-wb-has-h') ? d.prev.h : null);
+            return;
+        }
+        saveMove(d.root, d.note, d.prev, d.mode === 'move' ? 'moved' : 'saved');
+    };
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
+
+    // ── Texto no lugar ──────────────────────────────────────────────────────
+    var noteLabel = function (root, text) {
+        var t = text.replace(/\s+/g, ' ').trim();
+        if (t.length > 90) t = t.slice(0, 89) + '…';
+        return txt(root, 'note') + ': ' + (t !== '' ? t : txt(root, 'empty'));
+    };
+    var startEdit = function (note) {
+        if (!note || !note.classList.contains('is-editable') || note.classList.contains('is-editing')) return;
+        var root = rootOf(note);
+        var el = note.querySelector('[data-wb-text]');
+        if (!el) return;
+        closePops(root);
+        note.classList.add('is-editing');
+        el.__wbOrig = el.textContent;
+        try { el.contentEditable = 'plaintext-only'; } catch (err) { el.contentEditable = 'true'; }
+        if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
+        el.setAttribute('role', 'textbox');
+        el.setAttribute('aria-multiline', 'true');
+        el.setAttribute('aria-label', txt(root, 'note'));
+        el.classList.remove('is-empty');
+        el.focus();
+        var sel = window.getSelection && window.getSelection();
+        if (sel) { var r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
+        announce(root, txt(root, 'editing'));
+    };
+    var endEdit = function (el, commit) {
+        var note = noteOf(el);
+        if (!note || !note.classList.contains('is-editing')) return;
+        var root = rootOf(note);
+        var orig = el.__wbOrig || '';
+        var max = parseInt(root.getAttribute('data-wb-text-max'), 10) || 600;
+        var text = (el.innerText || el.textContent || '').replace(/\r\n/g, '\n').replace(/\s+$/, '').slice(0, max);
+        note.classList.remove('is-editing');
+        el.removeAttribute('contenteditable');
+        el.removeAttribute('role');
+        el.removeAttribute('aria-multiline');
+        el.removeAttribute('aria-label');
+        if (!commit) text = orig;
+        el.textContent = text;
+        el.classList.toggle('is-empty', text === '');
+        note.setAttribute('aria-label', noteLabel(root, text));
+        if (!commit || text === orig) return;
+        var id = note.getAttribute('data-wb-note');
+        var rootId = root.id;
+        emit(root, { id: id, change: 'text', text: text });
+        note.classList.add('is-saving');
+        call(ownWire(root), 'onNoteText', [id, text], { key: 'wbt:' + rootId + ':' + id, seq: true, quietNetwork: true }).then(function (r) {
+            note.classList.remove('is-saving');
+            if (failed(r)) {
+                if (note.isConnected) { el.textContent = orig; el.classList.toggle('is-empty', orig === ''); note.setAttribute('aria-label', noteLabel(root, orig)); }
+                var again = document.getElementById(rootId);
+                if (again) announce(again, txt(again, 'failed'));
+                return;
+            }
+            if (note.isConnected) { flash(note); announce(root, txt(root, 'saved')); }
+        });
+    };
+    document.addEventListener('focusout', function (e) {
+        var el = e.target;
+        if (!el || !el.matches || !el.matches('[data-mad-whiteboard] .mad-wb-note.is-editing [data-wb-text]')) return;
+        endEdit(el, true);
+    });
+    document.addEventListener('paste', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('[data-mad-whiteboard] .is-editing [data-wb-text]') : null;
+        if (!el || el.contentEditable === 'plaintext-only') return;
+        e.preventDefault();
+        var t = (e.clipboardData || window.clipboardData).getData('text');
+        document.execCommand('insertText', false, t);
+    });
+    document.addEventListener('dblclick', function (e) {
+        var note = noteOf(e.target);
+        if (!note || e.target.closest('button, .mad-wb-palette, .mad-wb-confirm, [data-wb-resize]')) return;
+        startEdit(note);
+    });
+
+    // ── Paleta e confirmação de exclusão ───────────────────────────────────
+    var closePops = function (root, except) {
+        if (!root) return;
+        root.querySelectorAll('.mad-wb-palette, .mad-wb-confirm').forEach(function (p) {
+            if (p === except) return;
+            var note = noteOf(p);
+            if (note) {
+                note.classList.remove('has-pop');
+                var b = note.querySelector('[data-wb-colorbtn]');
+                if (b) b.setAttribute('aria-expanded', 'false');
+            }
+            p.remove();
+        });
+    };
+    var openPalette = function (btn) {
+        var note = noteOf(btn), root = rootOf(btn);
+        var open = note.querySelector('.mad-wb-palette');
+        closePops(root);
+        if (open) { btn.focus(); return; }
+        var cur = note.getAttribute('data-wb-color');
+        var pal = document.createElement('div');
+        pal.className = 'mad-wb-palette';
+        pal.setAttribute('role', 'group');
+        pal.setAttribute('aria-label', btn.getAttribute('aria-label') || '');
+        parse(root.getAttribute('data-wb-colors'), []).forEach(function (c) {
+            var s = document.createElement('button');
+            s.type = 'button';
+            s.className = 'mad-wb-swatch';
+            s.setAttribute('data-wb-swatch', c.k);
+            s.setAttribute('aria-label', c.l);
+            s.setAttribute('title', c.l);
+            s.setAttribute('aria-pressed', c.k === cur ? 'true' : 'false');
+            s.style.setProperty('--sw', c.c);
+            pal.appendChild(s);
+        });
+        note.appendChild(pal);
+        note.classList.add('has-pop');
+        btn.setAttribute('aria-expanded', 'true');
+        var first = pal.querySelector('[aria-pressed="true"]') || pal.querySelector('button');
+        if (first) first.focus();
+    };
+    var pickColor = function (sw) {
+        var note = noteOf(sw), root = rootOf(sw);
+        var key = sw.getAttribute('data-wb-swatch');
+        var prev = note.getAttribute('data-wb-color');
+        var prevCss = note.style.getPropertyValue('--wb-color');
+        var css = sw.style.getPropertyValue('--sw');
+        closePops(root);
+        var btn = note.querySelector('[data-wb-colorbtn]');
+        if (btn) btn.focus();
+        if (key === prev) return;
+        note.setAttribute('data-wb-color', key);
+        note.style.setProperty('--wb-color', css);
+        var id = note.getAttribute('data-wb-note'), rootId = root.id;
+        emit(root, { id: id, change: 'color', color: key });
+        call(ownWire(root), 'onNoteColor', [id, key], { key: 'wbc:' + rootId + ':' + id, seq: true, quietNetwork: true }).then(function (r) {
+            if (failed(r)) {
+                if (note.isConnected) { note.setAttribute('data-wb-color', prev); note.style.setProperty('--wb-color', prevCss); }
+                var again = document.getElementById(rootId);
+                if (again) announce(again, txt(again, 'failed'));
+                return;
+            }
+            if (note.isConnected) { flash(note); announce(root, txt(root, 'saved')); }
+        });
+    };
+    var askDelete = function (note) {
+        var root = rootOf(note);
+        if (!note.querySelector('[data-wb-del]')) return;
+        closePops(root);
+        var box = document.createElement('div');
+        box.className = 'mad-wb-confirm';
+        box.setAttribute('role', 'group');
+        var label = document.createElement('span');
+        label.textContent = txt(root, 'confirm');
+        label.id = root.id + '-cf-' + note.getAttribute('data-wb-note');
+        box.setAttribute('aria-labelledby', label.id);
+        var yes = document.createElement('button');
+        yes.type = 'button'; yes.setAttribute('data-wb-yes', ''); yes.textContent = txt(root, 'yes');
+        var no = document.createElement('button');
+        no.type = 'button'; no.setAttribute('data-wb-no', ''); no.textContent = txt(root, 'no');
+        box.appendChild(label); box.appendChild(yes); box.appendChild(no);
+        note.appendChild(box);
+        note.classList.add('has-pop');
+        no.focus();
+    };
+    var doDelete = function (note) {
+        var root = rootOf(note);
+        var id = note.getAttribute('data-wb-note');
+        var notes = Array.prototype.slice.call(root.querySelectorAll('.mad-wb-note'));
+        var i = notes.indexOf(note);
+        var near = notes[i + 1] || notes[i - 1];
+        pendingFocus[root.id] = near ? '[data-wb-note="' + esc(near.getAttribute('data-wb-note')) + '"]' : '[data-wb-add]';
+        emit(root, { id: id, change: 'delete' });
+        call(ownWire(root), 'onNoteDelete', [id]);
+    };
+
+    // ── Cliques ─────────────────────────────────────────────────────────────
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var root = rootOf(t);
+        if (!root) {
+            document.querySelectorAll('[data-mad-whiteboard] .mad-wb-palette').forEach(function (p) { closePops(rootOf(p)); });
+            return;
+        }
+        var z = t.closest('[data-wb-zoom]');
+        if (z) { setZoom(root, z.getAttribute('data-wb-zoom')); return; }
+        var add = t.closest('[data-wb-add]');
+        if (add) {
+            if (add.getAttribute('aria-busy') === 'true') return;
+            add.setAttribute('aria-busy', 'true');
+            var vp = root.querySelector('.mad-wb-viewport'), zz = zoomOf(root);
+            var n = root.querySelectorAll('.mad-wb-note').length % 6;
+            var x = vp ? snap(root, vp.scrollLeft / zz + 32 + 24 * n) : null;
+            var y = vp ? snap(root, vp.scrollTop / zz + 32 + 24 * n) : null;
+            emit(root, { change: 'add' });
+            call(ownWire(root), 'onNoteAdd', [x, y]).then(function (r) {
+                var again = document.getElementById(root.id);
+                var b = again && again.querySelector('[data-wb-add]');
+                if (b) b.removeAttribute('aria-busy');
+            });
+            return;
+        }
+        var note = noteOf(t);
+        if (!note) { closePops(root); return; }
+        var sw = t.closest('[data-wb-swatch]');
+        if (sw) { pickColor(sw); return; }
+        if (t.closest('[data-wb-colorbtn]')) { openPalette(t.closest('[data-wb-colorbtn]')); return; }
+        if (t.closest('[data-wb-edit]')) { startEdit(note); return; }
+        if (t.closest('[data-wb-del]')) { askDelete(note); return; }
+        if (t.closest('[data-wb-yes]')) { doDelete(note); return; }
+        if (t.closest('[data-wb-no]')) {
+            closePops(root);
+            var d = note.querySelector('[data-wb-del]');
+            if (d) d.focus();
+            return;
+        }
+        if (!t.closest('.mad-wb-palette, .mad-wb-confirm')) closePops(root);
+    });
+
+    // ── Teclado ─────────────────────────────────────────────────────────────
+    var keyTimers = {};
+    document.addEventListener('keydown', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var editing = t.closest('[data-mad-whiteboard] .mad-wb-note.is-editing [data-wb-text]');
+        if (editing) {
+            if (e.key === 'Escape') { e.preventDefault(); var n0 = noteOf(editing); endEdit(editing, false); n0.focus(); }
+            else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); var n1 = noteOf(editing); endEdit(editing, true); n1.focus(); }
+            return;
+        }
+        if (e.key === 'Escape') {
+            var pop = t.closest('[data-mad-whiteboard] .mad-wb-palette, [data-mad-whiteboard] .mad-wb-confirm');
+            if (pop) {
+                e.preventDefault();
+                var pn = noteOf(pop), isPal = pop.classList.contains('mad-wb-palette');
+                closePops(rootOf(pop));
+                var back = pn.querySelector(isPal ? '[data-wb-colorbtn]' : '[data-wb-del]');
+                if (back) back.focus();
+            }
+            return;
+        }
+        var note = t.matches && t.matches('[data-mad-whiteboard] .mad-wb-note') ? t : null;
+        if (!note || !note.classList.contains('is-editable')) return;
+        var root = rootOf(note);
+        if (e.key === 'Enter') { e.preventDefault(); startEdit(note); return; }
+        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); askDelete(note); return; }
+        var g = parseInt(root.getAttribute('data-wb-grid'), 10) || 8;
+        var step = e.shiftKey ? 40 : (root.hasAttribute('data-wb-snap') ? g : 8);
+        var dx = 0, dy = 0;
+        switch (e.key) {
+            case 'ArrowLeft': dx = -step; break;
+            case 'ArrowRight': dx = step; break;
+            case 'ArrowUp': dy = -step; break;
+            case 'ArrowDown': dy = step; break;
+            default: return;
+        }
+        e.preventDefault();
+        var id = note.getAttribute('data-wb-note');
+        var k = root.id + ':' + id;
+        if (!keyTimers[k]) keyTimers[k] = { prev: { x: num(note, 'data-wb-x'), y: num(note, 'data-wb-y'), w: num(note, 'data-wb-w'), h: num(note, 'data-wb-h') } };
+        place(note, Math.max(0, snap(root, num(note, 'data-wb-x') + dx)), Math.max(0, snap(root, num(note, 'data-wb-y') + dy)), null, null);
+        note.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        clearTimeout(keyTimers[k].t);
+        keyTimers[k].t = setTimeout(function () {
+            var prev = keyTimers[k].prev;
+            delete keyTimers[k];
+            saveMove(root, note, prev, 'moved');
+        }, 450);
+    });
+
+    // ── Montagem (primeiro desenho e cada redesenho do quadro) ─────────────
+    var init = function (root) {
+        if (root.__wbReady) return;
+        root.__wbReady = true;
+        var z = 1;
+        try { z = parseFloat(sessionStorage.getItem(zoomKey(root))) || 1; } catch (e) { z = 1; }
+        if (ZOOMS.indexOf(z) === -1) z = 1;
+        applyZoom(root, z);
+        var fresh = root.getAttribute('data-wb-fresh');
+        if (fresh) {
+            var fn = root.querySelector('[data-wb-note="' + esc(fresh) + '"]');
+            if (fn) {
+                delete pendingFocus[root.id];
+                fn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                setTimeout(function () { startEdit(fn); }, 0);
+                return;
+            }
+        }
+        var sel = pendingFocus[root.id];
+        if (sel) {
+            delete pendingFocus[root.id];
+            setTimeout(function () {
+                var a = document.activeElement;
+                if (a && a !== document.body && a.isConnected) return;
+                var el = root.querySelector(sel) || root.querySelector('[data-wb-add]');
+                if (el) el.focus({ preventScroll: true });
+            }, 0);
+        }
+    };
+    var scan = function (node) {
+        if (!node || node.nodeType !== 1) return;
+        if (node.matches('[data-mad-whiteboard]')) init(node);
+        if (node.querySelectorAll) node.querySelectorAll('[data-mad-whiteboard]').forEach(init);
+    };
+    var boot = function () {
+        scan(document.body);
+        if (typeof MutationObserver === 'undefined') return;
+        new MutationObserver(function (muts) {
+            for (var i = 0; i < muts.length; i++) {
+                var added = muts[i].addedNodes;
+                for (var j = 0; j < added.length; j++) scan(added[j]);
+            }
+        }).observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+})();

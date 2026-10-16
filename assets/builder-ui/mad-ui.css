@@ -15190,3 +15190,137 @@ summary:focus-visible,
 }
 .mad-wg-day .mad-wg-cell-long { display: inline; font-weight: 500; font-size: .8rem; }
 .mad-wg-day .mad-wg-noterow { flex-direction: column; align-items: stretch; gap: .2rem; }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   <mad-whiteboard> — quadro branco com notas (components/whiteboard.blade.php ·
+   Mad\Ui\MadWhiteboard). O quadro rola dentro do próprio viewport: a página
+   nunca ganha rolagem horizontal. A nota é papel colorido (cor fixa da paleta),
+   por isso a tinta da nota é fixa; o resto segue os tokens do tema.
+   ════════════════════════════════════════════════════════════════════════════ */
+.mad-whiteboard-host { width: 100%; min-width: 0; }
+.mad-whiteboard {
+  --wb-dot: var(--mad-border-strong, #d4d4d8);
+  --wb-ink: #1f2937;
+  --wb-ink-muted: #4b5563;
+  position: relative; min-width: 0; color: var(--mad-text, #18181b);
+}
+.mad-wb-sr {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.mad-wb-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0 0 .5rem; }
+.mad-wb-title { font-weight: 600; font-size: .95rem; }
+.mad-wb-spacer { flex: 1 1 auto; }
+.mad-wb-lockbadge {
+  display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .55rem; border-radius: 999px;
+  font-size: .75rem; font-weight: 500; color: var(--mad-text-muted, #52525b);
+  background: var(--mad-bg-muted, #f4f4f5); border: 1px solid var(--mad-border, #e5e7eb);
+}
+.mad-wb-zoom { display: inline-flex; border: 1px solid var(--mad-border, #e5e7eb); border-radius: 8px; overflow: hidden; background: var(--mad-surface, #fff); }
+.mad-wb-zbtn {
+  min-width: 34px; height: 32px; padding: 0 .5rem; border: 0; background: transparent; color: inherit;
+  font: inherit; font-size: .85rem; cursor: pointer;
+}
+.mad-wb-zbtn + .mad-wb-zbtn { border-left: 1px solid var(--mad-border, #e5e7eb); }
+.mad-wb-zbtn:hover { background: var(--mad-bg-subtle, #f3f4f6); }
+.mad-wb-zbtn:disabled { opacity: .45; cursor: default; }
+.mad-wb-zlevel { min-width: 56px; font-variant-numeric: tabular-nums; }
+.mad-wb-add {
+  display: inline-flex; align-items: center; gap: .35rem; height: 32px; padding: 0 .8rem; border-radius: 8px;
+  border: 1px solid var(--mad-primary, #2563eb); background: var(--mad-primary, #2563eb); color: var(--mad-primary-fg, #fff);
+  font: inherit; font-size: .85rem; font-weight: 500; cursor: pointer;
+}
+.mad-wb-add:hover { background: var(--mad-primary-hover, #1d4ed8); }
+.mad-wb-add[aria-busy="true"] { opacity: .6; cursor: progress; }
+.mad-wb-zbtn:focus-visible, .mad-wb-add:focus-visible, .mad-wb-tool:focus-visible,
+.mad-wb-swatch:focus-visible, .mad-wb-confirm button:focus-visible {
+  outline: 2px solid var(--mad-focus-ring, var(--mad-primary, #2563eb)); outline-offset: 1px;
+}
+.mad-wb-hint { margin: 0 0 .5rem; font-size: .78rem; color: var(--mad-text-muted, #6b7280); }
+.mad-wb-error {
+  padding: .75rem 1rem; border-radius: 8px; font-size: .85rem;
+  color: var(--mad-danger, #b91c1c); background: var(--mad-danger-subtle, #fef2f2); border: 1px solid var(--mad-danger, #fecaca);
+}
+
+.mad-wb-viewport {
+  position: relative; max-width: 100%; overflow: auto; border-radius: 10px;
+  border: 1px solid var(--mad-border, #e5e7eb); background: var(--mad-bg-subtle, #fafafa);
+  overscroll-behavior: contain;
+}
+.mad-wb-stage { position: relative; }
+.mad-wb-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.mad-wb-canvas.has-grid {
+  background-image: radial-gradient(circle, var(--wb-dot) 1.1px, transparent 1.6px);
+  background-size: var(--wb-grid, 24px) var(--wb-grid, 24px);
+  background-position: calc(var(--wb-grid, 24px) / -2) calc(var(--wb-grid, 24px) / -2);
+}
+.mad-wb-empty {
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 80%;
+  padding: .6rem 1rem; border-radius: 8px; text-align: center; font-size: .9rem;
+  color: var(--mad-text-muted, #6b7280); background: var(--mad-surface, #fff); border: 1px dashed var(--mad-border-strong, #d4d4d8);
+}
+
+.mad-wb-note {
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; min-height: 96px;
+  padding: .6rem .7rem .4rem; border-radius: 6px; background: var(--wb-color, #FFF3A3); color: var(--wb-ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 4px 10px rgba(0,0,0,.08);
+  border: 1px solid rgba(0,0,0,.08); font-size: .88rem; line-height: 1.35;
+  transition: box-shadow .12s ease;
+}
+.mad-wb-note.is-editable { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.mad-wb-note.is-dragging { cursor: grabbing; z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.22); transition: none; }
+.mad-wb-note.is-resizing { z-index: 30; transition: none; }
+.mad-wb-note.is-saving { opacity: .85; }
+.mad-wb-note.is-editing { z-index: 25; cursor: auto; user-select: text; -webkit-user-select: text; }
+.mad-wb-note.has-pop { z-index: 40; }
+.mad-wb-note:focus-visible { outline: 2px solid var(--mad-focus-ring, var(--mad-primary, #2563eb)); outline-offset: 2px; }
+.mad-wb-note.is-flash { box-shadow: 0 0 0 3px color-mix(in srgb, var(--mad-success, #16a34a) 45%, transparent), 0 4px 10px rgba(0,0,0,.08); }
+.mad-wb-text {
+  flex: 1 1 auto; min-height: 2.6em; white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden; outline: none;
+}
+.mad-wb-text.is-empty::before { content: attr(data-placeholder); color: var(--wb-ink-muted); opacity: .7; font-style: italic; }
+.mad-wb-note.is-editing .mad-wb-text { overflow: auto; cursor: text; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); background: rgba(255,255,255,.45); padding: .1rem .2rem; }
+.mad-wb-note.is-editing .mad-wb-text.is-empty::before { content: none; }
+.mad-wb-foot { display: flex; align-items: center; gap: .3rem; min-height: 26px; margin-top: .3rem; }
+.mad-wb-meta { flex: 1 1 auto; min-width: 0; font-size: .72rem; color: var(--wb-ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mad-wb-tools { display: inline-flex; gap: .1rem; opacity: 0; transition: opacity .12s ease; }
+.mad-wb-note:hover .mad-wb-tools, .mad-wb-note:focus-within .mad-wb-tools, .mad-wb-note.has-pop .mad-wb-tools { opacity: 1; }
+@media (hover: none) { .mad-wb-tools { opacity: 1; } }
+.mad-wb-tool {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 5px; background: transparent; color: var(--wb-ink); cursor: pointer;
+}
+.mad-wb-tool:hover { background: rgba(0,0,0,.08); }
+.mad-wb-resize {
+  position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 0 50%, rgba(0,0,0,.28) 50% 58%, transparent 58% 70%, rgba(0,0,0,.28) 70% 78%, transparent 78%);
+  border-bottom-right-radius: 6px;
+}
+.mad-wb-palette {
+  position: absolute; right: .4rem; bottom: 2.1rem; z-index: 5; display: grid; grid-template-columns: repeat(3, 28px); gap: .3rem;
+  padding: .4rem; border-radius: 8px; background: var(--mad-surface, #fff); border: 1px solid var(--mad-border, #e5e7eb);
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+.mad-wb-swatch {
+  width: 28px; height: 28px; padding: 0; border-radius: 50%; cursor: pointer;
+  background: var(--sw, #FFF3A3); border: 1px solid rgba(0,0,0,.18);
+}
+.mad-wb-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--mad-surface, #fff), 0 0 0 4px var(--mad-text, #18181b); }
+.mad-wb-confirm {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .3rem; padding: .3rem .4rem;
+  border-radius: 6px; background: rgba(255,255,255,.7); font-size: .78rem; color: var(--wb-ink);
+}
+.mad-wb-confirm span { flex: 1 1 100%; font-weight: 500; }
+.mad-wb-confirm button {
+  height: 26px; padding: 0 .55rem; border-radius: 5px; font: inherit; font-size: .78rem; cursor: pointer;
+  border: 1px solid rgba(0,0,0,.2); background: #fff; color: var(--wb-ink);
+}
+.mad-wb-confirm button[data-wb-yes] { border-color: #b91c1c; background: #b91c1c; color: #fff; }
+.mad-whiteboard.is-locked .mad-wb-note { cursor: default; }
+@media (prefers-reduced-motion: reduce) { .mad-wb-note, .mad-wb-tools { transition: none; } }
+@media (max-width: 560px) {
+  .mad-wb-toolbar { gap: .4rem; }
+  .mad-wb-title { flex: 1 1 100%; }
+  .mad-wb-hint { font-size: .74rem; }
+}
