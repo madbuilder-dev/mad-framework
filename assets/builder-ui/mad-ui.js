@@ -15381,3 +15381,213 @@ document.addEventListener("alpine:init", function () {
         if (btn) { e.preventDefault(); btn.focus(); }
     });
 })();
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// <mad-week-grid> — linhas × dias da semana (components/week-grid.blade.php,
+// Mad\Ui\MadWeekGrid). Clique muda o estado da célula na hora (otimista) e
+// grava só ela:
+//   padrão               → MadWire.call(quadro, 'onWeekCell', [linha, data, valor])
+//   data-wg-action="m"   → MadWire.call(tela, m, [linha, data, valor]) e o quadro relê
+// Recusa do servidor redesenha o quadro a partir do banco (desfaz o clique).
+// Teclado: setas / Home / End andam pela grade (um ponto de tabulação), Enter
+// e Espaço mudam o estado; o leitor de tela ouve o novo valor.
+// ════════════════════════════════════════════════════════════════════════════
+(function () {
+    if (window.__madWeekGridInit) return;
+    window.__madWeekGridInit = true;
+
+    var esc = function (s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&'); };
+    var parse = function (s, d) { try { return JSON.parse(s); } catch (e) { return d; } };
+    var rootOf = function (el) { return el && el.closest ? el.closest('[data-mad-week-grid]') : null; };
+    var ownWire = function (root) { return root.closest('[mad-component]'); };
+    var hostWire = function (root) {
+        var own = ownWire(root);
+        return own && own.parentElement ? own.parentElement.closest('[mad-component]') : null;
+    };
+    var announce = function (root, msg) {
+        var live = root.querySelector('[data-wg-live]');
+        if (!live) return;
+        live.textContent = '';
+        setTimeout(function () { live.textContent = msg; }, 30);
+    };
+    var states = function (root) {
+        var map = {};
+        parse(root.getAttribute('data-wg-states'), []).forEach(function (s) { map[s.v] = s; });
+        return map;
+    };
+    var stateLabel = function (root, v) {
+        var s = states(root)[v];
+        return v === '' ? (root.getAttribute('data-wg-empty-label') || '') : (s ? s.l : v);
+    };
+    var nextValue = function (root, v) {
+        var cycle = parse(root.getAttribute('data-wg-cycle'), []);
+        if (!cycle.length) return v;
+        var i = cycle.indexOf(v);
+        return cycle[i === -1 ? 0 : (i + 1) % cycle.length];
+    };
+
+    // Pinta todas as cópias da célula (tabela e lista por dia).
+    var paint = function (root, key, v) {
+        var st = states(root)[v];
+        var tone = v === '' ? 'empty' : (st ? st.t : 'neutral');
+        var shortTxt = v === '' ? '·' : (st ? st.s : v);
+        var hint = root.getAttribute('data-wg-next-hint') || '';
+        root.querySelectorAll('[data-wg-cell="' + esc(key) + '"]').forEach(function (b) {
+            b.className = b.className.replace(/\bmad-wg-tone-[\w-]+/g, '').replace(/\s+/g, ' ').trim() + ' mad-wg-tone-' + tone;
+            b.style.removeProperty('--wg-tone');
+            if (tone === 'custom' && st && st.c) b.style.setProperty('--wg-tone', st.c);
+            b.setAttribute('data-wg-value', v);
+            var sh = b.querySelector('.mad-wg-cell-short');
+            var lg = b.querySelector('.mad-wg-cell-long');
+            if (sh) { sh.textContent = shortTxt; if (lg) lg.textContent = stateLabel(root, v); }
+            else b.textContent = shortTxt;
+            var label = (b.getAttribute('data-wg-label') || '') + ': ' + stateLabel(root, v);
+            if (b.getAttribute('aria-disabled') !== 'true') label += '. ' + hint.replace('%s', stateLabel(root, nextValue(root, v)));
+            b.setAttribute('aria-label', label);
+        });
+    };
+
+    // Totais do dia, recontados das células da tabela.
+    var recount = function (root, date) {
+        var foot = root.querySelector('[data-wg-total="' + esc(date) + '"]');
+        if (!foot) return;
+        var n = {};
+        root.querySelectorAll('.mad-wg-table [data-wg-d="' + esc(date) + '"]').forEach(function (b) {
+            var v = b.getAttribute('data-wg-value') || '';
+            if (v !== '') n[v] = (n[v] || 0) + 1;
+        });
+        var st = states(root);
+        foot.querySelectorAll('[data-wg-count]').forEach(function (c) {
+            var v = c.getAttribute('data-wg-count');
+            var k = n[v] || 0;
+            c.textContent = (st[v] ? st[v].s : v) + ' ' + k;
+            c.hidden = k === 0;
+        });
+    };
+
+    // Depois de um redesenho completo o nó antigo some: devolve o foco.
+    var refocus = function (gridId, selector) {
+        setTimeout(function () {
+            var root = document.getElementById(gridId);
+            if (!root) return;
+            var el = root.querySelector(selector);
+            if (el && el.offsetParent !== null) el.focus({ preventScroll: true });
+        }, 0);
+    };
+
+    var call = function (wrapper, action, params, opts) {
+        if (!wrapper || typeof MadWire === 'undefined' || !MadWire.call) return Promise.resolve({ ok: false });
+        return Promise.resolve(MadWire.call(wrapper, action, params, {}, opts || {}));
+    };
+
+    var cycleCell = function (btn) {
+        var root = rootOf(btn);
+        if (!root || btn.getAttribute('aria-disabled') === 'true') return;
+        var key = btn.getAttribute('data-wg-cell');
+        var row = btn.getAttribute('data-wg-r');
+        var date = btn.getAttribute('data-wg-d');
+        var prev = btn.getAttribute('data-wg-value') || '';
+        var v = nextValue(root, prev);
+        var inTable = !!btn.closest('.mad-wg-table');
+        paint(root, key, v);
+        recount(root, date);
+        announce(root, (root.getAttribute('data-wg-saved-text') || '%s').replace('%s', stateLabel(root, v)));
+        root.dispatchEvent(new CustomEvent('mad-week-grid-change', { bubbles: true, detail: { name: root.getAttribute('data-wg-name') || root.id, row: row, date: date, value: v, previous: prev } }));
+
+        var gridId = root.id;
+        var sel = (inTable ? '.mad-wg-table ' : '.mad-wg-days ') + '[data-wg-cell="' + esc(key) + '"]';
+        var action = root.getAttribute('data-wg-action');
+        var job = action
+            ? call(hostWire(root), action, [row, date, v]).then(function (r) {
+                return call(ownWire(root), 'onRefresh', []).then(function () { return r; });
+            })
+            : call(ownWire(root), 'onWeekCell', [row, date, v], { key: 'wg:' + gridId + ':' + key, seq: true, quietNetwork: true });
+        job.then(function (r) {
+            if (r && r.ok === false && r.reason !== 'superseded' && r.reason !== 'stale') {
+                var again = document.getElementById(gridId);
+                if (again) { paint(again, key, prev); recount(again, date); announce(again, again.getAttribute('data-wg-failed-text') || ''); }
+            }
+            if (document.activeElement === document.body || !document.activeElement || !document.activeElement.isConnected) refocus(gridId, sel);
+        });
+    };
+
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var cell = t.closest('[data-mad-week-grid] .mad-wg-cell');
+        if (cell) { e.preventDefault(); cycleCell(cell); return; }
+
+        var go = t.closest('[data-mad-week-grid] [data-wg-go]');
+        if (go) {
+            var root = rootOf(go);
+            var dir = go.getAttribute('data-wg-go');
+            call(ownWire(root), 'onWeekGo', [dir]).then(function () { refocus(root.id, '[data-wg-go="' + dir + '"]'); });
+            return;
+        }
+        var copy = t.closest('[data-mad-week-grid] [data-wg-copy]');
+        if (copy && copy.getAttribute('aria-busy') !== 'true') {
+            var r2 = rootOf(copy);
+            copy.setAttribute('aria-busy', 'true');
+            call(ownWire(r2), 'onWeekCopy', []).then(function () { refocus(r2.id, '[data-wg-copy]'); });
+        }
+    });
+
+    // Texto livre da linha: grava ao sair do campo (change).
+    document.addEventListener('change', function (e) {
+        var inp = e.target && e.target.closest ? e.target.closest('[data-mad-week-grid] .mad-wg-note') : null;
+        if (!inp || inp.readOnly) return;
+        var root = rootOf(inp);
+        var row = inp.getAttribute('data-wg-note');
+        var text = inp.value;
+        root.querySelectorAll('[data-wg-note="' + esc(row) + '"]').forEach(function (o) { if (o !== inp) o.value = text; });
+        var action = root.getAttribute('data-wg-action');
+        var job = action
+            ? call(hostWire(root), action, [row, '', text, 'note'])
+            : call(ownWire(root), 'onWeekNote', [row, text], { key: 'wgn:' + root.id + ':' + row, seq: true, quietNetwork: true });
+        job.then(function (r) {
+            if (r && r.ok !== false) {
+                inp.classList.add('is-saved');
+                setTimeout(function () { inp.classList.remove('is-saved'); }, 900);
+            }
+        });
+    });
+
+    // Grade: um ponto de tabulação, setas andam entre as células.
+    document.addEventListener('keydown', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-mad-week-grid] .mad-wg-table .mad-wg-cell') : null;
+        if (!btn) return;
+        var tr = btn.closest('tr');
+        var td = btn.closest('td');
+        if (!tr || !td) return;
+        var rows = Array.prototype.slice.call(tr.parentElement.querySelectorAll('tr'));
+        var cellsOf = function (row) { return Array.prototype.slice.call(row.querySelectorAll('.mad-wg-cell')); };
+        var cells = cellsOf(tr);
+        var ci = cells.indexOf(btn);
+        var ri = rows.indexOf(tr);
+        var target = null;
+        switch (e.key) {
+            case 'ArrowRight': target = cells[ci + 1]; break;
+            case 'ArrowLeft': target = cells[ci - 1]; break;
+            case 'ArrowDown': target = rows[ri + 1] ? cellsOf(rows[ri + 1])[ci] : null; break;
+            case 'ArrowUp': target = rows[ri - 1] ? cellsOf(rows[ri - 1])[ci] : null; break;
+            case 'Home': target = e.ctrlKey ? cellsOf(rows[0])[0] : cells[0]; break;
+            case 'End': target = e.ctrlKey ? cellsOf(rows[rows.length - 1]).slice(-1)[0] : cells[cells.length - 1]; break;
+            default: return;
+        }
+        e.preventDefault();
+        if (!target) return;
+        btn.setAttribute('tabindex', '-1');
+        target.setAttribute('tabindex', '0');
+        target.focus();
+    });
+
+    // Foco do mouse também move o ponto de tabulação da grade.
+    document.addEventListener('focusin', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-mad-week-grid] .mad-wg-table .mad-wg-cell') : null;
+        if (!btn || btn.getAttribute('tabindex') === '0') return;
+        var table = btn.closest('table');
+        table.querySelectorAll('.mad-wg-cell[tabindex="0"]').forEach(function (b) { b.setAttribute('tabindex', '-1'); });
+        btn.setAttribute('tabindex', '0');
+    });
+})();

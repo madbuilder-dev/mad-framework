@@ -514,6 +514,9 @@ class PermissionGate
             "MadCepService" => true,
             "MadCnpjService" => true,
             "Mad\\Grid\\MadGrid" => true,
+            // <mad-week-grid>: roda como componente próprio; a permissão de
+            // gravar é a da TELA que o contém (_permOwner), conferida na ação.
+            "Mad\\Ui\\MadWeekGrid" => true,
         ];
     }
 

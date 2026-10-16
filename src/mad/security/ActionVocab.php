@@ -71,6 +71,9 @@ final class ActionVocab
             'onStageMove',         // kanban: reordenar colunas
             'onSaveBatch',         // planilha
             'onReparent',          // organograma
+            'onWeekCell',          // <mad-week-grid>: estado de um dia
+            'onWeekNote',          // <mad-week-grid>: texto livre da linha
+            'onWeekCopy',          // <mad-week-grid>: copiar semana anterior
             // conciliação
             'onAutoMatch',
             'onManualMatch',
@@ -105,6 +108,7 @@ final class ActionVocab
         'onSearch', 'onReload', 'onPage', 'onSort', 'onFilter', 'onClearFilter',
         'onClearAllFilters', 'onLimpar', 'onColFilter', 'onClearColFilter',
         'onSearchTerm', 'onPerPage', 'onFiltrar', 'onAtualizar', 'onRefresh',
+        'onWeekGo',
         'onShow', 'onEventClick', 'onDayClick', 'onSlotClick', 'onLoadMore',
         'onLoadChildren', 'onValidateBatch', 'onProductLookup', 'onSelect',
         'onToggleWidget', 'onWizardNext', 'onWizardBack', 'onWizardGoto',

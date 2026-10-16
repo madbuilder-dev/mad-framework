@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.168.0] — 2026-10-16
+
+### Novidades
+
+- **Componentes:** novo `<mad-week-grid>`, uma escala da semana com pessoas nas linhas e dias nas colunas. Cada clique troca o estado da célula (por exemplo presencial, remoto, ausente) e grava só aquele dia, sem salvar a tela.
+- **Componentes:** o `<mad-week-grid>` grava num model (uma linha por semana com as colunas dos dias, ou uma linha por dia) ou chama um método da tela. Também tem navegação de semana, texto livre por linha, feriados destacados, linhas só leitura, **Copiar semana anterior** e total por dia. No celular a semana vira uma lista por dia.
+
 ## [5.167.0] — 2026-10-16
 
 ### Novidades
