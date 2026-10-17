@@ -230,6 +230,11 @@ abstract class MadComponent
      */
     private bool $_responseOnly = false;
 
+    /** Título do <mad-page-header> desta tela, anotado durante o render (ver
+     *  _notePageHeaderTitle). Não serializado: todo redesenho completo passa
+     *  pelo cabeçalho de novo (a exportação da listagem o congela no exportMeta). */
+    protected string $_pageHeaderTitle = '';
+
     // ── Getters estáticos públicos (usados por MadComponentWrapper) ───────────
 
     public static function getWrapper(): string { return static::$wrapper; }
@@ -459,12 +464,14 @@ abstract class MadComponent
                     // Depois do método (create-action pode ser onNovo, não show):
                     // prefill não pode ser atropelado pelo que o método montou.
                     $this->_applyComboOriginPrefill($cleanParams);
+                    $this->_offerForwardParams();
                     $this->_echoRendered();
                 }
                 return;
             }
 
             $this->_applyComboOriginPrefill($cleanParams);
+            $this->_offerForwardParams();
             $this->_echoRendered();
 
         } catch (\Throwable $e) {
@@ -535,6 +542,8 @@ abstract class MadComponent
     private function _echoRendered(): void
     {
         $html = $this->_renderWrapped();
+        // A oferta dos parâmetros repassados vale só para este desenho.
+        $this->_primaryForm()?->offerValues([]);
 
         foreach (get_object_vars($this) as $prop) {
             if ($prop instanceof MadForm && ($field = $prop->pullPendingFocus()) !== null) {
@@ -669,6 +678,29 @@ abstract class MadComponent
         if ((string) $form->get($column, '') === '') {
             $form->set($column, $term);
         }
+    }
+
+    /**
+     * O "Novo" de uma listagem aberta dentro da linha (`<mad-row-expand
+     * forward-params>`) ou de um `<mad-transporter forwardParams>` chega com os
+     * `_forward_param_*` do registro pai (`cliente_id=2`). No cadastro novo, o
+     * campo do formulário com esse nome nasce preenchido — o combo mostra o
+     * rótulo, como numa edição.
+     *
+     * Só os parâmetros repassados (não qualquer query string), só o campo que a
+     * tela desenha e só se estiver vazio: o que o mount()/método de entrada pôs
+     * vence (MadForm::offerValues). Edição nunca. A chave `id` nunca: no
+     * cadastro novo ela seria a do registro pai. Listagem também não: o
+     * formulário dela é o de filtros, que a própria listagem aplica.
+     */
+    private function _offerForwardParams(): void
+    {
+        if ($this->_forwardParams === [] || $this->_recordId() !== null || $this instanceof \Mad\Grid\MadDataGrid) {
+            return;
+        }
+        $offer = $this->_forwardParams;
+        unset($offer['id']);
+        $this->_primaryForm()?->offerValues($offer);
     }
 
     /**
@@ -1252,11 +1284,102 @@ abstract class MadComponent
         // (ex.: MadResponse::teleport).
         $isRowAttach = $this->_rowAttach || static::_requestIsRowAttach();
 
+        // <mad-row-expand> na listagem em modo cartão: sem <tr> onde anexar, a
+        // tela abre na cortina lateral — inclusive uma listagem (INTERNAL), que
+        // sozinha não tem cortina. Só na abertura (GET); os POSTs do wire
+        // redesenham o componente cru dentro dela, como em toda cortina.
+        if (empty($_POST['mad_state']) && !$isRowAttach && static::_requestWantsDrawer()) {
+            return MadComponentWrapper::wrap(
+                $this,
+                static::_embedHost($component),
+                self::DRAWER,
+                static::_requestDrawerTitle() ?: $this->_screenTitle()
+            );
+        }
+
         if (!empty($_POST['mad_state']) || static::$wrapper === self::INTERNAL || $isRowAttach) {
             return $component;
         }
 
         return MadComponentWrapper::wrap($this, $component);
+    }
+
+    /**
+     * O request pede a tela na cortina lateral (`X-Mad-Wrap: drawer`)? Mandado
+     * pelo Mad.rowAttach do `<mad-row-expand>` quando não há linha de tabela.
+     */
+    protected static function _requestWantsDrawer(): bool
+    {
+        $raw = (function_exists('request') ? (string) request()->header('X-Mad-Wrap', '') : '')
+            ?: (string) ($_SERVER['HTTP_X_MAD_WRAP'] ?? '');
+
+        return strtolower(trim($raw)) === self::DRAWER;
+    }
+
+    /** Título da cortina pedida pelo `X-Mad-Wrap-Title` (codificado como URI); '' = o da classe. */
+    protected static function _requestDrawerTitle(): string
+    {
+        $raw = (function_exists('request') ? (string) request()->header('X-Mad-Wrap-Title', '') : '')
+            ?: (string) ($_SERVER['HTTP_X_MAD_WRAP_TITLE'] ?? '');
+
+        return mb_substr(trim(rawurldecode($raw)), 0, 120);
+    }
+
+    /**
+     * Nome da tela na cortina do `<mad-row-expand>` sem `label`: o $title da
+     * classe → o do <mad-page-header> (onde a listagem guarda o seu) → o nome
+     * legível da classe. Nunca vazio: sem título a cortina não desenha o
+     * cabeçalho nem o X de fechar.
+     */
+    protected function _screenTitle(): string
+    {
+        $title = trim(static::getTitle());
+        if ($title !== '') {
+            return $title;
+        }
+
+        return $this->_pageHeaderTitle !== '' ? $this->_pageHeaderTitle : static::_humanizedClassTitle();
+    }
+
+    /** "PedidoForm" → "Pedido"; "OrdemServicoList" → "Ordem Servico". */
+    protected static function _humanizedClassTitle(): string
+    {
+        $base = class_basename(static::class);
+        $stem = (string) preg_replace('/(?<=.)(?:Formulario|Form|Listagem|Lista|List)$/', '', $base);
+        $human = trim(\Illuminate\Support\Str::headline($stem));
+
+        return $human !== '' ? $human : $base;
+    }
+
+    /**
+     * @internal Chamado pelo `<mad-page-header>` enquanto ESTA tela renderiza
+     * (MadRenderContext::getComponent()). O primeiro cabeçalho vale: uma tela
+     * embutida tem render próprio e anota no próprio componente.
+     */
+    public function _notePageHeaderTitle(mixed $title): void
+    {
+        if ($this->_pageHeaderTitle !== '' || !(is_scalar($title) || $title instanceof \Stringable)) {
+            return;
+        }
+        $plain = trim(html_entity_decode(strip_tags((string) $title), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $this->_pageHeaderTitle = (string) preg_replace('/\s+/u', ' ', $plain);
+    }
+
+    /**
+     * Tela pedida com X-Mad-Embed fora de um <mad-transporter> (a cortina do
+     * `<mad-row-expand>`): o componente mora num `.mad-transporter` com o modo,
+     * para os POSTs do wire repetirem o header e a tela seguir enxuta nos
+     * redesenhos (mad-livewire.js lê o modo do ancestral).
+     */
+    protected static function _embedHost(string $component): string
+    {
+        $mode = \Mad\Ui\MadTransporter::embedHeader();
+        if ($mode === null) {
+            return $component;
+        }
+
+        return '<div class="mad-transporter" data-mad-embed-header="' . htmlspecialchars($mode, ENT_QUOTES) . '">'
+            . $component . '</div>';
     }
 
     // ── Gerenciamento de estado ───────────────────────────────────────────────
@@ -2360,7 +2483,7 @@ abstract class MadComponent
             if (in_array($name, $excluded, true)) continue;
             if (!(new \ReflectionProperty($this, $name))->isInitialized($this)) continue;
             $value = $this->$name;
-            $props[$name] = ($value instanceof MadForm) ? $value->fields : $value;
+            $props[$name] = ($value instanceof MadForm) ? $value->fieldsForRender() : $value;
         }
 
         // Prop sem valor (`public $vencimento;`, null) com o nome de um campo

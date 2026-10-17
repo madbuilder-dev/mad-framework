@@ -116,6 +116,16 @@ class MadForm
      */
     private ?string $_autofocus = null;
 
+    /**
+     * Valores oferecidos aos campos vazios do cadastro novo: os parâmetros que
+     * a listagem de onde o "Novo" saiu repassou (`_forward_param_*`, ver
+     * MadComponent::_offerForwardParams). Valem só para o desenho de abertura
+     * e não entram no estado — ver offerValues().
+     *
+     * @var array<string,string>
+     */
+    private array $_offered = [];
+
     /** Cache do resultado de getData() — invalidado ao alterar fields. */
     private ?object $_dataCache = null;
 
@@ -1724,6 +1734,7 @@ class MadForm
         // propriedade com o mesmo nome — ver declaresField().
         if ($type !== '') {
             $this->_known[self::DECLARED]['t'][$name] = 1;
+            $this->_takeOffered($name);
         }
         if ($html) {
             $this->_known[self::DECLARED]['z'][$name] = 1;
@@ -2953,6 +2964,75 @@ class MadForm
         }
         $this->_openDeclared();
         $this->_known[self::DECLARED]['v'][$name] = self::_fingerprint($value);
+    }
+
+    /**
+     * Oferece valores aos campos VAZIOS do próximo desenho da tela — o "Novo"
+     * de uma listagem aberta dentro da linha ou num transporter já vem com o
+     * registro pai escolhido (`cliente_id`).
+     *
+     * O valor aparece no campo pelo contexto de render (fieldsForRender) e só
+     * vira valor do formulário quando a tela desenha um campo com aquele nome
+     * (declareField → _takeOffered): parâmetro que não é campo não chega ao
+     * Salvar. Campo que já tem valor fica com o dele. Não entra no estado;
+     * `offerValues([])` retira a oferta.
+     *
+     * @internal chamado por MadComponent::_offerForwardParams()
+     *
+     * @param array<string,mixed> $values
+     */
+    public function offerValues(array $values): void
+    {
+        $this->_offered = [];
+        foreach ($values as $name => $value) {
+            if (!is_string($name) || $name === '' || !is_scalar($value) || is_bool($value) || (string) $value === '') {
+                continue;
+            }
+            if (!self::_isBlank($this->fields[$name] ?? null)) {
+                continue;
+            }
+            $this->_offered[$name] = (string) $value;
+        }
+    }
+
+    /**
+     * Os campos como o desenho os lê (MadComponent::_publicPropsForContext):
+     * os do formulário, com os valores oferecidos nos que estão vazios.
+     *
+     * @return array<string,mixed>
+     */
+    public function fieldsForRender(): array
+    {
+        $fields = $this->fields;
+        foreach ($this->_offered as $name => $value) {
+            if (self::_isBlank($fields[$name] ?? null)) {
+                $fields[$name] = $value;
+            }
+        }
+
+        return $fields;
+    }
+
+    /** O campo `$name` foi desenhado: o valor oferecido a ele vira valor do formulário. */
+    private function _takeOffered(string $name): void
+    {
+        if (!isset($this->_offered[$name])) {
+            return;
+        }
+        $value = $this->_offered[$name];
+        unset($this->_offered[$name]);
+        if (!self::_isBlank($this->fields[$name] ?? null)) {
+            return;
+        }
+        $this->fields[$name] = $value;
+        $this->_dataCache    = null;
+        // Volta do navegador sem ninguém ter digitado, como o valor padrão.
+        $this->noteFieldDefault($name, $value);
+    }
+
+    private static function _isBlank(mixed $value): bool
+    {
+        return $value === null || $value === '';
     }
 
     /**

@@ -22,8 +22,12 @@ class MadTransporter
      */
     public const EMBED_HEADER = 'X-Mad-Embed';
 
-    /** Modos do `header` do <mad-transporter>. */
-    public const EMBED_MODES = ['compact', 'title', 'full'];
+    /**
+     * Modos do `header` do <mad-transporter>. `row` é o do `<mad-row-expand>`
+     * (tela aberta dentro da linha da listagem): `compact` sem o painel de
+     * filtros.
+     */
+    public const EMBED_MODES = ['compact', 'title', 'full', 'row'];
 
     /**
      * Recarrega um transporter por nome.
@@ -41,7 +45,10 @@ class MadTransporter
      *   'compact' embutida: sem cartão de página, sem título/ícone/breadcrumb,
      *             só a barra de ações (o "Novo" da lista embutida) — padrão;
      *   'title'   embutida, com o título da tela em linha compacta;
-     *   'full'    embutida, mas com o cabeçalho completo (como antes).
+     *   'full'    embutida, mas com o cabeçalho completo (como antes);
+     *   'row'     aberta dentro da linha da listagem (`<mad-row-expand>`): igual
+     *             a 'compact' e sem o bloco `<mad-*-filters>` — a linha já é o
+     *             filtro. Ver {@see compactShell()} e {@see hidesFilters()}.
      *
      * Lido por page-container.blade.php e page-header.blade.php. O modo vem do
      * header da requisição, e não do estado do componente, para valer também
@@ -67,6 +74,27 @@ class MadTransporter
         }
 
         return in_array($raw, self::EMBED_MODES, true) ? $raw : 'compact';
+    }
+
+    /**
+     * A tela embutida desenha o casco enxuto (sem cartão de página, sem
+     * título/breadcrumb, só a barra de ações)? `compact`, `title` e `row`.
+     */
+    public static function compactShell(?string $mode = null): bool
+    {
+        $mode ??= self::embedHeader();
+
+        return in_array($mode, ['compact', 'title', 'row'], true);
+    }
+
+    /**
+     * O bloco `<mad-*-filters>` da tela some? Só no modo `row`: a tela aberta
+     * na linha da listagem já chega filtrada pelo registro, e uma barra de
+     * filtros dentro de cada linha aberta só ocupa espaço.
+     */
+    public static function hidesFilters(): bool
+    {
+        return self::embedHeader() === 'row';
     }
 
     /**

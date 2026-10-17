@@ -7290,7 +7290,7 @@ document.addEventListener('alpine:init', () => {
             // O que já é clicável na linha tem precedência: botões de ação e
             // de grupo, checkbox de seleção, links, campos, células editáveis.
             if (t.closest('a, button, input, select, textarea, label, summary, [contenteditable], [role="button"], '
-                + '.mad-dg-actions-cell, .mad-dg-select-cell, .mad-dg-card-select, .mad-dg-card-footer, '
+                + '.mad-dg-actions-cell, .mad-dg-select-cell, .mad-dg-expand-cell, .mad-dg-card-select, .mad-dg-card-footer, '
                 + '.mad-dg-edit-inline, .mad-dg-edit-click, .mad-dg-edit-dblclick, [data-mad-no-row-click]')) return;
             if (this.editingCell) return;
             // Arrastar para selecionar/copiar o texto da célula não é clique.
@@ -7319,6 +7319,9 @@ document.addEventListener('alpine:init', () => {
             const btns = item.querySelectorAll('.mad-dg-actions > button, .mad-dg-card-actions > button');
             for (const b of btns) {
                 if (b.classList.contains('mad-dg-action-danger') || b.classList.contains('mad-dg-card-action-danger')) continue;
+                // O botão do <mad-row-expand> no rodapé do cartão não é ação:
+                // na tabela ele mora na coluna do chevron, fora das ações.
+                if (b.classList.contains('mad-dg-expand-btn')) continue;
                 return (b.disabled || b.getAttribute('aria-disabled') === 'true') ? null : b;
             }
             return null;
@@ -7658,20 +7661,31 @@ document.addEventListener('alpine:init', () => {
             if (w) return MadWire.call(w, 'onExport' + format, [hidden]);
         },
 
+        // Os três eventos da grade (mad-dg-page/-filter/-call) sobem pelo DOM.
+        // Com uma listagem aberta DENTRO da linha (<mad-row-expand>), a grade
+        // de fora também os ouvia: paginar a de dentro paginava as duas. A
+        // grade mais próxima responde e o evento para nela.
+        _ownEvent(e) {
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        },
+
         // ── Paginação (via window event) ─────────────────────────────
         handlePage(e) {
+            this._ownEvent(e);
             const w = this._wrapper || this.$el.closest('[mad-component]');
             if (w) MadWire.call(w, 'onPage', [e.detail.page]);
         },
 
         // ── Filtro (via window event despachado pelos filter-wraps) ──
         handleFilter(e) {
+            this._ownEvent(e);
             const w = this._wrapper || this.$el.closest('[mad-component]');
             if (w) MadWire.call(w, 'onFilter', [e.detail.field, e.detail.value, e.detail.op ?? 'like']);
         },
 
         // ── Ações com dispatch (usado pelo confirmAction) ────────────
         handleCall(e) {
+            this._ownEvent(e);
             const w = this._wrapper || this.$el.closest('[mad-component]');
             if (!w) return;
             // Botão da linha guardado pelo confirmAction: fica ocupado até a

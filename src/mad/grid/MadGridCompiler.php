@@ -212,6 +212,34 @@ use Mad\View\MadBlade;
  * │  <mad-nav target="RelatorioForm" icon="file"                               │
  * │           :params="{'pedido_id': '{id}', 'modo': 'visualizar'}" />         │
  * │                                                                              │
+ * │  <mad-row-expand> — Linha expansível (outra tela aberta ABAIXO da linha)    │
+ * │  ──────────────────────────────────────────────────────────────────────────  │
+ * │  Coluna estreita à esquerda com um chevron por linha. O clique abre a tela  │
+ * │  alvo (normalmente uma listagem filha filtrada pelo registro) numa linha    │
+ * │  logo abaixo; clicar de novo fecha. Uma aberta por vez; ela volta a abrir   │
+ * │  depois que a grade redesenha (ordenar, atualizar, salvar). Modo cartão:    │
+ * │  botão no rodapé do cartão, a tela abre na cortina lateral.                 │
+ * │                                                                              │
+ * │  target="PedidoList"      Tela aberta (obrigatório; aceita Classe::metodo) │
+ * │  method="show"            Método chamado ao abrir (padrão: show)            │
+ * │  :params="['cliente_id' => '{id}', 'fixo' => 'x']"  Array PHP;               │
+ * │                           {coluna} vem da linha, o resto vai literal;        │
+ * │                           sem params → {id}. Também aceito o objeto          │
+ * │                           do <mad-nav>: :params="{'cliente_id': '{id}'}"     │
+ * │  forward-params="cliente_id"  O "Novo" da tela filha já leva o parâmetro    │
+ * │  header="row"             row (padrão: só a barra de ações, sem cartão,    │
+ * │                           título nem <mad-grid-filters>) | compact | title │
+ * │                           | full — os modos do <mad-transporter>           │
+ * │  label="Pedidos"          Dica/aria-label do chevron (e título da cortina) │
+ * │  icon="chevron-right"     Ícone Lucide do botão (gira 90° aberto)          │
+ * │  display-condition="Cls::metodo" / when-field + when-value…  Chevron só    │
+ * │                           nas linhas que passam (as condições do <mad-act>)│
+ * │  Uma por grid (a segunda vira aviso). Permissão: a da tela alvo, como no   │
+ * │  <mad-nav>. Aberta na linha, $that->isRowAttach() é true.                   │
+ * │                                                                              │
+ * │  <mad-row-expand target="PedidoList" :params="['cliente_id' => '{id}']"      │
+ * │                  forward-params="cliente_id" label="Pedidos" />             │
+ * │                                                                              │
  * │  <mad-act> — Ação no grid (chama método PHP do grid via AJAX/MadWire)       │
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  Chama um método público do controller do grid. O grid re-renderiza após.   │
@@ -776,6 +804,23 @@ class MadGridCompiler
             $inner
         );
 
+        // Linha expansível (<mad-row-expand>, fórum #127): extraída antes do
+        // match genérico de filhos, como o destaque. Uma por grid (v1): a
+        // segunda vira aviso — duas telas abertas na mesma linha não cabem.
+        $rowExpandAttrs = [];
+        $inner = preg_replace_callback(
+            '/<mad-row-expand(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-row-expand') . '/s',
+            function (array $m) use (&$rowExpandAttrs): string {
+                $rowExpandAttrs[] = static::parseAttrs($m[1]);
+                return '';
+            },
+            $inner
+        );
+        if (count($rowExpandAttrs) > 1) {
+            static::$_actionNotes[] = '<mad-grid> com mais de um <mad-row-expand> — só o primeiro vale.';
+        }
+        $rowExpandCfg = $rowExpandAttrs !== [] ? static::buildRowExpandConfig($rowExpandAttrs[0]) : null;
+
         // Pré-processa <mad-col attrs>...</mad-col> ou <mad-column attrs>...</mad-column>
         // → extrai <mad-col-filter> e <mad-col-edit> do corpo e converte em atributos
         // Regex: atributos permitem '>' dentro de aspas (ex: field="{rel->campo}")
@@ -1035,6 +1080,10 @@ class MadGridCompiler
 
         if (!empty($hlConfigs)) {
             $configParts[] = "'rowHighlights' => [\n        " . implode(",\n        ", $hlConfigs) . "\n    ]";
+        }
+
+        if ($rowExpandCfg !== null) {
+            $configParts[] = "'rowExpand' => {$rowExpandCfg}";
         }
 
         // Tela DONA do grid — quem manda nas permissões das ações dele.
@@ -2436,16 +2485,9 @@ class MadGridCompiler
         // tela destino recebia uma chave só, com a string inteira (fw#229):
         // agora vira chave => valor, como no <mad-act> com método.
         if (isset($a['params'])) {
-            if ($a['params']['type'] === 'php') {
-                $c[] = "'navParams' => " . static::emit($a['params']);
-            } else {
-                $arrayCode = static::parseInlineParamsToPhp((string) $a['params']['value']);
-                if ($arrayCode === null) {
-                    static::$_actionNotes[] = static::actName($tag, $a) . ': params em formato não reconhecido ("' . static::str($a, 'params') . '") — ignorado.'
-                        . ' Use {chave: valor, outra: {campo}}.';
-                } elseif ($arrayCode !== '[]') {
-                    $c[] = "'navParams' => " . $arrayCode;
-                }
+            $arrayCode = static::navParamsPhp($a, $tag);
+            if ($arrayCode !== null && $arrayCode !== '[]') {
+                $c[] = "'navParams' => " . $arrayCode;
             }
         }
 
@@ -2459,6 +2501,99 @@ class MadGridCompiler
         array_push($c, ...static::actLookParts($a));
         array_push($c, ...static::actConditionParts($a));
         if (isset($a['transform']))         $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
+        return '[' . implode(', ', $c) . ']';
+    }
+
+    /**
+     * `params` / `:params` de uma navegação (`<mad-nav>`, `<mad-row-expand>`)
+     * → código PHP do array, ou null (ausente/ilegível, com aviso).
+     *
+     *   :params="['id' => '{id}', 'modo' => 'edit']"   expressão PHP, como está;
+     *   :params="{'pedido_id': '{id}', 'modo': 'x'}"   objeto no formato do
+     *                                                   cabeçalho deste arquivo;
+     *   params="{modo: ver, os: {id}}"                  o formato do painel.
+     *
+     * O objeto com `:` ia cru para o PHP compilado (`'navParams' => {'p': …}`)
+     * e a tela inteira caía com erro de sintaxe — era a forma documentada.
+     * Expressão PHP nunca começa com `{`, então o objeto é reconhecido por aí.
+     */
+    protected static function navParamsPhp(array $a, string $tag): ?string
+    {
+        if (!isset($a['params'])) {
+            return null;
+        }
+        $raw = trim(html_entity_decode((string) $a['params']['value'], ENT_QUOTES | ENT_HTML5));
+        if ($a['params']['type'] === 'php' && !str_starts_with($raw, '{')) {
+            return static::emit($a['params']);
+        }
+        $arrayCode = static::parseInlineParamsToPhp($raw);
+        if ($arrayCode === null) {
+            static::$_actionNotes[] = static::actName($tag, $a) . ': params em formato não reconhecido ("' . $raw . '") — ignorado.'
+                . ' Use {chave: valor, outra: {campo}}.';
+        }
+
+        return $arrayCode;
+    }
+
+    /**
+     * `<mad-row-expand>` → config `rowExpand` (uma ação de navegação `navRow`
+     * com as opções da linha expansível). null = sem `target` (com aviso).
+     *
+     * O rótulo (`label`/`:label`) e o `header` seguem crus para o runtime
+     * montar as opções do Mad.rowAttach — ver MadDataGrid::_rowExpandFromConfig().
+     */
+    protected static function buildRowExpandConfig(array $a): ?string
+    {
+        $tag    = 'mad-row-expand';
+        $target = trim(static::str($a, 'target', static::str($a, 'navigate')));
+        if ($target === '') {
+            static::$_actionNotes[] = '<mad-row-expand> sem target — ignorado. Use target="ClasseDaTela".';
+            return null;
+        }
+
+        // target="Classe", "Classe::metodo" ou "Classe@metodo" (como no <mad-nav>).
+        $class  = $target;
+        $method = trim(static::str($a, 'method')) ?: 'show';
+        foreach (['::', '@'] as $sep) {
+            if (str_contains($target, $sep)) {
+                [$class, $m] = explode($sep, $target, 2);
+                $m = trim((string) preg_replace('/\(.*\)$/s', '', $m));
+                if ($m !== '') {
+                    $method = $m;
+                }
+                break;
+            }
+        }
+
+        $c = [
+            "'isNav' => true",
+            "'navRow' => true",
+            static::kv('navClass', static::qs(trim($class))),
+            static::kv('navMethod', static::qs($method)),
+        ];
+
+        $params = static::navParamsPhp($a, $tag);
+        if ($params !== null && $params !== '[]') {
+            $c[] = "'navParams' => " . $params;
+        }
+
+        $forward = array_values(array_filter(array_map('trim', explode(',', static::str($a, 'forward-params')))));
+        if ($forward !== []) {
+            $c[] = "'navForward' => [" . implode(', ', array_map([static::class, 'qs'], $forward)) . ']';
+        }
+
+        $header = strtolower(trim(static::str($a, 'header', 'row')));
+        if (!in_array($header, \Mad\Ui\MadTransporter::EMBED_MODES, true)) {
+            static::$_actionNotes[] = '<mad-row-expand header="' . $header . '"> desconhecido — vale "row".'
+                . ' Use row, compact, title ou full.';
+            $header = 'row';
+        }
+        $c[] = static::kv('header', static::qs($header));
+
+        if (isset($a['label'])) $c[] = static::kv('label', static::strExpr($a, 'label'));
+        $c[] = static::kv('icon', isset($a['icon']) ? static::strExpr($a, 'icon') : "'chevron-right'");
+        array_push($c, ...static::actConditionParts($a));
+
         return '[' . implode(', ', $c) . ']';
     }
 

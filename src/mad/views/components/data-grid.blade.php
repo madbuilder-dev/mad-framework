@@ -104,7 +104,12 @@
             $selPageIds[] = (string) ($_sRow[$rowIdField] ?? $_sRow['id'] ?? $_sIdx);
         }
     }
-    $colCount       = count($visibleColumns) + ($hasActions ? 1 : 0) + ($selectable ? 1 : 0);
+    // <mad-row-expand> (fórum #127): coluna estreita do chevron, logo depois da
+    // seleção. Entra no colCount — o visibleColCount() do Alpine (estado vazio,
+    // banda de quebra, row-detail) e a linha anexada contam com ela.
+    $rowExpandAction = (($rowExpandAction ?? null) instanceof \Mad\Grid\GridAction) ? $rowExpandAction : null;
+    $hasExpand       = $rowExpandAction !== null;
+    $colCount       = count($visibleColumns) + ($hasActions ? 1 : 0) + ($selectable ? 1 : 0) + ($hasExpand ? 1 : 0);
 
     // per-page 0 = sem paginação: todas as linhas na tela. O "até" saía
     // page × 0 = 0 e o rodapé dizia "1–0 de 5" (fw#311).
@@ -505,6 +510,7 @@
                                @change="togglePage($event.target.checked)">
                     </th>
                     @endif
+                    @if($hasExpand)<th class="mad-dg-th mad-dg-th-expand"></th>@endif
                     @if($hasActions && $actionSide === 'left')
                     {{-- O botão do seletor mora no <th> das ações nos DOIS lados: com
                          ações à esquerda (padrão das listagens geradas) ele não
@@ -1061,6 +1067,7 @@
                          flutuante desalinharia o cabeçalho — ver mad-ui.js). --}}
                     <tr class="mad-dg-group-row mad-dg-group-cells mad-dg-group-level-{{ $item['level'] }}" data-level="{{ $item['level'] }}">
                         @if($selectable)<td class="mad-dg-cell mad-dg-select-cell"></td>@endif
+                        @if($hasExpand)<td class="mad-dg-cell mad-dg-expand-cell"></td>@endif
                         @if($hasActions && $actionSide === 'left')<td class="mad-dg-cell"></td>@endif
                         <td colspan="{{ $_gbSpan }}"
                             :colspan="Math.max(1, {{ $_gbKeysJs }}.filter(key => !isColHidden(key)).length)"
@@ -1110,6 +1117,7 @@
                     @endphp
                     <tr class="mad-dg-group-total mad-dg-group-total-level-{{ $item['level'] }}" data-level="{{ $item['level'] }}" style="--mad-dg-total-indent:{{ 12 + $item['level'] * 16 }}px;">
                         @if($selectable)<td class="mad-dg-cell mad-dg-select-cell"></td>@endif
+                        @if($hasExpand)<td class="mad-dg-cell mad-dg-expand-cell"></td>@endif
                         @if($hasActions && $actionSide === 'left')<td class="mad-dg-cell"></td>@endif
                         @include('components.data-grid-total-cells', [
                             'summaryColumns' => $visibleColumns,
@@ -1124,6 +1132,7 @@
                     @php $row=$item['data']; $rowId=$row[$rowIdField]??$row['id']??$rowCounter; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowCounter%2===0; $rowCounter++; $rowDepth=$item['level']??0; $_hl=\Mad\Grid\MadDataGrid::rowHighlightFor($rowHighlightRules, $row); $_hlStyle=\Mad\Grid\MadDataGrid::rowHighlightStyle($_hl); @endphp
                     <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ $rowDepth>0?' mad-dg-row-depth-'.$rowDepth:'' }}{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
                         @if($selectable)@include('components.data-grid-select-cell', ['rowId' => $rowId])@endif
+                        @if($hasExpand)@include('components.data-grid-expand-cell', ['rxAction' => $rowExpandAction, 'row' => $row, 'rowId' => $rowId])@endif
                         @if($hasActions && $actionSide === 'left')
                         <td class="mad-dg-cell mad-dg-actions-cell">
                             <div class="mad-dg-actions">
@@ -1359,6 +1368,7 @@
                     @php $rowId=$row[$rowIdField]??$row['id']??$rowIdx; $rowIdJs=\Mad\Grid\MadDataGrid::rowIdJs($rowId); $isEven=$rowIdx%2===0; $_hl=\Mad\Grid\MadDataGrid::rowHighlightFor($rowHighlightRules, $row); $_hlStyle=\Mad\Grid\MadDataGrid::rowHighlightStyle($_hl); @endphp
                     <tr class="mad-dg-row {{ $isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
                         @if($selectable)@include('components.data-grid-select-cell', ['rowId' => $rowId])@endif
+                        @if($hasExpand)@include('components.data-grid-expand-cell', ['rxAction' => $rowExpandAction, 'row' => $row, 'rowId' => $rowId])@endif
                         @if($hasActions && $actionSide === 'left')
                         <td class="mad-dg-cell mad-dg-actions-cell">
                             <div class="mad-dg-actions">
@@ -1593,6 +1603,7 @@
             <tfoot class="mad-dg-foot{{ $hasGroupBy ? ' mad-dg-grand-total' : '' }}">
                 <tr>
                     @if($selectable)<td class="mad-dg-cell mad-dg-select-cell"></td>@endif
+                    @if($hasExpand)<td class="mad-dg-cell mad-dg-expand-cell"></td>@endif
                     @if($hasActions && $actionSide === 'left')<td class="mad-dg-cell"></td>@endif
                     @if($hasGroupBy)
                     @php
@@ -1713,8 +1724,9 @@
                     @endif
                 </div>
 
-                {{-- Footer: actions --}}
-                @if($hasActions)
+                {{-- Footer: actions (+ o botão do <mad-row-expand>: no cartão a
+                     tela abre na cortina lateral — não há <tr> onde anexar). --}}
+                @if($hasActions || $hasExpand)
                 <div class="mad-dg-card-footer">
                     <div class="mad-dg-card-actions">
                         @foreach($actions as $act)
@@ -1802,6 +1814,7 @@
                             </template>
                         </div>
                         @endforeach
+                        @if($hasExpand)@include('components.data-grid-expand-cell', ['rxAction' => $rowExpandAction, 'row' => $row, 'rowId' => $rowId, 'card' => true])@endif
                     </div>
                 </div>
                 @endif

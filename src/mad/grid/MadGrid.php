@@ -147,6 +147,12 @@ class MadGrid extends MadDataGrid
         return (array) ($this->gridConfig['rowHighlights'] ?? []);
     }
 
+    /** `<mad-row-expand>` do `<mad-grid model="…">` — viaja no gridConfig, como o destaque. */
+    protected function rowExpand(): array
+    {
+        return (array) ($this->gridConfig['rowExpand'] ?? []);
+    }
+
     /**
      * `<mad-action-group>` de um `<mad-grid model=…>`: o compilador gravava os
      * grupos em `actGroupConfigs` e só a listagem `<mad-grid self>` os lia —

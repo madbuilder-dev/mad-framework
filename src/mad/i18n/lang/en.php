@@ -359,6 +359,8 @@ return [
 
         'grid' => [
             'export_disabled' => 'Export is disabled for this list.',
+            // <mad-row-expand> chevron without `label`.
+            'expand_row'      => 'Expand row',
         ],
 
         'kanban' => [

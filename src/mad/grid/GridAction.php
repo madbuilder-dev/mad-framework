@@ -45,6 +45,13 @@ class GridAction
     public bool    $navDrawer  = false;
     public bool    $navRow     = false; // abre o alvo anexado à linha (quick-edit)
     public array   $navParams  = [];   // ['param_name' => '{campo}' ou 'valor_fixo']
+    /** Opções do Mad.rowAttach (`expand`, `embed`, `label`) — ver MadAction::jsRowAttach(). */
+    public array   $navRowOpts = [];
+    /**
+     * Params que a tela aberta repassa adiante (`_forward_param_*`): o "Novo"
+     * da listagem filha do `<mad-row-expand forward-params>` já leva o filtro.
+     */
+    public array   $navForward = [];
 
     // Permissão por ação (tela de Perfis) — ver \Mad\Security\ActionGuard.
     /** Classe DONA da permissão: a tela do grid, ou o destino de uma navegação. */
@@ -311,9 +318,25 @@ class GridAction
      * Abre o alvo ANEXADO à linha da grid (quick-edit inline).
      * Em card-view (sem <tr>) o client cai no comportamento overlay padrão.
      */
-    public function row(bool $on = true): self
+    public function row(bool $on = true, array $opts = []): self
     {
-        $this->navRow = $on;
+        $this->navRow     = $on;
+        $this->navRowOpts = $opts;
+        return $this;
+    }
+
+    /**
+     * Chaves dos params (as do `:params`) que a tela aberta repassa como
+     * `_forward_param_*` — o mesmo `forward-params` do `<mad-transporter>`.
+     *
+     * @param list<string> $keys
+     */
+    public function forward(array $keys): self
+    {
+        $this->navForward = array_values(array_filter(array_map(
+            fn ($k) => trim((string) $k),
+            $keys
+        ), fn ($k) => $k !== ''));
         return $this;
     }
 
@@ -350,11 +373,17 @@ class GridAction
             $params = ['id' => (string)$id];
         }
 
+        foreach ($this->navForward as $key) {
+            if (array_key_exists($key, $params)) {
+                $params['_forward_param_' . $key] = $params[$key];
+            }
+        }
+
         $action = MadAction::to($this->navClass, $this->navMethod, $params);
 
-        // navRow → form anexado à linha (quick-edit)
+        // navRow → tela anexada à linha (quick-edit, ou o <mad-row-expand>)
         if ($this->navRow) {
-            return $action->onRowAttach();
+            return $action->onRowAttach($this->navRowOpts);
         }
 
         // navDrawer forçado → sempre overlay

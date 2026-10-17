@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.174.0] — 2026-10-17
+
+### Novidades
+
+- **Listagens:** nova tag `<mad-row-expand target="PedidoList" :params="['cliente_id' => '{id}']" />` dentro do `<mad-grid>`: uma seta em cada linha abre, logo abaixo dela, outra tela filtrada pelo registro, como os pedidos do cliente, sem o título e os filtros dessa tela.
+- **Listagens:** fica uma linha aberta por vez, e a seta fecha. A linha continua aberta depois de ordenar, atualizar ou salvar. Na visão em Cards, a tela abre na cortina lateral, com o título (o `label`, ou o da própria tela) e o X para fechar.
+- **Formulário:** o "Novo" de uma listagem aberta dentro da linha ou do `<mad-transporter>` já vem com o registro pai escolhido (o cliente da linha, no pedido novo). O que a tela preenche ao abrir continua valendo, e a edição de registro não muda.
+- **Listagens:** no `:params` do `<mad-row-expand>`, `{coluna}` vem da linha e o resto vai como está; o objeto `{'cliente_id': '{id}'}` também é aceito, e sem `:params` vai o id da linha. Aceita ainda `forward-params`, `header`, `label`, `icon` e `display-condition`.
+
+### Correções
+
+- **Listagens:** `<mad-nav>` com `:params` no formato `{'campo': '{coluna}'}` derrubava a tela com erro. Agora os parâmetros chegam à tela aberta, com os valores da linha.
+
 ## [5.173.2] — 2026-10-16
 
 ### Correções

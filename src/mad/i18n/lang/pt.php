@@ -352,6 +352,8 @@ return [
 
         'grid' => [
             'export_disabled' => 'A exportação está desativada nesta listagem.',
+            // Chevron do <mad-row-expand> sem `label`.
+            'expand_row'      => 'Expandir linha',
         ],
 
         'kanban' => [

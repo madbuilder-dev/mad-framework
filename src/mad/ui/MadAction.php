@@ -232,16 +232,23 @@ class MadAction
     /**
      * JS para abrir o alvo ANEXADO à linha da grid (quick-edit).
      * `this` no onclick é o botão clicado — é por ele que o client acha a <tr>.
+     *
+     * `$opts` vira o 5º argumento do Mad.rowAttach. O `<mad-row-expand>` manda
+     * `expand` (o chevron da linha abre e fecha, sem o X), `embed` (o
+     * X-Mad-Embed da tela de dentro, ver MadTransporter::embedHeader()) e
+     * `label` (título da cortina lateral no modo cartão). Sem opções, a
+     * chamada fica igual à de sempre.
      */
-    public function jsRowAttach(): string
+    public function jsRowAttach(array $opts = []): string
     {
         if ($this->isDocument()) {
             return $this->jsDocument();
         }
         $classMethod = $this->class . '@' . $this->method;
         $paramsJson  = $this->paramsToJsObject($this->allParams());
+        $optsArg     = $opts !== [] ? ', ' . $this->paramsToJsObject($opts) : '';
         return "Mad.rowAttach(this, '" . $classMethod . "', " . $paramsJson
-             . ", '" . addslashes($this->webUrl()) . "')";
+             . ", '" . addslashes($this->webUrl()) . "'" . $optsArg . ")";
     }
 
     /**
@@ -266,10 +273,13 @@ class MadAction
         return 'onclick="' . htmlspecialchars($this->jsGet(), ENT_QUOTES) . '"';
     }
 
-    /** Atributo onclick="Mad.rowAttach(this,...)" — form anexado à linha da grid. */
-    public function onRowAttach(): string
+    /**
+     * Atributo onclick="Mad.rowAttach(this,...)" — tela anexada à linha da grid.
+     * `$opts`: ver {@see jsRowAttach()}.
+     */
+    public function onRowAttach(array $opts = []): string
     {
-        return 'onclick="' . htmlspecialchars($this->jsRowAttach(), ENT_QUOTES) . '"';
+        return 'onclick="' . htmlspecialchars($this->jsRowAttach($opts), ENT_QUOTES) . '"';
     }
 
     /**

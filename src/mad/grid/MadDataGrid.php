@@ -204,11 +204,6 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *  classe legível, sem o sufixo List ("EquipamentoList" → "Equipamento"). */
     protected string $exportTitle = '';
 
-    /** Título do <mad-page-header> desta tela, anotado durante o render (ver
-     *  _notePageHeaderTitle). Não serializado: todo redesenho completo passa
-     *  pelo cabeçalho de novo, e o resultado viaja congelado no exportMeta. */
-    protected string $_pageHeaderTitle = '';
-
     /** Nome-base do arquivo exportado (sem extensao).
      *  Se vazio, usa $exportTitle. Ex: 'relatorio-clientes' → relatorio-clientes.csv/xlsx/pdf. */
     protected string $exportFilename = '';
@@ -2944,20 +2939,6 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return static::_humanizedClassTitle();
     }
 
-    /**
-     * @internal Chamado pelo `<mad-page-header>` enquanto ESTA tela renderiza
-     * (MadRenderContext::getComponent()). O primeiro cabeçalho vale: uma tela
-     * embutida tem render próprio e anota no próprio componente.
-     */
-    public function _notePageHeaderTitle(mixed $title): void
-    {
-        if ($this->_pageHeaderTitle !== '' || !(is_scalar($title) || $title instanceof \Stringable)) {
-            return;
-        }
-        $plain = trim(html_entity_decode(strip_tags((string) $title), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-        $this->_pageHeaderTitle = (string) preg_replace('/\s+/u', ' ', $plain);
-    }
-
     /** "EquipamentoList" → "Equipamento"; "OrdemServicoList" → "Ordem Servico". */
     protected static function _humanizedClassTitle(): string
     {
@@ -3929,6 +3910,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // <mad-grid model> em variáveis e um 'rowHighlights' cru (sem os
             // métodos resolvidos) passaria por cima destas regras.
             'rowHighlightRules' => $this->_effectiveRowHighlights(),
+            // <mad-row-expand>: o chevron de cada linha (null = sem coluna).
+            // Nome próprio pelo mesmo motivo do rowHighlightRules.
+            'rowExpandAction' => $this->_effectiveRowExpand(),
             'totals'       => $this->_footerTotals($columns),
             'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
@@ -4175,6 +4159,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // <mad-grid model> em variáveis e um 'rowHighlights' cru (sem os
             // métodos resolvidos) passaria por cima destas regras.
             'rowHighlightRules' => $this->_effectiveRowHighlights(),
+            // <mad-row-expand>: o chevron de cada linha (null = sem coluna).
+            // Nome próprio pelo mesmo motivo do rowHighlightRules.
+            'rowExpandAction' => $this->_effectiveRowExpand(),
             'totals'       => $this->_footerTotals($columns),
             'totalsPageOnly' => $this->_totalsPageOnly,
             'groupData'    => $this->_computeGroupData($columns),
@@ -4742,6 +4729,82 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected static function _cmpOp(string $op, int $cmp): bool
     {
         return HighlightRules::cmpOp($op, $cmp);
+    }
+
+    // ── Linha expansível (<mad-row-expand>) ───────────────────────────────
+
+    /**
+     * Linha expansível de uma listagem escrita à mão (fórum #127). Mesmo
+     * formato do `<mad-row-expand>` compilado:
+     *
+     *     return [
+     *         'navClass'   => PedidoList::class,
+     *         'navParams'  => ['cliente_id' => '{id}'],   // padrão: ['id' => <id da linha>]
+     *         'navForward' => ['cliente_id'],             // o "Novo" da filha já leva o filtro
+     *         'header'     => 'row',                      // row | compact | title | full
+     *         'label'      => 'Pedidos',
+     *         'when'       => ['field' => 'ativo', 'op' => 'eq', 'value' => '1'],  // ou 'metodo'
+     *     ];
+     *
+     * [] = sem linha expansível.
+     */
+    protected function rowExpand(): array
+    {
+        return [];
+    }
+
+    /**
+     * O chevron da linha expansível: a ação do `<mad-grid self>` (config
+     * inline) ou a de rowExpand(); null quando a listagem não tem.
+     */
+    public function _effectiveRowExpand(): ?GridAction
+    {
+        $raw = $this->_inlineConfig !== null
+            ? (array) ($this->_inlineConfig['rowExpand'] ?? [])
+            : (array) $this->rowExpand();
+
+        return $raw === [] ? null : static::_rowExpandFromConfig($raw, $this->_permOwnerClass(), $this->_actionHosts());
+    }
+
+    /**
+     * Config do `<mad-row-expand>` → a ação de navegação anexada à linha
+     * (`row()`), com as opções do Mad.rowAttach: `expand` (o chevron abre e
+     * fecha, sem o X), `embed` (o X-Mad-Embed da tela de dentro) e `label`
+     * (título da cortina no modo cartão). A permissão é a da tela alvo, como
+     * no `<mad-nav>` (ver _permStamp()).
+     */
+    public static function _rowExpandFromConfig(array $cfg, string $owner = '', array $hosts = []): ?GridAction
+    {
+        $class = trim((string) ($cfg['navClass'] ?? ''));
+        if ($class === '') {
+            return null;
+        }
+        $header = strtolower(trim((string) ($cfg['header'] ?? 'row')));
+        if (!in_array($header, \Mad\Ui\MadTransporter::EMBED_MODES, true)) {
+            $header = 'row';
+        }
+        $label = trim((string) ($cfg['label'] ?? ''));
+
+        $act = static::_actFromConfig([
+            'method'    => 'onRowExpand',
+            'isNav'     => true,
+            'navRow'    => true,
+            'navClass'  => $class,
+            'navMethod' => (string) ($cfg['navMethod'] ?? 'show') ?: 'show',
+            'icon'      => (string) ($cfg['icon'] ?? '') ?: 'chevron-right',
+            'label'     => $label !== '' ? $label : mad_t('mad.grid.expand_row'),
+        ] + array_intersect_key($cfg, array_flip(['navParams', 'when', 'whenField', 'disabled'])), $owner);
+        if ($act === null) {
+            return null;
+        }
+
+        $act->row(true, array_filter(
+            ['expand' => true, 'embed' => $header, 'label' => $label],
+            fn ($v) => $v !== ''
+        ));
+        $act->forward((array) ($cfg['navForward'] ?? []));
+
+        return $act->resolveIn(...$hosts);
     }
 
     // ── Destaque da linha por condição (<mad-row-highlights>) ─────────────
@@ -7116,6 +7179,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // registro pode ter acabado de mudar de situação).
         $rowHighlight = static::rowHighlightFor($grid->_effectiveRowHighlights(), $row);
 
+        // <mad-row-expand>: a linha redesenhada mantém a célula do chevron.
+        $rowExpand = $grid->_effectiveRowExpand();
+
         $rowHtml = static::_buildRowHtml(
             $row, $rowId, $_rowPrefix,
             $visibleColumns, $actions, $actionGroups, $hasActions, $grid->actionSide,
@@ -7123,14 +7189,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // Linha nova num grid com seleção ganha a célula do checkbox —
             // sem ela a <tr> entraria com uma coluna a menos.
             !empty($cfg['selectable']) || $grid->selectable,
-            $rowHighlight
+            $rowHighlight,
+            $rowExpand
         );
 
         // Se card view está habilitado, gera card HTML também
         $cardHtml = '';
         if (!empty($cfg['cardView'])) {
             $cardHtml = static::_buildCardHtml($row, $rowId, $_rowPrefix, $visibleColumns, $actions, $actionGroups,
-                !empty($cfg['selectable']) || $grid->selectable, $rowHighlight);
+                !empty($cfg['selectable']) || $grid->selectable, $rowHighlight, $rowExpand);
         }
 
         return $cardHtml ? $rowHtml . '<!-- CARD_HTML -->' . $cardHtml : $rowHtml;
@@ -7186,7 +7253,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         array $actions,
         array $actionGroups,
         bool $selectable = false,
-        ?array $rowHighlight = null
+        ?array $rowHighlight = null,
+        ?GridAction $rowExpand = null
     ): string {
         $rid   = htmlspecialchars($_rowPrefix . $rowId, ENT_QUOTES);
         $roles = static::_assignCardRoles($visibleColumns);
@@ -7252,11 +7320,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         $html .= '</div>'; // card-body
 
-        // Footer: actions
+        // Footer: actions (+ o botão do <mad-row-expand>, que no cartão abre
+        // a tela na cortina lateral — não há <tr> onde anexar).
         $hasActions = !empty($actions) || !empty($actionGroups);
-        if ($hasActions) {
+        $expandBtn  = $rowExpand !== null
+            ? \Mad\View\MadBlade::render('components.data-grid-expand-cell', [
+                'rxAction' => $rowExpand, 'row' => $row, 'rowId' => $rowId, 'card' => true,
+            ])
+            : '';
+        if ($hasActions || $expandBtn !== '') {
             $html .= '<div class="mad-dg-card-footer"><div class="mad-dg-card-actions">';
             $html .= static::_buildCardActionsHtml($row, $rowId, $actions, $actionGroups);
+            $html .= $expandBtn;
             $html .= '</div></div>';
         }
 
@@ -7731,7 +7806,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         array $editSearchToken = [],
         array $editSearchPreloaded = [],
         bool $selectable = false,
-        ?array $rowHighlight = null
+        ?array $rowHighlight = null,
+        ?GridAction $rowExpand = null
     ): string {
         // Reusa o partial Blade da row (mesmo render do primeiro paint)
         // — assim o manage_row tem os mesmos editores inline / click / dblclick.
@@ -7753,6 +7829,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 'rowDepth'            => 0,
                 '_lastRow'            => null,
                 '_hl'                 => $rowHighlight,
+                'rowExpandAction'     => $rowExpand,
             ]);
         } catch (\Throwable $e) {
             // Fallback minimo — texto cru sem editores. Nao deveria acontecer em

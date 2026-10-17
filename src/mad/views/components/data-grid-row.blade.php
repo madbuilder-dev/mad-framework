@@ -24,6 +24,7 @@
       $selectable           bool (opcional — <mad-grid selectable>: célula do checkbox)
       $_hl                  array|null (opcional — regra de <mad-row-highlights> que casou,
                             ver MadDataGrid::rowHighlightFor())
+      $rowExpandAction      GridAction|null (opcional — chevron do <mad-row-expand>)
 ==================================================================== --}}
 @php
     $_isEven    = $isEven    ?? false;
@@ -36,9 +37,11 @@
     // Destaque por condição (<mad-row-highlights>): a 1ª regra que casa.
     $_hl = $_hl ?? null;
     $_hlStyle = \Mad\Grid\MadDataGrid::rowHighlightStyle($_hl);
+    $_rxAction = (($rowExpandAction ?? null) instanceof \Mad\Grid\GridAction) ? $rowExpandAction : null;
 @endphp
 <tr class="mad-dg-row {{ $_isEven?'mad-dg-row-even':'mad-dg-row-odd' }}{{ $_rowDepth>0?' mad-dg-row-depth-'.$_rowDepth:'' }}{{ \Mad\Grid\MadDataGrid::rowHighlightClass($_hl) }}" data-row-id="{{ $_rowPrefix }}{{ $rowId }}"@if($_hlStyle !== '') style="{{ $_hlStyle }}"@endif @if($_selectable) :class="{ 'mad-dg-row-selected': isSelected({{ json_encode((string) $rowId) }}) }"@endif>
     @if($_selectable)@include('components.data-grid-select-cell', ['rowId' => $rowId])@endif
+    @if($_rxAction)@include('components.data-grid-expand-cell', ['rxAction' => $_rxAction, 'row' => $row, 'rowId' => $rowId])@endif
     @if($hasActions && $actionSide === 'left')
     <td class="mad-dg-cell mad-dg-actions-cell">
         <div class="mad-dg-actions">

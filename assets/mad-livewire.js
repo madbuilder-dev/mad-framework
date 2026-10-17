@@ -1260,7 +1260,8 @@ const MadWire = (() => {
                 // "fechar" = remover a <tr> de attach, não há drawer.
                 const attachTr = wrapper.closest && wrapper.closest('tr.mad-dg-attach-row');
                 if (attachTr) {
-                    attachTr.remove();
+                    if (typeof Mad !== 'undefined' && Mad.rowDetach) Mad.rowDetach(attachTr);
+                    else attachTr.remove();
                 } else {
                     const evName = op.type === 'modal' ? 'madmodal' : 'maddrawer';
                     window.dispatchEvent(new CustomEvent(evName, {

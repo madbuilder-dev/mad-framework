@@ -123,7 +123,7 @@ window._madGridEl = function (gridKey, selector) {
     if (gridKey) {
         const wrap = document.querySelector('.mad-dg-wrap[data-grid-key="' + _madCssId(gridKey) + '"]');
         if (wrap) {
-            const el = wrap.querySelector(selector);
+            const el = _madGridOwn(wrap, selector);
             if (el) return el;
         }
     }
@@ -133,6 +133,27 @@ window._madGridEl = function (gridKey, selector) {
 window._madCssId = function (id) {
     id = String(id);
     return (window.CSS && CSS.escape) ? CSS.escape(id) : id.replace(/["\\\]:.#>+~*^$=\s'/()\[]/g, '\\$&');
+};
+
+// Elementos de UMA grade, sem os da tela aberta numa linha dela
+// (<mad-row-expand>, <mad-nav row>). A grade de dentro mora no tbody da de
+// fora, ANTES do rodapé dela: o querySelector cru achava o rodapé, a paginação,
+// as linhas e os totais da de dentro. `scope` é o .mad-dg-wrap ou o tbody.
+// (tests/js/grid-row-expand.test.mjs)
+window._madGridOwnAll = function (scope, selector) {
+    if (!scope) return [];
+    return Array.prototype.filter.call(scope.querySelectorAll(selector), function (el) {
+        const attach = typeof el.closest === 'function' ? el.closest('tr.mad-dg-attach-row') : null;
+        return !attach || !scope.contains(attach);
+    });
+};
+
+window._madGridOwn = function (scope, selector) {
+    if (!scope) return null;
+    const first = scope.querySelector(selector);
+    const attach = first && typeof first.closest === 'function' ? first.closest('tr.mad-dg-attach-row') : null;
+    if (!attach || !scope.contains(attach)) return first;
+    return _madGridOwnAll(scope, selector)[0] || null;
 };
 
 // manage_row: a linha salva/inserida pode estar fora da tela (grid longo, o
@@ -169,6 +190,29 @@ window._madRemoveRowDetail = function (rowId) {
     document
         .querySelectorAll('tr[data-detail-for="' + _madCssId(rowId) + '"]')
         .forEach(function (el) { el.remove(); });
+};
+
+// Linha anexada ao registro (form rápido do <mad-nav row>, tela do
+// <mad-row-expand>): também é irmã da linha — o remove_row a leva junto.
+window._madRemoveRowAttach = function (rowId) {
+    document
+        .querySelectorAll('tr.mad-dg-attach-row[data-attach-for="' + _madCssId(rowId) + '"]')
+        .forEach(function (el) { el.remove(); });
+};
+
+// manage_row troca a <tr> e o chevron do <mad-row-expand> nasce fechado: se a
+// tela da linha continua aberta logo abaixo, ele volta aberto.
+window._madRowExpandKeep = function (tr) {
+    const tbody = tr.parentElement;
+    if (!tbody || !tbody.children) return;
+    const id = tr.getAttribute('data-row-id');
+    const open = Array.prototype.some.call(tbody.children, function (t) {
+        return t.matches && t.matches('tr.mad-dg-attach-row') && t.getAttribute('data-attach-for') === id;
+    });
+    if (!open) return;
+    const btn = tr.querySelector('.mad-dg-expand-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    tr.classList.add('mad-dg-row-expanded');
 };
 
 // Rodapé da grid ("1–15 de 40") depois que o remove_row tirou UMA linha da
@@ -242,9 +286,9 @@ window._madRangeAfterInsert = function (text, rowsOnPage, tpl) {
 // Aplica o _madRangeAfterInsert no rodapé de UMA grid (`.mad-dg-wrap`).
 window._madGridFooterAfterInsert = function (wrap) {
     if (!wrap) return;
-    const info = wrap.querySelector('.mad-dg-info');
+    const info = _madGridOwn(wrap, '.mad-dg-info');
     if (!info) return;
-    const rows = wrap.querySelectorAll('.mad-dg-body tr[data-row-id]').length;
+    const rows = _madGridOwnAll(wrap, '.mad-dg-body tr[data-row-id]').length;
     const act = _madRangeAfterInsert(info.textContent.trim(), rows, info.getAttribute('data-range-tpl') || '');
     if (act && act.text !== undefined) info.textContent = act.text;
 };
@@ -252,10 +296,10 @@ window._madGridFooterAfterInsert = function (wrap) {
 // Aplica o _madRangeAfterRemove no rodapé de UMA grid (`.mad-dg-wrap`).
 window._madGridFooterAfterRemove = function (wrap) {
     if (!wrap) return;
-    const info = wrap.querySelector('.mad-dg-info');
+    const info = _madGridOwn(wrap, '.mad-dg-info');
     if (!info) return;
-    const remaining = wrap.querySelectorAll('.mad-dg-body tr[data-row-id]').length;
-    const perSel = wrap.querySelector('.mad-dg-per-page select');
+    const remaining = _madGridOwnAll(wrap, '.mad-dg-body tr[data-row-id]').length;
+    const perSel = _madGridOwn(wrap, '.mad-dg-per-page select');
     const act = _madRangeAfterRemove(info.textContent, remaining, perSel ? (parseInt(perSel.value, 10) || 0) : 0);
     if (!act) return;
     if (act.text !== undefined) {
@@ -264,9 +308,9 @@ window._madGridFooterAfterRemove = function (wrap) {
     }
     if (act.empty) {
         // O "nenhum registro" já vem traduzido na linha vazia da própria grid.
-        const msg = wrap.querySelector('.mad-dg-empty-row .mad-dg-empty-inner > span');
+        const msg = _madGridOwn(wrap, '.mad-dg-empty-row .mad-dg-empty-inner > span');
         info.textContent = msg ? msg.textContent.trim() : '';
-        const nav = wrap.querySelector('.mad-pagination');
+        const nav = _madGridOwn(wrap, '.mad-pagination');
         if (nav) nav.style.display = 'none';
         return;
     }
@@ -283,7 +327,7 @@ window._madGridFooterAfterRemove = function (wrap) {
 window._madApplyGridTotals = function (wrap, totals) {
     if (!wrap || !totals) return 0;
     let n = 0;
-    wrap.querySelectorAll('tfoot.mad-dg-foot [data-mad-total]').forEach(function (el) {
+    _madGridOwnAll(wrap, 'tfoot.mad-dg-foot [data-mad-total]').forEach(function (el) {
         const key = el.getAttribute('data-mad-total');
         if (Object.prototype.hasOwnProperty.call(totals, key)) {
             el.innerHTML = String(totals[key]);
@@ -298,7 +342,7 @@ window._madApplyGridTotals = function (wrap, totals) {
 // só o rodapé à própria grade (ação onMadGridTotals), uma vez por rajada de ops.
 // Grade sem rodapé de totais não pede nada.
 window._madGridTotalsStale = function (wrap, ops) {
-    if (!wrap || !wrap.querySelector('tfoot.mad-dg-foot [data-mad-total]')) return false;
+    if (!wrap || !_madGridOwn(wrap, 'tfoot.mad-dg-foot [data-mad-total]')) return false;
     const key = wrap.getAttribute('data-grid-key') || '';
     const answered = Array.isArray(ops) && ops.some(function (o) {
         return o && o.op === 'grid_totals' && (!o.gridKey || o.gridKey === key);
@@ -975,41 +1019,63 @@ const Mad = {
         }
     },
 
-    // ── Row-attach — form de edição rápida anexado à linha da grid ──────────
+    // ── Row-attach — tela anexada à linha da grid ───────────────────────────
 
     /**
-     * Abre um MadComponent (form) ANEXADO à linha da grid: insere uma <tr>
-     * extra logo abaixo da linha clicada, com o componente cru dentro
-     * (header X-Mad-Row-Attach faz o backend pular o chrome drawer/modal).
+     * Abre um MadComponent ANEXADO à linha da grid: insere uma <tr> extra logo
+     * abaixo da linha clicada (depois da 2ª linha descritiva, se houver), com
+     * o componente cru dentro (header X-Mad-Row-Attach faz o backend pular o
+     * chrome drawer/modal).
      *
-     * Comportamentos: toggle (clicar de novo fecha), single-open por tbody,
+     * Comportamentos: toggle (clicar de novo fecha), uma aberta por tbody,
      * fallback para Mad.get (drawer padrão) quando não há <tr> ancestral
      * (ex.: card-view). O closeDrawer() do onSave fecha a attach-row via
      * interceptação do close_overlay no mad-livewire.js.
+     *
+     * `opts` (5º argumento, do <mad-row-expand> — fórum #127):
+     *   expand  o botão é o chevron da linha: sem o X (o chevron fecha),
+     *           aria-expanded acompanha e a linha volta a abrir depois que a
+     *           grade redesenha (captureUiState/restoreUiState);
+     *   embed   X-Mad-Embed da tela de dentro ('row' = só a barra de ações). O
+     *           corpo anexado vira `.mad-transporter` com o modo, para os POSTs
+     *           do wire dela repetirem o header (mad-livewire.js);
+     *   label   título da cortina lateral quando não há <tr> (modo cartão).
      *
      * @param {HTMLElement} el     Botão clicado (âncora para achar a <tr>)
      * @param {string} classMethod 'Classe@metodo'
      * @param {object} params      Parâmetros da query string
      * @param {string} friendlyUrl URL amigável pronta (assada no PHP)
+     * @param {object} opts        { expand, embed, label } — opcional
      */
-    async rowAttach(el, classMethod, params = {}, friendlyUrl = null) {
+    async rowAttach(el, classMethod, params = {}, friendlyUrl = null, opts = null) {
+        opts = opts || {};
         const tr = el && el.closest ? el.closest('tr.mad-dg-row') : null;
-        if (!tr) return this.get(classMethod, params, null, friendlyUrl);
+        if (!tr) {
+            return opts.expand
+                ? this._rowExpandDrawer(classMethod, params, friendlyUrl, opts)
+                : this.get(classMethod, params, null, friendlyUrl);
+        }
 
-        const rowId = tr.dataset.rowId || '';
+        const rowId = tr.getAttribute('data-row-id') || '';
         const tbody = tr.closest('tbody') || tr.parentElement;
 
-        // Toggle: já aberta para esta linha → fecha e sai
-        const existing = tbody.querySelector(`tr.mad-dg-attach-row[data-attach-for="${_madCssId(rowId)}"]`);
+        // Toggle: já aberta para esta linha → fecha e sai. Só as linhas DESTA
+        // tabela: uma grade aberta dentro da linha tem as suas próprias.
+        const own = this._attachRows(tbody);
+        const existing = own.find((t) => t.getAttribute('data-attach-for') === rowId);
         if (existing) { this.rowDetach(existing); return; }
+        // Duplo clique enquanto a tela ainda vem: um pedido só.
+        if (tr._madAttaching) return;
 
-        // Single-open por tbody
-        tbody.querySelectorAll('tr.mad-dg-attach-row').forEach(t => t.remove());
+        // Uma aberta por tbody: as outras fecham (e o chevron delas volta).
+        own.forEach((t) => this.rowDetach(t));
 
         const [cls, method] = classMethod.split('@');
         const url = friendlyUrl || this._classMethodUrl(cls, method || 'show', params);
         const fetchInit = { headers: { 'X-Mad-Partial': '1', 'X-Mad-Row-Attach': '1' } };
+        if (opts.embed) fetchInit.headers['X-Mad-Embed'] = String(opts.embed);
 
+        tr._madAttaching = true;
         MadLoader.show();
         try {
             const res  = await fetch(url, fetchInit);
@@ -1028,36 +1094,128 @@ const Mad = {
                 } catch (_) {}
             }
 
+            // A grade redesenhou enquanto a tela vinha: a linha clicada saiu.
+            if (tr.isConnected === false) return;
+            // Outra linha abriu nesse meio-tempo (clique rápido em duas).
+            this._attachRows(tbody).forEach((t) => this.rowDetach(t));
+
             const attach = document.createElement('tr');
-            attach.className = 'mad-dg-attach-row';
+            attach.className = 'mad-dg-attach-row' + (opts.expand ? ' mad-dg-expand-row' : '');
             attach.setAttribute('data-attach-for', rowId);
             const td = document.createElement('td');
             td.colSpan = tr.children.length;
-            td.innerHTML = '<div class="mad-dg-attach-wrap">'
-                + '<button type="button" class="mad-dg-attach-close" onclick="Mad.rowDetach(this)" aria-label="Fechar">'
-                + '<i data-lucide="x"></i></button>'
-                + '<div class="mad-dg-attach-body">' + text + '</div></div>';
+            const wrap = document.createElement('div');
+            wrap.className = 'mad-dg-attach-wrap';
+            if (!opts.expand) {
+                const close = document.createElement('button');
+                close.setAttribute('type', 'button');
+                close.className = 'mad-dg-attach-close';
+                close.setAttribute('onclick', 'Mad.rowDetach(this)');
+                close.setAttribute('aria-label', 'Fechar');
+                close.innerHTML = '<i data-lucide="x"></i>';
+                wrap.appendChild(close);
+            }
+            const body = document.createElement('div');
+            body.className = 'mad-dg-attach-body';
+            if (opts.embed) {
+                body.className += ' mad-transporter';
+                body.setAttribute('data-mad-embed-header', String(opts.embed));
+            }
+            body.innerHTML = text;
+            wrap.appendChild(body);
+            td.appendChild(wrap);
             attach.appendChild(td);
-            tr.after(attach);
+
+            // Depois da 2ª linha descritiva (row-detail) do registro, se houver.
+            const next = tr.nextElementSibling;
+            const anchor = (next && next.matches && next.matches('tr.mad-dg-row-detail')
+                && next.getAttribute('data-detail-for') === rowId) ? next : tr;
+            anchor.after(attach);
+            if (opts.expand) this._expandMark(tr, true);
 
             // Reescreve mad-* → x-* ANTES do initTree (o MutationObserver roda
             // em microtask; o initTree síncrono do _reinit passaria antes)
             if (typeof _madRewriteAlpineAttrs === 'function') _madRewriteAlpineAttrs(td);
             this._reinit(td);
-            attach.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (typeof attach.scrollIntoView === 'function') attach.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } catch (e) {
+            this._onError(e);
+        } finally {
+            tr._madAttaching = false;
+            MadLoader.hide();
+        }
+    },
+
+    /** Fecha a attach-row que contém (ou é) o elemento dado — e devolve o chevron. */
+    rowDetach(el) {
+        const tr = (el && el.matches && !el.matches('tr.mad-dg-attach-row'))
+            ? el.closest('tr.mad-dg-attach-row')
+            : el;
+        if (!tr) return;
+        const owner = this._attachOwner(tr);
+        tr.remove();
+        if (owner) this._expandMark(owner, false);
+    },
+
+    /** As attach-rows de UM tbody (filhas diretas — não as de uma grade aberta dentro). */
+    _attachRows(tbody) {
+        if (!tbody || !tbody.children) return [];
+        return [...tbody.children].filter((t) => t.matches && t.matches('tr.mad-dg-attach-row'));
+    },
+
+    /** A linha da grade dona de uma attach-row (mesmo tbody, mesmo data-row-id). */
+    _attachOwner(attach) {
+        const id = attach && attach.getAttribute ? attach.getAttribute('data-attach-for') : null;
+        const tbody = attach ? attach.parentElement : null;
+        if (id === null || !tbody || !tbody.children) return null;
+        return [...tbody.children].find((t) => t.matches && t.matches('tr.mad-dg-row')
+            && t.getAttribute('data-row-id') === id) || null;
+    },
+
+    /** Estado aberto/fechado do chevron do <mad-row-expand> de uma linha. */
+    _expandMark(tr, open) {
+        if (!tr || !tr.querySelector) return;
+        const btn = tr.querySelector('.mad-dg-expand-btn');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (tr.classList) {
+            if (open) tr.classList.add('mad-dg-row-expanded');
+            else tr.classList.remove('mad-dg-row-expanded');
+        }
+    },
+
+    /**
+     * <mad-row-expand> sem <tr> (modo cartão): a tela abre na cortina lateral,
+     * mesmo uma listagem — `X-Mad-Wrap: drawer` pede ao servidor o chrome da
+     * cortina (MadComponent::_requestWantsDrawer), com o `label` de título.
+     */
+    async _rowExpandDrawer(classMethod, params = {}, friendlyUrl = null, opts = {}) {
+        const [cls, method] = classMethod.split('@');
+        const url = friendlyUrl || this._classMethodUrl(cls, method || 'show', params);
+        const headers = { 'X-Mad-Partial': '1', 'X-Mad-Wrap': 'drawer' };
+        if (opts.embed) headers['X-Mad-Embed'] = String(opts.embed);
+        if (opts.label) headers['X-Mad-Wrap-Title'] = encodeURIComponent(String(opts.label));
+
+        MadLoader.show();
+        try {
+            const res  = await fetch(url, { headers });
+            if (this._offline(res)) return;
+            if (this._fileResponse(res)) { this.openDocument(url); return; }
+            const text = await res.text();
+            if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.rowAttach' })) return;
+            if (this._deniedFragment(text, res)) return;
+            if (text.trimStart().startsWith('[') || text.trimStart().startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(text);
+                    if (parsed && parsed.ops && Array.isArray(parsed.ops)) { await this.applyOps(parsed.ops); return; }
+                    if (Array.isArray(parsed)) { await this.applyOps(parsed); return; }
+                } catch (_) {}
+            }
+            this._parsePartial(text, res, { url: url, method: 'GET', source: 'Mad.rowAttach' });
         } catch (e) {
             this._onError(e);
         } finally {
             MadLoader.hide();
         }
-    },
-
-    /** Fecha a attach-row que contém (ou é) o elemento dado. */
-    rowDetach(el) {
-        const tr = (el instanceof HTMLElement && !el.matches('tr.mad-dg-attach-row'))
-            ? el.closest('tr.mad-dg-attach-row')
-            : el;
-        if (tr) tr.remove();
     },
 
     // ── Mad.call — chama método do MadComponent atual via wire ──────────────
@@ -2139,14 +2297,16 @@ const Mad = {
                     // row-detail: a 2a linha descritiva do registro. Sem isto
                     // ela sobrevivia sozinha a exclusao da linha.
                     _madRemoveRowDetail(op.rowId);
+                    // E a linha anexada (form rápido / <mad-row-expand>) também.
+                    _madRemoveRowAttach(op.rowId);
                     // Also remove card view counterpart
                     const cardRm = document.querySelector(`[data-card-id="${_madCssId(op.rowId)}"]`);
                     if (cardRm) cardRm.remove();
                     // Restaura o empty-state quando a ULTIMA linha/card sai
                     // (tabela E cards) — "Nenhum registro" volta sem reload.
                     const dgBody = _madGridEl(op.gridKey, '.mad-dg-body');
-                    if (dgBody && !dgBody.querySelector('tr[data-row-id]')) {
-                        const emptyTr = dgBody.querySelector('.mad-dg-empty-row');
+                    if (dgBody && !_madGridOwn(dgBody, 'tr[data-row-id]')) {
+                        const emptyTr = _madGridOwn(dgBody, '.mad-dg-empty-row');
                         if (emptyTr) emptyTr.style.display = '';
                     }
                     const dgCards = _madGridEl(op.gridKey, '.mad-dg-cards');
@@ -2269,6 +2429,7 @@ const Mad = {
                         const updated = document.querySelector(`tr[data-row-id="${_madCssId(op.rowId)}"]`);
                         if (updated) {
                             updated.classList.add('mad-dg-row-highlight');
+                            _madRowExpandKeep(updated);
                             if (window.lucide) lucide.createIcons({ attrs: { class: ['lucide'] }, nameAttr: 'data-lucide' });
                             if (window.Alpine) Alpine.initTree(updated);
                             _madInitRowDetail(op.rowId);
@@ -2281,7 +2442,7 @@ const Mad = {
                         if (tbody) {
                             // Esconde (nao remove) o empty-state — remove_row o
                             // mostra de novo quando a lista esvazia.
-                            const emptyTr = tbody.querySelector('.mad-dg-empty-row');
+                            const emptyTr = _madGridOwn(tbody, '.mad-dg-empty-row');
                             if (emptyTr) emptyTr.style.display = 'none';
                             tbody.insertAdjacentHTML('afterbegin', op.html);
                             const newRow = tbody.querySelector(`tr[data-row-id="${_madCssId(op.rowId)}"]`);
@@ -2737,7 +2898,7 @@ const Mad = {
         let name = op.name || '';
         if (!name && scope && scope.closest && scope.isConnected !== false) {
             const attachTr = scope.closest('tr.mad-dg-attach-row');
-            if (attachTr) { attachTr.remove(); return; }
+            if (attachTr) { this.rowDetach(attachTr); return; }
             const layer = scope.closest('[data-mad-overlay="' + kind + '"]');
             if (layer) name = layer.getAttribute('data-mad-overlay-name') || '';
         }
@@ -3093,6 +3254,7 @@ const Mad = {
             if (edit) snap.gridEdits.push({ key: w.getAttribute('data-grid-key') || '', edit });
         });
         snap.kanbans = this._kanbanCapture(root);
+        snap.expands = this._expandCapture(root);
         this._tabsBlocks(root).forEach((t) => {
             const active = this._tabsActive(t);
             if (active) snap.tabs.push({ key: this._tabsKey(t), active, def: t.getAttribute('data-mad-tabs-default') });
@@ -3128,6 +3290,8 @@ const Mad = {
         }
 
         if (snap.kanbans && snap.kanbans.length) this._kanbanRestore(root, snap.kanbans);
+
+        if (snap.expands && snap.expands.length) this._expandRestore(root, snap.expands);
 
         if (!snap.scroll || !snap.scroll.length) return;
         // As telas embutidas voltam como "Carregando..." (mais baixas que o
@@ -3219,6 +3383,61 @@ const Mad = {
         if (root.matches && root.matches('.mad-dg-wrap')) out.push(root);
         root.querySelectorAll('.mad-dg-wrap').forEach((w) => out.push(w));
         return out;
+    },
+
+    /**
+     * Linhas abertas pelo <mad-row-expand> sob `root`. O redesenho troca a
+     * grade inteira (ordenar, atualizar, salvar na cortina aberta pela tela de
+     * dentro) e a linha aberta sumia. A grade é achada de novo pela chave +
+     * a posição entre as de mesma chave (todo `<mad-grid model>` tem a chave
+     * do MadGrid). Só as grades de fora: a tela de dentro é buscada de novo,
+     * e o que estava aberto NELA não volta (v1).
+     */
+    _expandCapture(root) {
+        const out = [];
+        this._outerGridWraps(root).forEach((g) => {
+            const tbody = g.w.querySelector('tbody.mad-dg-body');
+            this._attachRows(tbody).forEach((a) => {
+                if (!a.classList || !a.classList.contains('mad-dg-expand-row')) return;
+                out.push({ key: g.key, idx: g.idx, rowId: a.getAttribute('data-attach-for') || '' });
+            });
+        });
+        return out;
+    },
+
+    /**
+     * Reabre o que _expandCapture guardou: clica o chevron da linha na grade
+     * nova (os params e a permissão são os do redesenho). Linha que saiu da
+     * página (filtro, outra página, excluída) fica fechada.
+     */
+    _expandRestore(root, list) {
+        const wraps = this._outerGridWraps(root);
+        list.forEach((x) => {
+            const g = wraps.find((w) => w.key === x.key && w.idx === x.idx);
+            const tbody = g ? g.w.querySelector('tbody.mad-dg-body') : null;
+            if (!tbody || !tbody.children) return;
+            if (this._attachRows(tbody).some((a) => a.getAttribute('data-attach-for') === x.rowId)) return;
+            const tr = [...tbody.children].find((t) => t.matches && t.matches('tr.mad-dg-row')
+                && t.getAttribute('data-row-id') === x.rowId);
+            const btn = tr ? tr.querySelector('.mad-dg-expand-btn') : null;
+            if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
+            btn.click();
+        });
+    },
+
+    /** As grades de `root` que não moram numa linha aberta DENTRO dele, com a posição por chave. */
+    _outerGridWraps(root) {
+        const seen = {};
+        return this._gridWraps(root)
+            .filter((w) => {
+                const a = w.closest ? w.closest('tr.mad-dg-attach-row') : null;
+                return !(a && a !== root && root.contains && root.contains(a));
+            })
+            .map((w) => {
+                const key = w.getAttribute('data-grid-key') || '';
+                seen[key] = (seen[key] === undefined ? -1 : seen[key]) + 1;
+                return { w, key, idx: seen[key] };
+            });
     },
 
     _hasVisibleLoading(root) {

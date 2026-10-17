@@ -9,7 +9,7 @@
     // seção fechada nada é carregado até o usuário abri-la.
     $lazy   = filter_var($lazy ?? false, FILTER_VALIDATE_BOOL);
     // header: como a tela embutida desenha o próprio cabeçalho
-    // (compact | title | full — ver MadTransporter::embedHeader()).
+    // (compact | title | full | row — ver MadTransporter::embedHeader()).
     $embedHeader = strtolower(trim((string) ($header ?? 'compact')));
     if (!in_array($embedHeader, \Mad\Ui\MadTransporter::EMBED_MODES, true)) {
         $embedHeader = 'compact';

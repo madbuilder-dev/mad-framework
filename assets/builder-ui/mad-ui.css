@@ -8591,6 +8591,74 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   background: color-mix(in srgb, var(--mad-primary) 8%, var(--mad-bg));
 }
 
+/* ── <mad-row-expand>: chevron da linha + tela aberta logo abaixo ── */
+.mad-dg-th-expand,
+.mad-dg-expand-cell {
+  width: 36px;
+  min-width: 36px;
+  padding-left: 8px !important;
+  padding-right: 0 !important;
+  text-align: center;
+  vertical-align: middle;
+}
+.mad-dg-expand-cell .mad-dg-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mad-text-subtle);
+  cursor: pointer;
+}
+.mad-dg-expand-cell .mad-dg-expand-btn:hover {
+  background: color-mix(in srgb, var(--mad-text) 8%, transparent);
+  color: var(--mad-text);
+}
+.mad-dg-expand-btn svg {
+  width: 16px;
+  height: 16px;
+  transition: transform .15s ease;
+}
+.mad-dg-expand-btn[aria-expanded="true"] {
+  color: var(--mad-primary-ink, var(--mad-primary));
+}
+.mad-dg-expand-btn[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mad-dg-expand-btn svg { transition: none; }
+}
+/* A linha aberta e a tela logo abaixo dela formam um bloco: fundo leve
+   (--mad-bg-subtle, redefinido nos temas escuros) e recuo até depois da
+   coluna do chevron. */
+.mad-dg-row.mad-dg-row-expanded > td {
+  background: var(--mad-bg-subtle);
+  border-bottom-color: transparent;
+}
+.mad-dg-attach-row.mad-dg-expand-row,
+.mad-dg-attach-row.mad-dg-expand-row:hover td,
+.mad-dark .mad-dg-attach-row.mad-dg-expand-row,
+.mad-dark .mad-dg-attach-row.mad-dg-expand-row:hover td {
+  background: var(--mad-bg-subtle);
+}
+.mad-dg-expand-row .mad-dg-attach-wrap {
+  padding: 4px 16px 14px 40px;
+}
+/* A tela de dentro (modo `row`): sem cartão; a barra de ações encosta. */
+.mad-dg-expand-row .mad-page-embed-bar {
+  margin-bottom: 8px;
+}
+/* Sem o painel de filtros (modo `row`), o layout de coluna lateral do
+   <mad-grid-filters style="sidebar-*"> ficaria com a grade espremida na
+   coluna de 260px. */
+.mad-transporter[data-mad-embed-header="row"] :is(.mad-gridf-layout-left, .mad-gridf-layout-right, .mad-dashf-layout-left, .mad-dashf-layout-right) {
+  display: block;
+}
+
 .mad-dg-cell {
   padding: 8px 12px;
   vertical-align: middle;

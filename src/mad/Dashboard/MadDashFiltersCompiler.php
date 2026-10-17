@@ -704,7 +704,11 @@ class MadDashFiltersCompiler
         // ancorar o match: o shorthand do usuário compila normalmente e este
         // bloco atravessa o token_get_all como PHP real (mesmo contrato dos
         // demais compilers MAD que emitem PHP, ex. MadGridCompiler).
-        return "<?php\n"
+        //
+        // Tela aberta dentro da linha de uma listagem (`<mad-row-expand>`,
+        // X-Mad-Embed: row): o bloco inteiro some — a linha já é o filtro.
+        // Nada é declarado ao host: sem campos, sem `required` travando a carga.
+        return "<?php if (!\\Mad\\Ui\\MadTransporter::hidesFilters()):\n"
              . $whenPhp
              . "    \$__dashFields  = {$fieldsPhp};\n"
              . "    \$__dashStyle   = " . var_export($style, true) . ";\n"
@@ -721,7 +725,8 @@ class MadDashFiltersCompiler
              . "        \$__dashHost->declareFilterFields(\$__dashFields);\n"
              . "    }\n"
              . "?>\n"
-             . "@include('{$renderer}', ['fields' => \$__dashFields, 'style' => \$__dashStyle, 'wrapper' => \$__dashWrapper])";
+             . "@include('{$renderer}', ['fields' => \$__dashFields, 'style' => \$__dashStyle, 'wrapper' => \$__dashWrapper])"
+             . "<?php endif; ?>";
     }
 
     /**

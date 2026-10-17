@@ -15,10 +15,11 @@
         $_headerOwner->_notePageHeaderTitle($title);
     }
 @endphp
-@if($_embed === 'compact' || $_embed === 'title')
+@if(\Mad\Ui\MadTransporter::compactShell($_embed))
     {{-- Embutida: a página de fora já mostra título e breadcrumb. Fica a barra
          de ações (o "Novo" da lista embutida) e, com header="title", o título
-         da tela em linha compacta. Sem nada disso, não desenha nada. --}}
+         da tela em linha compacta. Sem nada disso, não desenha nada. `row`
+         (<mad-row-expand>) desenha como `compact`. --}}
     @if($_hasActions || ($_embed === 'title' && (string) $title !== ''))
     <div class="mad-page-embed-bar {{ $class }}" @if($style) style="{{ $style }}" @endif>
         @if($_embed === 'title' && (string) $title !== '')
