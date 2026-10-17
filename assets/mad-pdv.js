@@ -1294,11 +1294,24 @@
                 printReceipt() {
                     if (!this.lastReceipt || this.cfg.behavior.printMode === 'off') return;
 
+                    var self      = this;
                     var framed    = root.self !== root.top;
                     var canDetect = framed && ('onbeforeprint' in root);
                     var fired     = false;
                     var mark      = function () { fired = true; };
+                    // A folha de impressão só esconde a tela (e mostra o cupom)
+                    // com esta classe no <body>: sem ela, o Ctrl P de qualquer
+                    // outra tela do app (o mad-pdv.css carrega em todas) sairia
+                    // em branco. Sai no `afterprint` — print() pode voltar antes
+                    // de o navegador montar a impressão.
+                    var hasAfter  = 'onafterprint' in root;
+                    var done      = function () {
+                        root.removeEventListener('afterprint', done);
+                        if (!self.receiptPreview) self._receiptPrinting(false);
+                    };
 
+                    this._receiptPrinting(true);
+                    if (hasAfter) root.addEventListener('afterprint', done);
                     if (canDetect) root.addEventListener('beforeprint', mark);
                     try {
                         root.print();
@@ -1309,13 +1322,25 @@
 
                     if (canDetect && !fired) {
                         console.warn('[mad-pdv] print() ignorado — iframe sandbox sem "allow-modals". Cupom exibido na tela.');
+                        // O cupom fica na tela (e a classe, para o Ctrl P do
+                        // operador imprimir só ele) até fechar o preview.
+                        if (hasAfter) root.removeEventListener('afterprint', done);
                         this.receiptPreview = true;
+                    } else if (!hasAfter) {
+                        this._receiptPrinting(false);
                     }
                 },
 
                 closeReceiptPreview() {
                     this.receiptPreview = false;
+                    this._receiptPrinting(false);
                     this.focusScan();
+                },
+
+                /** Liga/desliga a impressão do cupom (classe no <body>, ver mad-pdv.css). */
+                _receiptPrinting(on) {
+                    var body = root.document && root.document.body;
+                    if (body && body.classList) body.classList.toggle('mad-pdv-printing', !!on);
                 },
 
                 // ── Ações custom (§7.4) ───────────────────────────────────

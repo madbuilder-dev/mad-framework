@@ -105,7 +105,7 @@
     <meta name="robots" content="index,follow">
 @endif
     <link rel="canonical" href="{{ $canonical }}">
-@if($favicon !== null)
+@if($favicon !== null && ! \Mad\Support\HeadTags::declaresIcon($headerTags))
     <link rel="icon" href="{{ $favicon }}">
 @endif
 

@@ -922,11 +922,15 @@
     box-shadow: var(--mad-shadow-xl, 0 20px 50px rgba(0, 0, 0, .25));
 }
 
+/* Impressão do cupom: SÓ com `body.mad-pdv-printing`, que o mad-pdv.js põe
+   antes do print() e tira no afterprint (ou ao fechar o preview de fallback).
+   Este arquivo carrega em todas as telas do app: sem o escopo, o Ctrl P de
+   qualquer listagem ou relatório saía em branco. */
 @media print {
-    body * { visibility: hidden !important; }
-    .mad-pdv-receipt,
-    .mad-pdv-receipt * { visibility: visible !important; }
-    .mad-pdv-receipt {
+    body.mad-pdv-printing * { visibility: hidden !important; }
+    body.mad-pdv-printing .mad-pdv-receipt,
+    body.mad-pdv-printing .mad-pdv-receipt * { visibility: visible !important; }
+    body.mad-pdv-printing .mad-pdv-receipt {
         display: block !important;
         position: absolute;
         top: 0;
@@ -939,7 +943,7 @@
     }
     /* O aviso do fallback é de tela — nunca sai no papel. */
     .mad-pdv-receipt-note { display: none !important; }
-    .mad-pdv-receipt-wrap.is-preview {
+    body.mad-pdv-printing .mad-pdv-receipt-wrap.is-preview {
         position: static;
         display: contents;
         padding: 0;

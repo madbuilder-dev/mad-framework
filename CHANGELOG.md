@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.175.0] — 2026-10-17
+
+### Melhorias
+
+- **App gerado:** um manifest ou ícone declarado no Header Tags do projeto passa a valer no lugar dos do framework, e o app pode ser instalado com nome e ícone próprios. Projetos sem essas tags não mudam.
+
+### Correções
+
+- **App gerado:** imprimir qualquer tela pelo navegador (Ctrl P) saía com as páginas em branco. Agora a tela sai impressa normalmente, e o PDV continua imprimindo só o cupom.
+- **Tema ERP:** o texto "Buscar em tudo... (Ctrl K)" da barra do topo ficava claro demais para ler no modo claro.
+- **Menu:** o número do contador ao lado de um item do menu ficava difícil de ler em temas com vermelho claro, comum no modo escuro.
+
 ## [5.174.0] — 2026-10-17
 
 ### Novidades
