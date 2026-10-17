@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.175.1] — 2026-10-17
+
+### Correções
+
+- **App gerado:** imprimir uma tela pelo navegador (Ctrl P) trazia o topo do app desmontado e o menu lateral antes do conteúdo. Agora sai só a tela, na largura toda e sem os botões de ação; o cupom do PDV continua saindo sozinho.
+- **Calendário:** na visão Mês, os números dos dias do mês anterior e do seguinte ficavam claros demais para ler, principalmente no tema escuro. Agora ficam legíveis e continuam mais suaves que os dias do mês.
+
 ## [5.175.0] — 2026-10-17
 
 ### Melhorias

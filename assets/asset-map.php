@@ -69,6 +69,7 @@ $themeNotchFiles = [
     'css/notch-login-variants.css',
     'css/notch-menu.css',
     'css/notch-pages.css',
+    'css/notch-print.css',
     'css/notch-responsive.css',
     'css/style.css',
     'css/mad-chat.css',
