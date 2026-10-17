@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.173.2] — 2026-10-16
+
+### Correções
+
+- **Gantt:** o cabeçalho do `<mad-gantt>` (ano, nomes das colunas, a chave dos chips como "Período" e o dia abaixo de cada semana, inclusive na coluna de hoje) aparecia em cinza apagado. Agora fica legível nos temas claro e escuro.
+
 ## [5.173.1] — 2026-10-16
 
 ### Correções

@@ -17,8 +17,9 @@
     /* text */
     --mg-text:         oklch(0.18  0.01  250);
     --mg-text-2:       oklch(0.36  0.01  250);
-    --mg-text-3:       oklch(0.52  0.01  250);
-    --mg-text-4:       oklch(0.68  0.01  250);
+    /* text-3/text-4 a 4,5:1 sobre surface-3 e a coluna de hoje (cabeçalho em 8,5–9,5 px) */
+    --mg-text-3:       oklch(0.42  0.01  250);
+    --mg-text-4:       oklch(0.47  0.01  250);
     /* accents */
     --mg-accent:       oklch(0.50  0.20  264);
     --mg-accent-fg:    #ffffff;
@@ -27,7 +28,7 @@
     --mg-critical-soft:oklch(0.95  0.05  25);
     /* chart adornments */
     --mg-weekend:      oklch(0.94  0.005 250 / 0.5);
-    --mg-today:        oklch(0.55  0.22  25);
+    --mg-today:        oklch(0.48  0.22  25);
     --mg-grid-soft:    oklch(0.92  0.005 250);
     --mg-grid-strong:  oklch(0.82  0.008 250);
     --mg-row-hover:    oklch(0.96  0.008 250);
@@ -67,8 +68,9 @@ html.dark .mad-gantt {
     --mg-border-3:     oklch(0.42  0.022 255);
     --mg-text:         oklch(0.96  0.01  255);
     --mg-text-2:       oklch(0.80  0.012 255);
-    --mg-text-3:       oklch(0.64  0.014 255);
-    --mg-text-4:       oklch(0.50  0.014 255);
+    /* text-3/text-4 a 4,5:1 sobre surface-3 e a coluna de hoje (cabeçalho em 8,5–9,5 px) */
+    --mg-text-3:       oklch(0.74  0.014 255);
+    --mg-text-4:       oklch(0.68  0.014 255);
     --mg-accent:       oklch(0.72  0.18  264);
     --mg-accent-fg:    oklch(0.16  0.02  264);
     --mg-accent-soft:  oklch(0.30  0.10  264);
