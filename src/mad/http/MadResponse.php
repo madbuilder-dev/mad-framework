@@ -617,6 +617,9 @@ class MadResponse
      * Antes a URL ia para o urlFor() como se fosse a classe e saía
      * `/app/` + a URL inteira — 404 calado.
      *
+     * Destino que é DOCUMENTO (`/app/docs/...`, o PDF) não troca a página:
+     * abre numa aba do navegador (ver redirectUrl()).
+     *
      * @param string $classMethod  'Classe', 'Classe@metodo' ou uma URL
      * @param array  $params       querystring extra
      * @param int    $delayMs      atraso antes de navegar (ms) — 0 = imediato
@@ -659,6 +662,11 @@ class MadResponse
      * 'redirect' é aplicado pelo Mad.applyOps, que reescreve pra /app/* no modo
      * web (via MadWebRoute) e faz window.location. Use quando já se tem a URL
      * (ex.: destino pós-login). Nunca chama nada do legado.
+     *
+     * URL de DOCUMENTO (MadRoutes::isDocumentUrl): o op sai com `document` e o
+     * Mad.applyOps abre o PDF numa aba do navegador (Mad.openDocument), como o
+     * clique da ação de documento. Navegar a página inteira trocava o app pelo
+     * arquivo e o usuário perdia a tela de onde mandou imprimir.
      */
     public function redirectUrl(string $url, int $delayMs = 0): static
     {
@@ -670,6 +678,9 @@ class MadResponse
         $url = \Mad\Routing\MadRoutes::toFriendlyUrl($url);
 
         $op = ['op' => 'redirect', 'url' => $url];
+        if (\Mad\Routing\MadRoutes::isDocumentUrl($url)) {
+            $op['document'] = true;
+        }
         if ($delayMs > 0) {
             $op['delay'] = $delayMs;
         }

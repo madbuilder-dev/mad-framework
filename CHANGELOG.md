@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.177.1] — 2026-10-17
+
+### Correções
+
+- **Documentos (PDF):** gerar o PDF por um botão ou ação da tela não troca mais o app pelo documento: o PDF abre em outra aba do navegador e o sistema continua na tela de onde foi pedido. Quando o navegador bloqueia a aba nova, aparece o aviso **Documento pronto** com **Abrir documento** e **Baixar**.
+
 ## [5.177.0] — 2026-10-17
 
 ### Novidades

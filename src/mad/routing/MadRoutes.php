@@ -66,6 +66,14 @@ class MadRoutes
     private static array $documents = [];
 
     /**
+     * Slugs das páginas de DOCUMENTO (`/app/docs/{slug}/{id}`), em todos os
+     * idiomas: reconhecem o documento pela URL (isDocumentUrl).
+     *
+     * @var array<string, true>
+     */
+    private static array $documentSlugs = [];
+
+    /**
      * URIs já registradas por este registrador (`app/<slug>`, `app/<Classe>`).
      * Impede o alias pelo nome da classe de tomar o caminho de um slug.
      *
@@ -144,6 +152,7 @@ class MadRoutes
         self::$documents[$class] = true;
 
         foreach (self::slugsFor($key, $opts) as $slug) {
+            self::$documentSlugs[$slug] = true;
             Route::get('/app/docs/' . $slug . '/{id}', [MadAppController::class, 'document'])
                 ->where('id', '[A-Za-z0-9_-]+')
                 ->defaults('class', $class)
@@ -378,6 +387,24 @@ class MadRoutes
         $pos = strrpos($class, '\\');
 
         return $pos !== false && isset(self::$documents[substr($class, $pos + 1)]);
+    }
+
+    /**
+     * A URL é a de uma página de DOCUMENTO registrada por exposeDocument()
+     * (`…/app/docs/{slug}/{id}`)? Aceita caminho ou URL absoluta (`url(...)`),
+     * com query e fragmento.
+     *
+     * O redirect() de um método da tela pergunta aqui: navegar a página inteira
+     * para o PDF trocava o app pelo arquivo (MadResponse::redirectUrl).
+     */
+    public static function isDocumentUrl(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!is_string($path) || !preg_match('#/app/docs/([^/]+)/[A-Za-z0-9_-]+/?$#', $path, $m)) {
+            return false;
+        }
+
+        return isset(self::$documentSlugs[rawurldecode($m[1])]);
     }
 
     /** List da qual um form de resource herda permissão (PermissionGate). */

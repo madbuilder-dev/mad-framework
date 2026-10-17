@@ -570,17 +570,56 @@ const Mad = {
      * navegador. É o que o clique de uma ação que aponta para um documento chama
      * (MadAction::jsDocument) e o que a navegação faz quando a resposta é
      * arquivo: encaixada na aba do app, ela aparecia como texto ilegível.
-     * Navegador que bloqueia a aba nova: abre no lugar (o Voltar traz o app).
+     *
+     * Navegador que recusa a aba nova — a regra quando a abertura vem DEPOIS de
+     * um fetch (Mad.go recebendo o PDF, op `redirect` de um método da tela): o
+     * clique do usuário já expirou. Nunca troca a aba do app pelo arquivo (o
+     * `location.assign` de antes fazia o app sumir, e no Teste Online do Studio
+     * derrubava a ponte do iframe): mostra um aviso com "Abrir documento", que
+     * é um clique novo e o navegador libera, e "Baixar".
      */
     openDocument(url) {
         if (!url) return;
+        if (this._openDocumentTab(url)) return;
+        this._documentBlocked(url);
+    },
+
+    /** window.open numa aba nova; false quando o navegador recusa. */
+    _openDocumentTab(url) {
         let win = null;
         try { win = window.open(url, '_blank'); } catch (e) { win = null; }
-        if (win) {
-            try { win.opener = null; } catch (e) {}
-            return;
-        }
-        window.location.assign(url);
+        if (!win) return false;
+        try { win.opener = null; } catch (e) {}
+        return true;
+    },
+
+    /** Aviso da aba recusada: o documento abre (ou baixa) no clique do usuário. */
+    _documentBlocked(url) {
+        MadDialog.show({
+            type: 'info',
+            icon: 'file-text',
+            title: 'Documento pronto',
+            message: 'O navegador não deixou abrir o documento em outra aba. '
+                + 'Clique em <strong>Abrir documento</strong> para ver ou em <strong>Baixar</strong> para salvar o arquivo.',
+            buttons: [
+                { label: 'Fechar', type: 'secondary', callback: null },
+                { label: 'Baixar', type: 'secondary', callback: () => this._downloadDocument(url) },
+                // Recusada até no clique (iframe sem permissão de pop-up): baixa.
+                { label: 'Abrir documento', type: 'primary',
+                  callback: () => { if (!this._openDocumentTab(url)) this._downloadDocument(url); } },
+            ],
+        });
+    },
+
+    /** Baixa o arquivo por um link `download` (mesma origem): a aba do app fica. */
+    _downloadDocument(url) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.setAttribute('download', '');
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        if (a.parentNode) a.parentNode.removeChild(a);
     },
 
     /**
@@ -1717,11 +1756,12 @@ const Mad = {
      * `toast`/`alert` dele são guardados na sessionStorage na SAÍDA da página
      * (`pagehide`) e o próximo carregamento os mostra uma vez (_replayFlash).
      * Só na saída: um redirect que não sai da página (download de arquivo) não
-     * deixa aviso pendurado para depois. Chamado pelo applyOps e pelo
-     * _applyWireOps do mad-livewire.js (que aplica as ops uma a uma).
+     * deixa aviso pendurado para depois — nem o de DOCUMENTO (`document`), que
+     * abre numa aba do navegador e deixa o app onde está. Chamado pelo applyOps
+     * e pelo _applyWireOps do mad-livewire.js (que aplica as ops uma a uma).
      */
     _flashBeforeLeaving(ops) {
-        if (!Array.isArray(ops) || !ops.some(o => o && o.op === 'redirect' && !o.delay)) return;
+        if (!Array.isArray(ops) || !ops.some(o => o && o.op === 'redirect' && !o.delay && !o.document)) return;
         const notes = ops.filter(o => o && (o.op === 'toast' || o.op === 'alert'));
         if (!notes.length || typeof window === 'undefined' || !window.addEventListener) return;
 
@@ -1889,6 +1929,15 @@ const Mad = {
                     // modo web; no modo legado vai a URL crua. 100% MAD.
                     const _dest = (typeof window.MadWebRoute === 'function')
                         ? window.MadWebRoute(op.url) : op.url;
+                    // Destino é um DOCUMENTO (o PDF de /app/docs/..., marcado pelo
+                    // MadResponse::redirectUrl): abre numa aba do navegador como o
+                    // clique da ação de documento. Navegar a página trocava o app
+                    // inteiro pelo PDF.
+                    if (op.document) {
+                        if (op.delay) setTimeout(() => this.openDocument(_dest), op.delay);
+                        else this.openDocument(_dest);
+                        break;
+                    }
                     if (op.delay) {
                         setTimeout(() => { window.location.href = _dest; }, op.delay);
                     } else {
