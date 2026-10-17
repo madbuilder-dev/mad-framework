@@ -19,8 +19,13 @@
                 </span>
                 <template x-for="act in headerActions" :key="act.method || act.label">
                     <button type="button" class="mad-gantt-btn" @click="onHeaderAction(act.method || act.name)">
+                        {{-- O x-init fica no <span>, nunca no <i>: o createIcons troca o
+                             <i> por um <svg> que COPIA os atributos dele, e um x-init no
+                             <svg> rodaria de novo a cada troca (laço que prendia a CPU em
+                             Gantt grande). Raiz = o próprio botão, não o documento. --}}
                         <template x-if="act.icon">
-                            <i :data-lucide="act.icon" x-init="$nextTick(() => window.lucide && window.lucide.createIcons({ nameAttr: 'data-lucide' }))" style="width:14px;height:14px"></i>
+                            <span class="mad-gantt-btn-icon" style="display:inline-flex"
+                                  x-init="$nextTick(() => window.lucide && window.lucide.createIcons({ nameAttr: 'data-lucide', root: $el }))"><i :data-lucide="act.icon" style="width:14px;height:14px"></i></span>
                         </template>
                         <span x-text="act.label"></span>
                     </button>

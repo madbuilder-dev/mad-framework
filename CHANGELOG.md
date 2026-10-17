@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.178.1] — 2026-10-17
+
+### Correções
+
+- **Gantt:** um cronograma grande com botão de ação no topo (`<mad-gantt-header-action icon>`) deixava o navegador ocupado sem parar depois de abrir, mesmo sem ninguém mexer na tela: o computador esquentava e a tela seguinte às vezes não abria. Agora a tela fica parada depois de carregar.
+- **App gerado:** a busca do topo (Ctrl K) e os ícones dos campos de arquivo deixam de redesenhar os ícones da página inteira a cada mudança, o que pesava em telas grandes.
+
 ## [5.178.0] — 2026-10-17
 
 ### Novidades

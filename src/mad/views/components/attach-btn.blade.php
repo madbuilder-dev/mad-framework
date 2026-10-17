@@ -73,7 +73,7 @@
                 <span class="mad-attach-btn-chip">
                     <span x-effect="
                         $el.innerHTML = '<i data-lucide=&quot;file&quot; style=&quot;width:12px;height:12px;&quot;></i>';
-                        lucide && lucide.createIcons({ nodes: [$el] });
+                        lucide && lucide.createIcons({ root: $el });
                     "></span>
                     <span class="mad-attach-btn-chip-name" x-text="f.name"></span>
                     <span class="mad-attach-btn-chip-size" x-text="formatSize(f.size)"></span>

@@ -191,7 +191,7 @@
                         <div class="mad-multi-file-card-icon" :style="'background:' + f.color">
                             <span x-effect="
                                 $el.innerHTML = '<i data-lucide=&quot;' + f.icon + '&quot;></i>';
-                                lucide && lucide.createIcons({ nodes: [$el] });
+                                lucide && lucide.createIcons({ root: $el });
                             "></span>
                             <span class="mad-multi-file-card-ext" x-text="f.ext"></span>
                         </div>
