@@ -641,6 +641,11 @@ html[data-theme="dark"] .mad-page-breadcrumb {
 }
 html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th {
   color: var(--mad-text-muted) !important;
+  /* O mesmo tema do app pinta toda borda do cabeçalho de #2e2e38 com
+     !important: sem isto a cor das linhas escolhida no tema (fórum #126) não
+     valia no escuro. Sem tema, fica o #2e2e38 de sempre. */
+  border-bottom-color: var(--mad-dg-head-border-color, #2e2e38) !important;
+  border-right-color: var(--mad-dg-col-border-color, var(--mad-border)) !important;
 }
 
 /* Aviso de erro e borda do campo com erro no escuro do app: o tema do app
@@ -5986,7 +5991,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-layout-stripe .mad-dg-th {
   background: transparent;
-  border-bottom: 2px solid var(--mad-border);
+  border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
   text-transform: none;
   font-size: 0.8rem;
   letter-spacing: 0;
@@ -6001,7 +6006,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 4%, transparent);
 }
 .mad-layout-stripe .mad-dg-cell {
-  border-bottom: 1px solid var(--mad-border);
+  border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-layout-stripe .mad-dg-footer {
   background: transparent;
@@ -6032,7 +6037,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-layout-dock .mad-dg-th {
   background: transparent;
-  border-bottom: 1px solid var(--mad-border);
+  border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
   font-size: 0.75rem;
   padding: 6px 10px;
 }
@@ -6073,7 +6078,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-layout-glass .mad-dg-th {
   background: rgba(255,255,255,.25);
-  border-bottom: 1px solid rgba(0,0,0,.08);
+  border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, rgba(0,0,0,.08));
 }
 .mad-layout-glass .mad-dg-head {
   background: transparent;
@@ -6115,7 +6120,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   letter-spacing: .05em;
   font-weight: 700;
   color: var(--mad-text-subtle);
-  border-bottom: 2px solid var(--mad-border);
+  border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-layout-border .mad-dg-head {
   background: transparent;
@@ -6126,7 +6131,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 3%, transparent);
 }
 .mad-layout-border .mad-dg-cell {
-  border-bottom: 1px solid var(--mad-border);
+  border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-layout-border .mad-dg-footer {
   background: transparent;
@@ -6152,8 +6157,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-layout-inset .mad-dg-th {
   background: var(--mad-bg);
-  border-bottom: 2px solid
-    color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 15%, var(--mad-border));
+  border-bottom: var(--mad-dg-head-border-width, 2px) solid
+    var(--mad-dg-head-border-color, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 15%, var(--mad-border)));
 }
 .mad-layout-inset .mad-dg-head {
   background: var(--mad-bg);
@@ -6179,7 +6184,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-layout-float .mad-dg-th {
   background: transparent;
-  border-bottom: 1px solid var(--mad-border);
+  border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-layout-float .mad-dg-head {
   background: transparent;
@@ -6208,7 +6213,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dark .mad-dg-th {
   background: var(--mad-bg-muted);
   color: var(--mad-text-muted);
-  border-bottom-color: var(--mad-border-strong);
+  border-bottom-color: var(--mad-dg-head-border-color, var(--mad-border-strong));
 }
 .mad-dark .mad-dg-head {
   background: var(--mad-bg-muted);
@@ -6220,7 +6225,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-dark .mad-dg-cell {
   color: var(--mad-text);
-  border-bottom-color: var(--mad-border);
+  border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-dark .mad-dg-footer {
   background: var(--mad-bg-subtle);
@@ -6376,7 +6381,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dark.mad-layout-glass .mad-dg-th,
 .mad-dark .mad-layout-glass .mad-dg-th {
   background: rgba(255,255,255,.04);
-  border-bottom-color: rgba(255,255,255,.08);
+  border-bottom-color: var(--mad-dg-head-border-color, rgba(255,255,255,.08));
 }
 .mad-dark.mad-layout-glass .mad-dg-head,
 .mad-dark .mad-layout-glass .mad-dg-head {
@@ -8392,7 +8397,16 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   top: 0;
   z-index: 4;
   background: var(--mad-bg-muted);
-  border-bottom: 2px solid var(--mad-border-strong);
+  border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border-strong));
+}
+/* Na listagem (<table class="mad-table mad-dg-table">) quem desenha a linha
+   do cabeçalho é o `.mad-table th`, que é mais específico que o `.mad-dg-th`
+   acima — por isso 1px e não 2px. Esta regra tem a mesma especificidade e vem
+   depois: mantém a medida da listagem e passa a seguir o tema (fórum #126).
+   A lista de itens do formulário (<mad-detail-form>, sem `.mad-table`) segue
+   com os 2px de cima. Os layouts stripe, dock… continuam vencendo as duas. */
+.mad-table th:where(.mad-dg-th) {
+  border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-dg-th-filtered {
   background: color-mix(in srgb, var(--mad-primary) 6%, transparent);
@@ -8665,6 +8679,32 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   font-size: 0.84rem;
   color: var(--mad-text);
   border-bottom: 1px solid var(--mad-border);
+}
+
+/* ── Linhas e colunas pelo tema (fórum #126) ─────────────────────── */
+/* Editor de temas → Tabelas (DataGrid). As vars NUNCA são declaradas no
+   framework: cada regra lê a var com o valor de antes como reserva, então sem
+   tema a grade fica como sempre foi. Declaradas em `:root, .mad-ui` elas
+   venceriam o `:root` do tema por herança.
+   - linha entre registros: --mad-dg-row-border-width / -color
+   - linha entre colunas:   --mad-dg-col-border-width / -color (0 = sem linha)
+   - linha do cabeçalho:    --mad-dg-head-border-width / -color (nas regras do
+     `.mad-dg-th` de cada layout, que têm medidas diferentes)
+   Só largura e cor: o estilo continua de quem já mandava, e a última linha
+   da listagem (`border-bottom: none`) segue sem traço. A linha aberta pelo
+   chevron fica sem traço para emendar na tela que abriu embaixo dela. */
+.mad-dg-table > tbody > tr.mad-dg-row:not(.mad-dg-row-expanded) > td.mad-dg-cell,
+.mad-dg-table > tbody > tr.mad-dg-row-detail > td {
+  border-bottom-width: var(--mad-dg-row-border-width, 1px);
+  border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
+}
+.mad-dg-table > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:last-child) {
+  border-right: var(--mad-dg-col-border-width, 0px) solid var(--mad-dg-col-border-color, var(--mad-border));
+}
+/* Colunas do fim ocultas pelo seletor de colunas: a última VISÍVEL não leva
+   traço (senão sobrava uma linha colada na borda da grade). */
+.mad-dg-table > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:has(~ :is(th, td):not(.mad-dg-col-hidden))) {
+  border-right-width: 0;
 }
 /* Valor, número, data e formatos curtos (CPF, telefone…) numa linha só:
    "R$ 6,00" não vira "R$" em cima e "6,00" embaixo quando a grade aperta. */

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.178.0] — 2026-10-17
+
+### Novidades
+
+- **Listagens:** a grade segue o tema também nas linhas: espessura e cor da linha abaixo do cabeçalho, das linhas entre os registros e de linhas entre as colunas (que passam a existir quando o tema pede). Sem essas opções no tema, a listagem continua como antes em todos os layouts.
+
 ## [5.177.1] — 2026-10-17
 
 ### Correções
