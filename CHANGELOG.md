@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.177.0] — 2026-10-17
+
+### Novidades
+
+- **Permissões:** em Administração › Usuários (e em Usuários da unidade), a nova aba "Horário de acesso" define os dias e horários em que cada usuário pode usar o sistema (ex.: seg a sex, 08:00–18:00). Fora deles o login é recusado, a sessão aberta é encerrada e os tokens de API do usuário param de responder.
+
+### Correções
+
+- **Autenticação:** o token do assistente (MCP/Copilot) de um usuário desativado continuava funcionando. Agora ele para de valer assim que o usuário é desativado.
+
 ## [5.176.0] — 2026-10-17
 
 ### Novidades
