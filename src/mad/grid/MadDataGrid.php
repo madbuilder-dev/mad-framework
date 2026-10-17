@@ -1788,8 +1788,72 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($col->evaluate !== '') {
             return $this->_evaluateOrderSql($col->evaluate) !== null;
         }
+        // Accessor do Model sem coluna na tabela: o valor só existe em PHP.
+        if ($this->_isVirtualField($col->field)) {
+            return false;
+        }
 
         return true;
+    }
+
+    /**
+     * O campo é um accessor do Model que não existe na tabela (fórum #135)?
+     *
+     * `{nome_formatado}` e `{cliente->nome_formatado}` mostram o valor na
+     * célula (a linha é o Model e o accessor dispara), mas não têm coluna para
+     * ORDER BY, LIKE ou WHERE — mandá-los para o SQL derrubava a listagem.
+     * Accessor com o nome de uma coluna real continua coluna. Fonte por
+     * consulta (sourceQuery) ou Query Builder puro: não há Model para
+     * perguntar, e a resposta é false.
+     *
+     * @param mixed $q builder da consulta; null = o $model da listagem
+     */
+    protected function _isVirtualField(string $field, $q = null): bool
+    {
+        if ($q !== null) {
+            $model = static::_gridModel($q);
+        } else {
+            $model = null;
+            if (!empty($this->model) && !$this->_usesSource()) {
+                try {
+                    $class = class_exists($this->model)
+                        ? $this->model
+                        : \Mad\Form\ModelOptionsLoader::resolveModelClass($this->model);
+                    if (is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+                        $model = new $class();
+                    }
+                } catch (\Throwable) {
+                    $model = null;
+                }
+            }
+        }
+        if ($model === null) {
+            return false;
+        }
+
+        return \Mad\Database\ModelAccessors::virtualPath($model, GridRenderHelpers::groupGrainBase($field));
+    }
+
+    /**
+     * Coluna de accessor sem coluna na tabela não oferece funil — nem o tipado
+     * (`filter-type`), nem o legado (`filter`), nem o `<mad-col-filter>`: não
+     * há WHERE possível. Vale o campo que o filtro de fato filtraria
+     * (`filter-field` aponta para uma coluna real → o funil fica).
+     */
+    private function _dropVirtualFilter(GridColumn $col): void
+    {
+        if ($col->filterKind !== ''
+            && $this->_isVirtualField($col->filterField !== '' ? $col->filterField : $col->field)) {
+            $col->filterKind = '';
+        }
+        if (($col->filterable || $col->hasFilterPopover) && $this->_isVirtualField($col->field)) {
+            $col->filterable       = false;
+            $col->hasFilterPopover = false;
+        }
+        if ($col->colFilterToken !== '' && $col->filterKind === ''
+            && $this->_isVirtualField($col->colFilterField !== '' ? $col->colFilterField : $col->field)) {
+            $col->colFilterToken = '';
+        }
     }
 
     /**
@@ -2113,6 +2177,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $declared = !empty($c['filterable']) || !empty($c['filterPopover']);
             if (! $declared) {
                 continue;
+            }
+            // Accessor do Model sem coluna: o estado pode trazer o `filter` de
+            // antes, mas não há WHERE possível.
+            if ($this->_isVirtualField($field)) {
+                return null;
             }
 
             // `filter-op` explícito vence; senão o operador sai do tipo declarado.
@@ -4238,7 +4307,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected function _normalizeFilterTokens(array $cols): array
     {
         foreach ($cols as $col) {
-            if (! ($col instanceof GridColumn) || $col->filterKind === '') continue;
+            if (! ($col instanceof GridColumn)) continue;
+            $this->_dropVirtualFilter($col);
+            if ($col->filterKind === '') continue;
 
             // `_unbrace` aqui e não só na query: o editor persiste a coluna como
             // ref rename-safe e o deploy resolve pra `{estado_id}` — COM chaves.
@@ -5098,6 +5169,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             : $this->_searchableFields();
         if (empty($fields)) return;
 
+        // Accessor do Model sem coluna na tabela (`{nome_formatado}`) não tem
+        // onde procurar no banco: sai do OR. Se TODOS os campos eram assim, a
+        // busca procura nas colunas de texto da tabela — a mesma reserva do
+        // campo de busca (dbunique-search) —, em vez de não filtrar nada.
+        $real = array_values(array_filter($fields, fn ($f) => ! $this->_isVirtualField((string) $f, $q)));
+        if ($real === [] && ($model = static::_gridModel($q)) !== null) {
+            $real = \Mad\Database\ModelAccessors::textColumns($model);
+        }
+        if ($real === []) return;
+        $fields = $real;
+
         $term = $this->search;
         $q->where(function ($w) use ($q, $fields, $term) {
             foreach ($fields as $f) {
@@ -5243,7 +5325,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 }
                 // field vem do token assinado (MadStateCrypt); guard de identificador
                 // por defesa em profundidade — fail-closed se não for coluna válida.
-                if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/', (string) $f['field'])) {
+                if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/', (string) $f['field'])
+                    || $this->_isVirtualField((string) $f['field'], $q)) {
                     continue;
                 }
                 // Defesa em profundidade: mesmo vindo do token assinado, rejeita
@@ -5380,6 +5463,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $field = GridRenderHelpers::groupGrainBase($bits[0] ?? '');
             $dir   = strtolower($bits[1] ?? '');
             $simple = count($bits) <= 2 && ($dir === '' || $dir === 'asc' || $dir === 'desc');
+
+            // Accessor do Model sem coluna (`{nome_formatado} asc`): o termo só
+            // existe em PHP — fica de fora com aviso; os outros termos seguem.
+            if ($simple && $this->_isVirtualField($field, $q)) {
+                static::_warnOnce(
+                    'order-virtual:' . $field,
+                    'ordenação declarada por "' . $field . '" ignorada: é um campo calculado '
+                    . 'no Model (accessor), sem coluna na tabela.'
+                );
+                continue;
+            }
 
             if ($simple && ($chain = static::_chainParts($field)) !== null) {
                 if ($this->_applyChainOrder($q, $chain, $dir === 'desc' ? 'desc' : 'asc')) {
@@ -6913,6 +7007,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return;
         }
         $op = $canonical;
+
+        // Accessor do Model sem coluna na tabela ('{nome_formatado}',
+        // '{cliente->nome_formatado}'): não há WHERE possível. O funil nem é
+        // oferecido (_dropVirtualFilter); isto cobre o filtro que o estado de
+        // antes ainda traga — ignorado em vez de derrubar a listagem.
+        if ($this->_isVirtualField($field, $q)) {
+            return;
+        }
 
         // Chain rename-safe de 1 nível: '{rel->col}' ou 'rel->col'. Caminho mais
         // profundo segue para o whereHas aninhado logo abaixo.

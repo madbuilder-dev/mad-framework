@@ -2,9 +2,12 @@
 
 namespace Mad\Service;
 
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Mad\Component\MadComponent;
+use Mad\Database\ModelAccessors;
 use Mad\Form\ModelOptionsLoader;
 use Mad\Http\MadStateCrypt;
 
@@ -80,12 +83,44 @@ class MadDbSearchService extends MadComponent
                         // VAZIA sem uma linha de log. Ela é separada aqui e vira
                         // whereHas na relação (só no caminho model/Eloquent).
                         $rawColumns    = self::sanitizeColumns($config['search_columns'] ?? []);
+
+                        // Accessor do Model sem coluna na tabela (`{nome_formatado}`,
+                        // `{cliente->nome_formatado}` — fórum #135) NUNCA entra no LIKE:
+                        // a coluna não existe e a lista voltava vazia. Fica de fora das
+                        // colunas da busca; se só sobrar campo calculado, a busca procura
+                        // nas colunas de texto da tabela. Sem `model` no token (só
+                        // :query) não há Model para perguntar — tudo como antes.
+                        $proto = self::prototype($model);
+                        $isReal = static fn (string $c): bool => $proto === null || ! ModelAccessors::virtualPath($proto, $c);
+                        $dropped = false;
+                        if ($proto !== null && $rawColumns) {
+                            $kept       = array_values(array_filter($rawColumns, $isReal));
+                            $dropped    = count($kept) !== count($rawColumns);
+                            $rawColumns = $kept;
+                        }
                         $searchColumns = $rawColumns
                             ? self::plainOnly($rawColumns)
                             : self::extractColumns($display);
                         $chainColumns  = $rawColumns
                             ? self::chainOnly($rawColumns)
                             : ModelOptionsLoader::chainTokens($display);
+                        if ($proto !== null && ! $rawColumns) {
+                            $before        = count($searchColumns) + count($chainColumns);
+                            $searchColumns = array_values(array_filter($searchColumns, $isReal));
+                            $chainColumns  = array_values(array_filter($chainColumns, $isReal));
+                            $dropped       = $dropped || $before !== count($searchColumns) + count($chainColumns);
+                        }
+                        if ($dropped && ! $searchColumns && ! $chainColumns) {
+                            $searchColumns = ModelAccessors::textColumns($proto);
+                        }
+                        // Com campo calculado no texto, a linha precisa ser o Model
+                        // (a linha crua não tem accessor e o texto saía em branco).
+                        $displayVirtual = $proto !== null && ModelAccessors::virtualTokens($proto, $display) !== [];
+                        // `order-by` pelo campo calculado não existe no banco: ignorado.
+                        $order = ModelAccessors::unbrace($order);
+                        if ($order !== '' && ! $isReal($order)) {
+                            $order = '';
+                        }
 
                         $terms      = self::searchTerms($q);
                         $isTemplate = (strpos($display, '{') !== false);
@@ -124,6 +159,13 @@ class MadDbSearchService extends MadComponent
                                 $qb->orderBy($order, $orderDir);
                             }
                             $collection = $qb->limit($limit)->get();
+
+                            // Campo calculado no texto: a linha da derived table vira o
+                            // Model do campo (sem consulta nova), e a relação do chain
+                            // é carregada de uma vez — o accessor roda no mask().
+                            if ($displayVirtual) {
+                                $collection = self::asModels($proto, $database, $collection->all(), $displayChains);
+                            }
                         } else {
                             // F5: fallback model (sem :query) — busca LIKE + depends-on no builder.
                             $__cls      = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
@@ -134,7 +176,7 @@ class MadDbSearchService extends MadComponent
                             // têm chain, ficamos no Eloquent\Builder e iteramos MODELS.
                             // O get() do Eloquent roda applyScopes() igual ao toBase(),
                             // então soft-delete/tenant continuam valendo.
-                            $useModels = ($displayChains || $chainColumns);
+                            $useModels = ($displayChains || $chainColumns || $displayVirtual);
                             // toBase(), não getQuery(): getQuery() pula os global
                             // scopes (unidade/tenant, soft delete). Um token sem
                             // query_sql — o de dependência de um combo, colado
@@ -203,6 +245,40 @@ class MadDbSearchService extends MadComponent
 
         header('Content-Type: application/json');
         echo json_encode($error !== null ? ['results' => $results, 'error' => $error] : ['results' => $results]);
+    }
+
+    /** Instância do `model` do token, para as perguntas de schema (null = sem model / não resolve). */
+    private static function prototype(string $model): ?Model
+    {
+        if ($model === '') {
+            return null;
+        }
+        try {
+            $class = ModelOptionsLoader::resolveModelClass($model);
+
+            return new $class();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Linhas cruas da derived table → Models da classe do campo, na conexão da
+     * busca, com as relações do texto carregadas de uma vez (sem N+1). Os
+     * escopos já valeram na consulta compilada; aqui só se troca o objeto.
+     *
+     * @param  array<int, object>  $rows
+     * @param  array<int, string>  $chains tokens de relação do texto
+     */
+    private static function asModels(Model $proto, string $database, array $rows, array $chains): EloquentCollection
+    {
+        $builder = $database !== '' ? $proto::on($database) : $proto::query();
+        $models  = $builder->hydrate(array_map(static fn ($r) => (array) $r, $rows));
+        if ($chains && ($with = ModelOptionsLoader::eagerPathsFor($proto, $chains))) {
+            $models->load($with);
+        }
+
+        return $models;
     }
 
     /** Aplica LIKE/ILIKE num Query\Builder (caminho :query/derived table). */

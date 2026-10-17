@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.182.0] — 2026-10-17
+
+### Novidades
+
+- **Listagens:** a coluna pode mostrar um campo calculado no Model (accessor), como `field="{nome_formatado}"` ou, de uma tabela relacionada, `field="{cliente->nome_formatado}"`. A listagem abre sem erro; a coluna calculada não ordena nem tem filtro, e a busca procura nas outras colunas.
+- **Combos:** o texto das opções pode usar um campo calculado no Model (`display="{nome_formatado}"`) no combo, no rádio, na coluna de combo da lista de itens e no campo de busca. Antes a opção aparecia em branco.
+- **Campo de busca:** quando o texto só tem campo calculado, a pesquisa procura nas `search-columns` ou nas colunas de texto do cadastro, em vez de voltar vazia.
+
 ## [5.181.1] — 2026-10-17
 
 ### Novidades

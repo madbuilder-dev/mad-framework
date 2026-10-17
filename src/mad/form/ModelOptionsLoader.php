@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
+use Mad\Database\ModelAccessors;
 
 /**
  * ModelOptionsLoader — carregador de options (key => label) a partir de um model.
@@ -125,12 +126,28 @@ class ModelOptionsLoader
         // SELECT) e, na falta dela, em ''. Limitação assumida, não regressão.
         $chains = array_merge(self::chainTokens($value), self::chainTokens($key));
 
-        if ($chains && $query instanceof EloquentBuilder) {
+        // Accessor do Model sem coluna na tabela (`{nome_formatado}`, também no
+        // fim de um chain — fórum #135): a linha crua do toBase() não tem
+        // accessor nenhum e o texto saía em BRANCO. Com um campo assim no texto,
+        // lemos MODELS pelo mesmo caminho das chains (o get() roda os mesmos
+        // escopos globais). Ordenar por ele não existe no banco: o order cai e
+        // vale a ordem pelo texto, como na máscara sem order-by.
+        $ordercolumn = $ordercolumn !== null ? ModelAccessors::unbrace($ordercolumn) : null;
+        $virtual     = false;
+        if ($query instanceof EloquentBuilder) {
+            $proto   = $query->getModel();
+            $virtual = ModelAccessors::virtualTokens($proto, $value) !== [];
+            if ($ordercolumn && ModelAccessors::virtualPath($proto, $ordercolumn)) {
+                $ordercolumn = null;
+            }
+        }
+
+        if (($chains || $virtual) && $query instanceof EloquentBuilder) {
             $q = clone $query; // nunca muta a fonte
             if ($ordercolumn) {
                 $q->orderBy($ordercolumn, $dir);
             }
-            if ($with = self::eagerPathsFor($query->getModel(), $chains)) {
+            if ($chains && ($with = self::eagerPathsFor($query->getModel(), $chains))) {
                 $q->with($with);
             }
             $records = $q->get();
@@ -179,7 +196,7 @@ class ModelOptionsLoader
             }
         }
 
-        if ($isMask && $ordercolumn === null) {
+        if (($isMask || $virtual) && $ordercolumn === null) {
             asort($items);
         }
 
