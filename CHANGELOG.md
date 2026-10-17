@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.181.1] — 2026-10-17
+
+### Novidades
+
+- **Documentos (PDF):** a `<mad-doc-image>` passa a imprimir arquivos do próprio app em `public/` — `src="images/logo.png"`, `src="/images/logo.png"` ou o caminho completo — e ganha `src="app:logo"`, a logo do sistema (a mesma do cabeçalho e do login). Antes, só a imagem embutida em base64 aparecia; o resto saía como o texto alternativo.
+- **Documentos (PDF):** a tabela de dados ganhou a sub-linha: a coluna marcada com `sub-row="true"` sai do cabeçalho e é impressa numa linha de largura total, com fonte menor, logo abaixo de cada registro (o histórico de um lançamento, por exemplo). Registro sem valor não ganha a linha, e a quebra de página não separa o registro da sua sub-linha.
+
+### Correções
+
+- **Permissões:** a tela que entra no grupo de um perfil passa a abrir para quem já está logado no próximo clique, sem sair e entrar de novo. Vale também ao tirar a tela do grupo, ao mudar os perfis de um usuário e depois de salvar a página no Teste Online.
+- **PDF:** depois de exportar uma listagem em PDF, o documento seguinte podia sair em outra fonte, com "→", "≥" e "▸" trocados por "?"; e depois de um documento, a listagem em PDF podia mudar de fonte e demorar mais para ser gerada. Cada PDF agora usa sempre a sua própria fonte, não importa o que foi gerado antes.
+
 ## [5.178.1] — 2026-10-17
 
 ### Correções

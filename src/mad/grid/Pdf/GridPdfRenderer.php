@@ -5,6 +5,7 @@ use Dompdf\Dompdf;
 use Dompdf\Helpers;
 use Mad\Grid\GridColumn;
 use Mad\Grid\MadGridExporter;
+use Mad\Support\PdfFontMetrics;
 
 /**
  * PDF da listagem SEM passar a tabela pelo Dompdf.
@@ -133,7 +134,7 @@ final class GridPdfRenderer
     {
         // Mesma orientação e paleta que o caminho Dompdf usa (paridade).
         $orientation = MadGridExporter::pdfOrientation($report);
-        $this->dompdf = new Dompdf(MadGridExporter::PDF_DOMPDF_OPTIONS);
+        $this->dompdf = PdfFontMetrics::install(new Dompdf(MadGridExporter::PDF_DOMPDF_OPTIONS));
         $this->dompdf->setPaper('A4', $orientation);
         $this->canvas = new GridPdfCanvas('a4', $orientation, $this->dompdf);
         $this->dompdf->setCanvas($this->canvas);
@@ -511,7 +512,7 @@ final class GridPdfRenderer
                 $html = $parts['head']
                     . str_replace($pageTag, '<span class="mad-page-sentinel">' . str_repeat('0', max(1, $digits)) . '</span>', $parts['bands'])
                     . '</body></html>';
-                $bd = new Dompdf(MadGridExporter::PDF_DOMPDF_OPTIONS);
+                $bd = PdfFontMetrics::install(new Dompdf(MadGridExporter::PDF_DOMPDF_OPTIONS));
                 $bd->setCanvas($cv);
                 $bd->getFontMetrics()->setCanvas($cv);
                 $bd->setCallbacks([['event' => 'begin_frame', 'f' => function ($frame, $canvas) {

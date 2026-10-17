@@ -107,8 +107,10 @@ if (!function_exists('mad_upload_data_uri')) {
     /**
      * Imagem de upload como data URI, para `<img>` em documento PDF (o Dompdf
      * não lê o disco de uploads nem busca URL). Aceita a chave gravada pelo
-     * campo Upload/Imagem, base64 com ou sem `data:` e URL http(s) (buscada
-     * pelo app, sem rede interna). '' quando não é imagem legível.
+     * campo Upload/Imagem, base64 com ou sem `data:`, URL http(s) (buscada
+     * pelo app, sem rede interna), arquivo do app em `public/`
+     * (`images/logo.png`) e `app:logo` (a logo do sistema). '' quando não é
+     * imagem legível.
      */
     function mad_upload_data_uri(mixed $value): string
     {

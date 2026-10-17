@@ -20,7 +20,9 @@
     Column config keys:
       label, field|formula, attrs[], separator, field_name (only for formula),
       align (left/center/right), format (text|money|number|integer|date|datetime|boolean),
-      width, total (sum|count|avg|min|max), total_name.
+      width, total (sum|count|avg|min|max), total_name,
+      sub_row (bool: a coluna sai do cabeçalho e vira uma linha de largura
+      total debaixo de cada registro; vazia, não desenha a linha).
 --}}
 @props([
     'rows' => [],
@@ -54,14 +56,31 @@
         $arrayRows[$idx] = is_array($r) ? $r : (is_object($r) ? (array) $r : []);
     }
 
-    // cellText[$ri][$ci] = display string
-    // cellNum[$ci][$ri]  = float|null (for totals)
-    $cellText = [];
-    $cellNum  = array_fill(0, count($columns), []);
+    // Colunas `sub_row` saem do cabeçalho e da linha: cada uma vira uma linha
+    // de largura total debaixo do registro (histórico, observação). Sem
+    // nenhuma coluna comum não há linha onde pendurá-las: desenham como comuns.
+    $mainCols = [];
+    $subCols  = [];
+    foreach ($columns as $ci => $col) {
+        if (! empty($col['sub_row'])) $subCols[$ci] = $col;
+        else $mainCols[$ci] = $col;
+    }
+    if ($mainCols === []) {
+        $mainCols = $subCols;
+        $subCols  = [];
+    }
+
+    // cellText[$ri][$ci]   = display string
+    // cellNum[$ci][$ri]    = float|null (for totals)
+    // cellFilled[$ri][$ci] = o valor tem conteúdo (sub-linha vazia não sai)
+    $cellText   = [];
+    $cellNum    = array_fill(0, count($columns), []);
+    $cellFilled = [];
 
     foreach ($columns as $ci => $col) {
         foreach ($arrayRows as $ri => $rowArr) {
             $raw = null;
+            $filled = null;
 
             if (! empty($col['formula'])) {
                 $raw = MadDocRuntime::evaluateFormula((string) $col['formula'], $arrayRows[$ri]);
@@ -72,9 +91,16 @@
             } elseif (! empty($col['mask'])) {
                 // Free-form template: each `{path}` token is pulled from the
                 // row; literal text between tokens is preserved verbatim.
+                // Preenchido = algum campo do template tem valor (o texto
+                // fixo sozinho não conta).
+                $filled = false;
                 $raw = preg_replace_callback(
                     '/\{([^{}]+)\}/',
-                    fn ($m) => (string) MadDocRuntime::pull($rowList[$ri], trim($m[1])),
+                    function ($m) use ($rowList, $ri, &$filled) {
+                        $v = (string) MadDocRuntime::pull($rowList[$ri], trim($m[1]));
+                        if (trim($v) !== '') $filled = true;
+                        return $v;
+                    },
                     (string) $col['mask'],
                 );
             } elseif (! empty($col['attrs']) && is_array($col['attrs'])) {
@@ -91,13 +117,25 @@
             $fmt = (string) ($col['format'] ?? 'text');
             $cellText[$ri][$ci] = MadDocRuntime::applyFormat($raw, $fmt);
             $cellNum[$ci][$ri]  = is_numeric($raw) ? (float) $raw : null;
+            $filled ??= ! ($raw === null || $raw === [] || (is_string($raw) && trim($raw) === ''));
+            $cellFilled[$ri][$ci] = $filled && trim($cellText[$ri][$ci]) !== '';
         }
     }
 
-    // Global totals row.
+    // subLines[$ri] = [$ci => texto] das sub-linhas preenchidas do registro.
+    $subLines = [];
+    foreach ($arrayRows as $ri => $_) {
+        foreach ($subCols as $ci => $_col) {
+            if ($cellFilled[$ri][$ci] ?? false) $subLines[$ri][$ci] = $cellText[$ri][$ci];
+        }
+    }
+    $subFontPt = max(6, $fontSizePt - 1);
+    $subPadEnd = max(1, intdiv($cellPad, 2));
+
+    // Global totals row (só as colunas da linha: a sub-linha não tem célula ali).
     $hasAnyTotal = false;
     $totalsRow = [];
-    foreach ($columns as $ci => $col) {
+    foreach ($mainCols as $ci => $col) {
         $op = strtolower((string) ($col['total'] ?? ''));
         if ($op === '') { $totalsRow[$ci] = ''; continue; }
         $hasAnyTotal = true;
@@ -137,7 +175,7 @@
             $buckets[$label]['rowIds'][] = $ri;
         }
         foreach ($buckets as &$b) {
-            foreach ($columns as $ci => $col) {
+            foreach ($mainCols as $ci => $col) {
                 $op = strtolower((string) ($col['total'] ?? ''));
                 if ($op === '') { $b['subtotals'][$ci] = ''; continue; }
                 $scoped = array_filter(
@@ -160,13 +198,13 @@
         $groups = array_values($buckets);
     }
 
-    $colCount = count($columns);
+    $colCount = count($mainCols);
 @endphp
 
 <table style="width:100%;border-collapse:collapse;font-size:{{ $fontSizePt }}pt;margin:2pt 0;">
     <thead>
         <tr style="background:{{ $headerBg }};">
-            @foreach($columns as $col)
+            @foreach($mainCols as $col)
                 <th @if(! empty($col['width'])) width="{{ $col['width'] }}" @endif
                     style="border:{{ $borderStyle }};padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};font-weight:600;">
                     {{ $col['label'] ?? '' }}
@@ -185,17 +223,28 @@
                 </tr>
                 @endif
                 @foreach($g['rowIds'] as $ri)
-                    <tr style="background:{{ $zebra && $loop->index % 2 === 1 ? '#f9fafb' : 'transparent' }};">
-                        @foreach($columns as $ci => $col)
-                            <td style="border:{{ $borderStyle }};padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};vertical-align:top;">
+                    @php
+                        $rowBg = $zebra && $loop->index % 2 === 1 ? '#f9fafb' : 'transparent';
+                        $subs  = $subLines[$ri] ?? [];
+                    @endphp
+                    <tr style="background:{{ $rowBg }};">
+                        @foreach($mainCols as $ci => $col)
+                            <td style="border:{{ $borderStyle }};{{ $subs ? 'border-bottom:none;' : '' }}padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};vertical-align:top;">
                                 {{ $cellText[$ri][$ci] ?? '' }}
                             </td>
                         @endforeach
                     </tr>
+                    @foreach($subs as $ci => $text)
+                        <tr style="background:{{ $rowBg }};page-break-before:avoid;">
+                            <td colspan="{{ $colCount }}" style="border:{{ $borderStyle }};border-top:none;{{ $loop->last ? '' : 'border-bottom:none;' }}padding:0 {{ $cellPad }}px {{ $loop->last ? $cellPad : $subPadEnd }}px;text-align:{{ $subCols[$ci]['align'] ?? 'left' }};font-size:{{ $subFontPt }}pt;color:#4b5563;">
+                                {!! nl2br(e($text)) !!}
+                            </td>
+                        </tr>
+                    @endforeach
                 @endforeach
                 @if($groupSubtotals)
                 <tr style="background:#fef3c7;font-weight:600;">
-                    @foreach($columns as $ci => $col)
+                    @foreach($mainCols as $ci => $col)
                         <td style="border:{{ $borderStyle }};padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};color:#92400e;">
                             {{ $g['subtotals'][$ci] ?? '' }}
                         </td>
@@ -205,20 +254,31 @@
             @endforeach
         @else
             @foreach($arrayRows as $ri => $_)
-                <tr style="background:{{ $zebra && $loop->index % 2 === 1 ? '#f9fafb' : 'transparent' }};">
-                    @foreach($columns as $ci => $col)
-                        <td style="border:{{ $borderStyle }};padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};vertical-align:top;">
+                @php
+                    $rowBg = $zebra && $loop->index % 2 === 1 ? '#f9fafb' : 'transparent';
+                    $subs  = $subLines[$ri] ?? [];
+                @endphp
+                <tr style="background:{{ $rowBg }};">
+                    @foreach($mainCols as $ci => $col)
+                        <td style="border:{{ $borderStyle }};{{ $subs ? 'border-bottom:none;' : '' }}padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};vertical-align:top;">
                             {{ $cellText[$ri][$ci] ?? '' }}
                         </td>
                     @endforeach
                 </tr>
+                @foreach($subs as $ci => $text)
+                    <tr style="background:{{ $rowBg }};page-break-before:avoid;">
+                        <td colspan="{{ $colCount }}" style="border:{{ $borderStyle }};border-top:none;{{ $loop->last ? '' : 'border-bottom:none;' }}padding:0 {{ $cellPad }}px {{ $loop->last ? $cellPad : $subPadEnd }}px;text-align:{{ $subCols[$ci]['align'] ?? 'left' }};font-size:{{ $subFontPt }}pt;color:#4b5563;">
+                            {!! nl2br(e($text)) !!}
+                        </td>
+                    </tr>
+                @endforeach
             @endforeach
         @endif
     </tbody>
     @if($hasAnyTotal)
         <tfoot>
             <tr style="background:#f3f4f6;font-weight:600;">
-                @foreach($columns as $ci => $col)
+                @foreach($mainCols as $ci => $col)
                     <td style="border:{{ $borderStyle }};padding:{{ $cellPad }}px;text-align:{{ $col['align'] ?? 'left' }};">
                         {{ $totalsRow[$ci] ?? '' }}
                     </td>

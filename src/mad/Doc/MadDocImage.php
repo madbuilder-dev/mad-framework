@@ -25,18 +25,34 @@ use Mad\Service\MadUploadStorage;
  *    por `config('mad.doc.image_private_hosts')`; `mad.doc.remote_images=false`
  *    desliga a busca.
  *
+ *  - arquivo do próprio app em `public/` (fw#426: a logo do cabeçalho que o
+ *    app já serve) — `images/logo.jpg`, `/images/logo.jpg` (como o navegador
+ *    pede) ou o caminho absoluto que cai dentro de `public/`. Sem `..`, e o
+ *    realpath tem de continuar em `public/` (link para fora é recusado);
+ *  - `app:logo` — a logo do sistema, a mesma que o app mostra (cabeçalho do
+ *    tema → login do tema → logo do projeto), lida de `public/`.
+ *
  * Em todos os casos só passa imagem RASTER reconhecida pelos bytes (PNG, JPEG,
  * GIF, WebP) até `mad.doc.image_max_bytes` (padrão 5 MB). Qualquer outra coisa
  * devolve '' (o componente mostra o texto alternativo) — exceto a URL que o app
- * não buscou, que segue crua para o Dompdf como antes. Data URI e caminho
- * absoluto também seguem como antes (o `chroot` do Dompdf é quem barra o
- * caminho). Nunca lança.
+ * não buscou, que segue crua para o Dompdf como antes. Data URI segue como
+ * antes, e o caminho absoluto que não é arquivo de `public/` também (o `chroot`
+ * do Dompdf é quem barra o caminho). Nunca lança.
  */
 class MadDocImage
 {
     private const MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
     private const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+
+    /** Atalho para a logo do sistema (`<mad-doc-image src="app:logo">`). */
+    public const APP_LOGO = 'app:logo';
+
+    /**
+     * Logo do projeto no app gerado (Propriedades → Imagens do projeto), na
+     * ordem do casco (`ThemeManifest`): a plataforma sempre grava `logo.png`.
+     */
+    private const PROJECT_LOGOS = ['app/images/logo.png', 'app/images/logo-madbuilder.png'];
 
     /**
      * URL → [expira, data URI ('' = recusada)]. Um documento que repete a mesma
@@ -61,6 +77,9 @@ class MadDocImage
             if (str_starts_with($raw, 'data:')) {
                 return $raw;
             }
+            if (strcasecmp($raw, self::APP_LOGO) === 0) {
+                return self::appLogo();
+            }
             if (preg_match('#^https?://#i', $raw)) {
                 // Não buscada (bloqueada, fora do ar, não é imagem): vai ao
                 // Dompdf como antes — com isRemoteEnabled desligado (padrão) sai
@@ -71,13 +90,15 @@ class MadDocImage
                 return ''; // file:, ftp:, php:, phar:… nunca
             }
             if ($raw[0] === '/' || preg_match('#^[a-zA-Z]:[/\\\\]#', $raw)) {
-                return $raw; // caminho absoluto: o chroot do Dompdf decide
+                // arquivo de public/ (`/images/x.png` ou o caminho completo);
+                // qualquer outro caminho absoluto: o chroot do Dompdf decide
+                return self::fromPublic($raw) ?: $raw;
             }
             if (($b64 = self::fromBareBase64($raw)) !== '') {
                 return $b64;
             }
 
-            return self::fromUpload($raw);
+            return self::fromUpload($raw) ?: self::fromPublic($raw);
         } catch (\Throwable) {
             return '';
         }
@@ -101,6 +122,110 @@ class MadDocImage
         } catch (\Throwable) {
             return '';
         }
+    }
+
+    /**
+     * Arquivo do próprio app em `public/` → data URI ('' se não for imagem
+     * legível). Aceita o caminho relativo a `public/`, o mesmo com `/` na
+     * frente e o caminho absoluto que cai dentro de `public/`; `?v=…` do
+     * cache-buster é ignorado. Sem `..`, e o realpath tem de continuar dentro
+     * de `public/`: link simbólico para fora (ex.: `public/storage`) é
+     * recusado.
+     */
+    public static function fromPublic(string $path): string
+    {
+        try {
+            $path = str_replace('\\', '/', trim(preg_replace('/[?#].*$/s', '', $path)));
+            $root = function_exists('public_path') ? realpath(public_path()) : false;
+            if ($path === '' || str_contains($path, "\0") || $root === false) {
+                return '';
+            }
+
+            // Caminho absoluto dentro de public/ (como está escrito ou já resolvido).
+            foreach (array_unique([rtrim(str_replace('\\', '/', public_path()), '/'), str_replace('\\', '/', $root)]) as $base) {
+                if (str_starts_with($path, $base . '/')) {
+                    $path = substr($path, strlen($base) + 1);
+                    break;
+                }
+            }
+            $rel = ltrim($path, '/');
+            if ($rel === '' || in_array('..', explode('/', $rel), true) || preg_match('#^[a-zA-Z]:#', $rel)) {
+                return '';
+            }
+
+            $file = realpath($root . DIRECTORY_SEPARATOR . $rel);
+            if ($file === false || ! str_starts_with($file, $root . DIRECTORY_SEPARATOR) || ! is_file($file)
+                || (int) filesize($file) > self::maxBytes()) {
+                return '';
+            }
+
+            return self::dataUri((string) file_get_contents($file));
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * A logo do sistema como data URI, a mesma que o app mostra no modo claro
+     * (o papel é branco): logo do cabeçalho do tema da requisição → logo do
+     * login do tema → logo do projeto. Lida só de `public/`, pelo mesmo
+     * caminho de `fromPublic()`. '' quando o app não tem logo raster.
+     */
+    public static function appLogo(): string
+    {
+        foreach (self::appLogoCandidates() as $candidate) {
+            $uri = str_starts_with($candidate, 'data:')
+                ? self::fromDataUri($candidate)
+                : (preg_match('#^[a-z][a-z0-9+.-]*:#i', $candidate) ? '' : self::fromPublic($candidate));
+            if ($uri !== '') {
+                return $uri;
+            }
+        }
+
+        return '';
+    }
+
+    /** @return list<string> caminhos (ou data URI) da logo, do mais específico ao mais geral */
+    private static function appLogoCandidates(): array
+    {
+        $out = [];
+        $manifest = \App\Support\Theme\ThemeManifest::class;
+        if (class_exists($manifest)) {
+            try {
+                $theme = $manifest::find($manifest::requestSlug());
+                $logo = is_array($theme['logo'] ?? null) ? $theme['logo'] : [];
+                $out[] = $logo['light'] ?? null;
+                $out[] = $logo['dark'] ?? null;
+            } catch (\Throwable) {
+                // manifest ilegível: segue para o login e o projeto
+            }
+        }
+        $content = \App\Service\Sys\ThemeContentService::class;
+        if (class_exists($content)) {
+            try {
+                foreach (['bigLogo', 'detailTitleLogo'] as $slot) {
+                    $out[] = $content::getLoginImagePair($slot)['light'] ?? null;
+                }
+            } catch (\Throwable) {
+                // conteúdo do tema ilegível: segue para o projeto
+            }
+        }
+
+        return array_values(array_filter(
+            array_merge($out, self::PROJECT_LOGOS),
+            static fn ($v): bool => is_string($v) && trim($v) !== ''
+        ));
+    }
+
+    /** Data URI já pronto (logo do login guardada inline) → o mesmo, se for raster. */
+    private static function fromDataUri(string $uri): string
+    {
+        if (preg_match('#^data:[^;,]*;base64,(.+)$#s', $uri, $m) !== 1 || strlen($m[1]) * 3 / 4 > self::maxBytes()) {
+            return '';
+        }
+        $bytes = base64_decode(preg_replace('/\s+/', '', $m[1]), true);
+
+        return $bytes === false ? '' : self::dataUri($bytes);
     }
 
     /** Base64 puro (sem `data:`) cujos bytes são imagem → data URI; senão ''. */

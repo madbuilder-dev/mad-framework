@@ -65,6 +65,7 @@ namespace Mad\Doc;
  *   formatter    →  format
  *   total        →  total
  *   total-name   →  total_name
+ *   sub-row      →  sub_row          (bool: linha de largura total sob o registro)
  */
 class MadDocTableCompiler
 {
@@ -247,7 +248,18 @@ class MadDocTableCompiler
         if (isset($a['separator']) && (string) $a['separator'] !== '') {
             $spec['separator'] = (string) $a['separator'];
         }
+        // `sub-row` (nu, ="true", =1, :sub-row="true") → a coluna vira a linha
+        // de largura total debaixo de cada registro. Só valor literal: uma
+        // expressão (`:sub-row="$x"`) não tem como entrar no array estático.
+        if (isset($a['sub-row']) && self::isTruthy((string) $a['sub-row'])) {
+            $spec['sub_row'] = true;
+        }
         return $spec;
+    }
+
+    private static function isTruthy(string $value): bool
+    {
+        return in_array(strtolower(trim($value)), ['true', '1', 'yes', 'sub-row'], true);
     }
 
     /**

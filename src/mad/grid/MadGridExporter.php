@@ -2,6 +2,7 @@
 namespace Mad\Grid;
 
 use Dompdf\Dompdf;
+use Mad\Support\PdfFontMetrics;
 
 /**
  * MadGridExporter — gera CSV, XLSX e PDF a partir de colunas e rows do MadDataGrid.
@@ -255,7 +256,7 @@ class MadGridExporter
 
         $render = function (?int $pageCount) use ($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report): Dompdf {
             $html = self::buildPdfHtml($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $pageCount, $report);
-            $dompdf = new Dompdf(self::PDF_DOMPDF_OPTIONS);
+            $dompdf = PdfFontMetrics::install(new Dompdf(self::PDF_DOMPDF_OPTIONS));
             $dompdf->loadHtml($html);
             $dompdf->setPaper('A4', self::pdfOrientation($report));
             $dompdf->render();

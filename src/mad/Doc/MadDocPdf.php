@@ -4,6 +4,7 @@ namespace Mad\Doc;
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Mad\Support\PdfFontMetrics;
 
 /**
  * Thin DOMPDF wrapper used by MadBuilder-generated documents.
@@ -44,7 +45,8 @@ class MadDocPdf
 
     private static function renderDompdf(string $html, array $opts): Dompdf
     {
-        $dompdf = new Dompdf(self::options($opts));
+        // Fonte de reserva por PDF, não por processo (ver PdfFontMetrics).
+        $dompdf = PdfFontMetrics::install(new Dompdf(self::options($opts)));
         $dompdf->setPaper(
             $opts['paper'] ?? 'A4',
             $opts['orientation'] ?? 'portrait',
