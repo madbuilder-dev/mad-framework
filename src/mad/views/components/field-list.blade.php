@@ -1108,6 +1108,73 @@
                                 @include('components.partials.date-popup', ['withTime' => false])
                             </div>
 
+                        @elseif($col->type === 'spinner')
+                        @php
+                            // Spinner (− / número / +), o mesmo do <mad-spinner-field>
+                            // com o valor na LINHA: o madSpinnerCell grava row[campo]
+                            // (o save lê os rows do Alpine) e o input não tem x-model
+                            // — ver a nota no mad-ui.js.
+                            $spCfg = [
+                                'min'   => $col->min,
+                                'max'   => $col->max,
+                                'step'  => $col->step,
+                                'field' => $fld,
+                            ];
+                            // Os botões param junto com o input: disabled/readonly fixos
+                            // e as condições por linha. Uma expressão só, porque o
+                            // :disabled do Alpine sobrescreve o atributo estático.
+                            $spOff = implode(' || ', array_filter([
+                                ($col->disabled || $col->readonly) ? 'true' : '',
+                                $dw !== '' ? '(' . $dw . ')' : '',
+                                $rw !== '' ? '(' . $rw . ')' : '',
+                            ]));
+                            $spOff = $spOff !== '' ? $spOff . ' || ' : '';
+                            // @change do próprio spinner (limita ao min/max) antes da
+                            // expressão Alpine do on-change: dois @change na mesma
+                            // tag, o navegador fica só com o primeiro.
+                            $spChange = '_onChange($event)'
+                                . ($col->onChange && !$ocIsMethod ? '; ' . $col->onChange : '');
+                        @endphp
+                            <div class="mad-input-group mad-fl-spinner"
+                                 x-data="madSpinnerCell(Object.assign({{ json_encode($spCfg) }}, { row: row }))">
+                                <button type="button" class="mad-spinner-btn" tabindex="-1"
+                                        @click="decrement()"
+                                        :disabled="{{ $spOff }}isAtMin()">
+                                    <i data-lucide="minus" style="width:12px;height:12px;"></i>
+                                </button>
+                                <input type="number"
+                                       class="mad-input mad-input-sm"
+                                       x-ref="input"
+                                       name="{{ $fld }}[]"
+                                       placeholder="{{ $ph }}"
+                                       @if($col->min !== null) min="{{ $col->min }}" @endif
+                                       @if($col->max !== null) max="{{ $col->max }}" @endif
+                                       step="{{ $col->step }}"
+                                       @input="_onInput($event)"
+                                       @blur="_onBlur($event)"
+                                       @change="{{ $spChange }}"
+                                       @if($col->required) required @endif
+                                       @if($col->readonly) readonly @endif
+                                       @if($col->disabled) disabled @endif
+                                       @if($dw !== '') :disabled="{{ $dw }}" @endif
+                                       @if($rw !== '') :readonly="{{ $rw }}" @endif
+                                       @if($qw !== '') :required="{{ $qw }}" @endif
+                                       @if($col->onChange && $ocIsMethod) data-mad-fl-change="{{ $col->onChange }}" @endif
+                                       @if($col->attrs) {!! $col->attrs !!} @endif>
+                                <button type="button" class="mad-spinner-btn" tabindex="-1"
+                                        @click="increment()"
+                                        :disabled="{{ $spOff }}isAtMax()">
+                                    <i data-lucide="plus" style="width:12px;height:12px;"></i>
+                                </button>
+                            </div>
+                            @if($dw !== '')
+                                {{-- input disabled NAO submete → hidden com bind invertido
+                                     assume o name (mesmo padrao do fallback abaixo). --}}
+                                <input type="hidden" name="{{ $fld }}[]"
+                                       x-model="row['{{ $fld }}']"
+                                       :disabled="!({{ $dw }})">
+                            @endif
+
                         @else
                             {{-- text, number, email, tel, etc. ----------------- --}}
                             @php

@@ -10067,6 +10067,104 @@ document.addEventListener('alpine:init', () => {
         };
     });
 
+    // ── madSpinnerCell — spinner (− / número / +) da célula do field-list ──
+    //
+    // Mesmo comportamento do madSpinnerField (vazio conta como 0, limita ao
+    // min/max), mas o valor mora na LINHA: grava row[field], porque o save lê
+    // os rows do Alpine e não o DOM, e escuta a linha para mostrar o que vem
+    // de fora (fl_val, form->set, compute).
+    // Sem x-model no input: com type=number, "1," no meio da digitação deixa o
+    // value vazio, e o x-model devolveria o vazio apagando o que foi digitado.
+    //
+    Alpine.data('madSpinnerCell', (cfg = {}) => {
+        const num    = (v) => (v !== null && v !== undefined && v !== '' && isFinite(v)) ? Number(v) : null;
+        const min    = num(cfg.min);
+        const max    = num(cfg.max);
+        const step   = num(cfg.step) > 0 ? num(cfg.step) : 1;
+        const field  = cfg.field || '';
+        const rowRef = cfg.row || null;
+
+        function clamp(v) {
+            if (min !== null && v < min) return min;
+            if (max !== null && v > max) return max;
+            return v;
+        }
+
+        // Casas decimais de um número ("0.25" → 2, "1e-7" → 7): o passo soma
+        // sem o lixo do ponto flutuante (0.1 + 0.2 = 0.30000000000000004).
+        function decimalsOf(n) {
+            var s = String(n);
+            var e = s.indexOf('e-');
+            if (e !== -1) return parseInt(s.slice(e + 2), 10) || 0;
+            var dot = s.indexOf('.');
+            return dot === -1 ? 0 : s.length - dot - 1;
+        }
+
+        function current() {
+            if (!rowRef) return null;
+            var raw = rowRef[field];
+            if (raw === null || raw === undefined || raw === '') return null;
+            var v = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(',', '.'));
+            return isNaN(v) ? null : v;
+        }
+
+        function fmt(v) { return v === null ? '' : String(v); }
+
+        return {
+            init() {
+                var inp = this.$refs.input;
+                if (inp) inp.value = fmt(current());
+                if (rowRef && field) {
+                    this.$watch(() => rowRef[field], () => {
+                        if (inp && document.activeElement !== inp) inp.value = fmt(current());
+                    });
+                }
+            },
+
+            increment() { this._stepBy(1); },
+            decrement() { this._stepBy(-1); },
+            isAtMin() { return min !== null && (current() ?? 0) <= min; },
+            isAtMax() { return max !== null && (current() ?? 0) >= max; },
+
+            _stepBy(dir) {
+                var cur  = current() ?? 0;
+                var prec = Math.max(decimalsOf(step), decimalsOf(cur));
+                var next = clamp(Number((cur + dir * step).toFixed(prec)));
+                if (rowRef) rowRef[field] = next;
+                var inp = this.$refs.input;
+                if (!inp) return;
+                inp.value = fmt(next);
+                // Botão não dispara change: dispara aqui, para o on-change da
+                // coluna (método PHP ou expressão) e os totais da lista.
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+            },
+
+            _onInput(e) {
+                if (!rowRef) return;
+                var t = e.target;
+                if (t.validity && t.validity.badInput) return;
+                if (t.value === '') { rowRef[field] = ''; return; }
+                var v = parseFloat(t.value);
+                if (!isNaN(v)) rowRef[field] = v;
+            },
+
+            // change roda antes do blur e antes do listener do documento (o
+            // on-change PHP): o valor fora do limite já chega limitado.
+            _onChange(e) {
+                var v = current();
+                if (v === null) return;
+                var c = clamp(v);
+                if (c !== v && rowRef) rowRef[field] = c;
+                e.target.value = fmt(c);
+            },
+
+            _onBlur(e) {
+                var t = e.target;
+                if (t.validity && t.validity.badInput) t.value = fmt(current());
+            },
+        };
+    });
+
     // ── madDiscountCell — campo com máscara reversa + combo suffix ──────────
     //
     // Usado por type='discount' (combo %/R$) e type='combo_input' (combo genérica).

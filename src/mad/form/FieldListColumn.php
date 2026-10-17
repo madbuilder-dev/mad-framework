@@ -17,7 +17,7 @@ class FieldListColumn
 {
     public string $field        = '';
     public string $label        = '';
-    public string $type         = 'text';   // text|number|numeric|money|discount|combo_input|date|email|tel|select|dbcombo|hidden|textarea|file|multifile|files|checkbox|toggle|radio
+    public string $type         = 'text';   // text|number|numeric|money|spinner|discount|combo_input|date|email|tel|select|dbcombo|hidden|textarea|file|multifile|files|checkbox|toggle|radio
     public string $width        = '';       // CSS: '200px', '30%', '1fr'
     public string $placeholder  = '';
     public string $hint         = '';       // dica: tooltip no header + title na célula

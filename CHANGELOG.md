@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.176.0] — 2026-10-17
+
+### Novidades
+
+- **Lista de itens:** nova coluna `type="spinner"` no `<mad-field-list-column>`: campo numérico com botões − e +, que respeita `min`, `max` e `step`. Funciona com soma no rodapé e com on-change, inclusive nas linhas adicionadas.
+
 ## [5.175.1] — 2026-10-17
 
 ### Correções

@@ -9345,6 +9345,16 @@ textarea.mad-dg-inline-input {
 .mad-fl-cell .mad-password-toggle-btn {
   padding: 0 6px;
 }
+/* Spinner na célula: botões mais estreitos que no form (38px), para sobrar
+   espaço para o número numa coluna de largura comum. A altura acompanha o
+   input pela regra do .mad-field .mad-input-group > .mad-spinner-btn. */
+.mad-fl-cell .mad-fl-spinner > .mad-spinner-btn {
+  width: 28px;
+  min-width: 28px;
+}
+.mad-fl-cell .mad-fl-spinner > .mad-input {
+  min-width: 0;
+}
 
 /* ── Money field no field-list ───────────────────────────────────────────── */
 .mad-fl-money {
