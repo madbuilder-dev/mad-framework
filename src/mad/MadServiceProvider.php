@@ -158,6 +158,30 @@ class MadServiceProvider extends ServiceProvider
         $this->bootSchedulePause();
         $this->bootWebhooks();
         $this->bootRoutines();
+        self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));
+    }
+
+    /**
+     * Proxies confiáveis lidos DEPOIS do `.env`.
+     *
+     * O `bootstrap/app.php` lê `env('TRUSTED_PROXIES')` dentro do
+     * `withMiddleware()`, que roda quando o kernel HTTP é montado — antes de o
+     * `.env` ser carregado. Ali só vale variável do PROCESSO: no app publicado
+     * por SSH, ZIP ou MadCloud a linha do `.env` era ignorada, e atrás de
+     * nginx/Traefik todo visitante aparecia com o IP do proxy (o limite de
+     * tentativas do login de um trancava o de todos). Aqui o `.env` já foi lido
+     * (e `config:cache` também serve, pela chave `mad.trusted_proxies`).
+     * Vazio = não mexe no que o `bootstrap/app.php` já aplicou.
+     */
+    public static function applyTrustedProxies(mixed $raw): void
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return;
+        }
+        \Illuminate\Http\Middleware\TrustProxies::at(
+            $raw === '*' ? '*' : array_values(array_filter(array_map('trim', explode(',', $raw)))),
+        );
     }
 
     /**

@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.182.5] — 2026-10-18
+
+### Correções
+
+- **Segurança:** no Teste Online, um visitante sem login que caía num erro de página pública (site, cadastro, checkout) via a página técnica com o código e os caminhos do servidor. Agora vê a página de erro amigável; quem está logado no app continua vendo o detalhe.
+- **Licenças:** uma tela de módulo fora do plano da unidade continuava aberta quando também estava num grupo de permissão próprio, sem módulo. Agora o plano vale para a tela, venha ela de qualquer grupo.
+- **App publicado:** atrás de um proxy (nginx, MadCloud), o `TRUSTED_PROXIES` do `.env` era ignorado e todo visitante aparecia com o mesmo endereço, então errar a senha várias vezes trancava o login de todos. Agora o app usa o endereço real de cada visitante.
+- **Site público:** com vários clientes enviando o formulário ao mesmo tempo (confirmar pedido, contato), parte dos envios voltava erro e não era gravada. Agora os envios simultâneos esperam a vez e entram todos.
+- **Chat IA:** negar as consultas a um perfil (por exemplo, o do portal do cliente) tirava o assistente também do administrador, que pertence a todos os perfis. Agora o que o perfil Admin libera vale para ele.
+- **Chat IA:** o botão do assistente aparecia para quem não tem nenhuma consulta liberada, como o cliente do portal, e a conversa só respondia que não havia acesso. Agora o botão não aparece para esses usuários.
+
 ## [5.182.0] — 2026-10-17
 
 ### Novidades

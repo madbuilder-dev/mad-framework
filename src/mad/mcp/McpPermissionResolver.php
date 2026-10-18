@@ -13,8 +13,9 @@ use Mad\Security\PermissionGate;
  *
  *   1. CONCESSÃO — permissions[<perfil>][<tool>] = allow|deny, sobre os perfis
  *      EFETIVOS do usuário ({@see McpProfiles}: diretos, por papel e por papel
- *      da unidade ativa). `deny` de qualquer perfil vence; sem nenhum `allow`
- *      a tool não existe para ele (célula "herda" = sem acesso — fail-closed).
+ *      da unidade ativa). `deny` de qualquer perfil vence — menos sobre o
+ *      `allow` do perfil Admin; sem nenhum `allow` a tool não existe para ele
+ *      (célula "herda" = sem acesso — fail-closed).
  *   2. PROGRAMA — `program` no spec (manifest escrito à mão) continua sendo uma
  *      restrição EXTRA de tela (PermissionGate::canAccess). O configurador não
  *      emite `program`: sem ele, a concessão é o piso.
@@ -88,6 +89,11 @@ final class McpPermissionResolver
     /**
      * Decisao agregada da matriz sobre os perfis EFETIVOS do usuario:
      * deny se algum nega; allow se algum permite e nenhum nega; senao null.
+     *
+     * Exceção: o `allow` do perfil Admin vence. O administrador do app nasce em
+     * TODOS os grupos — inclusive o do portal do cliente —, então negar as
+     * consultas a um perfil qualquer tirava o assistente do próprio admin.
+     * Um `deny` no perfil Admin continua negando.
      */
     public function matrixDecision(McpManifest $manifest, string $toolId): ?string
     {
@@ -95,8 +101,15 @@ final class McpPermissionResolver
             return null;
         }
 
+        $profiles = McpProfiles::forManifest($manifest);
+        foreach ($profiles as $pid) {
+            if ($this->isAdminProfile($manifest, $pid) && $manifest->matrixDecision($pid, $toolId) === 'allow') {
+                return 'allow';
+            }
+        }
+
         $sawAllow = false;
-        foreach (McpProfiles::forManifest($manifest) as $pid) {
+        foreach ($profiles as $pid) {
             $d = $manifest->matrixDecision($pid, $toolId);
             if ($d === 'deny') {
                 return 'deny';
@@ -107,6 +120,32 @@ final class McpPermissionResolver
         }
 
         return $sawAllow ? 'allow' : null;
+    }
+
+    /** Perfil Admin da matriz: o nativo do esqueleto (`builtin:admin`, código `admin`). */
+    private function isAdminProfile(McpManifest $manifest, string $pid): bool
+    {
+        if ($pid === 'builtin:admin') {
+            return true;
+        }
+
+        return strcasecmp($manifest->profiles()[$pid]['code'] ?? '', 'admin') === 0;
+    }
+
+    /**
+     * O usuário atual pode usar ALGUMA tool do manifest? Sem nenhuma, o
+     * assistente só responderia "sem acesso" — quem monta o menu esconde o
+     * botão (perfil do portal do cliente, sem consulta concedida).
+     */
+    public function hasAnyTool(McpManifest $manifest): bool
+    {
+        foreach ($manifest->tools() as $spec) {
+            if (is_array($spec) && $this->canUseTool($manifest, $spec)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
