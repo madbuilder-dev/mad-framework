@@ -640,7 +640,7 @@ html[data-theme="dark"] .mad-page-breadcrumb {
   color: var(--mad-text-muted);
 }
 html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th {
-  color: var(--mad-text-muted) !important;
+  color: var(--mad-dg-head-color, var(--mad-text-muted)) !important;
   /* O mesmo tema do app pinta toda borda do cabeçalho de #2e2e38 com
      !important: sem isto a cor das linhas escolhida no tema (fórum #126) não
      valia no escuro. Sem tema, fica o #2e2e38 de sempre. */
@@ -5990,20 +5990,20 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   padding: var(--mad-dg-toolbar-py, 10px) 0;
 }
 .mad-layout-stripe .mad-dg-th {
-  background: transparent;
+  background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
   text-transform: none;
-  font-size: 0.8rem;
+  font-size: var(--mad-dg-head-font-size, 0.8rem);
   letter-spacing: 0;
-  color: var(--mad-text-muted);
+  color: var(--mad-dg-head-color, var(--mad-text-muted));
 }
 .mad-layout-stripe .mad-dg-head {
   background: transparent;
 }
-.mad-layout-stripe .mad-dg-row-even { background: transparent; }
-.mad-layout-stripe .mad-dg-row-odd  { background: transparent; }
+.mad-layout-stripe .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-stripe .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
 .mad-layout-stripe .mad-dg-row:hover td {
-  background: color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 4%, transparent);
+  background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 4%, transparent));
 }
 .mad-layout-stripe .mad-dg-cell {
   border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
@@ -6036,9 +6036,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-size: 0.8rem;
 }
 .mad-layout-dock .mad-dg-th {
-  background: transparent;
+  background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
-  font-size: 0.75rem;
+  font-size: var(--mad-dg-head-font-size, 0.75rem);
   padding: 6px 10px;
 }
 .mad-layout-dock .mad-dg-head {
@@ -6048,10 +6048,10 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-size: 0.82rem;
   padding: 8px 10px;
 }
-.mad-layout-dock .mad-dg-row-even { background: transparent; }
-.mad-layout-dock .mad-dg-row-odd  { background: transparent; }
+.mad-layout-dock .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-dock .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
 .mad-layout-dock .mad-dg-row:hover td {
-  background: var(--mad-bg-muted);
+  background: var(--mad-dg-row-hover-bg, var(--mad-bg-muted));
 }
 .mad-layout-dock .mad-dg-footer {
   background: transparent;
@@ -6077,16 +6077,16 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom-color: rgba(0,0,0,.06);
 }
 .mad-layout-glass .mad-dg-th {
-  background: rgba(255,255,255,.25);
+  background: var(--mad-dg-head-bg, rgba(255,255,255,.25));
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, rgba(0,0,0,.08));
 }
 .mad-layout-glass .mad-dg-head {
   background: transparent;
 }
-.mad-layout-glass .mad-dg-row-even { background: transparent; }
-.mad-layout-glass .mad-dg-row-odd  { background: rgba(255,255,255,.2); }
+.mad-layout-glass .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-glass .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, rgba(255,255,255,.2)); }
 .mad-layout-glass .mad-dg-row:hover td {
-  background: rgba(255,255,255,.35);
+  background: var(--mad-dg-row-hover-bg, rgba(255,255,255,.35));
 }
 .mad-layout-glass .mad-dg-footer {
   background: rgba(255,255,255,.25);
@@ -6114,21 +6114,21 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   padding: var(--mad-dg-toolbar-py, 8px) 0;
 }
 .mad-layout-border .mad-dg-th {
-  background: transparent;
+  background: var(--mad-dg-head-bg, transparent);
   text-transform: uppercase;
-  font-size: 0.72rem;
+  font-size: var(--mad-dg-head-font-size, 0.72rem);
   letter-spacing: .05em;
-  font-weight: 700;
-  color: var(--mad-text-subtle);
+  font-weight: var(--mad-dg-head-font-weight, 700);
+  color: var(--mad-dg-head-color, var(--mad-text-subtle));
   border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-layout-border .mad-dg-head {
   background: transparent;
 }
-.mad-layout-border .mad-dg-row-even { background: transparent; }
-.mad-layout-border .mad-dg-row-odd  { background: transparent; }
+.mad-layout-border .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-border .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
 .mad-layout-border .mad-dg-row:hover td {
-  background: color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 3%, transparent);
+  background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 3%, transparent));
 }
 .mad-layout-border .mad-dg-cell {
   border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
@@ -6156,7 +6156,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   padding: var(--mad-dg-toolbar-py, 10px) 14px;
 }
 .mad-layout-inset .mad-dg-th {
-  background: var(--mad-bg);
+  background: var(--mad-dg-head-bg, var(--mad-bg));
   border-bottom: var(--mad-dg-head-border-width, 2px) solid
     var(--mad-dg-head-border-color, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 15%, var(--mad-border)));
 }
@@ -6183,14 +6183,14 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   padding: var(--mad-dg-toolbar-py, 10px) 0;
 }
 .mad-layout-float .mad-dg-th {
-  background: transparent;
+  background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-layout-float .mad-dg-head {
   background: transparent;
 }
-.mad-layout-float .mad-dg-row-even { background: transparent; }
-.mad-layout-float .mad-dg-row-odd  { background: var(--mad-bg-subtle); }
+.mad-layout-float .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-float .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
 .mad-layout-float .mad-dg-footer {
   background: transparent;
   border-top: 1px solid var(--mad-border);
@@ -6211,20 +6211,20 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom-color: var(--mad-border);
 }
 .mad-dark .mad-dg-th {
-  background: var(--mad-bg-muted);
-  color: var(--mad-text-muted);
+  background: var(--mad-dg-head-bg, var(--mad-bg-muted));
+  color: var(--mad-dg-head-color, var(--mad-text-muted));
   border-bottom-color: var(--mad-dg-head-border-color, var(--mad-border-strong));
 }
 .mad-dark .mad-dg-head {
   background: var(--mad-bg-muted);
 }
-.mad-dark .mad-dg-row-even { background: var(--mad-bg); }
-.mad-dark .mad-dg-row-odd  { background: var(--mad-bg-subtle); }
+.mad-dark .mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
+.mad-dark .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
 .mad-dark .mad-dg-row:hover td {
-  background: color-mix(in srgb, var(--mad-primary) 6%, transparent);
+  background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-primary) 6%, transparent));
 }
 .mad-dark .mad-dg-cell {
-  color: var(--mad-text);
+  color: var(--mad-dg-body-color, var(--mad-text));
   border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-dark .mad-dg-footer {
@@ -6364,6 +6364,18 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dark .mad-layout-dock .mad-dg-footer {
   background: transparent;
 }
+/* Cabeçalho da regra acima, sozinho: o fundo escolhido no tema (Tabelas,
+   builder#469) vale também neste layout escuro. Sem a var, o de antes. */
+.mad-dark.mad-layout-stripe .mad-dg-th,
+.mad-dark .mad-layout-stripe .mad-dg-th,
+.mad-dark.mad-layout-border .mad-dg-th,
+.mad-dark .mad-layout-border .mad-dg-th,
+.mad-dark.mad-layout-float .mad-dg-th,
+.mad-dark .mad-layout-float .mad-dg-th,
+.mad-dark.mad-layout-dock .mad-dg-th,
+.mad-dark .mad-layout-dock .mad-dg-th {
+  background: var(--mad-dg-head-bg, transparent);
+}
 .mad-dark.mad-layout-dock .mad-dg-toolbar,
 .mad-dark .mad-layout-dock .mad-dg-toolbar {
   background: var(--mad-bg-muted);
@@ -6380,7 +6392,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-dark.mad-layout-glass .mad-dg-th,
 .mad-dark .mad-layout-glass .mad-dg-th {
-  background: rgba(255,255,255,.04);
+  background: var(--mad-dg-head-bg, rgba(255,255,255,.04));
   border-bottom-color: var(--mad-dg-head-border-color, rgba(255,255,255,.08));
 }
 .mad-dark.mad-layout-glass .mad-dg-head,
@@ -6389,11 +6401,11 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-dark.mad-layout-glass .mad-dg-row-odd,
 .mad-dark .mad-layout-glass .mad-dg-row-odd {
-  background: rgba(255,255,255,.02);
+  background: var(--mad-dg-row-odd-bg, rgba(255,255,255,.02));
 }
 .mad-dark.mad-layout-glass .mad-dg-row:hover td,
 .mad-dark .mad-layout-glass .mad-dg-row:hover td {
-  background: rgba(255,255,255,.06);
+  background: var(--mad-dg-row-hover-bg, rgba(255,255,255,.06));
 }
 .mad-dark.mad-layout-glass .mad-dg-footer,
 .mad-dark .mad-layout-glass .mad-dg-footer {
@@ -6418,6 +6430,12 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dark.mad-layout-inset .mad-dg-footer,
 .mad-dark .mad-layout-inset .mad-dg-footer {
   background: var(--mad-bg-subtle);
+}
+/* Cabeçalho da regra acima, sozinho: o fundo escolhido no tema (Tabelas,
+   builder#469) vale também neste layout escuro. Sem a var, o de antes. */
+.mad-dark.mad-layout-inset .mad-dg-th,
+.mad-dark .mad-layout-inset .mad-dg-th {
+  background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
 }
 .mad-dark.mad-layout-border .mad-dg-card,
 .mad-dark .mad-layout-border .mad-dg-card {
@@ -8387,16 +8405,16 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 }
 .mad-dg-th {
   padding: 8px 12px;
-  font-weight: 600;
-  font-size: 0.78rem;
-  color: var(--mad-text-muted);
+  font-weight: var(--mad-dg-head-font-weight, 600);
+  font-size: var(--mad-dg-head-font-size, 0.78rem);
+  color: var(--mad-dg-head-color, var(--mad-text-muted));
   text-transform: uppercase;
   letter-spacing: .03em;
   white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 4;
-  background: var(--mad-bg-muted);
+  background: var(--mad-dg-head-bg, var(--mad-bg-muted));
   border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border-strong));
 }
 /* Na listagem (<table class="mad-table mad-dg-table">) quem desenha a linha
@@ -8406,7 +8424,15 @@ html.mad-dg-cf-lock body { overflow: hidden; }
    A lista de itens do formulário (<mad-detail-form>, sem `.mad-table`) segue
    com os 2px de cima. Os layouts stripe, dock… continuam vencendo as duas. */
 .mad-table th:where(.mad-dg-th) {
+  font-size: var(--mad-dg-head-font-size, var(--mad-text-xs));
+  font-weight: var(--mad-dg-head-font-weight, 700);
+  color: var(--mad-dg-head-color, var(--mad-text-muted));
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
+}
+/* Mesmo motivo para o texto das células da listagem: o `.mad-table td` vence
+   o `.mad-dg-cell` (builder#469). */
+.mad-table td:where(.mad-dg-cell) {
+  color: var(--mad-dg-body-color, var(--mad-text));
 }
 .mad-dg-th-filtered {
   background: color-mix(in srgb, var(--mad-primary) 6%, transparent);
@@ -8542,9 +8568,9 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 }
 
 /* ── Body rows ───────────────────────────────────────────────────── */
-.mad-dg-row-even { background: var(--mad-bg); }
-.mad-dg-row-odd  { background: var(--mad-bg-subtle); }
-.mad-dg-row:hover td { background: color-mix(in srgb, var(--mad-primary) 4%, transparent); }
+.mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
+.mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
+.mad-dg-row:hover td { background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-primary) 4%, transparent)); }
 
 /* ── Row highlight (manageRow update/insert) ─────────────────────── */
 .mad-dg-row-highlight td {
@@ -8677,7 +8703,7 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   padding: 8px 12px;
   vertical-align: middle;
   font-size: 0.84rem;
-  color: var(--mad-text);
+  color: var(--mad-dg-body-color, var(--mad-text));
   border-bottom: 1px solid var(--mad-border);
 }
 
@@ -8692,7 +8718,14 @@ html.mad-dg-cf-lock body { overflow: hidden; }
      `.mad-dg-th` de cada layout, que têm medidas diferentes)
    Só largura e cor: o estilo continua de quem já mandava, e a última linha
    da listagem (`border-bottom: none`) segue sem traço. A linha aberta pelo
-   chevron fica sem traço para emendar na tela que abriu embaixo dela. */
+   chevron fica sem traço para emendar na tela que abriu embaixo dela.
+   Cabeçalho e registros (builder#469), no mesmo contrato, nas regras de cada
+   layout e do escuro:
+   - cabeçalho:  --mad-dg-head-bg / -color / -font-size / -font-weight
+   - registros:  --mad-dg-row-even-bg / -odd-bg / -hover-bg, --mad-dg-body-color
+   As `--table-*`/`--tr-*` do tema continuam só na tabela antiga (`.table`):
+   os temas embutidos do app as declaram em todo `:root`, e lê-las aqui
+   mudaria a listagem de todo app sem ninguém pedir. */
 .mad-dg-table > tbody > tr.mad-dg-row:not(.mad-dg-row-expanded) > td.mad-dg-cell,
 .mad-dg-table > tbody > tr.mad-dg-row-detail > td {
   border-bottom-width: var(--mad-dg-row-border-width, 1px);

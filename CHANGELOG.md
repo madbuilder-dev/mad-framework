@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.183.0] — 2026-10-18
+
+### Correções
+
+- **Temas:** no grupo Tabelas (DataGrid), o fundo, a cor, o tamanho e o peso do texto do cabeçalho, o fundo das linhas e a cor do texto das células mudavam só a prévia do editor. Agora mudam a listagem do app, em todos os layouts e no tema escuro; sem essas opções no tema, a listagem continua como era.
+
 ## [5.182.5] — 2026-10-18
 
 ### Correções
