@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.184.0] — 2026-10-19
+
+### Novidades
+
+- **Login:** Preferências › Segurança ganha **Login social**. Ligue **Entrar com o Google** e **Entrar com a Microsoft** (contas Microsoft 365) e os botões aparecem na tela de login. Republique o projeto para aplicar.
+- **Login:** entra pelo Google ou pela Microsoft só quem já tem usuário ativo com o mesmo e-mail. A verificação em duas etapas, a escolha de unidade, os termos de uso e o horário de acesso continuam valendo.
+- **Login:** o login social pode ficar restrito aos domínios de e-mail da empresa (ex.: `suaempresa.com.br`). A tela de Preferências mostra o endereço de retorno para cadastrar no Google Cloud e no Microsoft Entra.
+
 ## [5.183.1] — 2026-10-19
 
 ### Correções
