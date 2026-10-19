@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.185.0] — 2026-10-19
+
+### Correções
+
+- **Relatórios:** relatório sem paginação sobre uma tabela grande (dezenas de milhares de linhas) derrubava a tela com erro no servidor. Agora ele carrega usando bem menos memória e, quando o resultado não cabe, mostra "Este relatório tem N registros…" pedindo para usar os filtros. Republique o projeto para aplicar.
+- **Relatórios:** um botão do cabeçalho numa tela de relatório que não mostra a grade (por exemplo, um "Exportar PDF" que abre outra aba) consultava a tabela inteira a cada clique e podia falhar com erro no servidor. Agora o clique não consulta as linhas.
+- **Listagens:** exportar um resultado grande demais para a memória do servidor mostra um aviso pedindo para filtrar, em vez de erro.
+
 ## [5.184.1] — 2026-10-19
 
 ### Correções

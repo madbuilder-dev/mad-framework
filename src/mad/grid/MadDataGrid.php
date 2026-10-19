@@ -371,12 +371,55 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected array $_totalsPageOnly = [];
 
+    // ── Relatório (perPage <= 0) e memória ───────────────────────────────
+
+    /**
+     * Teto de linhas da listagem sem paginação (o relatório). 0 = o que couber
+     * na memória que sobra nesta requisição, contando o desenho da tela: o
+     * mesmo relatório mostra mais linhas num servidor com 512 MB do que no
+     * MadCloud com 128 MB. Acima do teto a tela pede filtro em vez de carregar.
+     */
+    protected int $reportMaxRows = 0;
+
+    /** Linhas por consulta na carga em lotes do relatório. */
+    protected int $reportChunkSize = 1000;
+
+    /**
+     * Total da consulta quando o relatório não coube (0 = carregou). A tela
+     * mostra "filtre para gerar" no lugar das linhas — nunca um erro 500.
+     */
+    protected int $_tooManyRows = 0;
+
+    /**
+     * A carga que o hydrate() faria antes da ação ficou para quem precisa das
+     * linhas: o render da grade, a própria ação (recarregar, exportar…) ou,
+     * na tela que desenha a grade, a ação escrita no app. Um botão do
+     * cabeçalho que só devolve `script()` numa tela sem `<mad-grid>` carregava
+     * a tabela inteira para nada (27 mil linhas = 218 MB → erro 500).
+     */
+    private bool $_loadDeferred = false;
+
+    /** Colunas da carga quando quem pede não é o render (a exportação). */
+    private ?array $_loadColumns = null;
+
+    /**
+     * O último render da tela desenhou a grade? Vai no estado (`_gridOffView`)
+     * só quando NÃO desenhou: estado sem a marca (o de antes desta versão,
+     * ou tela que sobrescreve rendering() sem chamar o pai) carrega como antes.
+     */
+    private bool $_renderSeen = false;
+    private bool $_gridDrawn = false;
+    private bool $_gridOffView = false;
+
     /** @internal Sinaliza ao MadComponentHandler que dados internos foram carregados. */
     /** Quando true, _needsFullRender retorna false mesmo com _dataLoaded — usado por onInlineSave. */
     private bool $_skipFullRender = false;
 
     public function _needsFullRender(): bool {
-        return $this->_forceFullRender || ($this->_dataLoaded && !$this->_skipFullRender);
+        // Carga adiada conta como carregada: a ação que antes redesenhava a
+        // tela (o hydrate() já tinha carregado) continua redesenhando.
+        return $this->_forceFullRender
+            || (($this->_dataLoaded || $this->_loadDeferred) && !$this->_skipFullRender);
     }
 
     /**
@@ -865,9 +908,48 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Antes de qualquer ação: o método chamado (ação em lote, botão do
         // cabeçalho, ação de linha) já enxerga a seleção que o usuário vê.
         $this->_syncSelection();
+        // A carga fica para quem usa as linhas (ver $_loadDeferred): as ações
+        // da grade carregam sozinhas, o render carrega o que desenha, e a ação
+        // do app numa tela que desenha a grade carrega antes, como sempre.
         if ($this->_autoLoadAllowed()) {
+            $this->_loadDeferred = true;
+        }
+    }
+
+    /** Faz a carga que o hydrate() adiou, se ninguém a fez ainda. */
+    protected function _loadIfDeferred(): void
+    {
+        if ($this->_loadDeferred) {
             $this->loadData();
         }
+    }
+
+    /** O render começou: a grade ainda não foi desenhada nele. */
+    public function rendering(): void
+    {
+        $this->_renderSeen = true;
+        $this->_gridDrawn  = false;
+    }
+
+    public function _getState(): array
+    {
+        $state = parent::_getState();
+        // Depois do render vale o que ele desenhou; antes (o retrato que o
+        // handler tira antes da ação), o que veio no estado — sem diferença
+        // entre os dois, o handler não gera op para a marca.
+        $off = $this->_renderSeen ? !$this->_gridDrawn : $this->_gridOffView;
+        if ($off) {
+            $state['_gridOffView'] = true;
+        }
+
+        return $state;
+    }
+
+    public function _setState(array $state): void
+    {
+        $this->_gridOffView = !empty($state['_gridOffView']);
+        unset($state['_gridOffView']);
+        parent::_setState($state);
     }
 
     /** O mount() do framework rodou nesta requisição (a tela chamou parent::mount()). */
@@ -1459,6 +1541,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return $refused;
         }
 
+        // Ação escrita no app: as linhas carregadas antes dela, como o
+        // hydrate() sempre fez — ela pode ler o que a grade mostra. Só não
+        // carrega quando a tela nem desenha a grade (o último render não a
+        // desenhou): ali as linhas não estão na tela de ninguém.
+        if ($this->_loadDeferred && !$this->_gridOffView && $this->_isAppMethod($method)) {
+            $this->loadData();
+        }
+
         $result = parent::_resolveAndCall($method, $data);
 
         // O mount() da tela acabou e o render ainda não começou: o período
@@ -1470,6 +1560,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return $result;
+    }
+
+    /** O método foi escrito no app (não no framework)? `__call` do MadGrid conta como framework. */
+    private function _isAppMethod(string $method): bool
+    {
+        if (!method_exists($this, $method)) {
+            return false;
+        }
+        $owner = (new \ReflectionMethod($this, $method))->getDeclaringClass()->getName();
+
+        return !str_starts_with($owner, 'Mad\\');
     }
 
     /**
@@ -2820,8 +2921,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         $this->_detectRenderFields($columns);
         $this->loadData();
-        if (!$this->_dataLoaded) {
-            return null;   // filtro obrigatório vazio: nada carregado
+        if (!$this->_dataLoaded || $this->_tooManyRows > 0) {
+            return null;   // filtro obrigatório vazio / relatório que pediu filtro: nada carregado
         }
         $this->_buildRows($columns);
 
@@ -3266,13 +3367,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->_detectRenderFields($columns);
 
         // Carga de export (perPage=0) não é navegação do usuário: gravá-la
-        // faria a próxima volta abrir a listagem com TODAS as linhas.
+        // faria a próxima volta abrir a listagem com TODAS as linhas. Vai em
+        // lotes com as colunas da exportação (sem o custo do desenho da tela).
         $this->_returnSnapshotSuspended = true;
+        $this->_loadColumns = $columns;
         try {
             $this->loadData();
         } finally {
             $this->_returnSnapshotSuspended = false;
+            $this->_loadColumns = null;
         }
+        $tooMany = $this->_tooManyRows;
 
         // No AJAX de export as colunas do `<mad-grid self>` vêm do estado
         // (exportColConfigs), e o loadData() acima não as conhece: monta as
@@ -3302,6 +3407,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // Total geral (rodapé): mesmo cálculo do footer da grade viva.
             'grandTotals'    => $this->_computeTotals($visibleCols),
             'report'         => $meta,
+            // > 0 = não coube na memória: nenhuma linha, o chamador avisa.
+            'tooMany'        => $tooMany,
         ];
 
         // Agrupamento
@@ -3320,8 +3427,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->_rows       = [];
         $this->_rawItems   = [];
         $this->_total      = 0;
+        $this->_tooManyRows = 0;
+        $this->_rowsBatched = false;
 
         return $result;
+    }
+
+    /** Aviso "listagem grande demais para exportar de uma vez" — sem redesenhar a grid. */
+    private function _exportTooManyToast(int $total): \Mad\Http\MadResponse
+    {
+        $this->skipFullRender();
+        $locale = function_exists('app') ? (string) app()->getLocale() : '';
+        $n   = number_format($total, 0, '', str_starts_with($locale, 'en') ? ',' : '.');
+        $msg = __('grid.export_too_many', ['total' => $n]);
+
+        return \Mad\Ui\MadToast::warning($msg === 'grid.export_too_many'
+            ? "Esta listagem tem {$n} registros, mais do que dá para exportar de uma vez. Filtre os registros e tente de novo."
+            : $msg);
     }
 
     /**
@@ -3354,6 +3476,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($this->_exportBlocked()) return $this->_exportBlockedToast();
         if ($this->_isDeferred()) return $this->_deferredExportToast();
         $out = $this->_streamExport('csv', $hiddenColumns) ?? $this->_loadedExport('csv', $hiddenColumns);
+        if (isset($out['refused'])) return $out['refused'];
         return $this->_exportDialog($out['file'], __('grid.export_csv'), $out['filename']);
     }
 
@@ -3368,6 +3491,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadToast::danger(GridXlsxWriter::unavailableMessage());
         }
         $out = $this->_streamExport('xlsx', $hiddenColumns) ?? $this->_loadedExport('xlsx', $hiddenColumns);
+        if (isset($out['refused'])) return $out['refused'];
         return $this->_exportDialog($out['file'], __('grid.export_xlsx'), $out['filename']);
     }
 
@@ -3375,6 +3499,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     private function _loadedExport(string $format, array $hiddenColumns): array
     {
         $data = $this->_loadAllForExport($hiddenColumns);
+        if ($data['tooMany'] > 0) {
+            return ['refused' => $this->_exportTooManyToast($data['tooMany'])];
+        }
         $args = [$data['columns'], $data['rows'], $data['exportTitle'], $data['groupData'] ?? [], $data['grandTotals'] ?? []];
 
         return [
@@ -3666,6 +3793,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         $data = $this->_loadAllForExport($hiddenColumns);
+        if ($data['tooMany'] > 0) {
+            return $this->_exportTooManyToast($data['tooMany']);
+        }
         // Sem contagem prévia (query() do app, grid de array): conta carregado.
         if ($count === null && MadGridExporter::pdfRowCount($data['rows'], $data['groupData'] ?? []) > $max) {
             return $this->_pdfTooManyRowsToast($max);
@@ -3952,6 +4082,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     protected function view(): string|array
     {
+        $this->_gridDrawn = true;
+
         // Volta de formulário: o mount() já carregou a página 1 — restaura o
         // estado guardado e recarrega (grid standalone; o <mad-grid self> faz
         // o mesmo no _renderInlineGrid).
@@ -3959,6 +4091,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->loadData();
             $this->_afterReturnLoad();
         }
+        $this->_loadIfDeferred();
 
         $columns = $this->_effectiveColumns();
         $this->_detectRenderFields($columns);
@@ -3998,6 +4131,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'deferred'     => $this->_isDeferred(),
             'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
+            // Relatório que não coube na memória: o texto que pede filtro.
+            'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
             'loadButton'   => $this->_showLoadButton(),
             'loadHint'     => $this->_loadHint(),
             'sticky'       => $this->sticky,
@@ -4040,6 +4175,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function _renderInlineGrid(array $config): string
     {
         $this->_inlineConfig = $config;
+        $this->_gridDrawn    = true;
 
         // Cache para renderSingleRow (manageRow) poder reconstruir colunas/ações
         session([static::class . '_dg_cfg' => $config]);
@@ -4199,6 +4335,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($returned) {
                 $this->_afterReturnLoad();
             }
+        } elseif (!$this->_rowsFromInline && $this->_rowsBatched) {
+            $this->_rebuildBatchedRows($columns);
         } elseif (!$this->_rowsFromInline && !empty($this->_rawItems)) {
             // A carga rodou antes de as colunas do Blade chegarem (mount() da
             // subclasse, ou a consulta de uma ação AJAX): monta as linhas de
@@ -4247,6 +4385,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'deferred'      => $this->_isDeferred(),
             'requireFilter' => $this->_filterGateOn(),
             'filterMissing' => $this->_filterMissing,
+            // Relatório que não coube na memória: o texto que pede filtro.
+            'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
             'loadButton'    => $this->_showLoadButton(),
             'loadHint'      => $this->_loadHint(),
             'columnChooser' => $this->_inlineConfig['columnChooser'] ?? true,
@@ -5075,7 +5215,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->_filterMissing = false;
         }
 
-        $this->_dataLoaded = true;
+        $this->_dataLoaded   = true;
+        $this->_loadDeferred = false;
+        $this->_tooManyRows  = 0;
+        $this->_rowsBatched  = false;
         // Os call sites automáticos (mount/hydrate/_renderInlineGrid) são
         // gateados por _autoLoadAllowed(); chegar aqui em estado adiado é
         // sempre ação explícita do usuário → arma o grid.
@@ -5091,14 +5234,28 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         try {
             $result = $this->query();
 
-            if (empty($result)) {
-                $result = $this->_autoQuery();
+            // Relatório (sem paginação): em lotes, com guarda de memória.
+            // No AJAX de um `<mad-grid self>` as colunas ainda não chegaram:
+            // vale a cópia do último render (chains e eager-load saem delas).
+            $columns = $this->_loadColumns ?? $this->_actionColumns();
+            $batchQ  = null;
+            if (empty($result) && $this->perPage <= 0 && $this->_canLoadInBatches($columns)) {
+                $this->_detectRenderFields($columns);
+                $batchQ = $this->_reportQuery();
             }
 
-            $this->_rawItems  = $result['items'] ?? [];
-            $this->_evaluated = [];
-            $this->_buildRows($this->_effectiveColumns());
-            $this->_total     = (int)($result['total'] ?? count($this->_rows));
+            if ($batchQ !== null) {
+                $this->_loadUnpaged($batchQ, $columns);
+            } else {
+                if (empty($result)) {
+                    $result = $this->_autoQuery();
+                }
+
+                $this->_rawItems  = $result['items'] ?? [];
+                $this->_evaluated = [];
+                $this->_buildRows($this->_effectiveColumns());
+                $this->_total     = $this->_tooManyRows > 0 ? 0 : (int)($result['total'] ?? count($this->_rows));
+            }
 
             $this->_saveToSession();
             $this->_saveReturnSnapshot();
@@ -5130,6 +5287,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _buildRows(array $columns): void
     {
+        // Linhas do relatório em lotes já saíram prontas (e sem os itens crus).
+        if ($this->_rowsBatched) {
+            return;
+        }
+
         $evaluates = [];
         foreach ($columns as $col) {
             if ($col instanceof GridColumn && $col->evaluate !== '' && !isset($this->_evaluated[$col->field])) {
@@ -5535,7 +5697,44 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $itemsQ->with($with);
         }
 
+        // Sem paginação (relatório) é a tabela inteira de uma vez: o que não
+        // cabe na memória desta requisição não carrega — a tela pede filtro.
+        if ($this->perPage <= 0 && $total > 0 && !$this->_unpagedFits($itemsQ, $total)) {
+            $this->_refuseReport($total);
+            return ['items' => [], 'total' => 0];
+        }
+
         return ['items' => $itemsQ->get()->all(), 'total' => $total];
+    }
+
+    /**
+     * A carga de uma vez (sem lotes) cabe? O custo por linha sai de uma
+     * amostra das primeiras linhas, em modelo e em linha da tela, mais o
+     * desenho da tela quando é para a tela.
+     */
+    private function _unpagedFits($itemsQ, int $total): bool
+    {
+        $forScreen = $this->_loadColumns === null;
+        if ($forScreen && $this->reportMaxRows > 0 && $total > $this->reportMaxRows) {
+            return false;
+        }
+        $cols   = max(1, count($this->_loadColumns ?? $this->_actionColumns()));
+        $render = $forScreen ? (float) $total * $cols * self::REPORT_RENDER_BYTES_PER_CELL : 0.0;
+        $budget = static::_freeMemoryBytes() * self::REPORT_MEMORY_SHARE;
+        if ($render > $budget) {
+            return false;
+        }
+        if ($total <= 500 || $budget === INF) {
+            return true;
+        }
+
+        $before = memory_get_usage();
+        $sample = (clone $itemsQ)->limit(200)->get()->all();
+        $rows   = $this->_normalizeRows($sample);
+        $perRow = (memory_get_usage() - $before) / max(1, count($sample));
+        unset($sample, $rows);
+
+        return $perRow * $total + $render <= $budget;
     }
 
     /** Query automática builder-native (Fase 4c-2/4). Conexão do model (Eloquent). */
@@ -5543,6 +5742,380 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         if (empty($this->model) && !$this->_usesSource()) return ['items' => [], 'total' => 0];
         return $this->_runQuery($this->_buildQuery());
+    }
+
+    // ── Relatório em lotes (perPage <= 0) ────────────────────────────────
+
+    /**
+     * Métodos que, sobrescritos pelo app, mudam como as linhas nascem dos
+     * itens. Com qualquer um deles o relatório carrega como sempre (tudo de
+     * uma vez, pelo código do app), só com a guarda de memória do _runQuery.
+     */
+    private const REPORT_BATCH_HOOKS = [
+        'query', '_autoQuery', '_runQuery', '_normalizeRows', '_applyEvaluates', '_buildRows',
+        '_postProcessRows', '_applyRunning', '_applyRowDetail', '_resolveGroupLabels',
+    ];
+
+    /**
+     * Memória que o desenho da TELA gasta por célula: o HTML da linha, o
+     * buffer do Blade e a cópia na resposta do AJAX. Medido com 11 colunas:
+     * 2 mil linhas = 7,3 MB de HTML e ~33 MB no pico do render + resposta.
+     */
+    private const REPORT_RENDER_BYTES_PER_CELL = 1500;
+
+    /** Fração da memória livre que a carga do relatório pode usar (o resto é a folga da requisição). */
+    private const REPORT_MEMORY_SHARE = 0.8;
+
+    /** As linhas desta carga vieram em lotes, sem itens crus para remontar (ver _buildRows). */
+    private bool $_rowsBatched = false;
+
+    /**
+     * A consulta do relatório: a da tela (filtros, `onSearch`, busca,
+     * ordenação, eager-load das chains) com a chave primária no fim — ler em
+     * lotes só é estável com ordem total. null = fonte que não é Eloquent
+     * (`sourceQuery()` com consulta crua), que carrega de uma vez.
+     */
+    protected function _reportQuery(): ?\Illuminate\Database\Eloquent\Builder
+    {
+        $q = $this->_buildQuery();
+        if (!$q instanceof \Illuminate\Database\Eloquent\Builder) {
+            return null;
+        }
+        if ($this->searchQuery) { ($this->searchQuery)($q); }
+
+        $with = $this->with;
+        foreach ($this->_autoWith as $rel) {
+            if (!in_array($rel, $with, true) && !array_key_exists($rel, $with)) {
+                $with[] = $rel;
+            }
+        }
+        if (!empty($with)) {
+            $q->with($with);
+        }
+
+        return $q->orderBy($q->getModel()->getQualifiedKeyName());
+    }
+
+    /**
+     * As linhas da consulta em lotes de `$size`, cada lote já na forma da
+     * tela: colunas calculadas, campos de relação, linha descritiva, rótulos
+     * da quebra (somados em $_groupLabelCache) e o delta do saldo acumulado
+     * (`__run_src_*`; o acumulado sai depois, sobre todas as linhas, no
+     * _applyRunning). Com `$lean`, a linha sai sem o registro (`__record`) e
+     * os modelos do lote deixam a memória antes do próximo; com `$keep`, só
+     * as chaves listadas ficam na linha. É isso que derruba o custo: em
+     * modelo, a linha de 36 colunas custa ~4 KB; enxuta com 11, ~1 KB.
+     *
+     * Serve à tela e a quem precisar do mesmo resultado por partes.
+     *
+     * @param GridColumn[]             $columns
+     * @param array<string, true>|null $keep    chaves que a linha leva (null = todas)
+     * @return \Generator<int, list<array>>
+     */
+    protected function _reportBatches(\Illuminate\Database\Eloquent\Builder $q, array $columns, bool $lean, ?int $size = null, ?array $keep = null): \Generator
+    {
+        $size      = max(100, $size ?? $this->reportChunkSize);
+        $evaluates = [];
+        $running   = [];
+        foreach ($columns as $col) {
+            if (!$col instanceof GridColumn) continue;
+            if ($col->evaluate !== '') $evaluates[$col->field] = $col->evaluate;
+            if ($col->isRunning()) $running[] = $col;
+        }
+
+        for ($page = 1; ; $page++) {
+            $items = (clone $q)->forPage($page, $size)->get()->all();
+            $count = count($items);
+            if ($count === 0) {
+                return;
+            }
+            if (!empty($evaluates)) {
+                $this->_applyEvaluates($items, $evaluates);
+            }
+
+            // Os passos por linha leem $_rows: o lote passa por ali.
+            $kept        = $this->_rows;
+            $this->_rows = $this->_normalizeRows($items);
+            $this->_groupLabelCache += $this->_resolveGroupLabels();
+            $this->_applyRowDetail();
+            $batch       = $this->_rows;
+            $this->_rows = $kept;
+            unset($items, $kept);
+
+            foreach ($batch as $i => $row) {
+                foreach ($running as $col) {
+                    $batch[$i]['__run_src_' . $col->fieldKey] = static::_runningDelta($col, $row);
+                }
+                if ($lean) {
+                    unset($batch[$i]['__record']);
+                }
+                if ($keep !== null) {
+                    $batch[$i] = array_intersect_key($batch[$i], $keep);
+                }
+            }
+
+            yield $batch;
+            unset($batch);
+
+            if ($count < $size) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * O relatório pode carregar em lotes? Precisa das colunas (no AJAX de um
+     * `<mad-grid self>` elas só chegam no render — aí vale a cópia do estado),
+     * da consulta Eloquent e de nenhum gancho de carga sobrescrito pelo app.
+     *
+     * @param GridColumn[] $columns
+     */
+    private function _canLoadInBatches(array $columns): bool
+    {
+        if ($columns === [] || empty($this->model)) {
+            return false;
+        }
+        foreach (self::REPORT_BATCH_HOOKS as $method) {
+            if ((new \ReflectionMethod($this, $method))->getDeclaringClass()->getName() !== self::class) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Alguma coisa da tela lê o REGISTRO da linha (não só os campos)? Então
+     * a linha precisa levar o modelo (`__record`). Na exportação só as
+     * colunas contam; na tela, também as condições das ações e do destaque.
+     * Na dúvida, leva.
+     *
+     * @param GridColumn[] $columns
+     */
+    private function _reportNeedsRecord(array $columns, bool $forScreen): bool
+    {
+        foreach ($columns as $col) {
+            if (!$col instanceof GridColumn) continue;
+            if ($col->hasTransform || $col->transform !== null || $col->mediaCaption !== '') {
+                return true;
+            }
+            $start = trim($col->runningStart);
+            if ($col->isRunning() && $start !== '' && !is_numeric($start)) {
+                return true;
+            }
+        }
+        if (!$forScreen) {
+            return false;
+        }
+        // AJAX de um `<mad-grid self>` antes do render: as ações e o destaque
+        // do Blade ainda não chegaram — sem saber, leva o registro.
+        if ($this->_inlineConfig === null && !empty($this->exportColConfigs)) {
+            return true;
+        }
+
+        $actions = $this->_effectiveActions();
+        foreach ($this->_effectiveActionGroups() as $group) {
+            $actions = array_merge($actions, $group instanceof GridActionGroup ? $group->actions : []);
+        }
+        if (($expand = $this->_effectiveRowExpand()) !== null) {
+            $actions[] = $expand;
+        }
+        foreach ($actions as $act) {
+            if ($act instanceof GridAction && ($act->hasRowConditions() || $act->transformFn !== null)) {
+                return true;
+            }
+        }
+        foreach ($this->_effectiveRowHighlights() as $rule) {
+            if (!is_array($rule['when'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * As chaves que a linha enxuta leva, ou null = todas.
+     *
+     * Na tela só o relatório "puro" corta: sem ações, destaque, linha
+     * expansível, seleção nem edição na célula. Esses leem qualquer `{campo}`
+     * da linha (parâmetros, navegação, condições), e cortar ali apagaria um
+     * valor em silêncio. O que sobra — e tudo o que a exportação lê — são os
+     * campos das colunas, a quebra (com a máscara), os totais, o saldo
+     * acumulado e a linha descritiva.
+     *
+     * @param GridColumn[] $columns
+     * @return array<string, true>|null
+     */
+    private function _reportKeepKeys(array $columns, bool $forScreen): ?array
+    {
+        if ($forScreen) {
+            if ($this->selectable || $this->_effectiveActions() !== [] || $this->_effectiveActionGroups() !== []
+                || $this->_effectiveRowExpand() !== null || $this->_effectiveRowHighlights() !== []) {
+                return null;
+            }
+            foreach ($columns as $col) {
+                if ($col instanceof GridColumn && $col->editable) {
+                    return null;
+                }
+            }
+        }
+
+        $groupFields = $this->_groupFields();
+        $fields = array_map('strval', array_keys($this->_renderFields));
+        $texts  = [$this->rowDetail, $this->groupTotalLabel];
+        $keep   = ['id' => true, $this->rowIdField() => true, '__detail' => true];
+        foreach ($columns as $col) {
+            if (!$col instanceof GridColumn) continue;
+            $fields[] = $col->field;
+            if ($col->isRunning()) {
+                $keep['__run_src_' . $col->fieldKey] = true;
+            }
+        }
+        foreach ($groupFields as $g) {
+            $fields[] = (string) $g;
+            $fields[] = GridRenderHelpers::splitGroupGrain((string) $g)[0];
+        }
+        foreach ($this->_groupMasks($groupFields) as $mask) {
+            $texts[] = is_string($mask) ? $mask : '';
+        }
+        foreach ($fields as $f) {
+            $bare = GridRenderHelpers::unbraceChain($f);
+            $keep[$f] = $keep[$bare] = $keep['{' . $bare . '}'] = $keep[GridRenderHelpers::rowDataKey($f)] = true;
+            $texts[] = $f;
+        }
+        foreach ($texts as $text) {
+            if (preg_match_all('/\{([^}|]+)/', (string) $text, $m)) {
+                foreach ($m[1] as $tok) {
+                    $tok = trim($tok);
+                    $keep[$tok] = $keep['{' . $tok . '}'] = true;
+                }
+            }
+        }
+
+        return $keep;
+    }
+
+    /**
+     * Carga do relatório (perPage <= 0) em lotes, com guarda de memória.
+     *
+     * Antes de ler, conta: o que nem o desenho da tela comporta é recusado
+     * sem tocar nas linhas. Depois, a cada lote, projeta o custo do total
+     * pelo que já leu; passou do que sobra nesta requisição, para e recusa.
+     * Recusa = a tela pede filtro ($_tooManyRows), nunca o erro fatal de
+     * memória que derrubava a requisição com 500.
+     *
+     * @param GridColumn[] $columns
+     */
+    private function _loadUnpaged(\Illuminate\Database\Eloquent\Builder $q, array $columns): void
+    {
+        $forScreen = $this->_loadColumns === null;
+
+        $countQ = clone $q;
+        $countQ->getQuery()->orders = null;
+        $countQ->getQuery()->bindings['order'] = [];
+        $total = (int) $countQ->count();
+
+        $this->_rawItems        = [];
+        $this->_rows            = [];
+        $this->_evaluated       = [];
+        $this->_groupLabelCache = [];
+        $this->_total           = $total;
+
+        $render = $forScreen ? (float) $total * max(1, count($columns)) * self::REPORT_RENDER_BYTES_PER_CELL : 0.0;
+        $budget = static::_freeMemoryBytes() * self::REPORT_MEMORY_SHARE;
+        if (($forScreen && $this->reportMaxRows > 0 && $total > $this->reportMaxRows) || $render > $budget) {
+            $this->_refuseReport($total);
+            return;
+        }
+
+        $lean    = !$this->_reportNeedsRecord($columns, $forScreen);
+        $keep    = $lean ? $this->_reportKeepKeys($columns, $forScreen) : null;
+        $start   = memory_get_usage();
+        $rows    = [];
+        $refused = false;
+        $this->_withExportSnapshot($q, function () use ($q, $columns, $lean, $keep, $total, $render, $budget, $start, &$rows, &$refused): void {
+            foreach ($this->_reportBatches($q, $columns, $lean, null, $keep) as $batch) {
+                foreach ($batch as $row) {
+                    $rows[] = $row;
+                }
+                unset($batch);
+                $loaded = count($rows);
+                if ($loaded < $total && (memory_get_usage() - $start) / $loaded * $total + $render > $budget) {
+                    $refused = true;
+                    return;
+                }
+            }
+        });
+        if ($refused) {
+            $rows = [];
+            $this->_refuseReport($total);
+            return;
+        }
+
+        $this->_rows = $rows;
+        unset($rows);
+        $this->_applyRunning($columns);
+        foreach ($columns as $col) {
+            if ($col instanceof GridColumn && $col->evaluate !== '') {
+                $this->_evaluated[$col->field] = true;
+            }
+        }
+        $this->_rowsBatched    = true;
+        $this->_rowsFromInline = $this->_inlineConfig !== null;
+    }
+
+    /**
+     * O relatório foi lido em lotes ANTES de as colunas e a quebra do Blade
+     * chegarem (mount() da subclasse, ou a carga que antecede uma ação AJAX).
+     * Linha com o registro remonta dele, como a carga de uma vez sempre fez;
+     * linha enxuta não tem de onde remontar e lê de novo, já com o Blade.
+     *
+     * @param GridColumn[] $columns
+     */
+    private function _rebuildBatchedRows(array $columns): void
+    {
+        $records = [];
+        foreach ($this->_rows as $row) {
+            if (!isset($row['__record'])) {
+                $this->loadData();
+                return;
+            }
+            $records[] = $row['__record'];
+        }
+
+        $this->_rows        = [];
+        $this->_rawItems    = $records;
+        $this->_rowsBatched = false;
+        unset($records);
+        $this->_buildRows($columns);
+    }
+
+    /** Relatório grande demais: nenhuma linha, e a tela pede filtro. */
+    private function _refuseReport(int $total): void
+    {
+        $this->_rows            = [];
+        $this->_rawItems        = [];
+        $this->_groupLabelCache = [];
+        $this->_total           = 0;
+        $this->_tooManyRows     = max(1, $total);
+        static::_warnOnce(
+            'report-too-many',
+            "relatório sem paginação com {$total} linhas não coube na memória desta requisição — "
+            . 'a tela pediu filtro em vez de carregar.'
+        );
+    }
+
+    /** Texto da tela/aviso quando o relatório não coube ($_tooManyRows). */
+    public function reportTooManyMessage(): string
+    {
+        $locale = function_exists('app') ? (string) app()->getLocale() : '';
+        $n   = number_format($this->_tooManyRows, 0, '', str_starts_with($locale, 'en') ? ',' : '.');
+        $msg = __('grid.report_too_many', ['total' => $n]);
+
+        return $msg === 'grid.report_too_many'
+            ? "Este relatório tem {$n} registros, mais do que dá para mostrar de uma vez. Use os filtros para reduzir e gere de novo."
+            : $msg;
     }
 
     /** A consulta na tabela do `$model` — o ponto de partida de toda listagem sem fonte própria. */
@@ -5636,6 +6209,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected function _footerTotals(array $columns): array
     {
         $this->_totalsPageOnly = [];
+
+        // Relatório que pediu filtro (grande demais): sem linhas na tela, um
+        // "0,00" no rodapé pareceria o total de verdade.
+        if ($this->_tooManyRows > 0) {
+            return [];
+        }
 
         $totals = $this->_computeTotals($columns);
         if ($totals === [] || !$this->_dataLoaded || $this->perPage <= 0) {

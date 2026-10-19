@@ -69,6 +69,9 @@
     // usuário tentou carregar sem preencher. load-hint troca o texto padrão.
     $requireFilter = $requireFilter ?? false;
     $filterMissing = $filterMissing ?? false;
+    // Relatório (sem paginação) que não coube na memória: o texto que pede
+    // filtro, no lugar de "Nenhum registro". Vazio = carregou normalmente.
+    $tooManyRows   = (string) ($tooManyRows ?? '');
     // "Exportar" é uma das caixinhas do perfil. A decisão vem pronta do
     // MadDataGrid: allow (nada muda) | hide (o menu sai) | disable (os formatos
     // ficam cinza, com a dica do porquê). Render solto/preview: allow.
@@ -1028,6 +1031,9 @@
                                 {{ __('grid.load_records') }}
                             </button>
                             @endif
+                            @elseif($tooManyRows !== '')
+                            <i data-lucide="filter" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
+                            <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>
                             @else
                             <i data-lucide="inbox" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
                             <span>{{ __('grid.no_records') }}</span>
@@ -1659,6 +1665,9 @@
                     {{ __('grid.load_records') }}
                 </button>
                 @endif
+                @elseif($tooManyRows !== '')
+                <i data-lucide="filter" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
+                <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>
                 @else
                 <i data-lucide="inbox" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
                 <span>{{ __('grid.no_records') }}</span>
@@ -1829,7 +1838,7 @@
         {{-- data-range-tpl: o mad.js monta "1–1 de 1" quando o manage_row põe a
              1ª linha numa lista que estava vazia (#75) — no idioma do app. --}}
         <span class="mad-dg-info" data-range-tpl="{{ __('grid.range', ['from' => '__F__', 'to' => '__T__', 'total' => '__N__']) }}">
-            @if($total > 0){{ __('grid.range', ['from' => $pgStart, 'to' => $pgEnd, 'total' => $total]) }}@elseif($deferred)@else {{ __('grid.no_records') }} @endif
+            @if($total > 0){{ __('grid.range', ['from' => $pgStart, 'to' => $pgEnd, 'total' => $total]) }}@elseif($deferred || $tooManyRows !== '')@else {{ __('grid.no_records') }} @endif
         </span>
         {{-- Sem paginação (per-page 0) não há "Por página": escolher 10 ali
              paginaria uma grade declarada sem paginação (fw#311). --}}
