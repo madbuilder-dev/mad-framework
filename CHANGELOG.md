@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.183.1] — 2026-10-19
+
+### Correções
+
+- **Chat IA:** com o MCP Server publicado, o botão do assistente (e o de Meus Dashboards) sumia para todos os usuários, inclusive o administrador com as consultas liberadas nas permissões do MCP. Agora aparece para quem tem alguma consulta liberada e continua oculto para quem não tem nenhuma. Republique o projeto para aplicar.
+
 ## [5.183.0] — 2026-10-18
 
 ### Correções
