@@ -7149,6 +7149,21 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * @param int|string $id         ID do registro
      * @return string                HTML da <tr>
      */
+    /**
+     * Nome real da classe da listagem, mesmo quando ela chega pelo apelido que
+     * o autoload por nome curto cria (`ClienteList` → `App\Control\Cad\ClienteList`).
+     * É por este nome que a listagem se identifica: sessão (`_dg_cfg`), id das
+     * linhas e chave da grade. Nome que não é classe volta como veio.
+     */
+    public static function realGridClass(string $gridClass): string
+    {
+        if ($gridClass === '' || ! class_exists($gridClass)) {
+            return $gridClass;
+        }
+
+        return (new \ReflectionClass($gridClass))->getName();
+    }
+
     public static function renderSingleRow(string $gridClass, int|string $id): string
     {
         // Classe inexistente aqui = fatal seco no meio de um save que JÁ gravou
@@ -7167,6 +7182,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         /** @var MadDataGrid $grid */
         $grid = new $gridClass();
+        // Nome curto (`use ClienteList;` numa tela da pasta do módulo) ou módulo
+        // errado no `use` chegam como APELIDO da classe real. A listagem guarda
+        // colunas/ações e desenha o id das linhas pelo nome real (static::class):
+        // pelo apelido a linha saía sem nenhuma célula, invisível (fórum #141).
+        $gridClass = static::realGridClass($gridClass);
 
         // Restaura config inline da sessão (grids com <mad-grid self>)
         $cfg = session($gridClass . '_dg_cfg');

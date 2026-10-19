@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.184.1] — 2026-10-19
+
+### Correções
+
+- **Listagens:** em telas de módulo com **Criar pasta** ligado, "Após salvar → Atualizar a linha na listagem" não mostrava a linha nova nem a alteração (o contador do rodapé subia, a linha só aparecia ao recarregar). Republique o projeto para aplicar.
+- **Kanban:** em módulo com **Criar pasta** ligado, o cartão salvo por um formulário podia voltar ao quadro sem o título e as ações configurados. Republique o projeto para aplicar.
+
 ## [5.184.0] — 2026-10-19
 
 ### Novidades

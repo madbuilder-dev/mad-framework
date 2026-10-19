@@ -2471,7 +2471,9 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         $kanban = $instance ?? new $kanbanClass();
 
         if ($instance === null) {
-            $latest = session('mad_kb_cfg_latest.' . $kanbanClass);
+            // Pelo nome real (o quadro grava assim): `MeuKanban::class` pelo nome
+            // curto vale o apelido e o cartão perdia a config do quadro.
+            $latest = session('mad_kb_cfg_latest.' . $kanban::class);
             $cfg    = is_string($latest) && $latest !== '' ? session('mad_kb_cfg.' . $latest) : null;
             if (is_array($cfg)) {
                 // Aplica overrides de board (model/stageField/etc) e config de card.

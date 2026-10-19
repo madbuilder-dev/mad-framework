@@ -67,6 +67,7 @@ class MadResponse
      */
     public function removeRow(int|string $id, string $gridClass = ''): static
     {
+        $gridClass = MadDataGrid::realGridClass($gridClass); // ver manageRow()
         $prefix = $gridClass ? $gridClass . '_' : '';
         $op = ['op' => 'remove_row', 'rowId' => $prefix . $id];
         if ($gridClass !== '') {
@@ -983,6 +984,9 @@ class MadResponse
     public function manageRow(int|string $id, string $gridClass): static
     {
         $rawHtml = MadDataGrid::renderSingleRow($gridClass, $id);
+        // Pelo nome real, igual ao id que a listagem deu às linhas: pelo apelido
+        // do nome curto a linha editada não era achada e entrava outra no topo.
+        $gridClass = MadDataGrid::realGridClass($gridClass);
         $prefix  = $gridClass ? $gridClass . '_' : '';
 
         // renderSingleRow pode retornar rowHtml<!-- CARD_HTML -->cardHtml
