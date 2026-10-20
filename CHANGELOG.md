@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.189.2] — 2026-10-20
+
+### Correções
+
+- **Listagem:** com o menu Vidro ou Flyout, o destaque da linha (`<mad-row-highlights>`) não pintava: só aparecia a barrinha à esquerda. Agora a linha, a célula e o cartão destacados ganham a cor também nesses menus, e a linha marcada na caixa de seleção volta a ficar marcada.
+
 ## [5.189.1] — 2026-10-20
 
 ### Correções
