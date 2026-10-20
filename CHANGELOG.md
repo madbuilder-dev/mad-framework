@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.189.0] — 2026-10-20
+
+### Melhorias
+
+- **Listagem com quebra:** a tela, o PDF e o Excel/CSV saem na mesma ordem. Com `group-by`, os grupos seguem a ordem da chave da quebra e o `order-by` (ou o clique no cabeçalho de outra coluna) ordena as linhas dentro de cada grupo; o mesmo grupo não aparece mais espalhado em vários pedaços pelas páginas. Ordenar pela própria coluna da quebra inverte a ordem dos grupos.
+- **Listagem com quebra:** na listagem paginada, o grupo que continua de uma página para a outra mostra no cabeçalho a quantidade de registros e, no `group-total`, o subtotal do grupo inteiro — os mesmos números do Excel —, e não mais só os das linhas daquela página.
+
 ## [5.188.0] — 2026-10-20
 
 ### Correções

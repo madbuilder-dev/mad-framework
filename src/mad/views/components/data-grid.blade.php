@@ -565,7 +565,7 @@
                             <button class="mad-dg-sort-btn{{ $isSorted ? ' mad-dg-sort-'.$sortDir : '' }}"
                                     mad:click="onSort('{{ $col->field }}')"
                                     data-sort-field="{{ $col->field }}"
-                                    title="{{ $isSorted && !empty($gridWindow['sortWithinGroup']) ? __('grid.sort_within_group', ['name' => $col->label]) : __('grid.sort_by', ['name' => $col->label]) }}">
+                                    title="{{ $isSorted && (!empty($gridWindow['sortWithinGroup']) || !empty($sortWithinGroup)) ? __('grid.sort_within_group', ['name' => $col->label]) : __('grid.sort_by', ['name' => $col->label]) }}">
                                 <i data-lucide="{{ $isSorted ? ($sortDir==='asc' ? 'arrow-up' : 'arrow-down') : 'arrow-up-down' }}"
                                    style="width:12px;height:12px;"></i>
                             </button>

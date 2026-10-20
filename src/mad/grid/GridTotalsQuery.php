@@ -37,12 +37,37 @@ final class GridTotalsQuery
      */
     public static function totals(EloquentBuilder $q, array $columns): array
     {
+        return self::aggregate($q, $columns, false)['totals'] ?? [];
+    }
+
+    /**
+     * Os números de UM grupo da quebra (`group-by`): a contagem de linhas e o
+     * total de cada coluna que o banco calcula, numa consulta só. `$q` já
+     * chega filtrada pela chave do grupo. Mesma conta do totals() — o grupo
+     * partido entre páginas mostra o mesmo número que o arquivo exportado.
+     *
+     * @param GridColumn[] $columns
+     * @return array{n:int, totals:array<int, int|float>}|null null = consulta
+     *         que não se agrega (join, agrupamento, SELECT próprio)
+     */
+    public static function groupTotals(EloquentBuilder $q, array $columns): ?array
+    {
+        return self::aggregate($q, $columns, true);
+    }
+
+    /**
+     * @param GridColumn[] $columns
+     * @param bool $withCount consulta mesmo sem coluna a somar (só a contagem)
+     * @return array{n:int, totals:array<int, int|float>}|null
+     */
+    private static function aggregate(EloquentBuilder $q, array $columns, bool $withCount): ?array
+    {
         $model = $q->getModel();
         // toBase(): aplica os escopos globais do Model (lixeira, unidade,
         // empresa) e devolve uma cópia — a consulta da tela não é tocada.
         $base  = $q->toBase();
         if (!self::plainShape($base, $model)) {
-            return [];
+            return null;
         }
 
         $plan    = [];
@@ -73,8 +98,8 @@ final class GridTotalsQuery
             }
             $plan[$i] = [$func, $alias];
         }
-        if ($plan === []) {
-            return [];
+        if ($plan === [] && !$withCount) {
+            return null;
         }
 
         $base->reorder();
@@ -82,7 +107,7 @@ final class GridTotalsQuery
         $base->offset = null;
         $row = $base->selectRaw(implode(', ', $selects))->get()->first();
         if ($row === null) {
-            return [];
+            return null;
         }
         $row = (array) $row;
         $n   = (int) ($row['mad_n'] ?? 0);
@@ -98,7 +123,7 @@ final class GridTotalsQuery
             };
         }
 
-        return $out;
+        return ['n' => $n, 'totals' => $out];
     }
 
     /**

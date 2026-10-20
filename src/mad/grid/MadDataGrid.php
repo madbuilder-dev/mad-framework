@@ -3550,9 +3550,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * ~4,3 MB por mil linhas antes de escrever o primeiro byte — 100 mil
      * linhas não cabiam no limite de memória de nenhum ambiente.
      *
-     * Mesmo resultado do caminho carregado, com uma diferença pedida: com
-     * quebra, os grupos saem ordenados pela chave (o banco precisa entregar
-     * cada grupo inteiro de uma vez), não pela ordem em que apareceriam.
+     * Mesmo resultado do caminho carregado e da tela: com quebra, os grupos
+     * saem ordenados pela chave (o banco precisa entregar cada grupo inteiro
+     * de uma vez) — desde a #445 a tela e o PDF seguem a mesma ordem.
      *
      * @return array{file:string, filename:string}|null null = esta grid não
      *         pode ir em fluxo (model ausente, `query()`/totais do app, saldo
@@ -3631,14 +3631,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     /**
      * A mesma consulta da tela (filtros, busca, ordenação, eager-load das
-     * chains) com a chave da quebra na FRENTE da ordenação — cada grupo chega
-     * inteiro e contíguo — e a chave primária no fim: ler em lotes só é
-     * estável com ordem total. null = não dá para ordenar pela quebra.
+     * chains) — que já traz a chave da quebra na FRENTE da ordenação
+     * (_applyGroupOrder), então cada grupo chega inteiro e contíguo — com a
+     * chave primária no fim: ler em lotes só é estável com ordem total.
+     * null = não dá para ordenar pela quebra.
      */
     private function _exportStreamQuery(): ?\Illuminate\Database\Eloquent\Builder
     {
         $q = $this->_buildQuery();
         if (!$q instanceof \Illuminate\Database\Eloquent\Builder) {
+            return null;
+        }
+        if (!$this->_groupOrdered && $this->_queryGroupFields() !== []) {
             return null;
         }
         if ($this->searchQuery) { ($this->searchQuery)($q); }
@@ -3653,36 +3657,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $q->with($with);
         }
 
-        $groupFields = $this->_groupFields();
-        if (!empty($groupFields)) {
-            $base   = $this->_queryBuilder($q);
-            $orders = $base->orders ?? [];
-            $binds  = $base->bindings['order'] ?? [];
-            $base->orders = null;
-            $base->bindings['order'] = [];
-
-            foreach ($groupFields as $field) {
-                [$gBase] = GridRenderHelpers::splitGroupGrain((string) $field);
-                if (($chain = static::_chainParts($gBase)) !== null) {
-                    if (!$this->_applyChainOrder($q, $chain, 'asc')) {
-                        return null;
-                    }
-                    continue;
-                }
-                $col = static::_unbrace(trim($gBase));
-                if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)) {
-                    return null;
-                }
-                // Ordenado pela própria chave da quebra (o usuário clicou nela):
-                // a quebra segue a direção dele.
-                $q->orderBy($q->getModel()->qualifyColumn($col), static::_orderDirectionFor($orders, $col, $q->getModel()->getTable()));
-            }
-
-            $base->orders = array_merge($base->orders ?? [], $orders);
-            $base->bindings['order'] = array_merge($base->bindings['order'] ?? [], $binds);
-        }
-
-        return $q->orderBy($q->getModel()->getQualifiedKeyName());
+        return static::_orderByKeyLast($q);
     }
 
     /**
@@ -4157,6 +4132,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'totalsPageOnly' => $window !== null ? [] : $this->_totalsPageOnly,
             'groupData'    => $window !== null ? [] : $this->_computeGroupData($columns),
             'gridWindow'   => $window,
+            // Quebra na frente da ordenação: o clique em outra coluna ordena
+            // dentro de cada grupo — o cabeçalho diz isso, como no relatório por janelas.
+            'sortWithinGroup' => $window === null && $this->_groupOrdered && $this->_windowSortsWithinGroup(),
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
             'groupBand'    => $this->groupBand,
@@ -4414,6 +4392,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'totalsPageOnly' => $window !== null ? [] : $this->_totalsPageOnly,
             'groupData'    => $window !== null ? [] : $this->_computeGroupData($columns),
             'gridWindow'   => $window,
+            // Quebra na frente da ordenação: o clique em outra coluna ordena
+            // dentro de cada grupo — o cabeçalho diz isso, como no relatório por janelas.
+            'sortWithinGroup' => $window === null && $this->_groupOrdered && $this->_windowSortsWithinGroup(),
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
             'groupBand'    => $this->groupBand,
@@ -5334,6 +5315,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _buildRows(array $columns): void
     {
+        $this->_wholeGroupMemo = [];
+
         // Linhas do relatório em lotes já saíram prontas (e sem os itens crus).
         if ($this->_rowsBatched) {
             return;
@@ -5619,7 +5602,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $q->orderByRaw($orderExpr);
         }
 
-        if (! $ordered && $orderExpr === '' && $this->_hasDerivedGroup()) {
+        // (G) quebra: a chave na FRENTE da ordenação (#445) — a mesma regra na
+        // tela, no relatório, no PDF e no CSV/XLSX.
+        $this->_groupOrdered = $this->_applyGroupOrder($q);
+
+        if (! $this->_groupOrdered && ! $ordered && $orderExpr === '' && $this->_hasDerivedGroup()) {
             static::_warnOnce(
                 'group-chain-unordered',
                 'quebra por caminho de relação ou por dia/mês/ano sem ordenação declarada '
@@ -5629,6 +5616,139 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return $q;
+    }
+
+    /** A última consulta montada pelo _buildQuery() saiu ordenada pela quebra (ou não tem quebra). */
+    private bool $_groupOrdered = false;
+
+    /**
+     * Põe as chaves da quebra na FRENTE da ordenação: cada grupo chega inteiro
+     * e contíguo, e a ordenação da tela (clique, `order-by`, `defaultSort`)
+     * passa a valer DENTRO de cada grupo. Sem isto a tela (paginada) e o PDF
+     * agrupavam na ordem da data enquanto o CSV/XLSX já saía pela chave: três
+     * ordens diferentes, e o grupo de uma pessoa partido entre as páginas.
+     *
+     * Ordenado pela própria chave (clique ou `order-by`): a quebra segue a
+     * direção dele. Quebra granular (`data|month`) ordena pela coluna base —
+     * o balde acompanha a coluna.
+     *
+     * false = a quebra não tem ORDER BY possível (fonte que não é Eloquent,
+     * caminho de relação noutra conexão ou que não é belongsTo, campo que não
+     * é coluna da tabela): a ordenação fica como estava e os grupos saem na
+     * ordem de aparição, como antes.
+     */
+    protected function _applyGroupOrder($q): bool
+    {
+        $groupFields = $this->_queryGroupFields();
+        if ($groupFields === []) {
+            return true;
+        }
+        if (!$q instanceof \Illuminate\Database\Eloquent\Builder) {
+            return false;
+        }
+
+        $base   = $this->_queryBuilder($q);
+        $orders = $base->orders ?? [];
+        $binds  = $base->bindings['order'] ?? [];
+        $base->orders = null;
+        $base->bindings['order'] = [];
+
+        $model = $q->getModel();
+        foreach ($groupFields as $field) {
+            [$gBase] = GridRenderHelpers::splitGroupGrain((string) $field);
+            $dir     = $this->_groupOrderDirection($gBase, $orders, $model->getTable());
+            if (($chain = static::_chainParts($gBase)) !== null) {
+                if ($this->_applyChainOrder($q, $chain, $dir)) {
+                    continue;
+                }
+            } else {
+                $col = static::_unbrace(trim($gBase));
+                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col) && !$this->_isVirtualField($col, $q)) {
+                    $q->orderBy($model->qualifyColumn($col), $dir);
+                    continue;
+                }
+            }
+
+            // Não deu: a ordenação de antes, intacta.
+            $base->orders = $orders === [] ? null : $orders;
+            $base->bindings['order'] = $binds;
+
+            return false;
+        }
+
+        $base->orders = array_merge($base->orders ?? [], $orders);
+        $base->bindings['order'] = array_merge($base->bindings['order'] ?? [], $binds);
+        // Ordem total: sem a chave primária no fim, as linhas empatadas dentro
+        // do grupo saíam numa ordem na tela e noutra no arquivo — e a paginação
+        // podia repetir ou pular linha entre uma página e a seguinte.
+        static::_orderByKeyLast($q);
+
+        return true;
+    }
+
+    /** Chave primária no fim da ordenação (ordem total), sem repetir a que já está lá. */
+    private static function _orderByKeyLast(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
+    {
+        $key    = $q->getModel()->getQualifiedKeyName();
+        $orders = $q->getQuery()->orders ?? [];
+        $last   = end($orders);
+        if (is_array($last) && ($last['column'] ?? null) === $key) {
+            return $q;
+        }
+
+        return $q->orderBy($key);
+    }
+
+    /**
+     * Campos da quebra para a CONSULTA. No AJAX de um `<mad-grid self>`
+     * (página, busca, ordenação, filtro) a quebra do Blade só chega no
+     * render, depois da carga: vale a cópia do último render, como as colunas.
+     *
+     * @return string[]
+     */
+    private function _queryGroupFields(): array
+    {
+        if (!empty($this->groupBy) || empty($this->exportGroupConfig['by'])) {
+            return $this->_groupFields();
+        }
+        $declared      = $this->groupBy;
+        $this->groupBy = $this->exportGroupConfig['by'];
+        try {
+            return $this->_groupFields();
+        } finally {
+            $this->groupBy = $declared;
+        }
+    }
+
+    /**
+     * Direção da chave da quebra: a do usuário quando ele ordena pela própria
+     * chave — clique no cabeçalho ou, sem clique, um termo do `order-by` /
+     * `defaultSort` —; senão `asc`.
+     *
+     * @param array<int, array> $orders os `orders` do query builder antes da quebra
+     */
+    private function _groupOrderDirection(string $gBase, array $orders, string $table): string
+    {
+        $norm = static fn (string $f): string => str_replace(' ', '', GridRenderHelpers::stripBraces(GridRenderHelpers::groupGrainBase(trim($f))));
+        $key  = $norm($gBase);
+
+        $clicked = $this->sortBy !== '' && $this->_sortableColumn($this->sortBy) !== null;
+        if ($clicked) {
+            if ($norm($this->sortBy) === $key) {
+                return $this->sortDir === 'desc' ? 'desc' : 'asc';
+            }
+        } else {
+            $declared = $this->baseOrder !== '' ? $this->baseOrder : $this->defaultSort;
+            foreach (explode(',', $declared) as $term) {
+                $bits = preg_split('/\s+/', trim($term)) ?: [];
+                if (($bits[0] ?? '') !== '' && $norm($bits[0]) === $key) {
+                    return strtolower($bits[1] ?? '') === 'desc' ? 'desc' : 'asc';
+                }
+            }
+        }
+
+        // `orderBy()` do `onSearch()` da tela pela própria coluna.
+        return static::_orderDirectionFor($orders, $key, $table);
     }
 
     /**
@@ -5818,8 +5938,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     /**
      * A consulta do relatório: a da tela (filtros, `onSearch`, busca,
-     * ordenação, eager-load das chains) com a chave primária no fim — ler em
-     * lotes só é estável com ordem total. null = fonte que não é Eloquent
+     * ordenação com a quebra na frente, eager-load das chains) com a chave
+     * primária no fim — ler em lotes só é estável com ordem total. null =
+     * fonte que não é Eloquent
      * (`sourceQuery()` com consulta crua), que carrega de uma vez.
      */
     protected function _reportQuery(): ?\Illuminate\Database\Eloquent\Builder
@@ -5840,7 +5961,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $q->with($with);
         }
 
-        return $q->orderBy($q->getModel()->getQualifiedKeyName());
+        return static::_orderByKeyLast($q);
     }
 
     /**
@@ -6527,7 +6648,300 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $fields = $this->_groupFields();
         if (empty($fields)) return [];
 
-        return $this->_flattenGroups($this->_rows, $fields, $this->_groupMasks($fields), 0, $columns);
+        $items = $this->_flattenGroups($this->_rows, $fields, $this->_groupMasks($fields), 0, $columns);
+
+        return $this->_wholeGroupNumbers($items, $fields, $columns);
+    }
+
+    /**
+     * Métodos que, sobrescritos pelo app, mudam a conta do grupo: com qualquer
+     * um deles o grupo fica com o que o código do app calcula (a página).
+     */
+    private const GROUP_TOTALS_HOOKS = ['_flattenGroups', '_computeTotalsForRows'];
+
+    /** Números do grupo inteiro já consultados nesta carga: caminho => [n, totais]. */
+    private array $_wholeGroupMemo = [];
+
+    /**
+     * Na tela paginada, o grupo que atravessa a página conta e soma o GRUPO
+     * INTEIRO (#445): o cabeçalho dizia "2 registros" e o subtotal somava só
+     * as linhas desta página, enquanto o Excel trazia as 10 linhas da pessoa.
+     *
+     * Com a quebra na frente da ordenação os grupos são contíguos: só o grupo
+     * (de cada nível) que contém a PRIMEIRA linha da página — se há página
+     * antes — e o que contém a ÚLTIMA — se há linhas depois — podem estar
+     * partidos; os do meio já vieram inteiros. Para esses, UMA consulta
+     * agregada cada (GridTotalsQuery), com os mesmos filtros, busca e
+     * `onSearch` do rodapé, filtrada pela chave do grupo.
+     *
+     * O que o banco não calcula igual ao PHP (coluna calculada sem tradução,
+     * `total="last"`, saldo acumulado, campo de relação, accessor) fica com a
+     * conta da página, como no rodapé; chave que não vira filtro no banco
+     * idem para o grupo todo.
+     *
+     * @param array<int, array> $items  o achatamento da página
+     * @param string[]          $fields campos de quebra
+     * @param GridColumn[]      $columns
+     */
+    private function _wholeGroupNumbers(array $items, array $fields, array $columns): array
+    {
+        if ($this->perPage <= 0 || !$this->_dataLoaded || $this->_tooManyRows > 0 || !$this->_groupOrdered
+            || $this->_rows === [] || $this->_total <= count($this->_rows) || !$this->_canAggregateGroups()) {
+            return $items;
+        }
+
+        $before = $this->page > 1;
+        $after  = ($this->page - 1) * $this->perPage + count($this->_rows) < $this->_total;
+
+        // Grupos de cada nível: o que abre a página (cadeia antes da 1ª linha)
+        // e o último de cada nível (contém a última linha).
+        $first = [];
+        $last  = [];
+        $path  = [];
+        $seenRow = false;
+        foreach ($items as $i => $item) {
+            if ($item['type'] === 'row') {
+                $seenRow = true;
+                continue;
+            }
+            if ($item['type'] !== 'group') {
+                continue;
+            }
+            $level = (int) $item['level'];
+            $path  = array_slice($path, 0, $level);
+            $path[] = (string) $item['value'];
+            if (!$seenRow) {
+                $first[$level] = [$i, $path];
+            }
+            $last[$level] = [$i, $path];
+        }
+
+        $targets = [];
+        foreach ([[$before, $first], [$after, $last]] as [$wanted, $groups]) {
+            if ($wanted) {
+                foreach ($groups as [$i, $p]) {
+                    $targets[$i] = $p;
+                }
+            }
+        }
+
+        foreach ($targets as $i => $p) {
+            $whole = $this->_wholeGroup($p, $fields, $columns, $items, $i);
+            if ($whole === null) {
+                continue;
+            }
+            [$n, $raw] = $whole;
+            // Menos linhas no banco do que na página: a chave não filtrou o
+            // mesmo grupo (valor que o Model transforma) — fica a página.
+            if ($n <= (int) $items[$i]['count']) {
+                continue;
+            }
+
+            $totals = $items[$i]['totals'] ?? [];
+            foreach ($raw as $c => $value) {
+                $col = $columns[$c] ?? null;
+                if ($col instanceof GridColumn && isset($totals[$col->field])) {
+                    $totals[$col->field] = GridRenderHelpers::renderTotal($col, $value);
+                }
+            }
+            $items[$i]['count']  = $n;
+            $items[$i]['totals'] = $totals;
+
+            // O rodapé do grupo: o 1º group-total do mesmo nível depois dele.
+            $level = $items[$i]['level'];
+            for ($j = $i + 1, $max = count($items); $j < $max; $j++) {
+                if ($items[$j]['type'] === 'group' && $items[$j]['level'] <= $level) {
+                    break;
+                }
+                if ($items[$j]['type'] === 'group-total' && $items[$j]['level'] === $level) {
+                    $items[$j]['totals'] = $totals;
+                    break;
+                }
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Contagem e totais de UM grupo no banco: [n, índice da coluna => número],
+     * ou null quando não dá (chave que não vira filtro, consulta que não se
+     * agrega, banco que recusa).
+     *
+     * @param string[]          $path   valor de cada nível até o grupo
+     * @param array<int, array> $items  o achatamento (a 1ª linha do grupo dá os valores crus)
+     */
+    private function _wholeGroup(array $path, array $fields, array $columns, array $items, int $at): ?array
+    {
+        $memoKey = json_encode($path);
+        if (array_key_exists($memoKey, $this->_wholeGroupMemo)) {
+            return $this->_wholeGroupMemo[$memoKey];
+        }
+
+        $sample = null;
+        for ($j = $at + 1, $max = count($items); $j < $max; $j++) {
+            if ($items[$j]['type'] === 'row') {
+                $sample = $items[$j]['data'];
+                break;
+            }
+        }
+
+        $out = null;
+        try {
+            $q = $this->_buildQuery();
+            if ($sample !== null && $q instanceof \Illuminate\Database\Eloquent\Builder) {
+                if ($this->searchQuery) { ($this->searchQuery)($q); }
+                $ok = true;
+                foreach (array_keys($path) as $level) {
+                    if (!$this->_whereGroupKey($q, (string) $fields[$level], $sample)) {
+                        $ok = false;
+                        break;
+                    }
+                }
+                $res = $ok ? GridTotalsQuery::groupTotals($q, $columns) : null;
+                $out = $res === null ? null : [(int) $res['n'], $res['totals']];
+            }
+        } catch (\Throwable $e) {
+            static::_warnOnce(
+                'group-totals',
+                'contagem e subtotal do grupo inteiro indisponíveis — o grupo partido entre páginas mostra a página. '
+                . get_class($e) . ': ' . mb_substr($e->getMessage(), 0, 300)
+            );
+        }
+
+        return $this->_wholeGroupMemo[$memoKey] = $out;
+    }
+
+    /**
+     * Filtra a consulta pela chave de UM nível da quebra, com o valor CRU que
+     * o banco guarda (lido do registro da linha), na mesma expressão que a
+     * ordena: coluna da tabela, subquery do caminho de relação, ou o intervalo
+     * do balde (`data|month` = do dia 1 ao dia 1 do mês seguinte).
+     *
+     * false = não dá para filtrar igual ao agrupamento do PHP (campo sem
+     * coluna, accessor que muda o valor, relação noutra conexão).
+     */
+    private function _whereGroupKey(\Illuminate\Database\Eloquent\Builder $q, string $field, array $row): bool
+    {
+        [$gBase, $grain] = GridRenderHelpers::splitGroupGrain($field);
+        $record = $row['__record'] ?? null;
+        if (!$record instanceof \Illuminate\Database\Eloquent\Model) {
+            return false;
+        }
+        $model = $q->getModel();
+
+        if (($chain = static::_chainParts($gBase)) !== null) {
+            $col   = array_pop($chain);
+            $metas = $this->_chainRelMetas($chain, get_class($model), $model);
+            $sub   = $metas === null ? null : $this->_chainOrderSub($metas, $col, $model->getTable(), 0);
+            if ($sub === null) {
+                return false;
+            }
+            $owner = GridRenderHelpers::resolveObjectPath($record, implode('->', $chain));
+            if ($owner !== null && !static::_keyColumnReadable($owner, $col)) {
+                return false;
+            }
+            $sql   = '(' . $sub->toSql() . ')';
+            $binds = $sub->getBindings();
+            $raw   = $owner?->getRawOriginal($col);
+            $keyModel = $owner ?? new ($metas[count($metas) - 1]['class'])();
+        } else {
+            $col = static::_unbrace(trim($gBase));
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col) || !static::_keyColumnReadable($record, $col)) {
+                return false;
+            }
+            $sql   = $q->getQuery()->getGrammar()->wrap($model->qualifyColumn($col));
+            $binds = [];
+            $raw   = $record->getRawOriginal($col);
+            $keyModel = $record;
+        }
+
+        if ($grain !== null) {
+            $key = (string) (static::_rowValue($row, $field) ?? '');
+            if ($key === '') {
+                $q->whereRaw($sql . ' is null', $binds);
+                return true;
+            }
+            // Balde de data sobre coluna numérica (epoch): o intervalo em texto não vale.
+            $types = GridExportSourceTypes::tableColumns($keyModel);
+            $range = static::_groupGrainRange($key, $grain);
+            if ($range === null || $types === null || ($types[$col] ?? true)) {
+                return false;
+            }
+            $q->whereRaw($sql . ' >= ? and ' . $sql . ' < ?', [...$binds, $range[0], ...$binds, $range[1]]);
+            return true;
+        }
+
+        if ($raw === null) {
+            $q->whereRaw($sql . ' is null', $binds);
+        } else {
+            $q->whereRaw($sql . ' = ?', [...$binds, $raw]);
+        }
+
+        return true;
+    }
+
+    /**
+     * A coluna da chave sai do banco como a linha a mostra? Precisa vir no
+     * registro e não passar por accessor (que mudaria o valor agrupado).
+     */
+    private static function _keyColumnReadable(mixed $record, string $col): bool
+    {
+        return $record instanceof \Illuminate\Database\Eloquent\Model
+            && array_key_exists($col, $record->getAttributes())
+            && !$record->hasGetMutator($col)
+            && !(method_exists($record, 'hasAttributeGetMutator') && $record->hasAttributeGetMutator($col));
+    }
+
+    /**
+     * Intervalo [início, fim) de um balde da quebra granular, em `Y-m-d` —
+     * compara igual em coluna de data e de data e hora em todos os bancos.
+     *
+     * @return array{0:string, 1:string}|null null = chave que não é balde
+     */
+    private static function _groupGrainRange(string $key, string $grain): ?array
+    {
+        [$format, $step] = match (strtolower($grain)) {
+            'day'   => ['Y-m-d', '+1 day'],
+            'week'  => ['o-\WW', '+7 days'],
+            'month' => ['Y-m', '+1 month'],
+            'year'  => ['Y', '+1 year'],
+            default => [null, null],
+        };
+        if ($format === null) {
+            return null;
+        }
+        if ($grain === 'week') {
+            if (!preg_match('/^(\d{4})-W(\d{2})$/', $key, $m)) {
+                return null;
+            }
+            $start = (new \DateTimeImmutable('2000-01-01'))->setISODate((int) $m[1], (int) $m[2]);
+        } else {
+            $start = \DateTimeImmutable::createFromFormat('!' . $format, $key);
+        }
+        if (!$start || $start->format($format) !== $key) {
+            return null;
+        }
+
+        return [$start->format('Y-m-d'), $start->modify($step)->format('Y-m-d')];
+    }
+
+    /**
+     * A listagem tem consulta que se agrega por grupo? A mesma régua do total
+     * geral do rodapé (_grandTotals) mais os ganchos da conta do grupo.
+     */
+    private function _canAggregateGroups(): bool
+    {
+        if ($this->_usesSource() || empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class)) {
+            return false;
+        }
+        foreach ([...self::TOTALS_QUERY_HOOKS, ...self::GROUP_TOTALS_HOOKS] as $method) {
+            if ((new \ReflectionMethod($this, $method))->getDeclaringClass()->getName() !== self::class) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
