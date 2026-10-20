@@ -54,6 +54,14 @@
     // o `this` do handler inline — Mad.rowAttach(this, …) depende disso.
     $label   = (string) $label;
     $confirm = (string) $confirm;
+    // Texto puro no corpo cede ao `label` (framework#446, fórum #142): os
+    // geradores escrevem "Novo" no corpo e o Studio grava `label` (e mostra só
+    // ele) — com os dois, o botão saía "Novo Cliente Novo". Corpo com marcação
+    // (selo, ícone extra) continua ao lado do label.
+    $_body = (string) ($slot ?? '');
+    if ($label !== '' && strpos($_body, '<') === false) {
+        $_body = '';
+    }
     if ($confirm !== '') {
         $_cMsg  = json_encode($confirm, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $_cOpts = $variant === 'danger' ? ', {danger:true}' : '';
@@ -211,7 +219,7 @@
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>
     @elseif($icon)<i data-lucide="{{ $icon }}" style="{{ $iconStyle }}"></i>@endif
     @if($label !== ''){{ $label }}@endif
-    {!! $slot !!}
+    {!! $_body !!}
     @if($iconEnd)<i data-lucide="{{ $iconEnd }}" style="{{ $iconStyle }}"></i>@endif
 </a>
 @else
@@ -225,7 +233,7 @@
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>
     @elseif($icon)<i data-lucide="{{ $icon }}" style="{{ $iconStyle }}"></i>@endif
     @if($label !== ''){{ $label }}@endif
-    {!! $slot !!}
+    {!! $_body !!}
     @if($iconEnd)<i data-lucide="{{ $iconEnd }}" style="{{ $iconStyle }}"></i>@endif
 </button>
 @endif

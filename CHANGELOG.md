@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.189.1] — 2026-10-20
+
+### Correções
+
+- **Botão:** um `<mad-btn>` com `label` e o texto também no corpo da tag mostrava os dois, como em "Novo Cliente Novo". Agora vale o `label`, igual ao que o Studio mostra. Selo ou ícone extra no corpo continuam aparecendo ao lado do texto.
+
 ## [5.189.0] — 2026-10-20
 
 ### Melhorias
