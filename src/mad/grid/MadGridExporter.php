@@ -167,9 +167,10 @@ class MadGridExporter
      *        com/sem chaves; ver MadGridPdfPlaceholders: texto escapado, vence
      *        os built-ins de texto, nunca os estruturais),
      *        'pdfHtmlMaxRows' (teto de linhas quando o PDF cai no Dompdf —
-     *        acima dele lança Pdf\GridPdfRowLimitException em vez de estourar
-     *        a memória). Tudo opcional — `[]` reproduz o comportamento anterior.
-     * @throws Pdf\GridPdfRowLimitException
+     *        acima dele o PDF sai pelo motor direto em modo texto em vez de
+     *        estourar a memória). Tudo opcional — `[]` reproduz o
+     *        comportamento anterior.
+     * @throws Pdf\GridPdfRowLimitException só se nem o modo texto conseguir
      */
     public static function pdf(
         array $columns, array $rows, string $title = 'export',
@@ -183,12 +184,14 @@ class MadGridExporter
         $footerBand = self::normalizePdfBand($footer, 'footer');
 
         $bytes = null;
-        if (Pdf\GridPdfRenderer::supports($columns, $headerBand, $footerBand)) {
+        $reason = Pdf\GridPdfRenderer::unsupportedReason($columns, $headerBand, $footerBand);
+        if ($reason === null) {
             try {
                 $bytes = Pdf\GridPdfRenderer::render($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report);
-            } catch (Pdf\GridPdfUnsupported) {
+            } catch (Pdf\GridPdfUnsupported $e) {
                 // Só descoberto ao medir (badge que quebraria dentro da pílula,
                 // linha maior que a página…): o Dompdf desenha.
+                $reason = $e->getMessage();
                 $bytes = null;
             } catch (\Throwable $e) {
                 // Erro inesperado do motor (ex.: um Dompdf mais novo mudou algo
@@ -199,6 +202,7 @@ class MadGridExporter
                     '[MadGridExporter] PDF: motor direto falhou, usando o Dompdf: ' . $e->getMessage(),
                     ['exception' => $e]
                 );
+                $reason = 'erro do motor direto';
                 $bytes = null;
             }
         }
@@ -207,9 +211,25 @@ class MadGridExporter
             $max   = (int) ($report['pdfHtmlMaxRows'] ?? 0);
             $count = self::pdfRowCount($rows, $groupData);
             if ($max > 0 && $count > $max) {
-                throw new Pdf\GridPdfRowLimitException($max, $count);
+                // Grande demais para o Dompdf: o motor direto desenha em modo
+                // texto (HTML vira texto, largura desconhecida vira auto) em
+                // vez de recusar o PDF.
+                \Illuminate\Support\Facades\Log::info(
+                    "[MadGridExporter] PDF de {$count} linhas acima do teto do Dompdf ({$max}): motor direto em modo texto ({$reason})"
+                );
+                try {
+                    $bytes = Pdf\GridPdfRenderer::render($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report, true);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning(
+                        '[MadGridExporter] PDF: modo texto do motor direto falhou: ' . $e->getMessage(),
+                        ['exception' => $e]
+                    );
+                    throw new Pdf\GridPdfRowLimitException($max, $count);
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::info("[MadGridExporter] PDF pelo Dompdf ({$count} linhas): {$reason}");
+                $bytes = self::pdfViaDompdf($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report);
             }
-            $bytes = self::pdfViaDompdf($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report);
         }
 
         \Mad\Service\MadScratchStorage::putContent($key, $bytes);
@@ -253,6 +273,8 @@ class MadGridExporter
     ): string {
         $headerBand = self::normalizePdfBand($header, 'header');
         $footerBand = self::normalizePdfBand($footer, 'footer');
+        // Medidas uma vez só (o HTML pode ser montado duas vezes, por {PAGE_COUNT}).
+        $report['pdfColumnWidths'] ??= Pdf\GridPdfRenderer::fittedWidths($columns, $rows, $groupData, $grandTotals, $report);
 
         $render = function (?int $pageCount) use ($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report): Dompdf {
             $html = self::buildPdfHtml($columns, $rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $pageCount, $report);
@@ -464,12 +486,17 @@ class MadGridExporter
         $parts = self::pdfDocumentParts($title, $header, $footer, $totalRows, $pageCount, $report);
         $html  = $parts['head'] . $parts['bands'];
 
+        // Larguras fixas que não cabem na folha viram % — a mesma regra (e os
+        // mesmos números) do motor direto: Pdf\GridPdfTable::fitFixedWidths.
+        $fitted = $report['pdfColumnWidths']
+            ?? Pdf\GridPdfRenderer::fittedWidths($columns, $rows, $groupData, $grandTotals, $report);
+
         // ── Tabela ───────────────────────────────────────────────────
         $html .= '<table><thead><tr>';
-        foreach ($columns as $col) {
+        foreach (array_values($columns) as $i => $col) {
             // Normaliza: coluna vinda de config crua (não do setter fluente) podia
             // trazer '140' sem unidade e o PDF/HTML perdia a largura em silêncio.
-            $w     = \Mad\Support\CssUnits::length((string) ($col->width ?? ''));
+            $w     = $fitted[$i] ?? \Mad\Support\CssUnits::length((string) ($col->width ?? ''));
             $style = $w !== '' ? 'width:' . $w . ';' : '';
             $html .= '<th style="' . $style . '">' . htmlspecialchars($col->label) . '</th>';
         }

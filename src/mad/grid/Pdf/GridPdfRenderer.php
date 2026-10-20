@@ -33,8 +33,11 @@ use Mad\Support\PdfFontMetrics;
  * (dependem de TODAS as linhas, como no layout automático do HTML); 2)
  * paginação e desenho. Página pronta é comprimida na hora.
  *
- * O que o motor não reproduz idêntico (HTML dentro da célula, largura em %…)
- * não chega aqui: supports() recusa antes e o exporter usa o Dompdf.
+ * O que o motor não reproduz idêntico (HTML dentro da célula, largura em
+ * calc()…) não chega aqui: supports() recusa antes e o exporter usa o Dompdf.
+ * Exceção: listagem grande demais para o Dompdf sai pelo motor em MODO TEXTO
+ * ($textMode) — HTML vira texto, largura desconhecida vira auto, linha mais
+ * alta que a página é cortada. O PDF simplifica, mas nunca é recusado.
  */
 final class GridPdfRenderer
 {
@@ -51,6 +54,7 @@ final class GridPdfRenderer
     private array $lastLeft = [];
     private float $tableBottom = 0.0;
     private int $n;
+    private bool $textMode;
 
     // ── Suporte ──────────────────────────────────────────────────────────
 
@@ -66,7 +70,7 @@ final class GridPdfRenderer
         return self::unsupportedReason($columns, $headerBand, $footerBand) === null;
     }
 
-    /** Motivo de recusa (null = suportado). Público para testes/diagnóstico. */
+    /** Motivo de recusa (null = suportado). Público para testes/diagnóstico e para o log do exporter. */
     public static function unsupportedReason(array $columns, array $headerBand, array $footerBand): ?string
     {
         if ($columns === []) {
@@ -107,14 +111,75 @@ final class GridPdfRenderer
      * @param GridColumn[] $columns
      * @param iterable $rows linhas (array ou iterável contável) — ignorado com $groupData
      * @param array $headerBand banda normalizada
+     * @param bool $textMode modo texto: nada é recusado (ver a classe)
      * @return string bytes do PDF
-     * @throws GridPdfUnsupported conteúdo que só o Dompdf desenha igual
+     * @throws GridPdfUnsupported conteúdo que só o Dompdf desenha igual (fora do modo texto)
      */
     public static function render(
         array $columns, iterable $rows, string $title, array $groupData,
-        array $headerBand, array $footerBand, array $grandTotals, array $report
+        array $headerBand, array $footerBand, array $grandTotals, array $report,
+        bool $textMode = false
     ): string {
-        return (new self($columns, $report))->run($rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report, false);
+        if ($textMode) {
+            [$headerBand, $footerBand] = [self::textBand($headerBand), self::textBand($footerBand)];
+        }
+
+        return (new self($columns, $report, $textMode))->run($rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report, false);
+    }
+
+    /**
+     * Largura CSS de cada coluna no PDF quando as fixas não cabem na folha
+     * (GridPdfTable::fitFixedWidths) — o buildPdfHtml imprime estas no <th>,
+     * e o render() chega às mesmas. Vazio = valem as declaradas (o caso comum:
+     * sem largura fixa nem se mede). Conteúdo que o motor não mede igual ao
+     * Dompdf é medido no modo texto (aproximação, só para decidir a regra).
+     *
+     * @param GridColumn[] $columns
+     * @return array<int, string>
+     */
+    public static function fittedWidths(array $columns, iterable $rows, array $groupData, array $grandTotals, array $report): array
+    {
+        $columns = array_values($columns);
+        $fixed = false;
+        foreach ($columns as $col) {
+            try {
+                $fixed = $fixed || isset(GridPdfTable::columnWidth($col)['pt']);
+            } catch (GridPdfUnsupported) {
+            }
+        }
+        if (!$fixed) {
+            return [];
+        }
+        foreach ([false, true] as $textMode) {
+            try {
+                $self = new self($columns, $report, $textMode);
+                [, , $fit] = $self->measure($rows, $groupData, $grandTotals, $report, $self->usableWidth());
+
+                return $fit ?? [];
+            } catch (GridPdfUnsupported) {
+                // Mede de novo no modo texto.
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Modo texto: o número de página escrito à mão na banda custom
+     * (<span class="mad-page">) passa pelo {PAGE_NUM} do motor em vez de
+     * congelar no da 1ª página.
+     */
+    private static function textBand(array $band): array
+    {
+        if (($band['mode'] ?? '') === 'custom') {
+            $band['html'] = str_replace(
+                ['<span class="mad-page"></span>', '<span class="mad-pages"></span>'],
+                ['{PAGE_NUM}', '{PAGE_COUNT}'],
+                $band['html']
+            );
+        }
+
+        return $band;
     }
 
     /**
@@ -130,8 +195,9 @@ final class GridPdfRenderer
         return (new self($columns, $report))->run($rows, $title, $groupData, $headerBand, $footerBand, $grandTotals, $report, true);
     }
 
-    private function __construct(array $columns, array $report = [])
+    private function __construct(array $columns, array $report = [], bool $textMode = false)
     {
+        $this->textMode = $textMode;
         // Mesma orientação e paleta que o caminho Dompdf usa (paridade).
         $orientation = MadGridExporter::pdfOrientation($report);
         $this->dompdf = PdfFontMetrics::install(new Dompdf(MadGridExporter::PDF_DOMPDF_OPTIONS));
@@ -141,7 +207,7 @@ final class GridPdfRenderer
         $fm = $this->dompdf->getFontMetrics();
         $fm->setCanvas($this->canvas);
         $metrics = new GridPdfMetrics($this->canvas, $fm, $this->dompdf->getOptions()->getIsFontSubsettingEnabled());
-        $this->table = new GridPdfTable($metrics, $columns, MadGridExporter::pdfPalette($report));
+        $this->table = new GridPdfTable($metrics, $columns, MadGridExporter::pdfPalette($report), $textMode);
         $this->n = $this->table->columnCount();
     }
 
@@ -156,20 +222,13 @@ final class GridPdfRenderer
         // Margens: mesma regra do HTML (banda vazia encolhe a margem para 8mm).
         $parts = MadGridExporter::pdfDocumentParts($title, $headerBand, $footerBand, $totalRows, null, $report);
         $H = $this->canvas->get_height();
-        $W = $this->canvas->get_width();
-        // Page reflower: conteúdo em (0 + margem), largura = página − esquerda − direita.
+        // Page reflower: conteúdo em (0 + margem), largura = usableWidth().
         $this->x0 = 0.0 + GridPdfStyle::length('8mm');
         $this->y0 = 0.0 + GridPdfStyle::length($parts['marginTop'] . 'mm');
         $this->bottomEdge = $H - GridPdfStyle::length($parts['marginBottom'] . 'mm');
-        $cbW = $W - GridPdfStyle::length('8mm') - GridPdfStyle::length('8mm');
 
         // Passada 1: larguras (todas as linhas, em fluxo).
-        $header = $this->table->headerRow();
-        $all = (function () use ($header, $rows, $groupData, $grandTotals, $report) {
-            yield $header;
-            yield from $this->table->bodyRows($rows, $groupData, $grandTotals, $report);
-        })();
-        $cw = $this->table->columnWidths($all, $cbW);
+        [$header, $cw] = $this->measure($rows, $groupData, $grandTotals, $report, $this->usableWidth());
         $this->W = $cw['W'];
         $x = $cw['left'];
         foreach ($this->W as $j => $w) {
@@ -189,6 +248,40 @@ final class GridPdfRenderer
         $this->bands($title, $headerBand, $footerBand, $totalRows, $pageCount, $report);
 
         return (string) $this->canvas->output(['compress' => 1]);
+    }
+
+    /** Page reflower: largura do conteúdo = página − margem esquerda − direita. */
+    private function usableWidth(): float
+    {
+        return $this->canvas->get_width() - GridPdfStyle::length('8mm') - GridPdfStyle::length('8mm');
+    }
+
+    /**
+     * Larguras das colunas a partir de todas as linhas; se as fixas não cabem
+     * na folha, refaz com as porcentagens do fitFixedWidths (uma passada a
+     * mais, só nesse caso).
+     *
+     * @return array{0: GridPdfRow, 1: array, 2: ?array<int, string>} cabeçalho, columnWidths(), larguras do ajuste
+     */
+    private function measure(iterable $rows, array $groupData, array $grandTotals, array $report, float $cbW): array
+    {
+        $pass = function () use ($rows, $groupData, $grandTotals, $report, $cbW) {
+            $header = $this->table->headerRow();
+            $all = (function () use ($header, $rows, $groupData, $grandTotals, $report) {
+                yield $header;
+                yield from $this->table->bodyRows($rows, $groupData, $grandTotals, $report);
+            })();
+
+            return [$header, $this->table->columnWidths($all, $cbW)];
+        };
+        [$header, $cw] = $pass();
+        $fit = GridPdfTable::fitFixedWidths($cw);
+        if ($fit !== null) {
+            $this->table->setWidths($fit);
+            [$header, $cw] = $pass();
+        }
+
+        return [$header, $cw, $fit];
     }
 
     // ── Paginação ────────────────────────────────────────────────────────
@@ -251,8 +344,11 @@ final class GridPdfRenderer
             }
             if (!$fits) {
                 // Linha mais alta que a página inteira: o Dompdf empurra/estoura
-                // de um jeito que o motor não reproduz.
-                throw new GridPdfUnsupported('linha maior que a página');
+                // de um jeito que o motor não reproduz. No modo texto, corta.
+                if (!$this->textMode) {
+                    throw new GridPdfUnsupported('linha maior que a página');
+                }
+                $g = $this->cutRow($cur, $prev, $next, $rel);
             }
             $list[] = [$cur, $g, $rel];
             $rel = $rel + $g['h'];
@@ -269,6 +365,29 @@ final class GridPdfRenderer
         }
 
         return $counts;
+    }
+
+    /**
+     * Modo texto: tira linhas de texto do fim da célula mais alta até a linha
+     * da tabela caber na página (o resto do texto não sai no PDF).
+     */
+    private function cutRow(GridPdfRow $r, ?GridPdfRow $prev, ?GridPdfRow $next, float $rel): array
+    {
+        while (true) {
+            $g = $this->geometry($r, $prev, $next, $this->y0 + $rel);
+            if (Helpers::lengthLessOrEqual($this->y0 + $rel + $g['h'] + $this->tableBottom, $this->bottomEdge)) {
+                return $g;
+            }
+            $tall = null;
+            foreach ($r->cells as $c) {
+                if (count($c->lines) > 1 && ($tall === null || $c->contentH > $tall->contentH)) $tall = $c;
+            }
+            if ($tall === null) {
+                return $g;
+            }
+            $last = array_pop($tall->lines);
+            $tall->contentH -= $last['h'];
+        }
     }
 
     /**

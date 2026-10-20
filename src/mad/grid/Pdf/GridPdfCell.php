@@ -16,6 +16,8 @@ final class GridPdfCell
     public array $st = [];
     /** Largura CSS declarada no <th> (pt); null = auto. */
     public ?float $width = null;
+    /** Largura em % declarada no <th> (da largura da tabela); null = não é %. */
+    public ?float $pct = null;
 
     /** @var array<int, array{h: float, w: float, frames: array}> linhas depois do layout */
     public array $lines = [];

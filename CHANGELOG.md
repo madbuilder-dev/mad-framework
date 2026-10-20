@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.187.0] — 2026-10-20
+
+### Melhorias
+
+- **Exportar PDF:** listagem com coluna em HTML (um badge montado no transform, por exemplo) não é mais recusada por ter muitas linhas: acima de umas 100 linhas o PDF sai com o conteúdo dessas células em texto simples.
+- **Exportar PDF:** o aviso de listagem grande demais agora diz o tamanho dela e quanto o PDF aceita, por exemplo "Esta listagem tem 25.000 linhas; o PDF aceita até 12.000".
+- **Exportar PDF:** largura de coluna em `em`, `rem`, `ex` e `pc` também vale no PDF de listagens grandes.
+
+### Correções
+
+- **Exportar PDF:** coluna com largura em porcentagem (`width="12%"`) deixava gerar só umas 100 linhas em PDF, e em retrato as colunas com largura fixa podiam passar da margem direita. Agora a porcentagem vale também em listagens grandes, e larguras fixas que não cabem na folha encolhem na mesma proporção; onde cabem, o PDF fica igual ao de antes.
+
 ## [5.186.1] — 2026-10-20
 
 ### Correções

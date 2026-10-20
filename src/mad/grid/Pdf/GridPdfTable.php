@@ -14,7 +14,8 @@ use Mad\Grid\MadGridExporter;
  *    depois de decodificado;
  *  - largura das colunas: layout automático de tabela do Dompdf
  *    (Cellmap::calculate_column_widths + FrameReflower\Table::_assign_widths),
- *    inclusive a ordem de processamento do colspan, que muda o resultado;
+ *    inclusive a ordem de processamento do colspan, que muda o resultado, e
+ *    as colunas em % (repartidas na ordem, "quem chega primeiro leva");
  *  - border-collapse: resolução de borda por aresta (mais larga vence, empate
  *    fica com a primeira) e meia largura para cada célula vizinha;
  *  - quebra de linha: FrameReflower\Text::line_break (palavra, hífen, nbsp,
@@ -22,6 +23,11 @@ use Mad\Grid\MadGridExporter;
  *
  * Os números estão em pt e o estilo vem do GridPdfStyle — a mesma fonte que
  * gera o CSS do HTML.
+ *
+ * Modo texto ($textMode): o que só o Dompdf desenha igual (HTML na célula,
+ * badge que não cabe, largura em calc()…) vira texto/auto em vez de lançar
+ * GridPdfUnsupported. É o caminho das listagens grandes demais para o Dompdf
+ * — o PDF sai simplificado, mas sai.
  */
 final class GridPdfTable
 {
@@ -31,6 +37,10 @@ final class GridPdfTable
     private const WS = '/([^\S\xA0\x{202F}\x{2007}]+)/u';
     /** Span do badge exatamente como o GridColumn::renderValueForPdf gera. */
     private const BADGE_RE = '/^<span style="([^"<>]*)">([^<]*)<\/span>$/';
+    /** Unidades e palavras que o Dompdf DESCARTA no width (a declaração vale como auto). */
+    private const DROPPED_WIDTH = '/^(\d*\.?\d+(ch|vw|vh|vmin|vmax|q)|min-content|max-content|fit-content|inherit|initial|unset|revert)$/';
+    /** Tamanho de fonte da raiz (<html> sem regra própria = medium do Dompdf), base do rem. */
+    private const ROOT_FONT_PT = 12.0;
 
     public GridPdfMetrics $m;
     private array $palette;
@@ -39,18 +49,34 @@ final class GridPdfTable
     private array $columns;
     private int $n;
     private array $bodyFonts;
+    private bool $textMode;
+    /** @var array<int, string> largura CSS que substitui a declarada (fitFixedWidths) */
+    private array $widths = [];
 
     /**
      * @param GridColumn[] $columns
      * @param ?array $palette paleta efetiva (MadGridExporter::pdfPalette);
      *        null = a do projeto
      */
-    public function __construct(GridPdfMetrics $m, array $columns, ?array $palette = null)
+    public function __construct(GridPdfMetrics $m, array $columns, ?array $palette = null, bool $textMode = false)
     {
         $this->m = $m;
         $this->columns = array_values($columns);
         $this->n = count($this->columns);
         $this->palette = $palette ?? GridPdfStyle::palette();
+        $this->textMode = $textMode;
+    }
+
+    /**
+     * Larguras CSS por coluna que valem no lugar das declaradas (as do
+     * fitFixedWidths, as mesmas que o buildPdfHtml imprime). Refaça o
+     * headerRow() depois.
+     *
+     * @param array<int, string> $widths
+     */
+    public function setWidths(array $widths): void
+    {
+        $this->widths = $widths;
     }
 
     public function columnCount(): int
@@ -68,7 +94,10 @@ final class GridPdfTable
         }
         $s = GridPdfStyle::cell($kind, $zebra, $this->palette);
         if ($s['color'] === null) {
-            throw new GridPdfUnsupported("cor de texto transparente em {$kind}");
+            if (!$this->textMode) {
+                throw new GridPdfUnsupported("cor de texto transparente em {$kind}");
+            }
+            $s['color'] = GridPdfStyle::color(GridPdfStyle::BODY['color']);
         }
         $s['font'] = $this->m->font($s['families'], $s['weight']);
         $s['fonts'] = $this->m->familyFonts($s['families'], $s['weight']);
@@ -101,6 +130,25 @@ final class GridPdfTable
         return html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
+    /** Modo texto: o texto do HTML (quebra de linha e fim de bloco viram espaço). */
+    private static function plain(string $html): string
+    {
+        $html = preg_replace('/<br\s*\/?>|<\/(p|div|li|tr|td|th|h[1-6])>/i', ' ', $html) ?? $html;
+
+        return self::decode(strip_tags($html));
+    }
+
+    /** Rótulo da coluna como texto: no modo texto, sem as tags. */
+    private function label(GridColumn $col, bool $decode): string
+    {
+        $label = (string) $col->label;
+        if ($this->textMode && str_contains($label, '<')) {
+            return self::plain($label);
+        }
+
+        return $decode ? self::decode($label) : $label;
+    }
+
     /** Conteúdo de uma célula de dado (saída do renderValueForPdf). */
     private function valueItems(string $html, array $st): array
     {
@@ -109,6 +157,9 @@ final class GridPdfTable
         }
         if (!str_contains($html, '<')) {
             return $this->textItems(self::decode($html), $st);
+        }
+        if ($this->textMode) {
+            return $this->textItems(self::plain($html), $st);
         }
         // Único HTML que o motor desenha: o badge (span inline-block em pílula).
         if (preg_match(self::BADGE_RE, $html, $m)) {
@@ -152,8 +203,15 @@ final class GridPdfTable
         $r = new GridPdfRow('th');
         $st = $this->style('th');
         foreach ($this->columns as $i => $col) {
-            $c = $this->cell($i, 1, 'left', $st, $this->textItems((string) $col->label, $st));
-            $c->width = self::columnWidth($col);
+            $c = $this->cell($i, 1, 'left', $st, $this->textItems($this->label($col, false), $st));
+            try {
+                $w = isset($this->widths[$i]) ? self::widthSpec($this->widths[$i]) : self::columnWidth($col);
+            } catch (GridPdfUnsupported $e) {
+                if (!$this->textMode) throw $e;
+                $w = null;
+            }
+            $c->width = $w['pt'] ?? null;
+            $c->pct = $w['pct'] ?? null;
             $r->cells[] = $c;
         }
 
@@ -161,18 +219,52 @@ final class GridPdfTable
     }
 
     /**
-     * Largura declarada na coluna, em pt. null = auto. Unidade que o motor não
-     * converte igual ao Dompdf (%, em…) nunca chega aqui: GridPdfRenderer::supports
-     * manda o PDF inteiro para o Dompdf antes.
+     * Largura declarada na coluna como o Dompdf a entende no <th>: ['pt' => n]
+     * (absoluta), ['pct' => n] (% da largura da tabela) ou null (auto).
+     * Unidade que o motor não converte igual ao Dompdf (calc()…) lança —
+     * GridPdfRenderer::supports manda o PDF para o Dompdf antes.
+     *
+     * @return array{pt?: float, pct?: float}|null
      */
-    public static function columnWidth(GridColumn $col): ?float
+    public static function columnWidth(GridColumn $col): ?array
     {
-        $w = \Mad\Support\CssUnits::length((string) ($col->width ?? ''));
-        if ($w === '' || strtolower($w) === 'auto') {
+        return self::widthSpec(\Mad\Support\CssUnits::length((string) ($col->width ?? '')));
+    }
+
+    /** @return array{pt?: float, pct?: float}|null */
+    public static function widthSpec(string $w): ?array
+    {
+        $w = strtolower(trim($w));
+        if ($w === '' || $w === 'auto') {
+            return null;
+        }
+        if (preg_match('/^(\d*\.?\d+)(%|em|ex|rem|pc)$/', $w, $m)) {
+            $n = (float) $m[1];
+
+            // Style::single_length_in_pt: em/ex sobre a fonte do <th>, rem sobre a da raiz.
+            return match ($m[2]) {
+                // Cellmap::calculate_column_widths: (float) rtrim($width, "% ").
+                '%'   => ['pct' => $n],
+                'em'  => ['pt' => $n * self::thFontPt()],
+                'ex'  => ['pt' => $n * self::thFontPt() / 2],
+                'rem' => ['pt' => $n * self::ROOT_FONT_PT],
+                'pc'  => ['pt' => $n * 12],
+            };
+        }
+        $pt = GridPdfStyle::length($w);
+        if ($pt !== null) {
+            return ['pt' => $pt];
+        }
+        if (preg_match(self::DROPPED_WIDTH, $w)) {
             return null;
         }
 
-        return GridPdfStyle::length($w) ?? throw new GridPdfUnsupported("largura {$w}");
+        throw new GridPdfUnsupported("largura {$w}");
+    }
+
+    private static function thFontPt(): float
+    {
+        return GridPdfStyle::length(GridPdfStyle::TABLE_RULES['th']['font-size']);
     }
 
     public function dataRow(array $row, ?array $lastRow, bool $zebra): GridPdfRow
@@ -225,7 +317,7 @@ final class GridPdfTable
         foreach ($this->columns as $col) {
             if (isset($item['totals'][$col->field])) {
                 // O rótulo da coluna entra CRU no HTML (entidades decodificam).
-                $totals .= "\u{A0}\u{A0}\u{A0}" . self::decode((string) $col->label) . ': ' . $item['totals'][$col->field];
+                $totals .= "\u{A0}\u{A0}\u{A0}" . $this->label($col, true) . ': ' . $item['totals'][$col->field];
             }
         }
         // Sem contagem, rótulo e totais são UM nó de texto no HTML (quebra de
@@ -396,7 +488,10 @@ final class GridPdfTable
         return [$min, $max];
     }
 
-    /** min/max do border-box da célula (Text/TableCell::get_min_max_width) com bordas pela metade. */
+    /**
+     * min/max do border-box da célula (Text/TableCell::get_min_max_width) com
+     * bordas pela metade. 3º valor: o min só do conteúdo (sem a largura declarada).
+     */
     public function cellMinMax(GridPdfCell $c, float $bl, float $br): array
     {
         $low = [];
@@ -408,30 +503,35 @@ final class GridPdfTable
             $max += $mx;
         }
         $min = $low ? max($low) : 0.0;
+        $content = $min;
         if ($c->width !== null) {
             // Largura declarada: vale se for maior que o conteúdo; min = max.
+            // (Largura em % não entra aqui: é relativa à tabela, ainda sem largura.)
             $min = max($c->width, $min);
             $max = $min;
         }
         $d = $c->st['pad'][1] + $c->st['pad'][3] + $bl + $br;
 
-        return [$min + $d, $max + $d];
+        return [$min + $d, $max + $d, $content + $d];
     }
 
     /**
      * Larguras das colunas a partir de TODAS as linhas (cabeçalho + corpo, na
      * ordem do documento). Uma passada, em fluxo.
      *
-     * @return array{W: float[], left: float, right: float, lastLeft: array<string,int>, bottom: float, rows: int}
+     * @return array{W: float[], left: float, right: float, lastLeft: array<string,int>, bottom: float, rows: int,
+     *               cols: array, pref: float, minW: float}
      *         left/right = meia borda externa da tabela; lastLeft = largura da
      *         borda esquerda externa → índice da ÚLTIMA linha que a usa (a tabela
      *         de continuação de cada página só enxerga as linhas restantes);
-     *         bottom = meia borda de baixo da última linha.
+     *         bottom = meia borda de baixo da última linha; cols/pref/minW =
+     *         colunas do Cellmap (min, max, abs, pct e cmin = min só do
+     *         conteúdo), largura útil e mínima da tabela (fitFixedWidths).
      */
     public function columnWidths(iterable $allRows, float $cbW): array
     {
         $n = $this->n;
-        $cols = array_fill(0, $n, ['min' => 0.0, 'max' => 0.0, 'abs' => 0.0]);
+        $cols = array_fill(0, $n, ['min' => 0.0, 'max' => 0.0, 'abs' => 0.0, 'pct' => 0.0, 'cmin' => 0.0]);
         $maxLeft = 0.0;
         $maxRight = 0.0;
         $lastLeft = [];
@@ -446,9 +546,15 @@ final class GridPdfTable
             $maxRight = max($maxRight, $vl[$n]);
             $lastLeft[(string) $vl[0]] = $ri;
             foreach ($r->cells as $c) {
-                [$fmin, $fmax] = $this->cellMinMax($c, $vl[$c->col] / 2, $vl[$c->col + $c->span] / 2);
-                if ($c->width !== null && $c->span === 1 && $fmin > $cols[$c->col]['abs']) {
-                    $cols[$c->col]['abs'] = $fmin;
+                [$fmin, $fmax, $fcontent] = $this->cellMinMax($c, $vl[$c->col] / 2, $vl[$c->col + $c->span] / 2);
+                if ($c->span === 1) {
+                    // % vale antes da absoluta no Cellmap; cada uma guarda o maior valor da coluna.
+                    if ($c->pct !== null) {
+                        if ($c->pct > $cols[$c->col]['pct']) $cols[$c->col]['pct'] = $c->pct;
+                    } elseif ($c->width !== null && $fmin > $cols[$c->col]['abs']) {
+                        $cols[$c->col]['abs'] = $fmin;
+                    }
+                    if ($fcontent > $cols[$c->col]['cmin']) $cols[$c->col]['cmin'] = $fcontent;
                 }
                 $min = 0.0;
                 $max = 0.0;
@@ -475,11 +581,14 @@ final class GridPdfTable
         }
         unset($col);
 
-        // Table::_assign_widths com width:100% e sem percentuais.
+        // Table::_assign_widths com width:100%.
         $minW = 0.0;
         $maxW = 0.0;
         $absUsed = 0.0;
+        $pctUsed = 0.0;
+        $autoMin = 0.0;
         $abs = [];
+        $pct = [];
         $auto = [];
         foreach ($cols as $i => $col) {
             $minW += $col['min'];
@@ -487,8 +596,12 @@ final class GridPdfTable
             if ($col['abs'] > 0) {
                 $abs[] = $i;
                 $absUsed += $col['min'];
+            } elseif ($col['pct'] > 0) {
+                $pct[] = $i;
+                $pctUsed += $col['pct'];
             } else {
                 $auto[] = $i;
+                $autoMin += $col['min'];
             }
         }
         $pref = $cbW - ($maxLeft / 2 + $maxRight / 2);
@@ -496,6 +609,29 @@ final class GridPdfTable
         $W = array_fill(0, $n, 0.0);
         if ($width == $maxW) {
             foreach ($cols as $i => $col) $W[$i] = $col['max'];
+        } elseif ($width > $minW && $pctUsed > 0) {
+            // Percentuais normalizados quando passam de 100 ou não há auto para
+            // a sobra; absolutas inteiras; cada % na ordem, sem tirar o mínimo
+            // das que vêm depois nem das autos; o resto vai igual para as autos.
+            $scale = ($pctUsed > 100 || !$auto) ? 100 / $pctUsed : 1;
+            $used = $autoMin + $absUsed;
+            foreach ($abs as $i) $W[$i] = $cols[$i]['min'];
+            $pctMin = 0;
+            foreach ($pct as $i) $pctMin += $cols[$i]['min'];
+            foreach ($pct as $i) {
+                $min = $cols[$i]['min'];
+                $pctMin -= $min;
+                $slack = $width - $used - $pctMin;
+                $p = $cols[$i]['pct'] * $scale;
+                $w = min($p * $width / 100, $slack);
+                if ($w < $min) $w = $min;
+                $W[$i] = $w;
+                $used += $w;
+            }
+            if ($auto) {
+                $inc = ($width - $used) / count($auto);
+                foreach ($auto as $i) $W[$i] = $cols[$i]['min'] + $inc;
+            }
         } elseif ($width > $minW) {
             if ($auto) {
                 foreach ($abs as $i) $W[$i] = $cols[$i]['min'];
@@ -522,7 +658,73 @@ final class GridPdfTable
         }
 
         return ['W' => $W, 'left' => $maxLeft / 2, 'right' => $maxRight / 2, 'lastLeft' => $lastLeft,
-                'bottom' => $bottom / 2, 'rows' => $ri + 1];
+                'bottom' => $bottom / 2, 'rows' => $ri + 1, 'cols' => $cols, 'pref' => $pref, 'minW' => $minW];
+    }
+
+    /**
+     * Larguras fixas que não cabem na folha (regra do PDF, não do Dompdf).
+     *
+     * A mesma `width` serve à grade da tela, que rola na horizontal, e ao PDF,
+     * que não rola: px pensados para a tela, num A4 em retrato, faziam a
+     * tabela passar da margem direita (o Dompdf dá a cada coluna o mínimo e
+     * estoura). Quando a tabela não cabe na largura útil e tem coluna de
+     * largura fixa, as fixas encolhem NA MESMA PROPORÇÃO até caber — como
+     * porcentagem da tabela, que o Dompdf e o motor resolvem igual. A que
+     * bateria abaixo do próprio conteúdo fica no conteúdo e as outras
+     * repartem o resto. Auto e % continuam como estão (já estão no mínimo).
+     * Quando cabe, nada muda: null.
+     *
+     * @param array $measure retorno do columnWidths()
+     * @return ?array<int, string> width CSS ('12.3456%') das colunas fixas
+     */
+    public static function fitFixedWidths(array $measure): ?array
+    {
+        $pref = $measure['pref'];
+        if (!($measure['minW'] > $pref) || $pref <= 0) {
+            return null;
+        }
+        $free = [];
+        $avail = $pref;
+        foreach ($measure['cols'] as $i => $c) {
+            if ($c['abs'] > 0) {
+                $free[$i] = $c;
+            } else {
+                $avail -= $c['min'];
+            }
+        }
+        if ($free === []) {
+            return null;
+        }
+
+        $target = [];
+        while ($free) {
+            $sum = 0.0;
+            foreach ($free as $c) $sum += $c['min'];
+            $k = $sum > 0 ? max(0.0, $avail) / $sum : 0.0;
+            $pinned = false;
+            foreach ($free as $i => $c) {
+                if ($k * $c['min'] < $c['cmin']) {
+                    $target[$i] = $c['cmin'];
+                    $avail -= $c['cmin'];
+                    unset($free[$i]);
+                    $pinned = true;
+                }
+            }
+            if (!$pinned) {
+                foreach ($free as $i => $c) $target[$i] = $k * $c['min'];
+                break;
+            }
+        }
+        ksort($target);
+
+        $out = [];
+        foreach ($target as $i => $w) {
+            // 4 casas: o HTML e o motor leem a MESMA string (Cellmap: (float) rtrim).
+            $p = max(0.0001, round($w / $pref * 100, 4));
+            $out[$i] = rtrim(rtrim(sprintf('%.4F', $p), '0'), '.') . '%';
+        }
+
+        return $out;
     }
 
     // ── Quebra de linha ──────────────────────────────────────────────────

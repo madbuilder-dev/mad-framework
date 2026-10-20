@@ -3803,9 +3803,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * mais linhas num servidor com 512 MB do que no MadCloud com 128 MB, e
      * menos numa tela que já carregou muita coisa. A tela pode fixar um valor.
      *
-     * pdfMaxRows vale para o motor direto (Pdf\GridPdfRenderer); pdfHtmlMaxRows
-     * quando o PDF cai no Dompdf (célula com HTML, largura em %…), que monta a
-     * tabela inteira em memória e cresce mais que linear.
+     * pdfMaxRows é o teto do PDF (motor direto, Pdf\GridPdfRenderer).
+     * pdfHtmlMaxRows é até onde o Dompdf desenha o que o motor não reproduz
+     * igual (célula com HTML, largura em calc()…) — ele monta a tabela inteira
+     * em memória e cresce mais que linear. Acima dele o PDF sai pelo motor em
+     * modo texto: não recusa.
      */
     protected int $pdfMaxRows = 0;
     protected int $pdfHtmlMaxRows = 0;
@@ -3816,15 +3818,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($this->_isDeferred()) return $this->_deferredExportToast();
 
         // O teto é decidido ANTES de carregar: carregar 100 mil linhas só para
-        // contar já estoura a memória que o teto protege. Qual teto vale (motor
-        // direto ou Dompdf) sai só das colunas e das bandas.
+        // contar já estoura a memória que o teto protege. Vale sempre o do motor
+        // direto: o que o Dompdf não aguenta sai pelo motor em modo texto.
         [, $visibleCols] = $this->_prepareExportColumns($hiddenColumns);
-        $bands  = $this->_resolvePdfBands();
-        $direct = MadGridExporter::pdfUsesDirectRenderer($visibleCols, $bands['header'], $bands['footer']);
-        $max    = $this->_pdfRowLimit($direct, count($visibleCols));
+        $max    = $this->_pdfRowLimit(true, count($visibleCols));
         $count  = $this->_countForExport();
         if ($count !== null && $count > $max) {
-            return $this->_pdfTooManyRowsToast($max);
+            return $this->_pdfTooManyRowsToast($max, $count);
         }
 
         $data = $this->_loadAllForExport($hiddenColumns);
@@ -3832,14 +3832,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return $this->_exportTooManyToast($data['tooMany']);
         }
         // Sem contagem prévia (query() do app, grid de array): conta carregado.
-        if ($count === null && MadGridExporter::pdfRowCount($data['rows'], $data['groupData'] ?? []) > $max) {
-            return $this->_pdfTooManyRowsToast($max);
+        $loaded = MadGridExporter::pdfRowCount($data['rows'], $data['groupData'] ?? []);
+        if ($count === null && $loaded > $max) {
+            return $this->_pdfTooManyRowsToast($max, $loaded);
         }
         // Só o PDF paga o hook do app (CSV/XLSX não têm bandas).
         $report = ($data['report'] ?? []) + $this->_resolvePdfPage();
         $report['placeholders']   = $this->_resolvePdfPlaceholders();
-        // Conteúdo que só o Dompdf desenha igual pode aparecer na medição
-        // (badge largo demais…): o exporter aplica este teto nesse desvio —
+        // Até onde o Dompdf desenha o que o motor não reproduz igual (HTML na
+        // célula, badge largo demais…); acima, o exporter usa o modo texto —
         // calculado agora, com a memória que sobrou depois de carregar.
         $report['pdfHtmlMaxRows'] = $this->_pdfRowLimit(false, count($visibleCols));
         try {
@@ -3852,7 +3853,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $report
             );
         } catch (Pdf\GridPdfRowLimitException $e) {
-            return $this->_pdfTooManyRowsToast($e->max);
+            return $this->_pdfTooManyRowsToast($e->max, $e->rows);
         }
         return $this->_exportDialog($file, __('grid.export_pdf'), $data['exportFilename']);
     }
@@ -3939,11 +3940,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return intdiv($n, $step) * $step;
     }
 
-    /** Aviso "linhas demais para PDF" — sem redesenhar a grid (só o toast). */
-    private function _pdfTooManyRowsToast(int $max): \Mad\Http\MadResponse
+    /** Aviso "linhas demais para PDF" com o tamanho real — sem redesenhar a grid (só o toast). */
+    private function _pdfTooManyRowsToast(int $max, int $rows = 0): \Mad\Http\MadResponse
     {
         $this->skipFullRender();
-        return \Mad\Ui\MadToast::warning(Pdf\GridPdfRowLimitException::userMessage($max));
+        return \Mad\Ui\MadToast::warning(Pdf\GridPdfRowLimitException::userMessage($max, $rows));
     }
 
     /**

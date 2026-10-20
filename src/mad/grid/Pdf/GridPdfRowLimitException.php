@@ -14,14 +14,24 @@ final class GridPdfRowLimitException extends \RuntimeException
     }
 
     /**
-     * Texto do aviso. App atualizado só pelo canal do framework ainda não tem
-     * a chave nova no lang/ dele: cai no texto em pt-BR em vez de mostrar
-     * `grid.export_pdf_too_many` cru.
+     * Texto do aviso, com o tamanho real da listagem quando ele é conhecido
+     * ($rows > 0). App atualizado só pelo canal do framework ainda não tem a
+     * chave nova no lang/ dele: cai no texto em pt-BR em vez de mostrar
+     * `grid.export_pdf_too_many…` cru.
      */
-    public static function userMessage(int $max): string
+    public static function userMessage(int $max, int $rows = 0): string
     {
         $locale = function_exists('app') ? (string) app()->getLocale() : '';
-        $n = number_format($max, 0, '', str_starts_with($locale, 'en') ? ',' : '.');
+        $fmt = fn(int $v) => number_format($v, 0, '', str_starts_with($locale, 'en') ? ',' : '.');
+        $n = $fmt($max);
+        if ($rows > 0) {
+            $r = $fmt($rows);
+            $msg = __('grid.export_pdf_too_many_rows', ['rows' => $r, 'max' => $n]);
+
+            return $msg === 'grid.export_pdf_too_many_rows'
+                ? "Esta listagem tem {$r} linhas; o PDF aceita até {$n}. Filtre os registros ou exporte para Excel ou CSV."
+                : $msg;
+        }
         $msg = __('grid.export_pdf_too_many', ['max' => $n]);
 
         return $msg === 'grid.export_pdf_too_many'
