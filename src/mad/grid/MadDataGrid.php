@@ -3031,6 +3031,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * página (exportPdfBands) > hooks legados string > global do projeto
      * (MadGridPdfBranding / app/config/pdf-export.json) > default vitrine.
      *
+     * A banda do projeto foi desenhada na largura da orientação do PROJETO:
+     * página em outra orientação recebe a banda ajustada à largura da folha
+     * dela (MadGridPdfBandFit), igual para o motor direto e o Dompdf.
+     *
      * @return array{header: string|array, footer: string|array} valores no
      *         formato que MadGridExporter::pdf aceita (band config ou string
      *         legada — o exporter normaliza).
@@ -3039,6 +3043,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         $page = $this->exportPdfBands();
         $out  = [];
+        $pageOrientation = $this->_resolvePdfPage()['orientation'] ?? null;
 
         foreach (['header', 'footer'] as $which) {
             $band = null;
@@ -3060,6 +3065,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // 3. Global do projeto (app/config/pdf-export.json)
             if ($band === null) {
                 $g = MadGridPdfBranding::band($which);
+                if ($g['mode'] === 'custom' && $pageOrientation !== null) {
+                    $g['html'] = MadGridPdfBandFit::toOrientation(
+                        $g['html'], MadGridPdfBranding::orientation() ?? 'landscape', $pageOrientation
+                    );
+                }
                 if (in_array($g['mode'], ['custom', 'none'], true)) {
                     $band = $g;
                 }

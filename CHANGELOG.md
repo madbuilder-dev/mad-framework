@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.186.1] — 2026-10-20
+
+### Correções
+
+- **Exportação em PDF:** a listagem que exporta o PDF em retrato herdando o cabeçalho e o rodapé do projeto desenhados em paisagem perdia o logo, a paginação ("Página X de Y") e a data, e o título saía fora do lugar. Agora as faixas se ajustam à largura da folha, como o botão "Adaptar para esta página" do editor. Republique o projeto para aplicar.
+
 ## [5.186.0] — 2026-10-19
 
 ### Melhorias
