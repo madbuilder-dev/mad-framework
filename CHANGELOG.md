@@ -12,6 +12,15 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.188.0] — 2026-10-20
+
+### Correções
+
+- **Banco por empresa (Dedicado):** a tabela nova do modelo de dados volta a ser criada no banco de cada empresa por **Sincronizar schema** e **Sincronizar todas** (Central de Comando › Migrations) e pelo `mad:tenant:provision`, também depois de uma publicação pelo Teste Online, que deixava a empresa com "1 faltando" e respondia "0 tabela(s) criada(s)". O que a empresa já tinha não é refeito: os dados das outras tabelas ficam como estavam.
+- **Banco por empresa (Dedicado):** publicar o app agora atualiza também o banco de cada empresa. No fim do `php artisan migrate` do release, as tabelas novas do modelo de dados (inclusive a que vem no arquivo de criação regerado pelo Teste Online) e as linhas novas das tabelas de apoio compartilhadas chegam ao banco de cada empresa. Antes só o banco principal era atualizado, e a tela que usava a tabela nova quebrava para quem entrava na empresa. Sem empresa com banco dedicado, o migrate continua igual.
+- **Central de Comando:** a sincronização das empresas diz quais tabelas criou, avisa a tabela que continua faltando e mantém a tela na aba Migrations (antes voltava para Visão geral quando criava algo). Coluna nova numa tabela que já existe no banco da empresa aparece como aviso e não é criada: ela pode ser só um nome trocado, e criá-la vazia separaria os dados.
+- **`mad:tenant:migrate`:** agora leva ao banco de cada empresa as tabelas do modelo de dados e as linhas das tabelas compartilhadas (antes levava só as tabelas internas do framework). Diz, empresa por empresa, o que criou e o que deu aviso, e uma empresa com problema não impede as outras. O comando termina com erro quando alguma empresa falhou ou ficou com aviso. Para desligar a atualização automática no `migrate`, use `MAD_TENANT_SYNC_ON_MIGRATE=false`.
+
 ## [5.187.0] — 2026-10-20
 
 ### Melhorias
