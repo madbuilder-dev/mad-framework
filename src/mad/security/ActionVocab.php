@@ -120,6 +120,8 @@ final class ActionVocab
         // Só o rodapé de totais da listagem, pedido pelo navegador depois que
         // uma linha mudou (MadDataGrid::onMadGridTotals): é consulta.
         'onMadGridTotals',
+        // A próxima janela do relatório grande, pedida ao rolar (MadGridWindow).
+        'onGridWindow',
     ];
 
     /** Prefixo dos combos dependentes (`onChangeCidade`, `onChangeEstadoId`…). */

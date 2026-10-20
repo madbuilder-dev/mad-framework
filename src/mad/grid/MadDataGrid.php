@@ -56,6 +56,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     // Filtro avançado do usuário final (<mad-custom-filters>).
     use MadGridCustomFilters;
+    use MadGridWindow;
 
     // ── Props de estado (serializadas e criptografadas) ───────────────────
 
@@ -1546,7 +1547,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // carrega quando a tela nem desenha a grade (o último render não a
         // desenhou): ali as linhas não estão na tela de ninguém.
         if ($this->_loadDeferred && !$this->_gridOffView && $this->_isAppMethod($method)) {
-            $this->loadData();
+            $this->_windowFullLoad = true;
+            try {
+                $this->loadData();
+            } finally {
+                $this->_windowFullLoad = false;
+            }
         }
 
         $result = parent::_resolveAndCall($method, $data);
@@ -3657,7 +3663,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)) {
                     return null;
                 }
-                $q->orderBy($q->getModel()->qualifyColumn($col));
+                // Ordenado pela própria chave da quebra (o usuário clicou nela):
+                // a quebra segue a direção dele.
+                $q->orderBy($q->getModel()->qualifyColumn($col), static::_orderDirectionFor($orders, $col, $q->getModel()->getTable()));
             }
 
             $base->orders = array_merge($base->orders ?? [], $orders);
@@ -3665,6 +3673,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return $q->orderBy($q->getModel()->getQualifiedKeyName());
+    }
+
+    /**
+     * Direção com que a ordenação atual já ordena a coluna (`asc` se não ordena).
+     *
+     * @param array<int, array> $orders os `orders` do query builder
+     */
+    private static function _orderDirectionFor(array $orders, string $col, string $table): string
+    {
+        foreach ($orders as $o) {
+            $c = isset($o['column']) && is_string($o['column']) ? str_replace(['"', '`', '[', ']'], '', $o['column']) : null;
+            if ($c === $col || $c === $table . '.' . $col) {
+                return strtolower((string) ($o['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+            }
+        }
+
+        return 'asc';
     }
 
     /**
@@ -4097,6 +4122,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->_detectRenderFields($columns);
 
         $colsConfig = static::_colsClientConfig($columns);
+        // Relatório grande só leitura: a 1ª janela (MadGridWindow).
+        $window = $this->_windowRender($columns);
 
         return ['components.data-grid', [
             'columns'      => $columns,
@@ -4115,9 +4142,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // <mad-row-expand>: o chevron de cada linha (null = sem coluna).
             // Nome próprio pelo mesmo motivo do rowHighlightRules.
             'rowExpandAction' => $this->_effectiveRowExpand(),
-            'totals'       => $this->_footerTotals($columns),
-            'totalsPageOnly' => $this->_totalsPageOnly,
-            'groupData'    => $this->_computeGroupData($columns),
+            'totals'       => $window !== null ? $window['totals'] : $this->_footerTotals($columns),
+            'totalsPageOnly' => $window !== null ? [] : $this->_totalsPageOnly,
+            'groupData'    => $window !== null ? [] : $this->_computeGroupData($columns),
+            'gridWindow'   => $window,
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
             'groupBand'    => $this->groupBand,
@@ -4335,7 +4363,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($returned) {
                 $this->_afterReturnLoad();
             }
-        } elseif (!$this->_rowsFromInline && $this->_rowsBatched) {
+        } elseif (!$this->_rowsFromInline && $this->_rowsBatched && $this->_window === null && $this->_windowHeld === null) {
             $this->_rebuildBatchedRows($columns);
         } elseif (!$this->_rowsFromInline && !empty($this->_rawItems)) {
             // A carga rodou antes de as colunas do Blade chegarem (mount() da
@@ -4348,6 +4376,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $colsConfig = static::_colsClientConfig($columns);
 
         $this->_fillExportMeta();
+        // Relatório grande só leitura: a 1ª janela (MadGridWindow).
+        $window = $this->_windowRender($columns);
 
         // display-condition, disabled e transform callbacks que acessam relacoes
         // do registro ($row['__record']->relacao->campo) funcionam via lazy-load
@@ -4369,9 +4399,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // <mad-row-expand>: o chevron de cada linha (null = sem coluna).
             // Nome próprio pelo mesmo motivo do rowHighlightRules.
             'rowExpandAction' => $this->_effectiveRowExpand(),
-            'totals'       => $this->_footerTotals($columns),
-            'totalsPageOnly' => $this->_totalsPageOnly,
-            'groupData'    => $this->_computeGroupData($columns),
+            'totals'       => $window !== null ? $window['totals'] : $this->_footerTotals($columns),
+            'totalsPageOnly' => $window !== null ? [] : $this->_totalsPageOnly,
+            'groupData'    => $window !== null ? [] : $this->_computeGroupData($columns),
+            'gridWindow'   => $window,
             'groupBy'      => $this->groupBy,
             'groupTotal'   => $this->groupTotal,
             'groupBand'    => $this->groupBand,
@@ -5245,7 +5276,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
 
             if ($batchQ !== null) {
-                $this->_loadUnpaged($batchQ, $columns);
+                // Relatório grande e só leitura abre por janelas: aqui só conta
+                // (MadGridWindow); o render desenha a 1ª janela.
+                $counted = null;
+                if (!$this->_windowDefer($batchQ, $columns, $counted)) {
+                    $this->_loadUnpaged($batchQ, $columns, $counted);
+                }
             } else {
                 if (empty($result)) {
                     $result = $this->_autoQuery();
@@ -5810,9 +5846,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *
      * @param GridColumn[]             $columns
      * @param array<string, true>|null $keep    chaves que a linha leva (null = todas)
+     * @param int                      $fromPage 1º lote (a janela do relatório por janelas)
      * @return \Generator<int, list<array>>
      */
-    protected function _reportBatches(\Illuminate\Database\Eloquent\Builder $q, array $columns, bool $lean, ?int $size = null, ?array $keep = null): \Generator
+    protected function _reportBatches(\Illuminate\Database\Eloquent\Builder $q, array $columns, bool $lean, ?int $size = null, ?array $keep = null, int $fromPage = 1): \Generator
     {
         $size      = max(100, $size ?? $this->reportChunkSize);
         $evaluates = [];
@@ -5823,7 +5860,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($col->isRunning()) $running[] = $col;
         }
 
-        for ($page = 1; ; $page++) {
+        for ($page = max(1, $fromPage); ; $page++) {
             $items = (clone $q)->forPage($page, $size)->get()->all();
             $count = count($items);
             if ($count === 0) {
@@ -6007,14 +6044,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *
      * @param GridColumn[] $columns
      */
-    private function _loadUnpaged(\Illuminate\Database\Eloquent\Builder $q, array $columns): void
+    private function _loadUnpaged(\Illuminate\Database\Eloquent\Builder $q, array $columns, ?int $total = null): void
     {
         $forScreen = $this->_loadColumns === null;
 
-        $countQ = clone $q;
-        $countQ->getQuery()->orders = null;
-        $countQ->getQuery()->bindings['order'] = [];
-        $total = (int) $countQ->count();
+        // $total: quem chama já contou (o modo por janela conta antes de decidir).
+        if ($total === null) {
+            $countQ = clone $q;
+            $countQ->getQuery()->orders = null;
+            $countQ->getQuery()->bindings['order'] = [];
+            $total = (int) $countQ->count();
+        }
 
         $this->_rawItems        = [];
         $this->_rows            = [];

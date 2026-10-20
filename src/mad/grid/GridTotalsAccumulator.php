@@ -40,6 +40,30 @@ final class GridTotalsAccumulator
         unset($a);
     }
 
+    /**
+     * Os acumuladores, só números — para guardar entre requisições (o relatório
+     * por janelas guarda os totais de cada grupo no cache do app).
+     *
+     * @return array<int, array>
+     */
+    public function state(): array
+    {
+        return $this->acc;
+    }
+
+    /** Retoma um acumulador do `state()`, sobre as MESMAS colunas. */
+    public static function fromState(array $columns, array $state): self
+    {
+        $acc = new self($columns);
+        foreach ($state as $i => $a) {
+            if (isset($acc->acc[$i]) && is_array($a)) {
+                $acc->acc[$i] = $a + $acc->acc[$i];
+            }
+        }
+
+        return $acc;
+    }
+
     /** @return array<int, int|float> índice da coluna => número (shape do computeRawTotals) */
     public function raw(): array
     {

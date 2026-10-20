@@ -283,6 +283,39 @@ window._madRangeAfterInsert = function (text, rowsOnPage, tpl) {
     return null;
 };
 
+// Relatório por janelas (#439): a próxima janela de linhas de UMA grid entra
+// antes da sentinela (`tr[data-mad-window-more]`), que passa a levar o cursor
+// da seguinte — ou sai, quando acabou. Resposta de um cursor que a grid não
+// tem mais (filtrou ou ordenou enquanto a janela vinha) é descartada.
+// Devolve as linhas novas e quais delas têm diretiva do Alpine: a linha
+// enxuta (`td[data-k]`) e o seu detalhe não têm; cabeçalho e subtotal da
+// quebra, sim. Tests: tests/js/grid-window-scroll.test.mjs.
+window._madGridWindowApply = function (wrap, op) {
+    const sentinel = wrap ? _madGridOwn(wrap, 'tr[data-mad-window-more]') : null;
+    if (!sentinel || !op) return null;
+    if (op.from !== undefined && op.from !== null
+        && String(op.from) !== sentinel.getAttribute('data-mad-window-more')) {
+        return null;
+    }
+    const prev = sentinel.previousElementSibling;
+    sentinel.insertAdjacentHTML('beforebegin', op.html || '');
+    const rows = [];
+    for (let el = prev ? prev.nextElementSibling : sentinel.parentNode.firstElementChild;
+        el && el !== sentinel; el = el.nextElementSibling) {
+        rows.push(el);
+    }
+    if (op.more) sentinel.setAttribute('data-mad-window-more', String(op.more));
+    else sentinel.remove();
+
+    const compact = function (tr) {
+        const td = tr.firstElementChild;
+        if (!td) return true;
+        if (td.hasAttribute('data-k')) return true;
+        return tr.classList.contains('mad-dg-row-detail') && !td.hasAttribute(':colspan');
+    };
+    return { rows: rows, alpine: rows.filter(function (tr) { return !compact(tr); }), more: !!op.more };
+};
+
 // Aplica o _madRangeAfterInsert no rodapé de UMA grid (`.mad-dg-wrap`).
 window._madGridFooterAfterInsert = function (wrap) {
     if (!wrap) return;
@@ -2583,6 +2616,18 @@ const Mad = {
                 case 'remove_card': {
                     const cardToRemove = document.querySelector('[data-card-id="' + _madCssId(op.cardId) + '"]');
                     if (cardToRemove) cardToRemove.remove();
+                    break;
+                }
+
+                case 'grid_window': {
+                    const wrap = op.gridKey
+                        ? document.querySelector('.mad-dg-wrap[data-grid-key="' + _madCssId(op.gridKey) + '"]')
+                        : null;
+                    const res = _madGridWindowApply(wrap, op);
+                    if (!res) break;
+                    if (window.lucide) lucide.createIcons({ attrs: { class: ['lucide'] }, nameAttr: 'data-lucide' });
+                    if (window.Alpine) res.alpine.forEach(function (tr) { Alpine.initTree(tr); });
+                    wrap.dispatchEvent(new CustomEvent('mad-dg-window-loaded', { detail: res }));
                     break;
                 }
 

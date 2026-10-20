@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.186.0] — 2026-10-19
+
+### Melhorias
+
+- **Relatórios:** relatório sem paginação com muitas linhas abre na hora com as primeiras e carrega o resto conforme você rola, com subtotais, saldo e total geral do relatório inteiro. Antes, acima de alguns milhares de linhas, a tela pedia filtro ou falhava. Republique o projeto para aplicar.
+- **Relatórios:** num relatório grande com quebra, clicar no cabeçalho de uma coluna ordena as linhas dentro de cada grupo, e os grupos seguem a ordem da quebra. A dica do cabeçalho ordenado avisa "(dentro de cada grupo)".
+
 ## [5.185.0] — 2026-10-19
 
 ### Correções

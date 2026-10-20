@@ -7039,6 +7039,11 @@ document.addEventListener('alpine:init', () => {
         const _edit     = { rowKey: null, from: null, input: null, moved: false };
         let   _root     = null;
         let   _onFocusOut = null;
+        // Relatório por janelas (#439). Fora do objeto do Alpine de propósito:
+        // a sentinela e o IntersectionObserver são do navegador, e um Proxy
+        // reativo em volta deles quebra o `observe()`.
+        let   _win      = null;
+        const _winHidden = {};
         const _fieldKey = f => String(f).replace(/[^a-zA-Z0-9_]/g, '_');
         const _cellKey  = (rowId, field) => String(rowId) + '\u0001' + String(field);
         const _cssId    = v => (typeof window._madCssId === 'function')
@@ -7056,6 +7061,8 @@ document.addEventListener('alpine:init', () => {
         // auto-refresh="N": chave declarada — fora do objeto ela cairia no
         // escopo da página, dividido entre a grade que sai e a que entra.
         _refreshTimer:  null,
+        // Relatório por janelas: uma janela pedida e ainda não chegou.
+        winLoading:     false,
 
         // ── Busca rápida server-side ─────────────────────────────────
         search:         cfg.search || '',
@@ -7120,10 +7127,14 @@ document.addEventListener('alpine:init', () => {
             this._watchNarrow();
 
             this._startAutoRefresh();
+
+            // Relatório grande em partes: pede a próxima janela ao rolar.
+            this._initWindow();
         },
 
         destroy() {
             this._stopAutoRefresh();
+            this._stopWindow();
             if (this._narrowOff) this._narrowOff();
             if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
             if (_root && _onFocusOut && typeof _root.removeEventListener === 'function') {
@@ -7205,6 +7216,7 @@ document.addEventListener('alpine:init', () => {
                 if (!q) return;
                 const onChange = (e) => {
                     _narrowQ[n].forEach(f => { this.colNarrow[f] = !!e.matches; });
+                    this._syncWindowCells();
                     this._refreshStickyHead();
                 };
                 // Safari < 14 só tem addListener.
@@ -7384,7 +7396,123 @@ document.addEventListener('alpine:init', () => {
             const hidden = Object.keys(this.colVisibility).filter(f => !this.colVisibility[f]);
             const sk = this._cfg.storageKey || '';
             if (sk) localStorage.setItem('mad-dg-cols:' + sk, JSON.stringify(hidden));
+            this._syncWindowCells();
             this._refreshStickyHead();
+        },
+
+        // Célula do relatório por janelas (`td[data-k]`) não tem `:class` do
+        // Alpine — são milhares. A grade põe/tira a classe de coluna oculta
+        // nela: na grade inteira, só nas colunas que mudaram desde a última
+        // vez; num trecho novo (`scope`, linhas que acabaram de chegar), as
+        // ocultas de agora.
+        _syncWindowCells(scope) {
+            const whole = !scope;
+            const root  = scope || _root;
+            if (!root || typeof root.querySelectorAll !== 'function') return;
+            (this.cols || []).forEach((c) => {
+                const key    = c.field;
+                const hidden = this.isColHidden(key);
+                if (whole) {
+                    if (!!_winHidden[key] === hidden) return;
+                    _winHidden[key] = hidden;
+                } else if (!hidden) {
+                    return;
+                }
+                root.querySelectorAll('td[data-k="' + _cssId(key) + '"]').forEach((td) => {
+                    td.classList.toggle('mad-dg-col-hidden', hidden);
+                });
+            });
+        },
+
+        // ── Relatório por janelas (#439) ─────────────────────────────
+        // O relatório grande chega em partes: a 1ª janela vem no HTML e uma
+        // linha-sentinela no fim do corpo (`tr[data-mad-window-more]`, com o
+        // cursor da próxima) pede a seguinte quando chega perto da tela. A
+        // resposta é a op `grid_window` do mad.js, que insere as linhas antes
+        // da sentinela e avisa a grade com `mad-dg-window-loaded`.
+
+        _initWindow() {
+            if (!_root || typeof _root.querySelector !== 'function') return;
+            this._syncWindowCells();
+            const sentinel = _root.querySelector('tr[data-mad-window-more]');
+            if (!sentinel) return;
+
+            const onLoaded = (e) => this._windowLoaded((e && e.detail) || {});
+            _root.addEventListener('mad-dg-window-loaded', onLoaded);
+
+            let io = null;
+            if (typeof IntersectionObserver === 'function') {
+                const sp = this._getScrollParent(_root);
+                io = new IntersectionObserver((entries) => {
+                    if (entries.some((en) => en.isIntersecting)) this._loadWindow();
+                }, { root: sp === window ? null : sp, rootMargin: '800px 0px' });
+                io.observe(sentinel);
+            }
+            _win = { io, sentinel, onLoaded, fails: 0, retry: null };
+        },
+
+        _stopWindow() {
+            if (!_win) return;
+            if (_win.io) _win.io.disconnect();
+            if (_win.retry) clearTimeout(_win.retry);
+            if (_root && typeof _root.removeEventListener === 'function') {
+                _root.removeEventListener('mad-dg-window-loaded', _win.onLoaded);
+            }
+            _win = null;
+        },
+
+        // Uma janela por vez: rolar rápido não empilha pedidos.
+        _loadWindow() {
+            if (!_win || this.winLoading || typeof MadWire === 'undefined') return;
+            const sentinel = _win.sentinel;
+            const wrapper  = this._wrapper;
+            if (!sentinel || !sentinel.isConnected || !wrapper || !wrapper.isConnected) return;
+
+            this.winLoading = true;
+            sentinel.classList.add('mad-dg-window-loading');
+            const cursor = sentinel.getAttribute('data-mad-window-more') || '';
+            const key    = _root.getAttribute('data-grid-key') || '';
+            const failed = () => { if (this.winLoading) this._windowLoaded({ failed: true }); };
+            Promise.resolve(MadWire.call(wrapper, 'onGridWindow', [cursor, key], {}, { background: true }))
+                // Resposta sem a op (cursor velho, erro na tela): conta como
+                // falha — senão a grade ficaria esperando para sempre.
+                .then((r) => { if (!r || !r.ok) failed(); else setTimeout(failed, 0); }, failed);
+        },
+
+        _windowLoaded(detail) {
+            this.winLoading = false;
+            if (!_win) return;
+            if (_win.sentinel) _win.sentinel.classList.remove('mad-dg-window-loading');
+
+            if (detail.failed) {
+                // Falhou (rede, sessão): tenta de novo mais devagar, até 3 vezes;
+                // depois só quando a sentinela voltar a entrar na tela.
+                _win.fails++;
+                if (_win.fails <= 3 && _win.io && _win.sentinel) {
+                    const s = _win.sentinel;
+                    _win.retry = setTimeout(() => {
+                        if (!_win || !_win.io) return;
+                        _win.retry = null;
+                        _win.io.unobserve(s);
+                        _win.io.observe(s);
+                    }, 2000 * _win.fails);
+                }
+                return;
+            }
+            _win.fails = 0;
+
+            (detail.rows || []).forEach((tr) => this._syncWindowCells(tr));
+
+            const next = _root.querySelector('tr[data-mad-window-more]');
+            if (!next) { this._stopWindow(); return; }
+            // Observar de novo dispara a checagem na hora: se a janela que
+            // chegou não encheu a tela, a próxima já é pedida.
+            if (_win.io) {
+                if (_win.sentinel && _win.sentinel !== next) _win.io.unobserve(_win.sentinel);
+                _win.io.unobserve(next);
+                _win.io.observe(next);
+            }
+            _win.sentinel = next;
         },
 
         // Invalida o proxy do sticky header para forçar rebuild com as novas larguras

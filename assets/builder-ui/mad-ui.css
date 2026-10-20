@@ -8743,6 +8743,20 @@ html.mad-dg-cf-lock body { overflow: hidden; }
    "R$ 6,00" não vira "R$" em cima e "6,00" embaixo quando a grade aperta. */
 .mad-dg-cell-nowrap { white-space: nowrap; }
 
+/* Relatório por janelas (#439): a célula enxuta (`td[data-k]`) leva o
+   alinhamento no style só quando não é à esquerda — a célula de sempre leva
+   `text-align:left` explícito. A sentinela no fim do corpo pede a próxima
+   janela ao entrar perto da tela. */
+.mad-dg-table > tbody > tr > td[data-k] { text-align: left; }
+.mad-dg-window-sentinel > td {
+  padding: 10px 12px;
+  text-align: center;
+  color: var(--mad-text-muted);
+  font-size: 0.8rem;
+  border-bottom: 0;
+}
+.mad-dg-window-sentinel.mad-dg-window-loading > td { opacity: 0.7; }
+
 /* Empty state */
 .mad-dg-empty {
   text-align: center;
