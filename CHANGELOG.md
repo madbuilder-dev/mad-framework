@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.190.0] — 2026-10-21
+
+### Melhorias
+
+- **Instalador:** quando o `.env` do sistema traz `INSTALL_TOKEN`, a tela de token do `/install` agora diz para usar esse valor (o mesmo que o MadBuilder mostra nas Configurações do projeto, em Segurança), em vez de mandar ler um arquivo no servidor que nem chegava a ser criado.
+
 ## [5.189.2] — 2026-10-20
 
 ### Correções
