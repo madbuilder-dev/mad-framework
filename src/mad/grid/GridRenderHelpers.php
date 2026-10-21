@@ -352,7 +352,37 @@ class GridRenderHelpers
             }
         }
 
+        // Accessor do Model (`getStatusNomeAttribute`) não vem no toArray() da
+        // linha — só com `$appends`. A célula (`<mad-col field>`) já o lia pelo
+        // registro; a máscara da quebra, o rótulo do subtotal e o row-detail
+        // imprimiam `{status_nome}` cru (fw#487).
+        if (self::isRecordAccessor($row, self::stripBraces($bare))) {
+            try {
+                return $row['__record']->{self::stripBraces($bare)};
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * `$field` é accessor (clássico ou `Attribute`) do Model da linha? Só nome
+     * simples: relação e coluna fora do toArray() não entram (nada de
+     * lazy-load escondido).
+     */
+    private static function isRecordAccessor(array $row, string $field): bool
+    {
+        $record = $row['__record'] ?? null;
+        if (! $record instanceof \Illuminate\Database\Eloquent\Model || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field)) {
+            return false;
+        }
+        try {
+            return $record->hasGetMutator($field) || $record->hasAttributeGetMutator($field);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -374,6 +404,11 @@ class GridRenderHelpers
 
         $plain = self::stripBraces($field);
         if ($plain !== $field && array_key_exists($plain, $row)) {
+            return true;
+        }
+
+        // Accessor que devolve null é campo vazio, não token desconhecido.
+        if (self::isRecordAccessor($row, $plain)) {
             return true;
         }
 

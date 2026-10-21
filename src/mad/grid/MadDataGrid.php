@@ -5992,6 +5992,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($col->evaluate !== '') $evaluates[$col->field] = $col->evaluate;
             if ($col->isRunning()) $running[] = $col;
         }
+        $totalLabelTokens = $lean ? $this->_groupTotalLabelTokens() : [];
 
         for ($page = max(1, $fromPage); ; $page++) {
             $items = (clone $q)->forPage($page, $size)->get()->all();
@@ -6017,6 +6018,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     $batch[$i]['__run_src_' . $col->fieldKey] = static::_runningDelta($col, $row);
                 }
                 if ($lean) {
+                    // O rótulo do subtotal (group-total-label) resolve DEPOIS,
+                    // sem o registro: o token que só ele resolve (accessor,
+                    // `{rel->campo}`) vira chave da linha antes (fw#487).
+                    foreach ($totalLabelTokens as $tok) {
+                        if (!array_key_exists($tok, $batch[$i])) {
+                            $v = GridRenderHelpers::rowValue($batch[$i], $tok);
+                            if ($v !== null || GridRenderHelpers::rowHasField($batch[$i], $tok)) {
+                                $batch[$i][$tok] = $v;
+                            }
+                        }
+                    }
                     unset($batch[$i]['__record']);
                 }
                 if ($keep !== null) {
@@ -6631,6 +6643,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * máscara resolve contra a primeira linha do grupo (mesma sintaxe do
      * group-mask, formatter incluído).
      */
+    /**
+     * Tokens do group-total-label (sem `{group}` e sem `|formatter`).
+     *
+     * @return list<string>
+     */
+    protected function _groupTotalLabelTokens(): array
+    {
+        if ($this->groupTotalLabel === '' || !preg_match_all('/\{([^}|]+)/', $this->groupTotalLabel, $m)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('trim', $m[1]),
+            fn (string $t) => $t !== '' && $t !== 'group'
+        )));
+    }
+
     protected function _groupTotalLabelFor(string $groupLabel, array $sampleRow): string
     {
         if ($this->groupTotalLabel === '') {

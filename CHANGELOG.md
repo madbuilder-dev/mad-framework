@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.200.1] — 2026-10-21
+
+### Correções
+
+- **Listagem (grid):** a máscara da quebra (`group-mask`) e o rótulo do subtotal (`group-total-label`) passam a mostrar campos calculados do Model, como `{status_nome}`. Antes a banda e o subtotal saíam com o texto "{status_nome}" em vez do valor.
+
 ## [5.200.0] — 2026-10-21
 
 ### Novidades
