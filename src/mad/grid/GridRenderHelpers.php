@@ -684,6 +684,13 @@ class GridRenderHelpers
             } else {
                 $v = null;
             }
+            // Sim/Não (cast `boolean` do Model, PDO do Postgres) vira '1'/'0',
+            // a grafia do selo e da célula simples. `(string) false` é '': o
+            // `field="{ativo}"` que o Studio grava saía como pílula vazia na
+            // grade, nos cartões, no PDF e na planilha (fw#488).
+            if (is_bool($v)) {
+                return $v ? '1' : '0';
+            }
             return $v === null ? '' : (string) $v;
         }, $pattern);
     }

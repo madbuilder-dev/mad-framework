@@ -464,6 +464,7 @@ abstract class MadComponent
                     // Depois do método (create-action pode ser onNovo, não show):
                     // prefill não pode ser atropelado pelo que o método montou.
                     $this->_applyComboOriginPrefill($cleanParams);
+                    $this->_applyUnitProfilePrefill($cleanParams);
                     $this->_offerForwardParams();
                     $this->_echoRendered();
                 }
@@ -471,6 +472,7 @@ abstract class MadComponent
             }
 
             $this->_applyComboOriginPrefill($cleanParams);
+            $this->_applyUnitProfilePrefill($cleanParams);
             $this->_offerForwardParams();
             $this->_echoRendered();
 
@@ -677,6 +679,36 @@ abstract class MadComponent
 
         if ((string) $form->get($column, '') === '') {
             $form->set($column, $term);
+        }
+    }
+
+    /**
+     * "Dados da unidade" ({@see \Mad\Database\UnitProfile}): o cadastro novo que
+     * a ação Dados da tela Unidades abre (`?mad_unit_profile=<id>`) nasce ligado
+     * à unidade — a coluna configurada recebe o id, com ou sem campo na tela (o
+     * valor vai no estado, como o de um `set()` do código).
+     *
+     * Só no formulário configurado, sem registro aberto, com unidade alcançável
+     * por quem abriu e que ainda não tem o registro dela. Campo já preenchido
+     * pelo mount()/método fica como está.
+     *
+     * @param array<string, mixed> $params
+     */
+    private function _applyUnitProfilePrefill(array $params): void
+    {
+        if (!isset($params[\Mad\Database\UnitProfile::PARAM]) || !empty($params['id']) || $this->_recordId() !== null) {
+            return;
+        }
+
+        $unitId = \Mad\Database\UnitProfile::prefillFor(static::class, $params[\Mad\Database\UnitProfile::PARAM]);
+        $column = \Mad\Database\UnitProfile::column();
+        $form   = $unitId === null || $column === null ? null : $this->_findMadForm();
+        if ($form === null) {
+            return;
+        }
+
+        if ((string) $form->get($column, '') === '') {
+            $form->set($column, $unitId);
         }
     }
 

@@ -1857,6 +1857,9 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 
 .mad-badge-default   { background: var(--mad-text); color: var(--mad-bg); }
 .mad-badge-secondary { background: var(--mad-bg-muted); color: var(--mad-text-muted); border-color: var(--mad-border); }
+/* `0:muted:Não` — a variante que o Studio emite para o "Não" de um campo
+   Sim/Não. Neutra, igual à secondary (os tokens já trocam no escuro). */
+.mad-badge-muted     { background: var(--mad-bg-muted); color: var(--mad-text-muted); border-color: var(--mad-border); }
 .mad-badge-outline   { background: transparent; color: var(--mad-text); border-color: var(--mad-border-strong); }
 .mad-badge-primary   { background: var(--mad-primary-subtle); color: var(--mad-text-muted); border-color: var(--mad-border); }
 .mad-badge-info      { background: var(--mad-info-subtle); color: var(--mad-badge-info-fg, #1e40af); border-color: rgba(74,144,217,.3); }

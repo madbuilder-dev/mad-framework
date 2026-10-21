@@ -479,7 +479,9 @@
                                     let raw = {!! $_cv !!};
                                     let v = raw === true ? '1' : (raw === false ? '0' : (raw == null ? '' : String(raw)));
                                     let map = {{ $badgeJson }};
-                                    let entry = map[v] ?? (typeof raw === 'boolean' ? map[String(raw)] : undefined);
+                                    let lv = v.trim().toLowerCase();
+                                    let alias = ['1','t','true'].includes(lv) ? ['1','true'] : (['0','f','false'].includes(lv) ? ['0','false'] : []);
+                                    let entry = map[v] ?? map[alias[0]] ?? map[alias[1]];
                                     if (!entry) return v;
                                     let variant = 'secondary', lbl = v;
                                     if (typeof entry === 'string' && entry.includes(':')) {

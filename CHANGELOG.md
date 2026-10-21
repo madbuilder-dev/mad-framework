@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.201.0] — 2026-10-21
+
+### Novidades
+
+- **Unidades:** "Dados da unidade" — CNPJ, inscrição estadual, endereço, certificado digital — numa tabela do próprio projeto, uma linha por unidade. Ligado pela plataforma (só com Multi-unidade), a lista de Unidades ganha a ação **Dados** e o formulário da unidade, o botão **Dados da unidade**: na primeira vez abre o cadastro novo já ligado à unidade, mesmo sem o campo na tela; depois, a edição. Com alteração não salva na unidade, o botão pergunta antes de descartar. Quando os dados são de cada empresa (banco por empresa, ou tabela separada por empresa), só aparecem as unidades da empresa em que se está. O código das telas lê os dados da unidade ativa para nota fiscal ou cabeçalho de PDF. Sem a configuração, a tela Unidades fica como estava.
+
+## [5.200.2] — 2026-10-21
+
+### Correções
+
+- **Grade:** o selo de um campo Sim/Não (`badge="1:success:Ativo|0:danger:Inativo"`) saía como uma pílula cinza vazia nas linhas desligadas quando o campo vinha entre chaves (`field="{ativo}"`, como o Studio grava). Agora a linha desligada mostra o rótulo certo na grade, nos cartões, depois de salvar a linha, no PDF e na planilha.
+- **Selo:** o mapa aceita as duas grafias de um campo Sim/Não — `1`/`0` ou `true`/`false` — seja qual for a que o banco entregar, também no `<mad-display-field badge>` e no `<mad-detail-form>`.
+- **Selo:** a variante `muted` (o "Não" que o Studio gera, `0:muted:Não`) ganhou cor neutra, no tema claro e no escuro; antes saía sem estilo.
+
 ## [5.200.1] — 2026-10-21
 
 ### Correções

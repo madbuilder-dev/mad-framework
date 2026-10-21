@@ -478,15 +478,52 @@ class GridColumn
         return is_bool($value) ? ($value ? '1' : '0') : (string) $value;
     }
 
-    /** Entrada do mapa para o valor; boolean aceita a chave '1'/'0' ou 'true'/'false'. */
+    /** Entrada do mapa para o valor (ver {@see badgeLookup}). */
     private function badgeEntry(mixed $value): mixed
     {
+        return self::badgeLookup($this->badgeMap, $value);
+    }
+
+    /**
+     * Entrada de um mapa de selo para o valor. A chave exata vence; valor
+     * Sim/Não — `true`/`false`, `1`/`0`, `'t'`/`'f'` (Postgres sem cast),
+     * `'true'`/`'false'` — casa também com a outra grafia da chave: `1` ↔
+     * `true`, `0` ↔ `false`. O autor escreve uma, o banco entrega a outra
+     * (fw#488). Público porque o `<mad-display-field badge>` usa a mesma regra.
+     */
+    public static function badgeLookup(array $map, mixed $value): mixed
+    {
         $key = self::badgeValue($value);
-        if (array_key_exists($key, $this->badgeMap)) {
-            return $this->badgeMap[$key];
+        if (array_key_exists($key, $map)) {
+            return $map[$key];
         }
+        $flag = self::badgeFlag($value);
+        if ($flag === null) {
+            return null;
+        }
+        foreach ($flag ? ['1', 'true'] : ['0', 'false'] as $alias) {
+            if (array_key_exists($alias, $map)) {
+                return $map[$alias];
+            }
+        }
+        return null;
+    }
+
+    /** Valor Sim/Não reconhecível → true/false; qualquer outro → null. */
+    private static function badgeFlag(mixed $value): ?bool
+    {
         if (is_bool($value)) {
-            return $this->badgeMap[$value ? 'true' : 'false'] ?? null;
+            return $value;
+        }
+        if ($value === 1 || $value === 0) {
+            return $value === 1;
+        }
+        if (is_string($value)) {
+            return match (strtolower(trim($value))) {
+                '1', 't', 'true'  => true,
+                '0', 'f', 'false' => false,
+                default           => null,
+            };
         }
         return null;
     }

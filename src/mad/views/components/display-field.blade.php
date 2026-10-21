@@ -47,7 +47,8 @@
                 ];
             }
         }
-        $match = $badgeMap[$rawValue] ?? null;
+        // Mesma regra do selo da grade: Sim/Não casa `1`/`true` e `0`/`false`.
+        $match = \Mad\Grid\GridColumn::badgeLookup($badgeMap, is_bool($value) ? $value : $rawValue);
         if ($match) {
             $displayHtml = '<span class="mad-badge mad-badge-' . htmlspecialchars($match['variant'], ENT_QUOTES)
                          . '" style="display:inline-flex;align-items:center;gap:5px;">'
