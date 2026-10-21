@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.197.5] — 2026-10-21
+
+### Correções
+
+- **Usuários:** uma senha gravada por código próprio do app (tela, rotina, carga de dados ou o agente) ficava no banco como foi digitada, legível por quem abrisse a tabela, e esse usuário não conseguia entrar. Agora toda senha atribuída ao usuário é guardada protegida e o login funciona. Senhas já protegidas e os fluxos de troca, convite e cadastro continuam iguais.
+
 ## [5.197.4] — 2026-10-21
 
 ### Correções
