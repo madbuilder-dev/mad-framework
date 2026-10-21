@@ -132,6 +132,8 @@
                 $listHtml = \Mad\Form\MadDbBlocks::renderList($cfg);
             }
         } catch (\Throwable $e) {
+            // Erro de banco não vira "lista vazia" (fw#481): log, MadTrace e aviso no bloco.
+            $listHtml = \Mad\Form\MadDbBlocks::renderFailure($e, $cfg);
         }
     }
 @endphp

@@ -192,6 +192,24 @@ class MadDbBlocks
         ]);
     }
 
+    /**
+     * O que a lista mostra quando o desenho falha (fw#481). Antes o erro
+     * virava lista vazia, sem log nem aviso, e quem montava a tela achava que
+     * não havia itens. Agora o erro vai para o log (sem segredo, MadUserError)
+     * e para o MadTrace, e o bloco diz que não carregou — a página segue.
+     * Exceção de domínio lançada com texto para o usuário aparece como está.
+     */
+    public static function renderFailure(\Throwable $e, array $cfg): string
+    {
+        $name = (string) ($cfg['name'] ?? '');
+        $message = \Mad\Ui\MadUserError::message($e, mad_t('mad.error.load_failed'), 'mad-db-blocks ' . $name);
+        if (class_exists('MadTrace')) {
+            \MadTrace::captureException($e, ['component' => 'mad-db-blocks', 'name' => $name]);
+        }
+
+        return '<div class="mad-db-blocks-error" role="alert">' . htmlspecialchars($message) . '</div>';
+    }
+
     /** Loads via QuerySource (Eloquent), which manages its own connection. */
     public static function renderList(array $cfg): string
     {

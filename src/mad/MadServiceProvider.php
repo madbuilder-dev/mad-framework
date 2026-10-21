@@ -238,7 +238,7 @@ class MadServiceProvider extends ServiceProvider
      */
     public static function containerNetworks(?string $routeTable = null): array
     {
-        $routeTable ??= is_readable('/proc/net/route') ? (string) @file_get_contents('/proc/net/route') : '';
+        $routeTable ??= @is_readable('/proc/net/route') ? (string) @file_get_contents('/proc/net/route') : '';
         $out = [];
         foreach (array_slice(preg_split('/\R/', trim($routeTable)) ?: [], 1) as $line) {
             $c = preg_split('/\s+/', trim($line)) ?: [];
@@ -266,10 +266,15 @@ class MadServiceProvider extends ServiceProvider
         '127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7',
     ];
 
-    /** O app roda dentro de um container (Docker ou Podman)? */
+    /**
+     * O app roda dentro de um container (Docker ou Podman)? Com `open_basedir`
+     * (Teste Online, hospedagem que tranca o PHP na pasta do app) o caminho fora
+     * dela dá aviso, e no boot o Laravel faz do aviso uma exceção: o app não
+     * subia. Fora do alcance = não é container, e `*` fica como era.
+     */
     public static function runningInContainer(): bool
     {
-        return is_file('/.dockerenv') || is_file('/run/.containerenv');
+        return @is_file('/.dockerenv') || @is_file('/run/.containerenv');
     }
 
     /**

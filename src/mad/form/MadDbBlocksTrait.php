@@ -786,74 +786,16 @@ trait MadDbBlocksTrait
     }
 
     /**
-     * Item novo de um pai com unidade: grava a unidade do pai em `unit_id`.
-     *
-     * Só quando o Model do item e o do pai são escopados por unidade
-     * (BelongsToUnit), o item ainda não tem unidade (nem o formulário nem
-     * nada a pôs) e o Model do item declara a ligação com o pai
-     * (`belongsTo` na `foreign-key` do bloco, como o gerador de models
-     * emite, com o tipo de retorno). A unidade lida é a do pai gravada no
-     * banco, pelo id que o servidor resolveu — nunca a do formulário.
-     *
-     * Unidade do pai fora das unidades de quem grava: fica a ativa, como
-     * antes (o carimbo do BelongsToUnit recusaria a outra). Sem pai achado,
-     * idem. Nunca propaga exceção: o item grava como antes.
+     * Item novo de um pai com unidade: grava a unidade do pai em `unit_id`
+     * (regra em {@see \Mad\Database\ParentUnit}). O pai é o registro da
+     * tela, pelo id que o servidor resolveu — nunca o do formulário.
      */
     private static function _blockFillParentUnit(object $pivot, array $cfg): void
     {
-        if (($cfg['mode'] ?? 'pivot') === 'flat' || !$pivot instanceof \Illuminate\Database\Eloquent\Model) {
+        if (($cfg['mode'] ?? 'pivot') === 'flat') {
             return;
         }
-        $recordId = $cfg['recordId'] ?? null;
-        $foreignKey = (string) ($cfg['foreignKey'] ?? '');
-        if ($recordId === null || $recordId === '' || $foreignKey === ''
-            || !method_exists($pivot, 'madUnitScoped') || !$pivot::madUnitScoped()) {
-            return;
-        }
-        $current = $pivot->getAttribute('unit_id');
-        if ($current !== null && $current !== '') {
-            return;
-        }
-
-        try {
-            $relation = null;
-            foreach ((new \ReflectionClass($pivot))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                $type = $method->getReturnType();
-                if ($method->isStatic() || $method->getNumberOfParameters() > 0
-                    || !$type instanceof \ReflectionNamedType
-                    || !is_a($type->getName(), \Illuminate\Database\Eloquent\Relations\BelongsTo::class, true)
-                    || is_a($type->getName(), \Illuminate\Database\Eloquent\Relations\MorphTo::class, true)) {
-                    continue;
-                }
-                $candidate = $method->invoke($pivot);
-                if ($candidate instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo
-                    && $candidate->getForeignKeyName() === $foreignKey) {
-                    $relation = $candidate;
-                    break;
-                }
-            }
-            $parent = $relation?->getRelated();
-            if ($parent === null || !method_exists($parent, 'madUnitScoped') || !$parent::madUnitScoped()) {
-                return;
-            }
-            // Sem os escopos do pai: quem comenta pode ter a filial só na lista
-            // de unidades, não ativa; o id veio do servidor.
-            $unit = $parent->newQueryWithoutScopes()
-                ->where($relation->getOwnerKeyName(), $recordId)
-                ->value('unit_id');
-        } catch (Throwable $e) {
-            error_log('[MadDbBlocks] unidade do pai de ' . get_class($pivot) . ' não lida: ' . $e->getMessage());
-
-            return;
-        }
-        if (!is_numeric($unit)) {
-            return;
-        }
-        $allowed = \Mad\Database\UnitContext::allowedIds();
-        if ($allowed !== null && !in_array((int) $unit, $allowed, true)) {
-            return;
-        }
-        $pivot->setAttribute('unit_id', (int) $unit);
+        \Mad\Database\ParentUnit::fillByKey($pivot, (string) ($cfg['foreignKey'] ?? ''), $cfg['recordId'] ?? null);
     }
 
     /**

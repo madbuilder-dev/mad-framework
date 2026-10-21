@@ -101,7 +101,7 @@ class TraceInfraCommand extends Command
     private function cpuCount(): int
     {
         $n = 0;
-        if (is_readable('/proc/cpuinfo')) {
+        if (@is_readable('/proc/cpuinfo')) {
             $n = substr_count((string) @file_get_contents('/proc/cpuinfo'), 'processor');
         }
         if ($n < 1 && function_exists('shell_exec')) {
@@ -115,7 +115,7 @@ class TraceInfraCommand extends Command
     /** % de memória usada (Linux /proc/meminfo, macOS hw.memsize+vm_stat) ou null. */
     private function memPercent(): ?float
     {
-        if (is_readable('/proc/meminfo')) {
+        if (@is_readable('/proc/meminfo')) {
             $m = (string) @file_get_contents('/proc/meminfo');
             if (preg_match('/MemTotal:\s+(\d+)/', $m, $t) && preg_match('/MemAvailable:\s+(\d+)/', $m, $a)) {
                 $total = (float) $t[1];
@@ -157,7 +157,7 @@ class TraceInfraCommand extends Command
 
     private function uptimeDays(): ?int
     {
-        if (is_readable('/proc/uptime')) {
+        if (@is_readable('/proc/uptime')) {
             $u = (float) strtok((string) @file_get_contents('/proc/uptime'), ' ');
             return (int) floor($u / 86400);
         }

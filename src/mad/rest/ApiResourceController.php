@@ -310,6 +310,8 @@ abstract class ApiResourceController
 
             $child->fill($row);
             $child->{$foreign} = $master->getKey();
+            // Multiunidade: o detalhe vai para a unidade do mestre (fw#483).
+            \Mad\Database\ParentUnit::fill($child, $master);
 
             $this->beforeSaveDetail($master, $child, $relation, $row);
             $child->save();

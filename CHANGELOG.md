@@ -12,6 +12,30 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.198.4] — 2026-10-21
+
+### Correções
+
+- **App gerado:** app em hospedagem que tranca o PHP na pasta do app (como o Teste Online) voltou a subir. Na 5.198.0 ele parava no boot com "Migrations falharam".
+
+## [5.198.3] — 2026-10-21
+
+### Correções
+
+- **Listagem (grid):** na `<mad-data-table :items>` (dados de array), a coluna escrita com chaves, como `field="{situacao}"` ou `field="{item} ({qtd})"`, agora mostra o valor. Antes a célula saía vazia.
+
+## [5.198.2] — 2026-10-21
+
+### Correções
+
+- **Formulário:** quando a lista do `<mad-db-blocks>` ou do `<mad-comments>` não consegue carregar (erro no banco), o bloco agora mostra "Não foi possível carregar os dados" e o erro fica registrado. Antes aparecia como lista vazia, sem nenhum aviso.
+
+## [5.198.1] — 2026-10-21
+
+### Correções
+
+- **Formulário:** em app com várias unidades, o que se grava junto com um registro de outra unidade (linha da Lista de itens ou do Detail Form, anexo do Upload, arquivo de uma linha, opções marcadas numa seleção gravada em tabela) agora fica na unidade do registro. Antes ia para a unidade ativa de quem salvava, e a filial deixava de ver.
+
 ## [5.198.0] — 2026-10-21
 
 ### Novidades

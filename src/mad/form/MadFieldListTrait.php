@@ -304,6 +304,9 @@ trait MadFieldListTrait
      */
     private function _saveDetailItemRow(object $instance, ?MadForm $form, ?string $fieldList, string $model, string $fk, mixed $parentId, int $position): void
     {
+        // Multiunidade: a linha vai para a unidade do pai, não para a ativa
+        // de quem salva (fw#483) — o que o `$each` pôs vale.
+        \Mad\Database\ParentUnit::fillByKey($instance, $fk, $parentId);
         try {
             $instance->save();
         } catch (\Illuminate\Database\QueryException $e) {

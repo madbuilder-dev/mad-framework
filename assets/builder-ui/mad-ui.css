@@ -15536,3 +15536,6 @@ html[data-theme="dark"] {
   --mad-chart-track: #3f3f46;
   --mad-chart-marker: #fb923c;
 }
+
+/* <mad-db-blocks>: a lista não carregou (fw#481) — no lugar do "Nenhum item". */
+.mad-db-blocks-error { font-size: 12px; color: var(--mad-danger, #dc2626); padding: 8px 4px; }

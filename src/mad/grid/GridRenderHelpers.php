@@ -577,10 +577,15 @@ class GridRenderHelpers
             // também materializa os renderFields: sem isso `{custo}` não
             // existia na linha e a coluna saía vazia / R$ 0,00 (#344).
             $isPlain = is_object($item) && !method_exists($item, 'toArray');
-            if (is_object($item) && (method_exists($item, 'toArray') || $isPlain)) {
-                $row = $isPlain ? (array) $item : $item->toArray();
+            $isArray = is_array($item);
+            if ($isArray || (is_object($item) && (method_exists($item, 'toArray') || $isPlain))) {
+                // Item de ARRAY (`<mad-data-table :items>`) passa pelos mesmos
+                // renderFields: `field="{situacao}"` (Blade escrito à mão, ou
+                // salvo antes da builder#510) e a máscara `{item} ({qtd})`
+                // procuravam a chave literal e a célula saía vazia (fw#482).
+                $row = $isArray ? $item : ($isPlain ? (array) $item : $item->toArray());
                 if (!empty($renderFields)) {
-                    $hasRender = method_exists($item, 'render');
+                    $hasRender = !$isArray && method_exists($item, 'render');
                     foreach ($renderFields as $field => $pattern) {
                         try {
                             // Quebra granular: a chave e o BALDE (`2026-03-09`),
@@ -607,7 +612,9 @@ class GridRenderHelpers
                         }
                     }
                 }
-                $row['__record'] = $item;
+                if (!$isArray) {
+                    $row['__record'] = $item;
+                }
                 $rows[] = $row;
             } else {
                 $rows[] = (array) $item;

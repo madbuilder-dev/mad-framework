@@ -5999,7 +5999,7 @@ class MadForm
                 continue;
             }
 
-            $this->_linkPivotItem($cls, $foreignKey, $parentId, $itemKey, $itemId, $keyed);
+            $this->_linkPivotItem($cls, $foreignKey, $parentId, $itemKey, $itemId, $keyed, $record);
             $pending[] = $itemId;
         }
 
@@ -6053,7 +6053,7 @@ class MadForm
      * desmarcada antes continua na tabela (e no índice único pai + item):
      * marcar de novo é devolvê-la, não inserir outra.
      */
-    private function _linkPivotItem(string $cls, string $foreignKey, mixed $parentId, string $itemKey, string $itemId, bool $keyed = true): void
+    private function _linkPivotItem(string $cls, string $foreignKey, mixed $parentId, string $itemKey, string $itemId, bool $keyed, object $record): void
     {
         $probe = new $cls();
 
@@ -6079,6 +6079,8 @@ class MadForm
 
         $probe->$foreignKey = $parentId;
         $probe->$itemKey    = $itemId;
+        // A ligação vai para a unidade do registro (fw#483).
+        \Mad\Database\ParentUnit::fill($probe, $record);
         $probe->save();
     }
 
@@ -6529,6 +6531,8 @@ class MadForm
 
                 $child = new $model();
                 $child->$foreignKey = $parentId;
+                // O anexo vai para a unidade do registro (fw#483).
+                \Mad\Database\ParentUnit::fill($child, $record);
 
                 if ($nameColumn) {
                     $child->$nameColumn = $cleanName;
@@ -9763,6 +9767,9 @@ class MadForm
         if ($hook) {
             ($hook)($instance, $mestre, $row);
         }
+        // Multiunidade: a linha vai para a unidade do pai, não para a ativa
+        // de quem salva (fw#483) — o que o hook pôs vale.
+        \Mad\Database\ParentUnit::fill($instance, $mestre);
 
         // Uploads por-linha: disco ANTES do save (path na coluna); db DEPOIS (BLOB).
         $blobJobs = [];
@@ -10123,6 +10130,7 @@ class MadForm
                 $gc       = new $model();
                 if ($this->_storeFile($file['tmp_name'], $dest, $gc, $unique)) {
                     $gc->$fk = $itemId;
+                    \Mad\Database\ParentUnit::fill($gc, $itemInstance);
                     if ($useStorageCol) {
                         $gc->storage = 'disk';
                     }
@@ -10141,6 +10149,7 @@ class MadForm
             foreach ($files as $file) {
                 $gc = new $model();
                 $gc->$fk = $itemId;
+                \Mad\Database\ParentUnit::fill($gc, $itemInstance);
                 if ($useStorageCol) {
                     $gc->storage = 'db';
                 }
