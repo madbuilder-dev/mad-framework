@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\DB;
 use Mad\Component\MadComponent;
 use Mad\Database\QuerySource;
 use Mad\Http\MadResponse;
+use Mad\Support\BusinessDays;
 use Mad\Ui\MadToast;
 
 /**
@@ -132,9 +133,17 @@ abstract class MadGanttComponent extends MadComponent
     /** Colunas da sidebar. Override em buildColumns() pra customizar. */
     protected array $columns = [];
 
-    /** Working calendar */
-    protected array $workingDays  = [1,2,3,4,5];
+    /** Working calendar — vazio = `mad.calendar.working_days` (padrão seg–sex). */
+    protected array $workingDays  = [];
     protected array $holidays     = [];
+
+    /**
+     * `holidays="provider"`: soma os feriados do provedor do app
+     * ({@see BusinessDays}) no período das tarefas; `holidays-unit` escolhe a
+     * unidade cujo calendário vale (feriado municipal só dela).
+     */
+    protected bool $holidaysProvider = false;
+    protected string $holidaysUnit = '';
 
     /** HTML gerado do gantt — protected pra NAO virar bindable (evita emitir HTML gigante a cada action). */
     protected string $gantt = '';
@@ -158,7 +167,7 @@ abstract class MadGanttComponent extends MadComponent
         'ganttTitle', 'startDate', 'interval', 'viewMode', 'zoom', 'workloadMode',
         'progressScale',
         'criticalPath', 'autoSchedule', 'showWorkload', 'stripedRows',
-        'workingDays', 'holidays', 'columns',
+        'workingDays', 'holidays', 'holidaysProvider', 'holidaysUnit', 'columns',
         // v2 visual
         'phaseField', 'arrowStyle', 'density',
         'phaseSource', 'personSource',
@@ -334,7 +343,7 @@ abstract class MadGanttComponent extends MadComponent
             ->enableViewModeButton()
             ->enableZoomButton()
             ->columns($this->buildColumns())
-            ->workingDays($this->workingDays)
+            ->workingDays($this->workingDays ?: BusinessDays::workingDays())
             ->holidays($this->holidays);
 
         if ($this->stripedRows)   $gantt->stripedRows();
@@ -366,6 +375,10 @@ abstract class MadGanttComponent extends MadComponent
             $gantt->addTask($id, $props);
         }
 
+        if ($this->holidaysProvider) {
+            $gantt->holidays($this->providerHolidays($records));
+        }
+
         // 2. Dependencias (reusa os records da query acima no modo fk:)
         if ($this->dependencySource) {
             $this->loadDependencies($gantt, $taskIds, $records);
@@ -395,6 +408,47 @@ abstract class MadGanttComponent extends MadComponent
         $this->_dropDeniedDragUpdate($gantt);
 
         return $gantt;
+    }
+
+    /**
+     * Feriados do provedor do app no período das tarefas (um ano de folga de
+     * cada lado, para a rolagem do Gantt), somados aos fixos da tela.
+     *
+     * @param iterable<object> $records
+     * @return list<string>
+     */
+    protected function providerHolidays(iterable $records): array
+    {
+        $min = $max = null;
+        foreach ($records as $r) {
+            foreach ([$this->startField, $this->endField] as $f) {
+                $v = $f ? ($r->{$f} ?? null) : null;
+                if ($v === null || $v === '') {
+                    continue;
+                }
+                $d = substr($v instanceof \DateTimeInterface ? $v->format('Y-m-d') : (string) $v, 0, 10);
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) !== 1) {
+                    continue;
+                }
+                $min = $min === null || $d < $min ? $d : $min;
+                $max = $max === null || $d > $max ? $d : $max;
+            }
+        }
+        $anchor = $this->startDate !== '' ? substr($this->startDate, 0, 10) : date('Y-m-d');
+        $fromYear = (int) substr($min ?? $anchor, 0, 4) - 1;
+        $toYear = (int) substr($max ?? $anchor, 0, 4) + 1;
+
+        try {
+            $fromProvider = array_keys(BusinessDays::holidaysBetween(
+                $fromYear . '-01-01',
+                $toYear . '-12-31',
+                $this->holidaysUnit !== '' ? $this->holidaysUnit : null,
+            ));
+        } catch (\Throwable $e) {
+            $fromProvider = [];
+        }
+
+        return array_values(array_unique(array_merge($this->holidays, $fromProvider)));
     }
 
     /**
@@ -784,11 +838,30 @@ abstract class MadGanttComponent extends MadComponent
 
         // holidays: attr csv "2026-01-01,2026-02-16" (documentado; antes era
         // silenciosamente ignorado — só a sub-tag <mad-gantt-holiday> valia).
-        if (!empty($config['holidays']) && is_string($config['holidays'])) {
-            $list = array_values(array_filter(array_map('trim', explode(',', $config['holidays']))));
+        // A palavra `provider` na lista liga os feriados do provedor do app;
+        // `:holidays` aceita array PHP (datas, ou 'Y-m-d' => nome).
+        if (!empty($config['holidays']) && (is_string($config['holidays']) || is_array($config['holidays']))) {
+            $raw = $config['holidays'];
+            if (is_string($raw)) {
+                $raw = explode(',', $raw);
+            } elseif (!array_is_list($raw)) {
+                $raw = array_keys($raw);
+            }
+            $list = [];
+            foreach ($raw as $h) {
+                $h = trim((string) $h);
+                if (strtolower($h) === 'provider') {
+                    $this->holidaysProvider = true;
+                } elseif ($h !== '') {
+                    $list[] = $h;
+                }
+            }
             if ($list) {
                 $this->holidays = array_values(array_unique(array_merge($this->holidays, $list)));
             }
+        }
+        if (array_key_exists('holidaysUnit', $config) && $config['holidaysUnit'] !== null) {
+            $this->holidaysUnit = (string) $config['holidaysUnit'];
         }
 
         // holidays via sub-tag <mad-gantt-holiday date="..."/>

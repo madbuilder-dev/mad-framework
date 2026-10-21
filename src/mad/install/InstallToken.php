@@ -21,22 +21,13 @@ final class InstallToken
     }
 
     /**
-     * true = o token vem do `INSTALL_TOKEN` do .env (o MadBuilder grava ali o
-     * mesmo valor que mostra nas Configurações do projeto) e nenhum arquivo é
-     * gerado; o wizard aponta pro .env em vez do arquivo.
-     */
-    public static function fromEnv(): bool
-    {
-        return (string) env('INSTALL_TOKEN', '') !== '';
-    }
-
-    /**
      * Garante que existe um token e devolve o valor (env tem precedência).
      */
     public static function ensure(): string
     {
-        if (self::fromEnv()) {
-            return (string) env('INSTALL_TOKEN');
+        $env = (string) env('INSTALL_TOKEN', '');
+        if ($env !== '') {
+            return $env;
         }
 
         $path = self::path();

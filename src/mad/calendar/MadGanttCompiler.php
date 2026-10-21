@@ -32,7 +32,8 @@ namespace Mad\Calendar;
  * │                            minutes-step, locale, popover-title,              │
  * │                            popover-content                                   │
  * │                                                                              │
- * │    Atributos calendar:    working-days, working-hours, holidays              │
+ * │    Atributos calendar:    working-days, working-hours, holidays,             │
+ * │                           holidays-unit (holidays="provider": feriados do app)│
  * │                                                                              │
  * │    Atributos callbacks:   on-task-click, on-task-update, on-day-click,       │
  * │                            on-dependency-create, on-dependency-delete,       │
@@ -314,6 +315,7 @@ class MadGanttCompiler
             'working-days'             => 'workingDays',
             'working-hours'            => 'workingHours',
             'holidays'                 => 'holidays',
+            'holidays-unit'            => 'holidaysUnit',
             // Callbacks
             'on-task-click'            => 'onTaskClick',
             'on-task-update'           => 'onTaskUpdate',

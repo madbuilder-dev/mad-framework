@@ -120,6 +120,9 @@
                     'title' => "{$step}: {$label}",
                     'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null];
             })(),
+            'record_changed' => ['tone' => 'danger', 'title' => 'Aprovação cancelada — o registro foi alterado depois do envio',
+                'detail' => $step !== '' ? $step : null],
+            'record_rehashed' => ['tone' => 'info', 'title' => 'Nova versão do registro enviada — '.$__nodeName($node), 'detail' => null],
             'approved' => ['tone' => 'ok', 'title' => "{$step}: Aprovado",
                 'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null],
             'rejected' => ['tone' => 'danger', 'title' => "{$step}: Rejeitado",
@@ -164,6 +167,14 @@
         }
         if (! empty($__ev['at'])) {
             $__meta[] = \Illuminate\Support\Carbon::parse($__ev['at'])->format('d/m/Y H:i');
+        }
+        // Prova da decisão: de onde veio e qual versão foi decidida.
+        $__evp = (array) ($__ev['payload'] ?? []);
+        if (! empty($__evp['ip'])) {
+            $__meta[] = 'IP '.$__evp['ip'];
+        }
+        if (! empty($__evp['record_hash']) && in_array($__ev['event'], ['decided', 'approved', 'rejected', 'returned'], true)) {
+            $__meta[] = 'versão '.substr((string) $__evp['record_hash'], 0, 8);
         }
         $__d['meta'] = implode(' · ', $__meta);
         $__wfTimeline[] = $__d;

@@ -12,11 +12,33 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.193.0] — 2026-10-21
+
+### Novidades
+
+- **Workflow:** o app pode reagir ao andamento da aprovação — fluxo concluído, decisão tomada, pendência criada, lembrete e escalada — criando um ouvinte na pasta de listeners, sem configurar nada. O aviso de fluxo concluído traz o registro já atualizado e a trilha de quem aprovou, quando, de onde e qual versão.
+
+## [5.192.0] — 2026-10-21
+
+### Novidades
+
+- **Workflow:** o prazo de um passo pode ser contado em dias úteis, pulando fim de semana e os feriados da unidade do registro, com lembretes repetidos (por exemplo no 1º e no 2º dia útil sem resposta) e escalada no dia útil escolhido.
+- **Workflow:** na escalada, quem tinha a pendência também é avisado, e os avisos de pendência, lembrete e escalada trazem o botão para abrir a fila de aprovação.
+
+## [5.191.0] — 2026-10-21
+
+### Novidades
+
+- **Workflow:** cada decisão passa a guardar o IP, o navegador e a versão do registro que foi aprovada. O mapa do fluxo (`<mad-wf-map>`) mostra isso na linha do tempo, ao lado de quem decidiu e quando.
+- **Workflow:** com a coluna de versão do registro informada no fluxo (`hash_column`), uma aprovação sobre versão diferente da enviada é recusada e o fluxo é cancelado, com aviso ao solicitante. Um passo marcado com `hash_rebase` (correção pelo solicitante) aceita a versão nova.
+
 ## [5.190.0] — 2026-10-21
 
-### Melhorias
+### Novidades
 
-- **Instalador:** quando o `.env` do sistema traz `INSTALL_TOKEN`, a tela de token do `/install` agora diz para usar esse valor (o mesmo que o MadBuilder mostra nas Configurações do projeto, em Segurança), em vez de mandar ler um arquivo no servidor que nem chegava a ser criado.
+- **Calendário:** prazos em dias úteis com `Mad\Support\BusinessDays` (somar, contar e conferir dia útil), pulando fim de semana e feriados. Sem configurar nada valem os feriados nacionais, inclusive Carnaval, Sexta-feira Santa e Corpus Christi.
+- **Calendário:** feriados estaduais, municipais ou da empresa entram criando a classe `App\Services\HolidayProvider` no app. O feriado municipal só conta para a unidade em que vale.
+- **Calendário:** o Gantt ganha `holidays="provider"` (destaca os feriados do app) e `holidays-unit` (calendário de qual unidade); sem `working-days`, o Gantt usa os dias úteis do app.
 
 ## [5.189.2] — 2026-10-20
 
