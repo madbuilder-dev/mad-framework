@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.193.2] — 2026-10-21
+
+### Correções
+
+- **App gerado:** app novo nascia com três bancos de empresa de exemplo (`acme`, `globex` e `initech`) na pasta de bancos do modo Dedicado, e a empresa cadastrada com um desses nomes encontrava um banco já com dados de teste. Agora o app nasce sem nenhum banco de empresa.
+
 ## [5.193.1] — 2026-10-21
 
 ### Melhorias
