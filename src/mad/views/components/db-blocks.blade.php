@@ -54,6 +54,10 @@
     $mimeColumn  = $mimeColumn  ?? '';
     $diskColumn  = $diskColumn  ?? '';
 
+    // Coluna que recebe o usuário logado no item novo (o autor do comentário).
+    // Vem do servidor, nunca do formulário (fw#466).
+    $userField     = $userField     ?? '';
+
     $onAdd         = $onAdd         ?? '';
     $onRemove      = $onRemove      ?? '';
     $onUpdate      = $onUpdate      ?? '';
@@ -108,6 +112,7 @@
         'filters'              => $filters,
         'noList'               => $noList,
         'formSchema'           => $formSchema,
+        'userField'            => $userField,
     ];
     $stateToken = \Mad\Form\MadDbBlocks::encodeState($cfg);
 

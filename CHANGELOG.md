@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.197.3] — 2026-10-21
+
+### Correções
+
+- **Formulário:** o "Comentar" do `<mad-comments>` agora grava o usuário logado na coluna do autor (`author-field`). Antes, dentro de um formulário, o comentário podia falhar com "Um campo obrigatório ficou sem valor" e não gravava.
+
+## [5.197.2] — 2026-10-21
+
+### Correções
+
+- **Campos:** a coluna de seleção somente leitura da lista de itens (`<mad-field-list-column type="select" :readonly="true">` ou `readonly-when`) agora parece somente leitura: sem a seta, com o fundo apagado, e não abre a lista ao clicar.
+
 ## [5.197.1] — 2026-10-21
 
 ### Correções

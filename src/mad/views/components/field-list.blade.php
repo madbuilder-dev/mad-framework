@@ -646,10 +646,15 @@
                                 unset($__flOut, $__flRow, $__flV);
                             }
                         @endphp
-                            <select class="mad-input-sm"
+                            {{-- readonly / readonly-when: mesma classe do <mad-select-field>
+                                 (.mad-readonly-select). O MAD Select a lê na hora e não
+                                 abre; o valor continua no POST — disabled o tiraria (fw#472). --}}
+                            <select class="mad-input-sm{{ $col->readonly ? ' mad-readonly-select' : '' }}"
                                     name="{{ $fld }}[]"
                                     x-model="row['{{ $fld }}']"
                                     data-mad-select
+                                    @if($col->readonly) aria-readonly="true" @endif
+                                    @if($rw !== '') :class="{ 'mad-readonly-select': !!({{ $rw }}) }" :aria-readonly="({{ $rw }}) ? 'true' : null" @endif
                                     @if($col->required)  required  @endif
                                     @if($col->disabled)  disabled  @endif
                                     @if($dw !== '') :disabled="{{ $dw }}" @endif

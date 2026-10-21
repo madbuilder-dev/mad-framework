@@ -1505,6 +1505,17 @@ textarea.mad-textarea:read-only:focus {
   pointer-events: none;
   opacity: .7;
 }
+/* <select> somente leitura (`.mad-readonly-select`: readonly / readonly-when,
+   inclusive na coluna da <mad-field-list>, fw#472): mesmo visual do
+   input:read-only, sem a seta — não parece editável e o valor vai no POST. */
+.mad-sel:has(> select.mad-readonly-select) > .mad-sel-control {
+  background: var(--mad-input-bg, var(--mad-bg-subtle));
+  pointer-events: none;
+  opacity: .7;
+}
+.mad-sel:has(> select.mad-readonly-select) .mad-sel-caret,
+.mad-sel:has(> select.mad-readonly-select) .mad-sel-clear { display: none !important; }
+
 /* <select> nativo desabilitado (prop `disabled` ou `disabled-when`): o clique
    já não abre (onControlClick checa `_native.disabled`); aqui o controle
    visível passa a PARECER desabilitado, igual a um .mad-select:disabled. */

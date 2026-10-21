@@ -122,6 +122,12 @@ trait MadDbBlocksTrait
                     }
                 }
 
+                // Autor do item (`user-field`; o `author-field` do <mad-comments>):
+                // o usuário logado, nunca o formulário. Nada preenchia a coluna,
+                // e o comentário só gravava autor quando o Model ou a tela o
+                // punham por conta própria; senão NOT NULL estourava (fw#466).
+                self::_blockFillUser($pivot, $cfg);
+
                 // Chave para outro cadastro (cliente, categoria, usuário) passa
                 // pelas regras de referência do Model, como nas linhas filhas do
                 // formulário: a de outra unidade, ou que não existe, é recusada.
@@ -743,8 +749,35 @@ trait MadDbBlocksTrait
         if (method_exists($pivot, 'getKeyName')) {
             $fixed[] = (string) $pivot->getKeyName();
         }
+        // O autor vem da sessão (_blockFillUser): nem o formulário nem o
+        // editar no lugar o trocam.
+        if ((string) ($cfg['userField'] ?? '') !== '') {
+            $fixed[] = (string) $cfg['userField'];
+        }
 
         return $fixed;
+    }
+
+    /**
+     * Grava o usuário logado na coluna `user-field` do item novo. O
+     * `<mad-comments>` manda o `author-field` sempre (padrão `user_id`), então
+     * tabela sem a coluna fica como está, e sem usuário na sessão também.
+     */
+    private static function _blockFillUser(object $pivot, array $cfg): void
+    {
+        $column = (string) ($cfg['userField'] ?? '');
+        $uid = \Mad\Database\DataScope::userId();
+        if ($column === '' || $uid === null || !method_exists($pivot, 'getConnection')) {
+            return;
+        }
+        try {
+            if (!$pivot->getConnection()->getSchemaBuilder()->hasColumn($pivot->getTable(), $column)) {
+                return;
+            }
+        } catch (Throwable) {
+            return;
+        }
+        $pivot->{$column} = $uid;
     }
 
     /**

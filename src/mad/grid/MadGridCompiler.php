@@ -645,6 +645,8 @@ class MadGridCompiler
             'size-column'         => 'sizeColumn',
             'mime-column'         => 'mimeColumn',
             'disk-column'         => 'diskColumn',
+            // fw#466 — coluna que recebe o usuário logado no item novo.
+            'user-field'          => 'userField',
         ];
 
         $parts = [];

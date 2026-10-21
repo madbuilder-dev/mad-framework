@@ -21,6 +21,10 @@
      * vê recebe o feed SEM os internos (filtro no servidor: lista, re-render,
      * editar e remover) e a caixa sem o switch; o comentário dele grava
      * público. Sem a prop, todos veem (como antes).
+     *
+     * Autor (`author-field`, padrão `user_id`): o comentário novo grava o
+     * usuário logado nessa coluna, quando a tabela a tem. Vem da sessão, não
+     * do formulário (fw#466).
      */
     $name        = $name        ?? 'comentarios';
     $model       = $model       ?? '';
@@ -113,6 +117,7 @@
     :row-slot="$itemTemplate"
     :form-slot="$formTpl"
     :preset-vars="$presetVars"
+    :user-field="$authorField"
     order-by="id"
     :order-dir="$orderDir"
     add-mode="inline"
