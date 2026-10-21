@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.197.4] — 2026-10-21
+
+### Correções
+
+- **Cortina lateral:** no Safari, o primeiro clique em "Novo" (ou "Editar") de uma listagem mostrava a barra de carregando e não abria nada, e o clique seguinte abria o cadastro anterior — depois de trocar de tela pelo menu, o "Novo" de Estados abria o cadastro de Cidades. Agora a cortina abre no primeiro clique, com o cadastro da tela certa, em qualquer navegador.
+
 ## [5.197.3] — 2026-10-21
 
 ### Correções

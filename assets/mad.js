@@ -2846,8 +2846,11 @@ const Mad = {
         const target = document.querySelector(this.onlineTarget);
 
         if (target) {
-            // Remove scripts antigos antes de inserir novos
-            // target.querySelectorAll('script').forEach(s => s.remove());
+            // O _reinit abaixo reexecuta todo <script> do #mad_partial, e os das
+            // respostas anteriores já rodaram. O do wrapper de uma cortina que
+            // ainda estava no DOM a reabria por cima da tela nova: o "Novo" de
+            // Estados abria o cadastro de Cidades (fórum #153).
+            target.querySelectorAll('script').forEach(s => { if (s._madRerun) s.remove(); });
             target.insertAdjacentHTML('beforeend', html);
             this._reinit(target);
         }
@@ -3173,7 +3176,16 @@ const Mad = {
      *    script novo nao roda dentro do <template> (fora do documento): roda
      *    quando o Alpine poe o clone na pagina, como numa pagina carregada
      *    direto. Os <template> vem ANTES porque o script do wrapper da
-     *    cortina (que chama o Alpine.initTree) e um dos de fora.
+     *    cortina (que chama o Alpine.initTree) e um dos de fora;
+     *  - o texto entra DEPOIS de o script novo estar no lugar: script inline
+     *    vazio nao roda na insercao, roda quando o texto chega — fora da
+     *    mutacao do pai. Rodando DENTRO do replaceWith, o WebKit (Safari)
+     *    entrega os registros de mutacao do que o script mexe fora de ordem:
+     *    o wrapper que o script da cortina leva para o <body> aparecia ao
+     *    Alpine como inserido e DEPOIS removido, e o Alpine desmontava a
+     *    cortina e a montava de novo, fechada. O primeiro "Novo" nao abria
+     *    nada (forum #153).
+     *    `_madRerun` marca o script que este helper ja recriou (ver _parsePartial).
      */
     _rerunScripts(root) {
         if (!root || !root.querySelectorAll) return;
@@ -3186,8 +3198,9 @@ const Mad = {
             try {
                 const script = document.createElement('script');
                 [...old.attributes].forEach(a => script.setAttribute(a.name, a.value));
-                script.textContent = old.textContent;
                 old.replaceWith(script);
+                script.textContent = old.textContent;
+                script._madRerun = true;
             } catch (e) { /* script invalido no fragmento — ignora p/ nao poluir o console */ }
         };
         const intoTemplates = (node) => node.querySelectorAll('template').forEach(t => {
