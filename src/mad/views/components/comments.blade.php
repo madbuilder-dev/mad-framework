@@ -28,7 +28,10 @@
      *
      * Data (`date-field`, padrão `created_at`): no fuso do app e no formato do
      * idioma (pt-BR: 21/10/2026 13:28). `date-format="d/m/Y \à\s H:i"` (formato
-     * PHP) troca o formato (fw#478).
+     * PHP) troca o formato (fw#478). `date-relative` mostra o comentário
+     * recente como "há 5 min" / "ontem" / "há 3 dias", com a data completa na
+     * dica; pelado vale para os últimos 7 dias, `date-relative="3"` para 3
+     * (fw#484). Mais antigo que isso, a data completa.
      */
     $name        = $name        ?? 'comentarios';
     $model       = $model       ?? '';
@@ -39,6 +42,7 @@
     $bodyField       = $bodyField       ?? 'body';
     $dateField       = $dateField       ?? 'created_at';
     $dateFormat      = $dateFormat      ?? '';
+    $dateRelative    = \Mad\Support\RelativeTime::days($dateRelative ?? null);
     $authorField     = $authorField     ?? 'user_id';
     $authorNameField = $authorNameField ?? 'author_name';
     $internalFlag    = $internalFlag    ?? '';        // ex.: is_internal ('' = sem badge/switch)
@@ -87,6 +91,7 @@
         'body'          => $bodyField,
         'date'          => $dateField,
         'dateFormat'    => (string) $dateFormat,
+        'dateRelative'  => $dateRelative,
         'author'        => $authorField,
         'authorName'    => $authorNameField,
         'internal'      => $hideInternal ? '' : $internalFlag,

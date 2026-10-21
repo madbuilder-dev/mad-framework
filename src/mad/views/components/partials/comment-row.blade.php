@@ -29,6 +29,7 @@
     // (fw#478). Antes saía como o banco devolve: "2026-10-21 13:28:44".
     $quando = '';
     $quandoIso = '';
+    $relativo = null;
     $_dt = \Mad\Support\ValueFormatter::toDateTime($item->{$dateCol} ?? null);
     if ($_dt !== null) {
         $_dt = \DateTimeImmutable::createFromInterface($_dt)->setTimezone(new \DateTimeZone(date_default_timezone_get()));
@@ -41,6 +42,8 @@
         }
         $quando = $_dt->format($_fmt);
         $quandoIso = $_dt->format('c');
+        // `date-relative` (fw#484): recente sai "há 5 min", a data completa vai para a dica.
+        $relativo = \Mad\Support\RelativeTime::label($_dt, new \DateTimeImmutable('now'), (int) ($vars['dateRelative'] ?? 0));
     } else {
         $quando = is_scalar($item->{$dateCol} ?? null) ? (string) $item->{$dateCol} : '';
     }
@@ -62,7 +65,11 @@
                 @endif
             </div>
             @if($quandoIso !== '')
-                <time datetime="{{ $quandoIso }}" style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $quando }}</time>
+                @if($relativo !== null)
+                    <time datetime="{{ $quandoIso }}" title="{{ $quando }}" style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $relativo }}</time>
+                @else
+                    <time datetime="{{ $quandoIso }}" style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $quando }}</time>
+                @endif
             @else
                 <span style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $quando }}</span>
             @endif

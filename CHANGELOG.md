@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.199.0] — 2026-10-21
+
+### Novidades
+
+- **Campos:** `<mad-comments>` ganha `date-relative`: o comentário recente aparece como "há 5 min", "ontem" ou "há 3 dias", e a data completa fica na dica ao passar o mouse. Sem valor vale para os últimos 7 dias; `date-relative="3"` muda o prazo.
+
+## [5.198.5] — 2026-10-21
+
+### Correções
+
+- **Listagem (grid):** a `<mad-tree-view :items>` com `display="{nome}"` (ou a máscara `display="{codigo} - {nome}"`) e a `<mad-pivot-table :data>` com `<mad-pivot-field field="{nome}">` agora mostram os valores. Antes a árvore saía sem os nomes dos nós e a coluna da tabela dinâmica vinha vazia.
+
 ## [5.198.4] — 2026-10-21
 
 ### Correções

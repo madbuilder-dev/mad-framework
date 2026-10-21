@@ -236,6 +236,12 @@ return [
             'date_format' => 'Y-m-d',
             // Data e hora (o comentário do <mad-comments>).
             'datetime_format' => 'Y-m-d H:i',
+            // Data relativa do <mad-comments date-relative> (fw#484).
+            'relative_now' => 'just now',
+            'relative_minutes' => ':n min ago',
+            'relative_hours' => ':n h ago',
+            'relative_yesterday' => 'yesterday',
+            'relative_days' => ':n days ago',
             'm01' => 'January',
             'm02' => 'February',
             'm03' => 'March',

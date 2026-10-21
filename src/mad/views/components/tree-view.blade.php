@@ -121,7 +121,13 @@
     $renderNode = null;
     $renderNode = function ($node, $depth) use (&$renderNode, $icon, $active_icon, $expanded_icon, $count_field, $context_menu, $name, $display) {
         $nid    = htmlspecialchars($node['id']);
-        $nlabel = htmlspecialchars($node['label'] ?? $node[$display] ?? $node['name'] ?? '');
+        // Nó de `:items` sem `label`: `display` é a chave do item ou a mesma
+        // máscara do caminho de model (`{nome}`, `{codigo} - {nome}`), fw#485.
+        $nlabel = $node['label'] ?? null;
+        if ($nlabel === null && strpos($display, '{') !== false) {
+            $nlabel = preg_replace_callback('/\{(\w+)\}/', fn ($m) => (string) ($node[$m[1]] ?? ''), $display);
+        }
+        $nlabel = htmlspecialchars((string) ($nlabel ?? $node[$display] ?? $node['name'] ?? ''));
         $nicon  = htmlspecialchars($node['icon'] ?? $icon);
         $hasChildren = !empty($node['children']);
         $pad    = 4 + ($depth * 16);

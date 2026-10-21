@@ -90,6 +90,12 @@
     $normalizeField = function (array $pf) use ($defaultCurrency, $defaultLocale): array {
         $cf = [];
         $cf['id']   = $pf['field'] ?? $pf['id'] ?? '';
+        // `{nome}` (token simples) é a chave `nome`: com `:data` o pivot
+        // procurava a chave literal e a coluna saía vazia (fw#485). Nunca é
+        // expressão SQL válida, então vale no modo de model também.
+        if (is_string($cf['id']) && preg_match('/^\{([A-Za-z_]\w*)\}$/', $cf['id'], $__pfm)) {
+            $cf['id'] = $__pfm[1];
+        }
         $cf['name'] = $pf['label'] ?? $pf['name'] ?? $cf['id'];
         $cf['type'] = $pf['type']  ?? 'string';
         $cf['area'] = $pf['area']  ?? 'rows';
