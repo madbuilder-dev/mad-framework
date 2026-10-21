@@ -33,20 +33,27 @@
     $__host = \Mad\Component\MadRenderContext::getComponent();
     $__host = $__host instanceof \Mad\Dashboard\MadDashboard ? $__host : null;
 
-    $__main = \Mad\Chart\MadMap::fromProps([
-        'model' => $model ?? '', 'database' => $database ?? '', 'query' => $query ?? null, 'data' => $data ?? null,
-        'filters' => $filters ?? [], 'unitField' => $unitField ?? '',
-        'latField' => $latField ?? '', 'lngField' => $lngField ?? '', 'keyField' => $keyField ?? '',
-        'titleField' => $titleField ?? '', 'popoverContent' => $popoverContent ?? '',
-        'colorField' => $colorField ?? '', 'colorMap' => $colorMap ?? null, 'color' => $color ?? '',
-        'icon' => $icon ?? '', 'label' => $label ?? '', 'limit' => $limit ?? null,
-        'clickTarget' => $clickTarget ?? '', 'clickAction' => $clickAction ?? '',
-    ], $__host);
-
-    $__layers = [$__main];
-    foreach (array_slice(\Mad\Chart\MadMap::takeLayers(), 0, \Mad\Chart\MadMap::MAX_LAYERS - 1) as $__lp) {
+    // Raiz sem fonte (`model`, `:data`, `query`) e com `<mad-map-layer>`
+    // filhas é só a moldura do mapa: não vira camada vazia na legenda
+    // ("Camadas 1 · 0", fw#477). Sem filhas, segue como antes (mapa vazio).
+    $__rootHasSource = (is_string($model ?? null) && trim($model) !== '') || ($data ?? null) !== null || ($query ?? null) !== null;
+    $__children = \Mad\Chart\MadMap::takeLayers();
+    $__layers = [];
+    if ($__rootHasSource || $__children === []) {
+        $__layers[] = \Mad\Chart\MadMap::fromProps([
+            'model' => $model ?? '', 'database' => $database ?? '', 'query' => $query ?? null, 'data' => $data ?? null,
+            'filters' => $filters ?? [], 'unitField' => $unitField ?? '',
+            'latField' => $latField ?? '', 'lngField' => $lngField ?? '', 'keyField' => $keyField ?? '',
+            'titleField' => $titleField ?? '', 'popoverContent' => $popoverContent ?? '',
+            'colorField' => $colorField ?? '', 'colorMap' => $colorMap ?? null, 'color' => $color ?? '',
+            'icon' => $icon ?? '', 'label' => $label ?? '', 'limit' => $limit ?? null,
+            'clickTarget' => $clickTarget ?? '', 'clickAction' => $clickAction ?? '',
+        ], $__host);
+    }
+    foreach (array_slice($__children, 0, \Mad\Chart\MadMap::MAX_LAYERS - count($__layers)) as $__lp) {
         $__layers[] = \Mad\Chart\MadMap::fromProps($__lp, $__host);
     }
+    $__main = $__layers[0];
 
     [$__center, $__zoom] = \Mad\Chart\MadMap::view($center ?? null, $zoom ?? null);
     $__tiles = trim((string) ($tiles ?? ''));
@@ -99,18 +106,27 @@
             @if($__multi)
                 <div class="mad-map-legend-group" role="group" aria-label="{{ mad_t('mad.map.layers') }}">
                     @foreach($__layers as $__i => $__l)
-                        <label class="mad-map-layer-toggle">
-                            <input type="checkbox" data-map-layer-toggle="{{ $__i }}" @checked(!$__l['hidden'])>
-                            <span class="mad-map-swatch" @if($__l['color'] !== '') style="--mad-map-swatch: {{ $__l['color'] }}" @endif aria-hidden="true">
-                                @if($__l['icon'] !== '')<i data-lucide="{{ $__l['icon'] }}"></i>@endif
-                            </span>
-                            <span>{{ $__l['label'] !== '' ? $__l['label'] : mad_t('mad.map.layers') . ' ' . ($__i + 1) }}</span>
-                            <span class="mad-map-legend-count">{{ count($__l['points']) }}</span>
-                        </label>
+                        <div class="mad-map-legend-layer">
+                            <label class="mad-map-layer-toggle">
+                                <input type="checkbox" data-map-layer-toggle="{{ $__i }}" @checked(!$__l['hidden'])>
+                                <span class="mad-map-swatch" @if($__l['color'] !== '') style="--mad-map-swatch: {{ $__l['color'] }}" @endif aria-hidden="true">
+                                    @if($__l['icon'] !== '')<i data-lucide="{{ $__l['icon'] }}"></i>@endif
+                                </span>
+                                <span>{{ $__l['label'] !== '' ? $__l['label'] : mad_t('mad.map.layers') . ' ' . ($__i + 1) }}</span>
+                                <span class="mad-map-legend-count">{{ count($__l['points']) }}</span>
+                            </label>
+                            {{-- Cores do `color-map` da camada, junto dela (fw#477). --}}
+                            @if($__l['legend'] !== [])
+                                <ul class="mad-map-legend-colors">
+                                    @foreach($__l['legend'] as $__e)
+                                        <li><span class="mad-map-swatch" style="--mad-map-swatch: {{ $__e['color'] }}" aria-hidden="true"></span>{{ $__e['label'] }}</li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
                     @endforeach
                 </div>
-            @endif
-            @if($__legend !== [])
+            @elseif($__legend !== [])
                 <ul class="mad-map-legend-group">
                     @foreach($__legend as $__e)
                         <li><span class="mad-map-swatch" style="--mad-map-swatch: {{ $__e['color'] }}" aria-hidden="true"></span>{{ $__e['label'] }}</li>

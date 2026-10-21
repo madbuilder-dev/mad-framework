@@ -229,6 +229,32 @@
     }
 
     /**
+     * Paleta da barra de uma tarefa. Com `task.color` (o `color-field` da
+     * tag: coluna ou accessor do Model), a cor da tarefa vence a da fase:
+     * preenchimento, trilho, progresso e texto derivam dela (fw#476 — antes
+     * só a lista e o kanban mostravam a cor; toda barra saía na cor da fase).
+     * `fill`/`progressFill` são o valor do atributo `fill`: cor sólida da
+     * tarefa, ou o gradiente da fase (`null` = use o `url(#…)` da fase).
+     */
+    function taskColors(task, phase, dark, fallbackHue) {
+        const base = phaseColors(phase && Number.isFinite(phase.hue) ? phase.hue : fallbackHue, dark);
+        const own = task && typeof task.color === 'string' ? task.color.trim() : '';
+        if (own === '') return Object.assign({ fill: null, progressFill: null }, base);
+        const progress = dark
+            ? `color-mix(in oklab, ${own} 62%, white)`
+            : `color-mix(in oklab, ${own} 68%, black)`;
+        return Object.assign({}, base, {
+            bar: own, barTo: own,
+            progress, progressTo: progress,
+            track: dark ? `color-mix(in oklab, ${own} 35%, black)` : `color-mix(in oklab, ${own} 22%, white)`,
+            text: '#ffffff',
+            label: own,
+            fill: own,
+            progressFill: progress,
+        });
+    }
+
+    /**
      * Hash a string to one of the AUTO_HUES so two tasks with the same
      * label/group end up with the same color across renders.
      */
@@ -245,6 +271,7 @@
         assignAutoHue,
         phaseColors,
         taskFill,
+        taskColors,
         hashHue,
     };
 
@@ -1718,7 +1745,7 @@
     function renderBar(group, task, geom, ctx) {
         const phase = ctx.phaseOfTask(task);
         const dark  = ctx.theme === 'dark';
-        const c     = phase ? colors.phaseColors(phase.hue, dark) : colors.phaseColors(220, dark);
+        const c     = colors.taskColors(task, phase, dark, 220);
         const isCrit = ctx.criticalSet && ctx.criticalSet.has(String(task.id));
         const isDim  = ctx.criticalMode && !isCrit;
         const barH = ctx.barH;
@@ -1740,7 +1767,7 @@
         group.appendChild(createNS('rect', {
             class: 'mad-gantt-bar-fill',
             x: geom.x, y: barY, width: geom.w, height: barH, rx: radius,
-            fill: `url(#${defs.gradientId(phaseId)})`,
+            fill: c.fill || `url(#${defs.gradientId(phaseId)})`,
             'data-drag-mode': 'move',
         }));
 
@@ -1751,7 +1778,7 @@
                 class: 'mad-gantt-bar-progress',
                 x: geom.x, y: barY,
                 width: geom.w * prog, height: barH, rx: radius,
-                fill: `url(#${defs.progressId(phaseId)})`,
+                fill: c.progressFill || `url(#${defs.progressId(phaseId)})`,
                 'pointer-events': 'none',
             }));
         }
@@ -1828,7 +1855,7 @@
     function renderSummary(group, task, geom, ctx) {
         const phase = ctx.phaseOfTask(task);
         const dark  = ctx.theme === 'dark';
-        const c     = phase ? colors.phaseColors(phase.hue, dark) : colors.phaseColors(220, dark);
+        const c     = colors.taskColors(task, phase, dark, 220);
         const barH = Math.max(8, ctx.barH * 0.45);
         const barY = geom.y + (geom.h - barH) / 2;
         const phaseId = phase ? phase.id : '';
@@ -1840,7 +1867,7 @@
         group.appendChild(createNS('rect', {
             class: 'mad-gantt-summary-body',
             x: geom.x, y: barY, width: geom.w, height: barH, rx: 2,
-            fill: `url(#${defs.gradientId(phaseId)})`,
+            fill: c.fill || `url(#${defs.gradientId(phaseId)})`,
         }));
         // End caps
         const capH = barH + 4;
@@ -1860,7 +1887,7 @@
     function renderMilestone(group, task, geom, ctx) {
         const phase = ctx.phaseOfTask(task);
         const dark  = ctx.theme === 'dark';
-        const c     = phase ? colors.phaseColors(phase.hue, dark) : colors.phaseColors(155, dark);
+        const c     = colors.taskColors(task, phase, dark, 155);
         const isCrit = ctx.criticalSet && ctx.criticalSet.has(String(task.id));
         const isDim  = ctx.criticalMode && !isCrit;
         const size = 11;
@@ -1882,7 +1909,7 @@
 
         group.appendChild(createNS('polygon', {
             points: diamondPoints(cx, cy, size),
-            fill: `url(#${defs.gradientId(phaseId)})`,
+            fill: c.fill || `url(#${defs.gradientId(phaseId)})`,
             stroke: c.label,
             'stroke-width': '1.5',
             'data-drag-mode': 'move',
@@ -2463,7 +2490,7 @@
                 ? (phaseIdx[String(t[ctx.phaseField])] ?? 0)
                 : 0;
             const phase = phases[pi];
-            const color = phase ? colors.phaseColors(phase.hue, dark).bar : (dark ? '#60a5fa' : '#3b82f6');
+            const color = colors.taskFill(t, phase, dark);
             if (t.milestone) {
                 s.appendChild(createNS('circle', {
                     cx: x, cy: 6 + pi * rowH + rowH / 2, r: 2.2,

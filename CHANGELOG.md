@@ -12,6 +12,55 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.198.0] — 2026-10-21
+
+### Novidades
+
+- **Formulário:** a data de cada comentário do `<mad-comments>` agora sai no formato do idioma e no fuso do app (21/10/2026 13:28), não mais como o banco devolve. A nova prop `date-format` (formato PHP, ex.: `d/m H\hi`) troca o formato.
+
+## [5.197.12] — 2026-10-21
+
+### Correções
+
+- **Formulário:** em app com várias unidades, o comentário do `<mad-comments>` (e o item do `<mad-db-blocks>`) agora fica na unidade do registro em que foi feito. Antes ia para a unidade ativa de quem comentava, e a filial não via o comentário do próprio chamado.
+
+## [5.197.11] — 2026-10-21
+
+### Correções
+
+- **Dashboard:** no `<mad-map>` montado só com `<mad-map-layer>`, a legenda não mostra mais a camada vazia "Camadas 1 · 0" e passa a listar as cores do `:color-map` de cada camada. Com `cluster`, marcadores de camadas diferentes no mesmo ponto agora se agrupam, em vez de um cobrir o outro.
+
+## [5.197.10] — 2026-10-21
+
+### Correções
+
+- **Kanban:** o filtro escrito no `stageQuery()` da tela agora vale nas colunas do quadro. Antes o método que o gerador cria era ignorado e todas as etapas da tabela apareciam.
+
+## [5.197.9] — 2026-10-21
+
+### Correções
+
+- **Gantt:** `color-field` agora pinta a barra da tarefa, o resumo, o marco e o minimapa, com prioridade sobre a cor da fase. Antes a cor aparecia só na lista e no kanban, e toda barra saía na cor da fase.
+
+## [5.197.8] — 2026-10-21
+
+### Correções
+
+- **Formulário:** no PostgreSQL, a tela de cadastro novo não abria quando um combo, uma lista de itens, uma grade filha ou um bloco tinha `:filters` com o registro ainda vazio, como `[['contrato_id', '=', $recordId]]`. Agora a tela abre e o campo não lista nada até o registro existir.
+
+## [5.197.7] — 2026-10-21
+
+### Correções
+
+- **Workflow:** na tela Substitutos, quem não é administrador vê só o próprio nome no campo Titular, e um período que cruza outra substituição ligada do mesmo titular é recusado com aviso. Antes a escolha de outro titular era trocada em silêncio e o cadastro repetido passava.
+- **Menu:** Substitutos saiu do menu Administração e foi para o menu do usuário (foto no canto). O menu Administração deixa de aparecer para quem só tinha acesso a essa tela.
+
+## [5.197.6] — 2026-10-21
+
+### Correções
+
+- **App gerado:** num container (Teste Online, hospedagem com Traefik), o registro de acessos e a decisão do workflow gravavam o IP interno do Docker (172.18.0.1) no lugar do IP de quem acessou, também com `TRUSTED_PROXIES=*`. Agora gravam o IP do visitante, e quem acessa de outra rede não consegue informar um IP falso.
+
 ## [5.197.5] — 2026-10-21
 
 ### Correções

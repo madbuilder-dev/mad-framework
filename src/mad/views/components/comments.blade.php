@@ -25,6 +25,10 @@
      * Autor (`author-field`, padrão `user_id`): o comentário novo grava o
      * usuário logado nessa coluna, quando a tabela a tem. Vem da sessão, não
      * do formulário (fw#466).
+     *
+     * Data (`date-field`, padrão `created_at`): no fuso do app e no formato do
+     * idioma (pt-BR: 21/10/2026 13:28). `date-format="d/m/Y \à\s H:i"` (formato
+     * PHP) troca o formato (fw#478).
      */
     $name        = $name        ?? 'comentarios';
     $model       = $model       ?? '';
@@ -34,6 +38,7 @@
 
     $bodyField       = $bodyField       ?? 'body';
     $dateField       = $dateField       ?? 'created_at';
+    $dateFormat      = $dateFormat      ?? '';
     $authorField     = $authorField     ?? 'user_id';
     $authorNameField = $authorNameField ?? 'author_name';
     $internalFlag    = $internalFlag    ?? '';        // ex.: is_internal ('' = sem badge/switch)
@@ -81,6 +86,7 @@
     $presetVars = [
         'body'          => $bodyField,
         'date'          => $dateField,
+        'dateFormat'    => (string) $dateFormat,
         'author'        => $authorField,
         'authorName'    => $authorNameField,
         'internal'      => $hideInternal ? '' : $internalFlag,

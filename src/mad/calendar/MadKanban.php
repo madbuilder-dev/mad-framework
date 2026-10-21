@@ -1286,8 +1286,70 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             $field = $this->_keyName($stageClass);   // tabela de etapas sem a coluna de ordem
         }
         $dir   = strtolower($this->stageOrderDirection) === 'desc' ? 'desc' : 'asc';
-        $q     = $stageClass::query()->orderBy($field, $dir);
+
+        // `stageQuery()` da tela (o gerador escreve um e convida a filtrar as
+        // etapas ali): o runtime montava a consulta sozinho e o filtro era
+        // ignorado em silêncio (fw#475). Sem ordem própria — ou só com a
+        // ordem pela chave que o gerador escreve —, vale a ordem do quadro
+        // (`stage-order-field`), como antes.
+        $q = $this->_screenStageQuery($stageClass);
+        if ($q === null) {
+            $q = $stageClass::query()->orderBy($field, $dir);
+        } elseif ($this->_onlyKeyOrder($q, $stageClass)) {
+            $q->reorder($field, $dir);
+        }
         $this->_stages = QuerySource::recordsFromQuery($q) ?: [];
+    }
+
+    /**
+     * Classe do `stage-model` declarado na tag (FQCN). O `stageQuery()` que o
+     * gerador escreve parte daqui.
+     */
+    protected function stageModelClass(): string
+    {
+        return $this->_resolveModelFqcn($this->stageModel);
+    }
+
+    /**
+     * A consulta do `stageQuery()` da tela, ou null (tela sem o método, ou que
+     * devolve outra coisa). Erro no método da tela não derruba o quadro: as
+     * etapas saem pela consulta padrão e o erro vai para o log — o método
+     * nunca rodava antes, e um engano antigo nele não pode tirar o quadro do ar
+     * na atualização.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder|null
+     */
+    private function _screenStageQuery(string $stageClass): mixed
+    {
+        if (!method_exists($this, 'stageQuery')) {
+            return null;
+        }
+        try {
+            $q = $this->stageQuery();
+        } catch (\Throwable $e) {
+            error_log('[mad-kanban] ' . static::class . '::stageQuery() falhou, etapas pela consulta padrão: ' . $e->getMessage());
+
+            return null;
+        }
+
+        return QuerySource::isQuery($q) ? $q : null;
+    }
+
+    /** A consulta não ordena, ou ordena só pela chave da tabela de etapas, crescente. */
+    private function _onlyKeyOrder(mixed $q, string $stageClass): bool
+    {
+        $orders = ($q instanceof \Illuminate\Database\Eloquent\Builder ? $q->getQuery() : $q)->orders ?? [];
+        if ($orders === []) {
+            return true;
+        }
+        if (count($orders) !== 1) {
+            return false;
+        }
+        $o   = $orders[0];
+        $key = $this->_keyName($stageClass);
+        $col = (string) ($o['column'] ?? '');
+
+        return ($col === $key || str_ends_with($col, '.' . $key)) && strtolower((string) ($o['direction'] ?? 'asc')) === 'asc';
     }
 
     private function _loadAllStageCards(): void

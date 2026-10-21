@@ -234,6 +234,8 @@ return [
         // Calendario (meses, formatos de data de exibicao)
         'tempo' => [
             'date_format' => 'Y-m-d',
+            // Data e hora (o comentário do <mad-comments>).
+            'datetime_format' => 'Y-m-d H:i',
             'm01' => 'January',
             'm02' => 'February',
             'm03' => 'March',

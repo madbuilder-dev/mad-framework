@@ -178,17 +178,50 @@
 
     // ── <mad-map> ───────────────────────────────────────────────────────
 
+    /**
+     * Marcadores por camada, no mapa. Com `cluster`, UM grupo de agrupamento
+     * para todas as camadas: marcadores de camadas diferentes no mesmo ponto
+     * se juntam (mad-framework#477 — com um grupo por camada, um cobria o
+     * outro). Desligar uma camada tira os marcadores dela do grupo.
+     *
+     * @return {function(number, boolean)} liga/desliga a camada `li`
+     */
+    function layerGroups(L, map, layers, cluster, markersOf) {
+        var shared = (cluster && L.markerClusterGroup)
+            ? L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
+            : null;
+        var groups = layers.map(function (layer, li) {
+            var markers = markersOf(layer, li);
+            if (shared) {
+                if (!layer.hidden) shared.addLayers(markers);
+                return markers;
+            }
+            var group = L.layerGroup(markers);
+            if (!layer.hidden) group.addTo(map);
+            return group;
+        });
+        if (shared) shared.addTo(map);
+        return function (li, on) {
+            var g = groups[li];
+            if (!g) return;
+            if (shared) {
+                if (on) shared.addLayers(g); else shared.removeLayers(g);
+            } else if (on) {
+                g.addTo(map);
+            } else {
+                map.removeLayer(g);
+            }
+        };
+    }
+
     function mountMap(el, cfg) {
         var L = window.L;
         var map = baseMap(el, cfg);
         el.__madMap = map;
         var bounds = L.latLngBounds([]);
-        var groups = [];
 
-        (cfg.layers || []).forEach(function (layer, li) {
-            var group = (cfg.cluster && L.markerClusterGroup)
-                ? L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
-                : L.layerGroup();
+        var toggle = layerGroups(L, map, cfg.layers || [], !!cfg.cluster, function (layer, li) {
+            var markers = [];
             (layer.points || []).forEach(function (p) {
                 var m = L.marker([p.lat, p.lng], {
                     icon: pin(p.color || layer.color, layer.icon),
@@ -207,18 +240,15 @@
                     if (content) m.bindPopup(content, { className: 'mad-map-popup' });
                     m.on('click', function () { clickPoint(el, cfg, li, layer, p); });
                 }
-                group.addLayer(m);
+                markers.push(m);
                 if (!layer.hidden) bounds.extend([p.lat, p.lng]);
             });
-            if (!layer.hidden) group.addTo(map);
-            groups.push(group);
+            return markers;
         });
 
         el.querySelectorAll('[data-map-layer-toggle]').forEach(function (box) {
             box.addEventListener('change', function () {
-                var g = groups[parseInt(box.getAttribute('data-map-layer-toggle'), 10)];
-                if (!g) return;
-                if (box.checked) g.addTo(map); else map.removeLayer(g);
+                toggle(parseInt(box.getAttribute('data-map-layer-toggle'), 10), box.checked);
             });
         });
 
@@ -415,7 +445,7 @@
         });
     }
 
-    window.MadMap = { __ready: true, mount: mount, destroy: destroy, geocode: geocode };
+    window.MadMap = { __ready: true, mount: mount, destroy: destroy, geocode: geocode, _layerGroups: layerGroups };
 
     var queue = window.__madMapQueue || [];
     window.__madMapQueue = [];

@@ -172,22 +172,34 @@ class MadServiceProvider extends ServiceProvider
      * tentativas do login de um trancava o de todos). Aqui o `.env` já foi lido
      * (e `config:cache` também serve, pela chave `mad.trusted_proxies`).
      *
-     * Num CONTAINER (Teste Online, MadCloud, hospedagem com Traefik), vazio ou
-     * só loopback (`127.0.0.1,::1`, o padrão que o MadBuilder grava no `.env`
-     * para o nginx do mesmo servidor) confia nas redes privadas
-     * ({@see CONTAINER_PROXIES}): ali o proxy conecta pela rede do Docker, não
-     * pelo loopback, e o app via o gateway (172.18.0.1) como o endereço de
-     * todo mundo — inclusive na prova da decisão do workflow, o IP que vai
-     * para o registro de aprovação (fw#470). Visitante que chega direto no
-     * container (NAT do Docker) traz o próprio endereço público, fora da
-     * lista: o cabeçalho dele não é lido. Lista com outro endereço é escolha
-     * de quem configurou e vale como está. Fora de container, vazio = não
-     * mexe no que o `bootstrap/app.php` já aplicou (não confia em ninguém).
-     * `none` = não confia em ninguém, nem no container.
+     * Num CONTAINER (Teste Online, MadCloud, hospedagem com Traefik) o proxy
+     * conecta pela rede do Docker, não pelo loopback, e o app via o gateway
+     * (172.18.0.1) como o endereço de todo mundo — inclusive na prova da
+     * decisão do workflow, o IP que vai para o registro de aprovação (fw#470).
+     * Lá, vazio, só loopback (`127.0.0.1,::1`, o padrão que o MadBuilder grava
+     * no `.env` para o nginx do mesmo servidor) e `*` confiam nas sub-redes do
+     * Docker ligadas ao container ({@see containerNetworks()}) mais o loopback.
+     * O `*` do Laravel sozinho confia só no vizinho imediato: a cadeia chega
+     * `<visitante>, 172.18.0.1` (o proxy do host entra pela ponte do Docker) e
+     * o app parava no gateway (fw#470, reaberta).
+     *
+     * NÃO confia nas redes privadas inteiras nem em qualquer vizinho: quem
+     * chega de IP privado (VPN, intranet, app hospedado na empresa) ou direto
+     * de IP público não forja o X-Forwarded-For que vai para a prova da
+     * decisão. Outro container na MESMA rede do Docker forja: no Teste Online a
+     * rede dos apps é compartilhada (laboratório); em produção cada app tem a
+     * própria. Sem a tabela de rotas, vazio/loopback caem nas redes privadas
+     * ({@see CONTAINER_PROXIES}) e `*` fica como era.
+     *
+     * Lista com outro endereço é escolha de quem configurou e vale como está.
+     * Fora de container, vazio = não mexe no que o `bootstrap/app.php` já
+     * aplicou (não confia em ninguém). `none` = não confia em ninguém, nem no
+     * container.
      *
      * @param  bool|null  $inContainer  null = detecta ({@see runningInContainer()})
+     * @param  list<string>|null  $networks  null = lê ({@see containerNetworks()})
      */
-    public static function applyTrustedProxies(mixed $raw, ?bool $inContainer = null): void
+    public static function applyTrustedProxies(mixed $raw, ?bool $inContainer = null, ?array $networks = null): void
     {
         $raw = trim((string) $raw);
         if (strtolower($raw) === 'none') {
@@ -196,10 +208,19 @@ class MadServiceProvider extends ServiceProvider
             return;
         }
         $list = $raw === '' || $raw === '*' ? [] : array_values(array_filter(array_map('trim', explode(',', $raw))));
-        if ($raw !== '*' && array_diff($list, ['127.0.0.1', '::1']) === [] && ($inContainer ?? self::runningInContainer())) {
-            \Illuminate\Http\Middleware\TrustProxies::at(self::CONTAINER_PROXIES);
+        $containerDefault = $raw === '*' || array_diff($list, ['127.0.0.1', '::1']) === [];
+        if ($containerDefault && ($inContainer ?? self::runningInContainer())) {
+            $networks ??= self::containerNetworks();
+            if ($networks !== []) {
+                \Illuminate\Http\Middleware\TrustProxies::at([...$networks, '127.0.0.1', '::1']);
 
-            return;
+                return;
+            }
+            if ($raw !== '*') {
+                \Illuminate\Http\Middleware\TrustProxies::at(self::CONTAINER_PROXIES);
+
+                return;
+            }
         }
         if ($raw === '') {
             return;
@@ -207,7 +228,40 @@ class MadServiceProvider extends ServiceProvider
         \Illuminate\Http\Middleware\TrustProxies::at($raw === '*' ? '*' : $list);
     }
 
-    /** Redes de onde o proxy de um container conecta: privadas e loopback. */
+    /**
+     * Sub-redes ligadas ao container, pela tabela de rotas (`/proc/net/route`),
+     * em CIDR. Um container em duas redes (o app numa, o Traefik noutra) recebe
+     * o proxy pela segunda, que não é a do gateway padrão: as duas entram. A
+     * rota padrão (0.0.0.0/0) nunca. Vazio quando a tabela não é legível.
+     *
+     * @return list<string>
+     */
+    public static function containerNetworks(?string $routeTable = null): array
+    {
+        $routeTable ??= is_readable('/proc/net/route') ? (string) @file_get_contents('/proc/net/route') : '';
+        $out = [];
+        foreach (array_slice(preg_split('/\R/', trim($routeTable)) ?: [], 1) as $line) {
+            $c = preg_split('/\s+/', trim($line)) ?: [];
+            if (count($c) < 8 || ! ctype_xdigit($c[1].$c[2].$c[7])) {
+                continue;
+            }
+            [$dest, $gateway, $mask] = [self::routeIp($c[1]), self::routeIp($c[2]), self::routeIp($c[7])];
+            $bits = substr_count(decbin((int) ip2long($mask)), '1');
+            if ($gateway === '0.0.0.0' && $dest !== '0.0.0.0' && $bits > 0) {
+                $out[] = $dest.'/'.$bits;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** Endereço da tabela de rotas do kernel: hexadecimal, bytes em ordem inversa. */
+    private static function routeIp(string $hex): string
+    {
+        return implode('.', array_reverse(array_map('hexdec', str_split(str_pad($hex, 8, '0', STR_PAD_LEFT), 2))));
+    }
+
+    /** Reserva do container sem tabela de rotas legível: redes privadas e loopback. */
     public const CONTAINER_PROXIES = [
         '127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7',
     ];

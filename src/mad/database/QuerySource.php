@@ -187,7 +187,19 @@ class QuerySource
                 throw new \InvalidArgumentException("QuerySource: identificador de coluna inválido em filtro: {$field}");
             }
             $op  = strtolower(trim((string) ($f[1] ?? '=')));
-            $val = $f[2] ?? '';
+            $val = array_key_exists(2, $f) ? $f[2] : '';
+
+            // Valor nulo = "não há registro" (o `$recordId` de um formulário
+            // novo): `['contrato_id', '=', null]` não lista nada e
+            // `['id', '!=', null]` não restringe. Antes o nulo virava '' e o
+            // PostgreSQL recusava '' numa coluna inteira (22P02, a tela nova
+            // não abria). Para IS NULL de verdade, o operador é 'is null'.
+            if ($val === null && ! in_array($op, ['is null', 'is not null', 'is true', 'is not true', 'in', 'not in'], true)) {
+                if (! in_array($op, ['!=', '<>'], true)) {
+                    $query->whereRaw('1 = 0');
+                }
+                continue;
+            }
 
             // Subselect: val string começando com SELECT (binds parametrizados).
             // Só p/ filtros CONFIÁVEIS ($allowSubselect). Request-driven → literal.

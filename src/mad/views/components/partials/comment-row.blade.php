@@ -25,6 +25,25 @@
         $_uid  = $item->{$userCol} ?? null;
         $autor = empty($_uid) ? 'Sistema' : (\Mad\Support\UserNames::of($_uid) ?? ('Usuário #' . $_uid));
     }
+    // Data no fuso do app e no formato do idioma, ou no `date-format` da tag
+    // (fw#478). Antes saía como o banco devolve: "2026-10-21 13:28:44".
+    $quando = '';
+    $quandoIso = '';
+    $_dt = \Mad\Support\ValueFormatter::toDateTime($item->{$dateCol} ?? null);
+    if ($_dt !== null) {
+        $_dt = \DateTimeImmutable::createFromInterface($_dt)->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+        $_fmt = trim((string) ($vars['dateFormat'] ?? ''));
+        if ($_fmt === '') {
+            $_fmt = (string) mad_t('mad.tempo.datetime_format');
+            if ($_fmt === '' || $_fmt === 'mad.tempo.datetime_format') {
+                $_fmt = 'd/m/Y H:i';
+            }
+        }
+        $quando = $_dt->format($_fmt);
+        $quandoIso = $_dt->format('c');
+    } else {
+        $quando = is_scalar($item->{$dateCol} ?? null) ? (string) $item->{$dateCol} : '';
+    }
     $iniciais = strtoupper(mb_substr(preg_replace('/\s+/u', ' ', trim((string) $autor)), 0, 2));
     $avatarBg = $isInt ? 'var(--mad-color-secondary, #6c757d)' : 'var(--mad-color-primary, #0d6efd)';
 @endphp
@@ -42,7 +61,11 @@
                     @endif
                 @endif
             </div>
-            <span style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $item->{$dateCol} ?? '' }}</span>
+            @if($quandoIso !== '')
+                <time datetime="{{ $quandoIso }}" style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $quando }}</time>
+            @else
+                <span style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $quando }}</span>
+            @endif
         </div>
         @if(!empty($vars['deletable']))
             <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm"

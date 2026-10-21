@@ -228,6 +228,8 @@ return [
 
         'tempo' => [
             'date_format' => 'd/m/Y',
+            // Data e hora (o comentário do <mad-comments>).
+            'datetime_format' => 'd/m/Y H:i',
             'm01' => 'Janeiro',
             'm02' => 'Fevereiro',
             'm03' => 'Março',

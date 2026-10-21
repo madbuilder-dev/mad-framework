@@ -239,3 +239,30 @@
 }
 :root[data-theme="dark"] .mad-map-canvas .leaflet-control-attribution a { color: var(--mad-text, #fafafa); }
 :root[data-theme="dark"] .mad-map-pin { border-color: #27272a; }
+
+/* ── legenda por camada (fw#477) ─────────────────────────────────────── */
+
+/* Camada + as cores do `color-map` dela, juntas. */
+.mad-map-legend-layer {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+}
+
+.mad-map-legend-colors {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin: 0;
+    padding: 0 0 0 10px;
+    list-style: none;
+    border-left: 1px solid var(--mad-border, #e4e4e7);
+}
+.mad-map-legend-colors li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.mad-map-legend-colors .mad-map-swatch { width: 10px; height: 10px; }
