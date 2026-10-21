@@ -461,6 +461,25 @@ return [
             'y_title'       => 'Row',
         ],
 
+        'map' => [
+            'empty'      => 'No points with coordinates.',
+            'skipped'    => ':n record(s) without coordinates were left off the map.',
+            'truncated'  => 'Showing the first :n points.',
+            'legend'     => 'Legend',
+            'layers'     => 'Layers',
+            'loading'    => 'Loading map…',
+            'load_error' => 'The map could not be loaded.',
+            'search'     => 'Search address or postal code',
+            'search_btn' => 'Search',
+            'searching'  => 'Searching…',
+            'not_found'  => 'Address not found.',
+            'hint'       => 'Drag the pin or click the map to adjust the position.',
+            'notice'     => 'Address search uses OpenStreetMap (Nominatim): the text you type is sent to that service.',
+            'clear'      => 'Clear position',
+            'lat'        => 'Latitude',
+            'lng'        => 'Longitude',
+        ],
+
         'week_grid' => [
             'rows_title'       => 'Person',
             'note_title'       => 'Week note',

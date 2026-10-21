@@ -4,6 +4,9 @@
      multiplos tokens __mad_form em $_REQUEST. --}}
 @php
     use Mad\View\MadBlade;
+    // Variáveis da view (e $that) para as expressões dos campos (`:filters="$that->…"`):
+    // cada campo é renderizado à parte e, sem elas, dava "Undefined variable".
+    $__madScope = \Mad\Dashboard\MadDashFiltersCompiler::viewScope(get_defined_vars());
     // Rótulos/botões configuráveis no wrapper (apply-label, clear-label, no-refresh).
     $chrome = \Mad\Dashboard\MadDashFiltersCompiler::chrome($wrapper ?? []);
     $component = \Mad\Component\MadRenderContext::getComponent();
@@ -32,7 +35,7 @@
     {{-- Period control sits BEFORE chip bar (above) if declared --}}
     @if ($periodField)
     <div style="margin-bottom:12px;">
-        {!! MadBlade::renderString($periodHtml) !!}
+        {!! MadBlade::renderString($periodHtml, $__madScope) !!}
     </div>
     @endif
 
@@ -86,7 +89,7 @@
                     @foreach ($regularFields as $f)
                         @php $tname = $safeType($f['attrs']['name'] ?? ''); @endphp
                         <div x-show="tipo === '{{ $tname }}'" @if (!$loop->first) x-cloak @endif>
-                            {!! MadBlade::renderString(base64_decode($f['raw_html_b64'])) !!}
+                            {!! MadBlade::renderString(base64_decode($f['raw_html_b64']), $__madScope) !!}
                         </div>
                     @endforeach
 

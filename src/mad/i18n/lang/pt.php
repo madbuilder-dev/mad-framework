@@ -450,6 +450,25 @@ return [
             'y_title'       => 'Linha',
         ],
 
+        'map' => [
+            'empty'      => 'Nenhum ponto com coordenadas.',
+            'skipped'    => ':n registro(s) sem coordenadas ficaram fora do mapa.',
+            'truncated'  => 'Mostrando os primeiros :n pontos.',
+            'legend'     => 'Legenda',
+            'layers'     => 'Camadas',
+            'loading'    => 'Carregando mapa…',
+            'load_error' => 'Não foi possível carregar o mapa.',
+            'search'     => 'Buscar endereço ou CEP',
+            'search_btn' => 'Buscar',
+            'searching'  => 'Buscando…',
+            'not_found'  => 'Endereço não encontrado.',
+            'hint'       => 'Arraste o pino ou clique no mapa para ajustar a posição.',
+            'notice'     => 'A busca de endereço usa o OpenStreetMap (Nominatim): o texto digitado é enviado a esse serviço.',
+            'clear'      => 'Limpar posição',
+            'lat'        => 'Latitude',
+            'lng'        => 'Longitude',
+        ],
+
         'week_grid' => [
             'rows_title'       => 'Pessoa',
             'note_title'       => 'Observação da semana',

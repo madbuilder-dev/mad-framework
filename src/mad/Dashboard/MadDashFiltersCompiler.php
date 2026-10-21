@@ -650,6 +650,32 @@ class MadDashFiltersCompiler
         ];
     }
 
+    /**
+     * Variáveis da view que contém o bloco de filtros, para renderizar cada
+     * campo com elas.
+     *
+     * Os renderers (`components.dash-filters-*`) desenham cada campo com um
+     * `MadBlade::renderString()` à parte, que nasce sem escopo: um
+     * `:filters="[['id', 'in', $projetoIds]]"` ou `:filters="$that->visiveis()"`
+     * dentro de `<mad-kanban-filters>`/`<mad-grid-filters>`/`<mad-dash-filters>`
+     * quebrava a tela com "Undefined variable" (#468). O renderer chega pelo
+     * `@include`, que já traz as variáveis da view; aqui sai o que é do Blade
+     * (`__env`, `__data`…) e os argumentos do próprio include.
+     *
+     * @param array<string,mixed> $vars get_defined_vars() do renderer
+     * @return array<string,mixed>
+     */
+    public static function viewScope(array $vars): array
+    {
+        foreach (array_keys($vars) as $k) {
+            if (!is_string($k) || str_starts_with($k, '__') || in_array($k, ['fields', 'style', 'wrapper'], true)) {
+                unset($vars[$k]);
+            }
+        }
+
+        return $vars;
+    }
+
     private static function buildOutput(array $wrapperAttrs, array $fields): string
     {
         // Sem nenhum filtro declarado (tag vazia, só com comentários/blocos da

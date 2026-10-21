@@ -653,7 +653,9 @@ class MadForm
         // brutos. É o GET inicial: os campos declarados vêm do registry do
         // render corrente, consultado na leitura pelo MadFormData.
         if (empty($schema)) {
-            $this->_dataCache = MadFormData::make($this->fields);
+            // Data digitada num campo que a tela anotou (cortina cujo botão
+            // não posta token nenhum): mesmo formato do get() (fw#463).
+            $this->_dataCache = MadFormData::make($this->_withDbDates($this->fields));
             return $this->_dataCache;
         }
 
@@ -679,6 +681,11 @@ class MadForm
                 $result[$name] = is_array($value)
                     ? MadFormRegistry::transformFieldListRows($name, $value)
                     : $value;
+                // Campo de data que o token postado não descreve (é de outro
+                // formulário da tela): converte pelo que a tela anotou.
+                if (is_string($value)) {
+                    $result[$name] = $this->_withDbDates([$name => $value])[$name];
+                }
             }
         }
 
@@ -5412,6 +5419,7 @@ class MadForm
         }
         $this->_declareInlineImage($name, $props);
         $this->_declareColumnSelection($name, $props);
+        $this->_declareDateField($name, $props);
 
         $print = MadUploadRules::writePrint($props);
         if ($print === null) {
@@ -5427,6 +5435,74 @@ class MadForm
         unset($prints[$print]);
         $prints[$print] = 1;
         $this->_known[self::DECLARED]['w'][$name] = array_slice($prints, -self::WRITE_PRINTS, null, true);
+    }
+
+    /**
+     * Campo de data / data e hora: o tipo (e a máscara do banco, se não for a
+     * padrão) fica anotado no estado (`$_known[DECLARED]['dt']`). O `get()`,
+     * o `validate()` e o `getData()` convertem "21/10/2026" pelo campo mesmo
+     * quando o `__mad_form` postado é de OUTRO formulário da tela — a cortina
+     * lateral cujo botão fica fora do `<form>` manda o primeiro token da tela
+     * (fw#463). Ver _dateProps().
+     */
+    private function _declareDateField(string $name, array $props): void
+    {
+        $type   = (string) ($props['type'] ?? '');
+        $isDate = $type === 'date' || $type === 'datetime';
+        if (!$isDate && !isset($this->_known[self::DECLARED]['dt'][$name])) {
+            return;
+        }
+        $this->_openDeclared();
+        if (!$isDate) {
+            // A tela passou a desenhar o campo com outra tag.
+            unset($this->_known[self::DECLARED]['dt'][$name]);
+
+            return;
+        }
+        $mask = (string) ($props['database_mask'] ?? '');
+        $this->_known[self::DECLARED]['dt'][$name] = $mask !== '' ? [$type, $mask] : $type;
+    }
+
+    /**
+     * Props de data do campo (`type` date|datetime e `database_mask`), ou null
+     * se o campo não é de data. O `__mad_form` postado vale primeiro; o campo
+     * que ele não descreve sai do que a tela anotou no estado.
+     */
+    private function _dateProps(string $field): ?array
+    {
+        $props = MadFormRegistry::requestFieldProps($field);
+        if ($props !== null) {
+            return in_array($props['type'] ?? null, ['date', 'datetime'], true) ? $props : null;
+        }
+        $declared = $this->_known[self::DECLARED]['dt'][$field] ?? null;
+        if (is_string($declared)) {
+            return ['type' => $declared];
+        }
+        if (is_array($declared) && isset($declared[0], $declared[1])) {
+            return ['type' => (string) $declared[0], 'database_mask' => (string) $declared[1]];
+        }
+
+        return null;
+    }
+
+    /**
+     * Datas como a tela mostra ("21/10/2026") no formato do banco, nos campos
+     * de data. Data que não existe (31/02) fica crua — a regra `date` a recusa
+     * e o fillRecord() aponta o campo.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    private function _withDbDates(array $fields): array
+    {
+        foreach ($fields as $name => $value) {
+            if (is_string($value) && MadFormRegistry::isDisplayDate($value)
+                && ($props = $this->_dateProps((string) $name)) !== null) {
+                $fields[$name] = MadFormRegistry::transformField($value, $props);
+            }
+        }
+
+        return $fields;
     }
 
     /**
@@ -6554,7 +6630,9 @@ class MadForm
 
         $attrs = $this->_fieldLabels($attrs);
 
-        [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withoutMask($this->fields), $parsedRules);
+        // A regra `date`/`after:` lê com strtotime: "21/10/2026" é recusada e
+        // "05/11/2026" vira 11 de maio. Valida o que o save() grava (fw#463).
+        [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withDbDates($this->_withoutMask($this->fields)), $parsedRules);
 
         $this->_offScreenRequired = null;
         $offScreen = $this->_offScreenRequiredRules($parsedRules, $data);
@@ -6801,11 +6879,9 @@ class MadForm
     {
         $this->_usedNow[$field] = true;
         $value = $this->fields[$field] ?? $default;
-        if (is_string($value) && isset($this->fields[$field]) && MadFormRegistry::isDisplayDate($value)) {
-            $props = MadFormRegistry::requestFieldProps($field);
-            if (in_array($props['type'] ?? null, ['date', 'datetime'], true)) {
-                return MadFormRegistry::transformField($value, $props);
-            }
+        if (is_string($value) && isset($this->fields[$field]) && MadFormRegistry::isDisplayDate($value)
+            && ($props = $this->_dateProps($field)) !== null) {
+            return MadFormRegistry::transformField($value, $props);
         }
 
         return $value;

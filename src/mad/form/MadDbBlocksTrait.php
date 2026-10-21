@@ -81,7 +81,11 @@ trait MadDbBlocksTrait
                 // o form da tela: `MadForm::getData()` filtra pelo schema do
                 // form HOSPEDEIRO e descartaria `body`/`titulo` do filho — o
                 // insert saía só com a FK (estourando NOT NULL ou gravando vazio).
-                $data = self::_blockPayload($this->form ?? null);
+                $data = self::_blockPayload($this->form ?? null, $cfg, $pivot);
+                $badDate = self::_blockNonexistentDate($cfg, $data);
+                if ($badDate !== null) {
+                    return $badDate;
+                }
 
                 // Whitelist de colunas do pivot (addAttribute). Quando o host é um
                 // componente com MUITAS props (ex.: um MadDataGrid cujo getData()
@@ -312,6 +316,13 @@ trait MadDbBlocksTrait
                     }
                 }
 
+                // A célula editada no lugar posta como o form do bloco (data
+                // dd/mm/aaaa, vazio): mesma conversão do blockAdd (fw#459).
+                $value = self::_blockNormalize([$field => $value], $cfg, $pivot)[$field];
+                $badDate = self::_blockNonexistentDate($cfg, [$field => $value]);
+                if ($badDate !== null) {
+                    return $badDate;
+                }
                 $pivot->{$field} = $value;
                 $refused = self::_blockRefusedReferences($pivot, $cfg, [$field => $value]);
                 if ($refused !== null) {
@@ -369,7 +380,11 @@ trait MadDbBlocksTrait
                     return self::_blockNotHere($cfg, $id, 'editar');
                 }
 
-                $data = self::_blockPayload($this->form ?? null);
+                $data = self::_blockPayload($this->form ?? null, $cfg, $pivot);
+                $badDate = self::_blockNonexistentDate($cfg, $data);
+                if ($badDate !== null) {
+                    return $badDate;
+                }
 
                 $allowed = method_exists($pivot, 'getFillable') ? $pivot->getFillable() : [];
                 $editable = (array) ($cfg['editFields'] ?? []);
@@ -577,14 +592,18 @@ trait MadDbBlocksTrait
     }
 
     /**
-     * Campos que o formulário do BLOCO mandou.
+     * Campos que o formulário do BLOCO mandou, convertidos para o banco.
      *
      * O bloco tem form próprio (só os campos dele + `__mad_db_blocks_state`),
      * então o `mad_model` da requisição é a fonte da verdade. O form da tela
      * entra apenas como base — `MadForm::getData()` filtra pelo schema do form
      * HOSPEDEIRO e sozinho jogaria fora os campos do filho.
+     *
+     * O que o form do bloco posta chega como a tela mostra (data `31/12/2027`,
+     * data vazia `''`): sem conversão o pgsql/mysql recusavam o INSERT e nada
+     * gravava (fw#459). Ver _blockNormalize().
      */
-    protected static function _blockPayload(mixed $hostForm = null): array
+    protected static function _blockPayload(mixed $hostForm = null, array $cfg = [], ?object $pivot = null): array
     {
         $base = ($hostForm instanceof MadForm) ? (array) $hostForm->getData() : [];
 
@@ -592,8 +611,88 @@ trait MadDbBlocksTrait
         if ($posted === null && function_exists('request')) {
             $posted = request()->input('mad_model');
         }
+        $posted = is_array($posted) ? $posted : [];
 
-        return array_merge($base, is_array($posted) ? $posted : []);
+        return array_merge($base, self::_blockNormalize($posted, $cfg, $pivot));
+    }
+
+    /**
+     * Converte cada campo postado pelo tipo dele, como o MadForm faz com os da
+     * tela (MadFormRegistry::transformField): data e data/hora dd/mm/aaaa →
+     * formato do banco, vazio → NULL em data/número, escolha múltipla → CSV.
+     *
+     * O tipo vem, nesta ordem: do schema que o compilador capturou do
+     * `<mad-db-blocks-form>` (state do bloco); do formulário da tela
+     * (`__mad_form`, para views compiladas antes da captura); do cast do Model
+     * (data e número), para campo que nenhum dos dois descreve.
+     *
+     * @param  array<string, mixed>  $posted
+     * @return array<string, mixed>
+     */
+    private static function _blockNormalize(array $posted, array $cfg, ?object $pivot = null): array
+    {
+        if ($posted === []) {
+            return [];
+        }
+        $schema = is_array($cfg['formSchema'] ?? null) ? $cfg['formSchema'] : [];
+        $screen = array_diff_key($posted, $schema) !== [] ? MadFormRegistry::fromRequest() : [];
+
+        foreach ($posted as $k => $v) {
+            $props = $schema[$k] ?? $screen[$k] ?? null;
+            if (is_array($props) && isset($props['type'])) {
+                $posted[$k] = MadFormRegistry::transformField($v, $props);
+            } elseif ($pivot !== null) {
+                $posted[$k] = self::_blockByCast($pivot, (string) $k, $v);
+            }
+        }
+
+        return $posted;
+    }
+
+    /** Campo sem tipo conhecido: data BR e vazio pelo cast do Model. */
+    private static function _blockByCast(object $pivot, string $key, mixed $value): mixed
+    {
+        if (!is_string($value) || !method_exists($pivot, 'getCasts')) {
+            return $value;
+        }
+        $cast = strtolower(explode(':', (string) ($pivot->getCasts()[$key] ?? ''))[0]);
+        $dateCasts = ['date', 'datetime', 'immutable_date', 'immutable_datetime', 'timestamp', 'custom_datetime'];
+        $numberCasts = ['int', 'integer', 'float', 'double', 'real', 'decimal'];
+        if (trim($value) === '' && in_array($cast, array_merge($dateCasts, $numberCasts), true)) {
+            return null;
+        }
+        if (in_array($cast, $dateCasts, true)) {
+            $type = in_array($cast, ['date', 'immutable_date'], true) ? 'date' : 'datetime';
+            return MadFormRegistry::transformField(trim($value), ['type' => $type]);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Data dd/mm/aaaa que não existe (31/02/2026) a conversão deixa crua; o
+     * banco a recusaria (ou o PHP a deslocaria). Recusa com o erro no campo,
+     * como o formulário da tela (MadForm::_rejectNonexistentDates).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private static function _blockNonexistentDate(array $cfg, array $data): ?MadResponse
+    {
+        foreach ($data as $k => $v) {
+            if (!is_string($v) || !preg_match('#^\d{2}/\d{2}/\d{4}( \d{2}:\d{2}(:\d{2})?)?$#', trim($v))) {
+                continue;
+            }
+            $type = (string) (($cfg['formSchema'][$k]['type'] ?? null) ?? '');
+            if ($type !== '' && $type !== 'date' && $type !== 'datetime') {
+                continue;
+            }
+            if (MadForm::parseDate(trim($v)) === null) {
+                return MadMessage::warning('Data inválida', 'Confira a data informada.')
+                    ->fieldError((string) $k, 'Data inválida.');
+            }
+        }
+
+        return null;
     }
 
     /**

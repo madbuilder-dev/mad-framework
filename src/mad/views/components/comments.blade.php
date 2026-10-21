@@ -14,6 +14,13 @@
      * O `record-id` é resolvido sozinho a partir do `$registroId` da tela.
      * Visual custom (opcional): `:item-template="$bladeString"` — o template
      * recebe `$item` (Model), `$vars` (os nomes de campo), `$state` e `$name`.
+     *
+     * Comentário interno (`internal-flag="coluna"`): `internal-visible` diz
+     * quem vê — expressão (`:internal-visible="$ehDaEquipe"`) ou
+     * `internal-visible="Classe::metodo"` (estático, devolve bool). Quem não
+     * vê recebe o feed SEM os internos (filtro no servidor: lista, re-render,
+     * editar e remover) e a caixa sem o switch; o comentário dele grava
+     * público. Sem a prop, todos veem (como antes).
      */
     $name        = $name        ?? 'comentarios';
     $model       = $model       ?? '';
@@ -26,6 +33,27 @@
     $authorField     = $authorField     ?? 'user_id';
     $authorNameField = $authorNameField ?? 'author_name';
     $internalFlag    = $internalFlag    ?? '';        // ex.: is_internal ('' = sem badge/switch)
+    $internalVisible = $internalVisible ?? true;
+    if (is_string($internalVisible) && str_contains($internalVisible, '::')) {
+        // `Classe::metodo`: quem decide é o app. Método que não existe nega
+        // (fail-closed) — nota interna exposta é o defeito que isto corrige.
+        [$_ivClass, $_ivMethod] = explode('::', ltrim($internalVisible, '\\'), 2);
+        if (is_callable([$_ivClass, $_ivMethod])) {
+            $internalVisible = (bool) call_user_func([$_ivClass, $_ivMethod]);
+        } else {
+            error_log('[mad-comments] internal-visible="' . $internalVisible . '": método não encontrado — internos ocultos.');
+            $internalVisible = false;
+        }
+    } elseif (is_string($internalVisible)) {
+        $internalVisible = !in_array(strtolower(trim($internalVisible)), ['', '0', 'false', 'no', 'nao', 'não'], true);
+    } else {
+        $internalVisible = (bool) $internalVisible;
+    }
+    $hideInternal = $internalFlag !== '' && !$internalVisible;
+    // Escopo do bloco: a coluna do filtro também fica fora do que o formulário
+    // grava (MadDbBlocks::scopeColumns), então o comentário de quem não vê
+    // não nasce interno nem por requisição forjada.
+    $filters = $hideInternal ? [[$internalFlag, 'is not true', null]] : [];
     $orderDir        = $orderDir        ?? 'asc';
     $label           = $label           ?? '';
     $placeholder     = $placeholder     ?? 'Escreva um comentário...';
@@ -51,7 +79,7 @@
         'date'          => $dateField,
         'author'        => $authorField,
         'authorName'    => $authorNameField,
-        'internal'      => $internalFlag,
+        'internal'      => $hideInternal ? '' : $internalFlag,
         'deletable'     => $deletable,
         'confirmRemove' => $confirmRemove,
     ];
@@ -62,7 +90,7 @@
     // `item-template` (string Blade) segue disponível como override.
     // Caixa de inclusão (form fixo abaixo da lista).
     $formTpl = '<mad-textarea-field name="' . e($bodyField) . '" :rows="' . $rows . '" placeholder="' . e($placeholder) . '" />';
-    if ($internalFlag !== '') {
+    if ($internalFlag !== '' && !$hideInternal) {
         $formTpl .= '<mad-switch-field name="' . e($internalFlag) . '" label="Comentário interno (só a equipe vê)" />';
     }
 
@@ -80,6 +108,7 @@
     :database="$database"
     :foreign-key="$foreignKey"
     :record-id="$recordId"
+    :filters="$filters"
     :row-view="$itemTemplate === '' ? 'components.partials.comment-row' : ''"
     :row-slot="$itemTemplate"
     :form-slot="$formTpl"

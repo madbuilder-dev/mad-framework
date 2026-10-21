@@ -6,6 +6,9 @@
 {{-- Sem o wrapper o grid nao existe e a sidebar empilha full-width.             --}}
 @php
     use Mad\View\MadBlade;
+    // Variáveis da view (e $that) para as expressões dos campos (`:filters="$that->…"`):
+    // cada campo é renderizado à parte e, sem elas, dava "Undefined variable".
+    $__madScope = \Mad\Dashboard\MadDashFiltersCompiler::viewScope(get_defined_vars());
     // Rótulos/botões configuráveis no wrapper (apply-label, clear-label, no-refresh).
     $chrome = \Mad\Dashboard\MadDashFiltersCompiler::chrome($wrapper ?? []);
     $component    = \Mad\Component\MadRenderContext::getComponent();
@@ -39,7 +42,7 @@
 
     <mad-form submit="onShow">
         @if ($layout === 'custom')
-            {!! MadBlade::renderString($injectWrapFormFalse($rawInner)) !!}
+            {!! MadBlade::renderString($injectWrapFormFalse($rawInner), $__madScope) !!}
         @else
         @foreach ($fields as $field)
             @php
@@ -55,7 +58,7 @@
                     @if ($active)<span class="mad-dashf-sb-gbadge">1</span>@endif
                 </div>
                 @endif
-                {!! MadBlade::renderString($fieldHtml) !!}
+                {!! MadBlade::renderString($fieldHtml, $__madScope) !!}
             </div>
         @endforeach
         @endif

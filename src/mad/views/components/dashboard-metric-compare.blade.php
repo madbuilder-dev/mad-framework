@@ -50,7 +50,9 @@
                 if (!\Mad\Database\QuerySource::isQuery($currentQuery)) {
                     $currentQuery = $__host->baseQuery($model);
                 }
-                if (!\Mad\Database\QuerySource::isQuery($compareQuery)) {
+                // Sem janela anterior no painel não há trend (a "anterior"
+                // seria a tabela inteira: variação falsa, #465).
+                if (!\Mad\Database\QuerySource::isQuery($compareQuery) && $__host->hasComparePeriod($model)) {
                     $compareQuery = $__host->comparePeriodQuery($model);
                 }
             } catch (\Throwable $e) { /* mantem o que veio */ }

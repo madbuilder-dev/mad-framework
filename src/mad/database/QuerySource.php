@@ -213,6 +213,10 @@ class QuerySource
                 case 'not in':      $query->whereNotIn($field, (array) $val); break;
                 case 'is null':     $query->whereNull($field); break;
                 case 'is not null': $query->whereNotNull($field); break;
+                // Marca booleana desligada OU nunca preenchida (NULL): `!= true`
+                // sozinho perderia as linhas NULL. Ex.: comentários não internos.
+                case 'is not true': $query->where(fn ($q) => $q->whereNull($field)->orWhere($field, false)); break;
+                case 'is true':     $query->where($field, true); break;
                 default:            $query->where($field, $op, $val); break;
             }
         }

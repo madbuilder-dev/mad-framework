@@ -1,0 +1,241 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MadMap — <mad-map> e <mad-map-field> (lib/mad/mad-map.js).
+   Tokens do tema (--mad-*), claro e escuro (<html data-theme="dark">).
+   O Leaflet (lib/mad/leaflet/leaflet.css) é carregado junto pelo JS.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.mad-map,
+.mad-map-field {
+    --mad-map-pin:       var(--mad-accent, var(--mad-info, #2563eb));
+    --mad-map-success:   var(--mad-success, #16a34a);
+    --mad-map-info:      var(--mad-info, #2563eb);
+    --mad-map-warning:   var(--mad-warning, #d97706);
+    --mad-map-danger:    var(--mad-danger, #dc2626);
+    --mad-map-primary:   var(--mad-accent, var(--mad-primary, #18181b));
+    --mad-map-secondary: var(--mad-secondary, #71717a);
+    --mad-map-orange:    #ea580c;
+    --mad-map-neutral:   var(--mad-text-subtle, #a1a1aa);
+}
+
+.mad-map {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.mad-map-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--mad-text, #18181b);
+}
+
+.mad-map-canvas {
+    position: relative;
+    width: 100%;
+    min-height: 160px;
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: var(--mad-radius, 8px);
+    overflow: hidden;
+    background: var(--mad-bg-muted, #f4f4f5);
+    z-index: 0;   /* panes do Leaflet (z-index 400+) não passam por cima de menus e cortinas */
+}
+
+.mad-map-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--mad-text-muted, #52525b);
+    pointer-events: none;
+}
+.mad-map-status[hidden] { display: none; }
+
+.mad-map-empty,
+.mad-map-note {
+    font-size: 12px;
+    color: var(--mad-text-muted, #52525b);
+}
+
+.mad-map-error {
+    font-size: 12px;
+    color: var(--mad-danger, #dc2626);
+}
+
+/* ── legenda ─────────────────────────────────────────────────────────── */
+
+.mad-map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    font-size: 12px;
+    color: var(--mad-text-muted, #52525b);
+}
+
+.mad-map-legend-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mad-map-legend-group li,
+.mad-map-layer-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mad-map-layer-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: var(--mad-text, #18181b);
+}
+.mad-map-layer-toggle input { margin: 0; accent-color: var(--mad-map-pin); }
+
+.mad-map-legend-count {
+    color: var(--mad-text-subtle, #a1a1aa);
+    font-variant-numeric: tabular-nums;
+}
+
+.mad-map-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--mad-map-swatch, var(--mad-map-pin));
+    color: #fff;
+    flex-shrink: 0;
+}
+.mad-map-swatch svg,
+.mad-map-swatch i { width: 10px; height: 10px; }
+.mad-map-layer-toggle .mad-map-swatch { width: 18px; height: 18px; }
+
+/* ── marcador ────────────────────────────────────────────────────────── */
+
+.mad-map-pin-wrap {
+    background: none;
+    border: 0;
+}
+
+.mad-map-pin {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    background: var(--mad-map-pin);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+    color: #fff;
+}
+.mad-map-pin svg {
+    width: 14px;
+    height: 14px;
+    transform: rotate(45deg);
+}
+.mad-map-pin.is-dot::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+}
+.leaflet-marker-icon:focus-visible .mad-map-pin {
+    outline: 2px solid var(--mad-text, #18181b);
+    outline-offset: 2px;
+}
+
+/* ── popover ─────────────────────────────────────────────────────────── */
+
+.mad-map-pop { font-size: 12px; line-height: 1.4; max-width: 260px; white-space: normal; }
+.mad-map-pop-title { font-weight: 600; color: var(--mad-text, #18181b); }
+.mad-map-pop-body { color: var(--mad-text-muted, #52525b); margin-top: 2px; }
+
+.mad-map .leaflet-popup-content-wrapper,
+.mad-map .leaflet-popup-tip,
+.mad-map .leaflet-tooltip,
+.mad-map-field .leaflet-popup-content-wrapper,
+.mad-map-field .leaflet-popup-tip {
+    background: var(--mad-bg, #fff);
+    color: var(--mad-text, #18181b);
+    border-color: var(--mad-border, #e5e7eb);
+}
+.mad-map .leaflet-tooltip-top::before { border-top-color: var(--mad-bg, #fff); }
+.mad-map .leaflet-container { font-family: inherit; }
+.mad-map .leaflet-control-attribution,
+.mad-map-field .leaflet-control-attribution { font-size: 10px; }
+
+/* ── campo ───────────────────────────────────────────────────────────── */
+
+.mad-map-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.mad-map-search .mad-input { flex: 1 1 200px; min-width: 0; }
+.mad-map-search .mad-btn { display: inline-flex; align-items: center; gap: 4px; }
+.mad-map-search-msg { flex-basis: 100%; font-size: 12px; color: var(--mad-text-muted, #52525b); }
+.mad-map-search-msg:empty { display: none; }
+
+.mad-map-notice {
+    margin: 4px 0 6px;
+    font-size: 11px;
+    color: var(--mad-text-subtle, #a1a1aa);
+}
+
+.mad-map-field .mad-map-canvas.mad-input-error { border-color: var(--mad-danger, #dc2626); }
+
+.mad-map-field-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--mad-text-muted, #52525b);
+    font-variant-numeric: tabular-nums;
+}
+
+.mad-map-clear {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--mad-text-muted, #52525b);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.mad-map-clear:hover { color: var(--mad-text, #18181b); }
+
+/* ── tema escuro ─────────────────────────────────────────────────────── */
+/* Os blocos do OpenStreetMap só existem claros: inverte o brilho mantendo o
+   matiz (água azul, parque verde). Marcadores e controles ficam fora. */
+
+:root[data-theme="dark"] .mad-map-canvas .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6);
+}
+:root[data-theme="dark"] .mad-map-canvas {
+    background: #1b1b1f;
+}
+:root[data-theme="dark"] .mad-map-canvas .leaflet-bar a {
+    background: var(--mad-bg, #18181b);
+    color: var(--mad-text, #fafafa);
+    border-bottom-color: var(--mad-border, #3f3f46);
+}
+:root[data-theme="dark"] .mad-map-canvas .leaflet-control-attribution {
+    background: rgba(24, 24, 27, .75);
+    color: var(--mad-text-muted, #a1a1aa);
+}
+:root[data-theme="dark"] .mad-map-canvas .leaflet-control-attribution a { color: var(--mad-text, #fafafa); }
+:root[data-theme="dark"] .mad-map-pin { border-color: #27272a; }

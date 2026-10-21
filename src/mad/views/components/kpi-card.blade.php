@@ -90,7 +90,11 @@
                 if (!\Mad\Database\QuerySource::isQuery($currentQuery)) {
                     $currentQuery = $__host->baseQuery($model);
                 }
-                if (!\Mad\Database\QuerySource::isQuery($compareQuery)) {
+                // Sem janela anterior (painel sem período, ou período que não
+                // alcança a tabela) não há comparação: a "anterior" seria a
+                // tabela inteira e o card mostraria variação falsa (#465).
+                if (!\Mad\Database\QuerySource::isQuery($compareQuery)
+                    && $__host->hasComparePeriod($model, ['compare' => $compareMode])) {
                     $compareQuery = $__host->comparePeriodQuery($model, ['compare' => $compareMode]);
                 }
             } catch (\Throwable $e) { /* mantem o que veio */ }

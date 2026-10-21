@@ -61,6 +61,9 @@
     $onAfterRemove = $onAfterRemove ?? '';
     $filters     = $filters ?? [];
     $formSlot    = $formSlot ?? '';
+    // Tipo de cada campo do form do bloco (capturado pelo compilador): vai no
+    // state cifrado para o servidor converter data/número/escolha (fw#459).
+    $formSchema  = is_array($formSchema ?? null) ? $formSchema : [];
     $rowSlot     = $rowSlot ?? '';   // inline row template (overrides rowView if present)
 
     $class = $class ?? '';
@@ -104,6 +107,7 @@
         'diskColumn'           => $diskColumn,
         'filters'              => $filters,
         'noList'               => $noList,
+        'formSchema'           => $formSchema,
     ];
     $stateToken = \Mad\Form\MadDbBlocks::encodeState($cfg);
 

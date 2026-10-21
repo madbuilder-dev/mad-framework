@@ -5,6 +5,9 @@
      pra garantir que getData() veja o schema completo de todos os campos. --}}
 @php
     use Mad\View\MadBlade;
+    // Variáveis da view (e $that) para as expressões dos campos (`:filters="$that->…"`):
+    // cada campo é renderizado à parte e, sem elas, dava "Undefined variable".
+    $__madScope = \Mad\Dashboard\MadDashFiltersCompiler::viewScope(get_defined_vars());
     // Rótulos/botões configuráveis no wrapper (apply-label, clear-label, no-refresh).
     $chrome = \Mad\Dashboard\MadDashFiltersCompiler::chrome($wrapper ?? []);
     $component   = \Mad\Component\MadRenderContext::getComponent();
@@ -38,17 +41,17 @@
 <mad-drawer :name="$drawerName" :title="$drawerTitle" icon="sliders-horizontal" size="md">
     <mad-form submit="onShow">
         @if ($layout === 'custom')
-            {!! MadBlade::renderString($injectWrapFormFalse($rawInner)) !!}
+            {!! MadBlade::renderString($injectWrapFormFalse($rawInner), $__madScope) !!}
         @else
         <mad-form-stack>
             @foreach ($fields as $field)
                 @if ($field['type'] === 'period-monthyear')
                     <div style="padding-bottom:12px;border-bottom:1px solid var(--mad-border,#e5e7eb);margin-bottom:8px;">
                         <div style="font-size:11px;color:var(--mad-text-subtle,#6b7280);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:8px;">{{ mad_t('mad.dashf.period') }}</div>
-                        {!! MadBlade::renderString($injectWrapFormFalse(base64_decode($field['raw_html_b64']))) !!}
+                        {!! MadBlade::renderString($injectWrapFormFalse(base64_decode($field['raw_html_b64'])), $__madScope) !!}
                     </div>
                 @else
-                    {!! MadBlade::renderString(base64_decode($field['raw_html_b64'])) !!}
+                    {!! MadBlade::renderString(base64_decode($field['raw_html_b64']), $__madScope) !!}
                 @endif
             @endforeach
         </mad-form-stack>

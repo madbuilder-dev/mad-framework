@@ -13,6 +13,9 @@
 {{--             usando <mad-form-grid>, <mad-form-section>, <mad-tabs>, etc.    --}}
 @php
     use Mad\View\MadBlade;
+    // Variáveis da view (e $that) para as expressões dos campos (`:filters="$that->…"`):
+    // cada campo é renderizado à parte e, sem elas, dava "Undefined variable".
+    $__madScope = \Mad\Dashboard\MadDashFiltersCompiler::viewScope(get_defined_vars());
     $component   = \Mad\Component\MadRenderContext::getComponent();
     $totalActive = ($component instanceof \Mad\Filters\MadFilterable) ? $component->activeFiltersCount($fields) : 0;
 
@@ -62,20 +65,20 @@
             @if ($layout === 'custom')
                 {{-- Layout custom — renderiza inner cru. User controla via
                      <mad-form-grid>, <mad-form-section>, <mad-tabs>, etc. --}}
-                {!! MadBlade::renderString($injectPeriodWrapForm($rawInner)) !!}
+                {!! MadBlade::renderString($injectPeriodWrapForm($rawInner), $__madScope) !!}
             @else
                 {{-- Layout auto --}}
                 @if ($periodField)
                     @php $periodHtml = $injectPeriodWrapForm(base64_decode($periodField['raw_html_b64'])); @endphp
                     <div class="mad-dashf-form-period">
-                        {!! MadBlade::renderString($periodHtml) !!}
+                        {!! MadBlade::renderString($periodHtml, $__madScope) !!}
                     </div>
                 @endif
 
                 @if (!empty($regularFields))
                     <mad-form-grid :cols="$cols">
                         @foreach ($regularFields as $field)
-                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64'])) !!}
+                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64']), $__madScope) !!}
                         @endforeach
                     </mad-form-grid>
                 @endif

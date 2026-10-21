@@ -6,6 +6,9 @@
 {{-- fora os campos de outras popovers).                                        --}}
 @php
     use Mad\View\MadBlade;
+    // Variáveis da view (e $that) para as expressões dos campos (`:filters="$that->…"`):
+    // cada campo é renderizado à parte e, sem elas, dava "Undefined variable".
+    $__madScope = \Mad\Dashboard\MadDashFiltersCompiler::viewScope(get_defined_vars());
     // Rótulos/botões configuráveis no wrapper (apply-label, clear-label, no-refresh).
     $chrome = \Mad\Dashboard\MadDashFiltersCompiler::chrome($wrapper ?? []);
     $component    = \Mad\Component\MadRenderContext::getComponent();
@@ -31,7 +34,7 @@
                         );
                     }
                 @endphp
-                {!! MadBlade::renderString($periodHtml) !!}
+                {!! MadBlade::renderString($periodHtml, $__madScope) !!}
 
                 @if (!$loop->last)<div class="mad-dashf-tb-divider"></div>@endif
 
@@ -74,7 +77,7 @@
                         {{-- Seleção múltipla: a lista do select abre PARA BAIXO por cima do
                              popover (teleportada) e cobriria os botões — ações vão pro topo. --}}
                         @if (!$isMulti)
-                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64'])) !!}
+                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64']), $__madScope) !!}
                         @endif
                         <div class="mad-dashf-pop-actions" @if ($isMulti) style="margin:0 0 10px" @endif>
                             @if ($active)
@@ -84,7 +87,7 @@
                             <mad-btn type="submit" variant="primary" size="sm" icon="check">{{ $chrome['apply'] }}</mad-btn>
                         </div>
                         @if ($isMulti)
-                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64'])) !!}
+                            {!! MadBlade::renderString(base64_decode($field['raw_html_b64']), $__madScope) !!}
                         @endif
                     </div>
                 </div>

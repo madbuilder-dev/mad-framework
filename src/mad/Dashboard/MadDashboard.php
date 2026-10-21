@@ -258,10 +258,36 @@ abstract class MadDashboard extends MadComponent implements MadFilterable
      */
     public function comparePeriodQuery(string $model, array $opts = []): \Illuminate\Database\Eloquent\Builder
     {
+        return $this->buildComparePeriodQuery($model, $opts)[0];
+    }
+
+    /**
+     * O painel tem uma janela anterior para comparar este model?
+     *
+     * Sem período (painel "retrato de agora"), ou com período que não alcança
+     * a tabela (sem a coluna de data nem as colunas mes/ano), a janela
+     * anterior é a tabela INTEIRA: comparar o valor de agora com ela dava
+     * variação falsa ("↓ 100%" num card de obras em execução, #465). Os cards
+     * que derivam a comparação do painel (`<mad-kpi-card model=>`,
+     * `<mad-dashboard-metric-compare>`) só mostram a variação quando há janela.
+     */
+    public function hasComparePeriod(string $model, array $opts = []): bool
+    {
+        try {
+            return $this->buildComparePeriodQuery($model, $opts)[1];
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** @return array{0: \Illuminate\Database\Eloquent\Builder, 1: bool} consulta e se a janela anterior recortou algo */
+    private function buildComparePeriodQuery(string $model, array $opts = []): array
+    {
         // Puro-builder: monta a janela anterior direto no Eloquent Builder.
         $class = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
         $q     = $class::query();
         $mode  = (string) ($opts['compare'] ?? 'auto');
+        $windowed = false;
 
         // MTD ignora o branch por periodType: a janela ja vem em datas.
         // O guard 'mode' e' obrigatorio — previousPeriod('mtd') delega pro
@@ -272,14 +298,14 @@ abstract class MadDashboard extends MadComponent implements MadFilterable
             && $this->modelHasColumn($model, $this->dateField)) {
             $prev = $this->previousPeriod('mtd');
             if (($prev['mode'] ?? '') === 'mtd') {
-                if (!empty($prev['dtIni'])) $q->where($this->dateField, '>=', $prev['dtIni']);
-                if (!empty($prev['dtFim'])) $q->where($this->dateField, '<=', $prev['dtFim'] . ' 23:59:59');
+                if (!empty($prev['dtIni'])) { $q->where($this->dateField, '>=', $prev['dtIni']); $windowed = true; }
+                if (!empty($prev['dtFim'])) { $q->where($this->dateField, '<=', $prev['dtFim'] . ' 23:59:59'); $windowed = true; }
 
                 if (($opts['unit'] ?? true) !== false) {
                     $this->applyUnitToQuery($q, $model);
                 }
                 $this->applyAutoFiltersToQuery($q, $model, $opts);
-                return $q;
+                return [$q, $windowed];
             }
         }
 
@@ -288,31 +314,43 @@ abstract class MadDashboard extends MadComponent implements MadFilterable
         if ($this->periodType === 'month-year') {
             $mesCol = $this->periodColumnFor('mes', $model);
             $anoCol = $this->periodColumnFor('ano', $model);
-            if (!empty($prev['mes']) && $mesCol && $this->modelHasColumn($model, $mesCol)) {
+            $hasMes = $mesCol && $this->modelHasColumn($model, $mesCol);
+            $hasAno = $anoCol && $this->modelHasColumn($model, $anoCol);
+            if (!empty($prev['mes']) && $hasMes) {
                 $q->where($mesCol, '=', $prev['mes']);
+                $windowed = true;
             }
-            if (!empty($prev['ano']) && $anoCol && $this->modelHasColumn($model, $anoCol)) {
+            if (!empty($prev['ano']) && $hasAno) {
                 $q->where($anoCol, '=', $prev['ano']);
+                $windowed = true;
+            }
+            // Tabela sem mes/ano, só com a data da tela: o período atual já
+            // recorta por ela (applyPeriodoToQuery, #87); a janela anterior
+            // também, senão a comparação era contra a tabela inteira.
+            if (!$hasMes && !$hasAno && $this->dateField !== '' && $this->modelHasColumn($model, $this->dateField)) {
+                if (!empty($prev['mes'])) { $q->whereMonth($this->dateField, '=', (int) $prev['mes']); $windowed = true; }
+                if (!empty($prev['ano'])) { $q->whereYear($this->dateField, '=', (int) $prev['ano']); $windowed = true; }
             }
         } elseif ($this->periodType === 'date-range' && $this->dateField !== ''
                   && $this->modelHasColumn($model, $this->dateField)) {
-            if (!empty($prev['dtIni'])) $q->where($this->dateField, '>=', $prev['dtIni']);
-            if (!empty($prev['dtFim'])) $q->where($this->dateField, '<=', $prev['dtFim'] . ' 23:59:59');
+            if (!empty($prev['dtIni'])) { $q->where($this->dateField, '>=', $prev['dtIni']); $windowed = true; }
+            if (!empty($prev['dtFim'])) { $q->where($this->dateField, '<=', $prev['dtFim'] . ' 23:59:59'); $windowed = true; }
         } elseif ($this->periodType === 'preset' && $this->dateField !== ''
                   && $this->modelHasColumn($model, $this->dateField)) {
             if (!empty($prev['start'])) {
                 $start = (string) $prev['start'];
                 if (str_ends_with($start, ' 00:00:00')) $start = substr($start, 0, 10);
                 $q->where($this->dateField, '>=', $start);
+                $windowed = true;
             }
-            if (!empty($prev['end'])) $q->where($this->dateField, '<=', $prev['end']);
+            if (!empty($prev['end'])) { $q->where($this->dateField, '<=', $prev['end']); $windowed = true; }
         }
 
         if (($opts['unit'] ?? true) !== false) {
             $this->applyUnitToQuery($q, $model);
         }
         $this->applyAutoFiltersToQuery($q, $model, $opts);
-        return $q;
+        return [$q, $windowed];
     }
 
     /**

@@ -12,6 +12,52 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.196.2] — 2026-10-21
+
+### Correções
+
+- **Dashboard:** num painel sem período (ou com período que a tabela não tem como filtrar), `<mad-kpi-card model=>` sem `:compare-query` mostrava uma variação que ninguém pediu, como "↓ 100%" num card de obras em execução. Agora o card mostra só o valor. O mesmo vale para `<mad-dashboard-metric-compare>`.
+- **Dashboard:** com período por mês/ano numa tabela que só tem a coluna de data, a variação do card passa a comparar com o mês anterior, e não mais com a tabela inteira.
+
+## [5.196.1] — 2026-10-21
+
+### Correções
+
+- **Kanban:** campo dentro de `<mad-kanban-filters>` que usa variável da tela ou `$that` (ex.: `:filters="$that->projetosVisiveis()"`) quebrava a tela com "Undefined variable". Agora funciona, e o combo do filtro pode listar só o que o usuário enxerga. Vale também para `<mad-grid-filters>` e `<mad-dash-filters>`, em todos os estilos.
+
+## [5.196.0] — 2026-10-21
+
+### Novidades
+
+- **Dashboard:** `<mad-map>` mostra os registros de uma tabela como marcadores num mapa do OpenStreetMap, sem chave de API: cor por situação com legenda (`color-field` + `:color-map`), resumo ao passar o mouse (`title-field`, `popover-content`), clique que abre o registro (`click-target`), agrupamento (`cluster`) e até 4 camadas extras com `<mad-map-layer>`, ligadas e desligadas na legenda. Dentro de um painel, o período e os filtros do painel valem para o mapa; linha sem coordenada fica fora, sem erro.
+- **Campos:** `<mad-map-field name="latitude" lng-name="longitude">` posiciona o registro no mapa: o usuário arrasta o pino, clica no mapa ou busca o endereço/CEP, e o formulário grava as duas colunas. Com `geocode-from="cep,cidade,uf"`, o mapa acha a posição sozinho quando o endereço é preenchido.
+
+## [5.195.0] — 2026-10-21
+
+### Novidades
+
+- **Workflow:** substituto por período. Em Administração › Fluxos de aprovação › Substitutos, quem vai se ausentar indica quem decide as pendências de aprovação dele de uma data a outra; o administrador cadastra para qualquer um.
+- **Workflow:** no período, o substituto vê as pendências do titular na Fila de Aprovação e decide "em nome de" quem ele substitui. A trilha guarda os dois nomes e o titular recebe um aviso de cada decisão tomada em nome dele.
+- **Workflow:** aviso de pendência nova, lembrete de prazo e escalada vão para o titular e para o substituto vigente. Sem cadeia: o substituto do substituto não herda as pendências.
+
+## [5.194.0] — 2026-10-21
+
+### Novidades
+
+- **Detalhe:** `<mad-comments>` ganha `internal-visible` para dizer quem vê os comentários internos (`:internal-visible="$ehDaEquipe"` ou `internal-visible="Classe::metodo"`). Quem não vê recebe o histórico sem as notas internas e comenta sempre como público.
+
+## [5.193.5] — 2026-10-21
+
+### Correções
+
+- **Formulário:** a validação com a regra `date` recusava data válida digitada no `<mad-date-field>` ("não contém uma data válida") e comparava datas trocando dia e mês. Agora valida a data como ela é gravada, e `$this->form->get()` devolve a data no formato do banco também nos campos de uma cortina lateral.
+
+## [5.193.4] — 2026-10-21
+
+### Correções
+
+- **Detalhe:** no `<mad-db-blocks>`, data e número do formulário do bloco não gravavam em PostgreSQL e MySQL ("Um dos valores informados não está no formato esperado"). Agora data dd/mm/aaaa e campo vazio são gravados como no formulário da tela, e data que não existe é apontada no campo.
+
 ## [5.193.3] — 2026-10-21
 
 ### Correções

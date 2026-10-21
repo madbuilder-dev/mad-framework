@@ -133,6 +133,22 @@ return [
         'packages/mad-framework/assets/mad-orgchart.css'      => 'public/lib/mad/mad-orgchart.css',
         'packages/mad-framework/assets/mad-pdv.js'            => 'public/lib/mad/mad-pdv.js',
         'packages/mad-framework/assets/mad-pdv.css'           => 'public/lib/mad/mad-pdv.css',
+        // MadMap (<mad-map>, <mad-map-field>): o JS carrega o Leaflet sob demanda
+        // de lib/mad/leaflet/ — sem CDN em runtime.
+        'packages/mad-framework/assets/mad-map.js'            => 'public/lib/mad/mad-map.js',
+        'packages/mad-framework/assets/mad-map.css'           => 'public/lib/mad/mad-map.css',
+        'packages/mad-framework/assets/vendor/leaflet/leaflet.js' => 'public/lib/mad/leaflet/leaflet.js',
+        'packages/mad-framework/assets/vendor/leaflet/leaflet.css' => 'public/lib/mad/leaflet/leaflet.css',
+        'packages/mad-framework/assets/vendor/leaflet/leaflet.markercluster.js' => 'public/lib/mad/leaflet/leaflet.markercluster.js',
+        'packages/mad-framework/assets/vendor/leaflet/MarkerCluster.css' => 'public/lib/mad/leaflet/MarkerCluster.css',
+        'packages/mad-framework/assets/vendor/leaflet/MarkerCluster.Default.css' => 'public/lib/mad/leaflet/MarkerCluster.Default.css',
+        'packages/mad-framework/assets/vendor/leaflet/LICENSE-leaflet' => 'public/lib/mad/leaflet/LICENSE-leaflet',
+        'packages/mad-framework/assets/vendor/leaflet/LICENSE-markercluster' => 'public/lib/mad/leaflet/LICENSE-markercluster',
+        'packages/mad-framework/assets/vendor/leaflet/images/layers.png' => 'public/lib/mad/leaflet/images/layers.png',
+        'packages/mad-framework/assets/vendor/leaflet/images/layers-2x.png' => 'public/lib/mad/leaflet/images/layers-2x.png',
+        'packages/mad-framework/assets/vendor/leaflet/images/marker-icon.png' => 'public/lib/mad/leaflet/images/marker-icon.png',
+        'packages/mad-framework/assets/vendor/leaflet/images/marker-icon-2x.png' => 'public/lib/mad/leaflet/images/marker-icon-2x.png',
+        'packages/mad-framework/assets/vendor/leaflet/images/marker-shadow.png' => 'public/lib/mad/leaflet/images/marker-shadow.png',
     ],
     'served_copies' => $servedCopies,
 ];

@@ -44,6 +44,16 @@ class MadFormRegistry
      */
     private static array $detailFileColumns = [];
 
+    /**
+     * Capturas abertas (pilha): cada uma recebe os campos registrados enquanto
+     * está aberta. O `<mad-db-blocks>` captura os campos do próprio formulário
+     * de inclusão — o form do bloco posta sozinho, e o schema da tela não
+     * descreve esses campos (ver beginCapture()).
+     *
+     * @var list<array<string, array>>
+     */
+    private static array $captures = [];
+
     /** @var string Chave secreta para AES-256-CBC */
     private static string $secret = '';
 
@@ -172,6 +182,33 @@ class MadFormRegistry
         self::$detailForms       = [];
         self::$fieldLists        = [];
         self::$detailFileColumns = [];
+        self::$captures          = [];
+    }
+
+    /**
+     * Começa a anotar os campos registrados a partir daqui (aninhável). O
+     * `<mad-db-blocks>` abre uma captura em volta do `<mad-db-blocks-form>` e
+     * guarda o schema no state do bloco: data, número e escolha do item são
+     * convertidos como no formulário da tela, esteja o bloco dentro ou fora de
+     * um `<mad-form>`.
+     *
+     * @internal chamado pelo código compilado do `<mad-db-blocks>`
+     */
+    public static function beginCapture(): void
+    {
+        self::$captures[] = [];
+    }
+
+    /**
+     * Fecha a captura mais recente e devolve `nome => props` dos campos
+     * registrados nela.
+     *
+     * @internal
+     * @return array<string, array>
+     */
+    public static function endCapture(): array
+    {
+        return array_pop(self::$captures) ?? [];
     }
 
     /**
@@ -196,6 +233,9 @@ class MadFormRegistry
         $props = array_filter($props, fn($v) => $v !== '' && $v !== null && $v !== false);
 
         self::$fields[$name] = array_merge(['type' => $type], $props);
+        foreach (array_keys(self::$captures) as $i) {
+            self::$captures[$i][$name] = self::$fields[$name];
+        }
 
         // O formulário da tela fica sabendo que TEM este campo: é o que ele
         // aceita do navegador (MadForm::takesFromBrowser). O tipo vai junto: o

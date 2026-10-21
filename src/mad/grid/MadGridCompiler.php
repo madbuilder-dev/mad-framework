@@ -703,10 +703,14 @@ class MadGridCompiler
         $phpClose = '?' . '>';
         $prefix   = '';
         if ($formSlot !== '') {
-            $prefix .= $phpOpen . ' ob_start(); ' . $phpClose
+            // A captura anota o tipo de cada campo do formulário do bloco
+            // (data, número, escolha): o blockAdd/blockEdit converte o que o
+            // form do bloco posta como o MadForm converte o da tela (fw#459).
+            $prefix .= $phpOpen . ' \Mad\Form\MadFormRegistry::beginCapture(); ob_start(); ' . $phpClose
                      . $formSlot
-                     . $phpOpen . ' $_mad_db_blocks_form_slot = ob_get_clean(); ' . $phpClose;
-            $propsStr .= ' :formSlot="$_mad_db_blocks_form_slot"';
+                     . $phpOpen . ' $_mad_db_blocks_form_slot = ob_get_clean(); '
+                     . '$_mad_db_blocks_form_schema = \Mad\Form\MadFormRegistry::endCapture(); ' . $phpClose;
+            $propsStr .= ' :formSlot="$_mad_db_blocks_form_slot" :formSchema="$_mad_db_blocks_form_schema"';
         }
 
         if ($rowSlot !== '') {

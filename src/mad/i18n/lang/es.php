@@ -450,6 +450,25 @@ return [
             'y_title'       => 'Fila',
         ],
 
+        'map' => [
+            'empty'      => 'Ningún punto con coordenadas.',
+            'skipped'    => ':n registro(s) sin coordenadas quedaron fuera del mapa.',
+            'truncated'  => 'Mostrando los primeros :n puntos.',
+            'legend'     => 'Leyenda',
+            'layers'     => 'Capas',
+            'loading'    => 'Cargando mapa…',
+            'load_error' => 'No se pudo cargar el mapa.',
+            'search'     => 'Buscar dirección o código postal',
+            'search_btn' => 'Buscar',
+            'searching'  => 'Buscando…',
+            'not_found'  => 'Dirección no encontrada.',
+            'hint'       => 'Arrastre el pin o haga clic en el mapa para ajustar la posición.',
+            'notice'     => 'La búsqueda de direcciones usa OpenStreetMap (Nominatim): el texto escrito se envía a ese servicio.',
+            'clear'      => 'Borrar posición',
+            'lat'        => 'Latitud',
+            'lng'        => 'Longitud',
+        ],
+
         'week_grid' => [
             'rows_title'       => 'Persona',
             'note_title'       => 'Nota de la semana',

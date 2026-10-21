@@ -275,6 +275,25 @@ return [
             'y_title'       => 'Linha',
         ],
 
+        'map' => [
+            'empty'      => 'Nenhum ponto com coordenadas.',
+            'skipped'    => ':n registo(s) sem coordenadas ficaram fora do mapa.',
+            'truncated'  => 'A mostrar os primeiros :n pontos.',
+            'legend'     => 'Legenda',
+            'layers'     => 'Camadas',
+            'loading'    => 'A carregar o mapa…',
+            'load_error' => 'Não foi possível carregar o mapa.',
+            'search'     => 'Procurar morada ou código postal',
+            'search_btn' => 'Procurar',
+            'searching'  => 'A procurar…',
+            'not_found'  => 'Morada não encontrada.',
+            'hint'       => 'Arraste o pino ou clique no mapa para ajustar a posição.',
+            'notice'     => 'A pesquisa de moradas usa o OpenStreetMap (Nominatim): o texto escrito é enviado a esse serviço.',
+            'clear'      => 'Limpar posição',
+            'lat'        => 'Latitude',
+            'lng'        => 'Longitude',
+        ],
+
         'week_grid' => [
             'rows_title'       => 'Pessoa',
             'note_title'       => 'Observação da semana',
