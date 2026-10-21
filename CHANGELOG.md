@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.193.3] — 2026-10-21
+
+### Correções
+
+- **Login (modo Dedicado):** quando a unidade do administrador apontava para uma empresa sem banco, ninguém entrava no app: o login pedia para provisionar, mas o Provisionar banco só abre depois de entrar. Agora quem tem acesso a Administração › Empresas vê **Criar o banco e entrar**: o banco da empresa é criado ali e o login segue (termos, verificação em duas etapas e troca de senha continuam valendo). Quem não tem esse acesso continua barrado, com o caminho de onde se cria o banco.
+- **Unidades (modo Dedicado):** a empresa que ainda não tem banco aparece como "(sem banco)" no campo Empresa, e salvar uma unidade vinculada a ela é recusado com o aviso de criar o banco antes em Administração › Empresas › Provisionar banco. Unidade que já estava nessa empresa continua editável.
+
 ## [5.193.2] — 2026-10-21
 
 ### Correções
