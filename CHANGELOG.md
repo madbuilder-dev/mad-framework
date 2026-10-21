@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.200.0] — 2026-10-21
+
+### Novidades
+
+- **Tema:** a tela de login atende aos controles novos do editor de temas (Login › Avançado): fundo e texto do painel da marca, campos, links e cartão do formulário, e os detalhes do painel da variante 6. Tema sem esses controles mostra o login igual ao de antes.
+
 ## [5.199.0] — 2026-10-21
 
 ### Novidades
