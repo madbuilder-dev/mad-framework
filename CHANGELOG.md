@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.193.1] — 2026-10-21
+
+### Melhorias
+
+- **App gerado:** inclui a melhoria do instalador da 5.190.0, que tinha ficado de fora da 5.193.0.
+
 ## [5.193.0] — 2026-10-21
 
 ### Novidades
@@ -29,16 +35,17 @@ congelado em `docs/changelog-tecnico.md`.
 
 ### Novidades
 
+- **Calendário:** prazos em dias úteis com `Mad\Support\BusinessDays` (somar, contar e conferir dia útil), pulando fim de semana e feriados. Sem configurar nada valem os feriados nacionais, inclusive Carnaval, Sexta-feira Santa e Corpus Christi.
+- **Calendário:** feriados estaduais, municipais ou da empresa entram criando a classe `App\Services\HolidayProvider` no app. O feriado municipal só conta para a unidade em que vale.
+- **Calendário:** o Gantt ganha `holidays="provider"` (destaca os feriados do app) e `holidays-unit` (calendário de qual unidade); sem `working-days`, o Gantt usa os dias úteis do app.
 - **Workflow:** cada decisão passa a guardar o IP, o navegador e a versão do registro que foi aprovada. O mapa do fluxo (`<mad-wf-map>`) mostra isso na linha do tempo, ao lado de quem decidiu e quando.
 - **Workflow:** com a coluna de versão do registro informada no fluxo (`hash_column`), uma aprovação sobre versão diferente da enviada é recusada e o fluxo é cancelado, com aviso ao solicitante. Um passo marcado com `hash_rebase` (correção pelo solicitante) aceita a versão nova.
 
 ## [5.190.0] — 2026-10-21
 
-### Novidades
+### Melhorias
 
-- **Calendário:** prazos em dias úteis com `Mad\Support\BusinessDays` (somar, contar e conferir dia útil), pulando fim de semana e feriados. Sem configurar nada valem os feriados nacionais, inclusive Carnaval, Sexta-feira Santa e Corpus Christi.
-- **Calendário:** feriados estaduais, municipais ou da empresa entram criando a classe `App\Services\HolidayProvider` no app. O feriado municipal só conta para a unidade em que vale.
-- **Calendário:** o Gantt ganha `holidays="provider"` (destaca os feriados do app) e `holidays-unit` (calendário de qual unidade); sem `working-days`, o Gantt usa os dias úteis do app.
+- **Instalador:** quando o `.env` do sistema traz `INSTALL_TOKEN`, a tela de token do `/install` agora diz para usar esse valor (o mesmo que o MadBuilder mostra nas Configurações do projeto, em Segurança), em vez de mandar ler um arquivo no servidor que nem chegava a ser criado.
 
 ## [5.189.2] — 2026-10-20
 
