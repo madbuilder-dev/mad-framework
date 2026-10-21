@@ -108,6 +108,15 @@
         }
     }
 
+    // :compare-query="$that->compareQuery(...)" (o que o Studio gera) num
+    // painel sem janela anterior: é a tabela inteira, não há o que comparar.
+    if (\Mad\Database\QuerySource::isQuery($compareQuery)) {
+        $__cmpHost = \Mad\Component\MadRenderContext::getComponent();
+        if ($__cmpHost instanceof \Mad\Dashboard\MadDashboard && $__cmpHost->isWindowlessCompare($compareQuery)) {
+            $compareQuery = null;
+        }
+    }
+
     // ── Agregação: valor atual + delta vs anterior ────────────────────────
     $__curSql = null; $__curBinds = [];
     $__cmpSql = null; $__cmpBinds = [];

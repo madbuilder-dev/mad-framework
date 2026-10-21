@@ -354,6 +354,14 @@ class MadForm
     private array $_usedNow = [];
 
     /**
+     * O código da tela leu o formulário INTEIRO nesta requisição (`getData()`,
+     * `getDataRaw()`): o valor de qualquer campo pode ter seguido por ali,
+     * com o nome montado (`'c_' . $chave`) que a busca no fonte não acha
+     * (fw#473). O campo sem coluna não vira o aviso "Valor não gravado".
+     */
+    private bool $_readAllNow = false;
+
+    /**
      * O que o usuário digitou e este Salvar NÃO gravou: campos do formulário
      * (nome => rótulo e tabela) e colunas de lista (lista => [coluna => tabela]) que
      * não são coluna da tabela. Vira um aviso na resposta da ação
@@ -628,6 +636,8 @@ class MadForm
      */
     public function getDataRaw(): object
     {
+        $this->_readAllNow = true;
+
         // Mesma leitura tolerante do getData(): campo declarado e ausente lê
         // null (ver MadFormData). Os valores continuam crus.
         return MadFormData::make($this->fields, array_keys(MadFormRegistry::fromRequest()));
@@ -642,6 +652,14 @@ class MadForm
      * passa a gravar NULL em coluna que o usuário não tocou.
      */
     public function getData(string $tokenField = '__mad_form'): object
+    {
+        $this->_readAllNow = true;
+
+        return $this->_data($tokenField);
+    }
+
+    /** O {@see getData()} sem contar como leitura da tela — o que o próprio formulário lê para gravar. */
+    private function _data(string $tokenField = '__mad_form'): object
     {
         if ($this->_dataCache !== null) {
             return $this->_dataCache;
@@ -727,7 +745,7 @@ class MadForm
             return $this->_withMasterFields(fn () => $this->fillRecord($record));
         }
 
-        $data = $this->getData();
+        $data = $this->_data();
 
         // Data que não existe (31/02/2026) não é gravada como outra: erro no
         // campo, antes de tocar o registro.
@@ -2887,8 +2905,8 @@ class MadForm
     //    Lista de itens / Detail Form que não é coluna da tabela da linha;
     //  - NADA: o campo só de tela. A tela o declara com `screen-only` na tag
     //    ou `$this->form->screenOnly('campo')` — ou simplesmente o USA: lê com
-    //    `get()`, valida, cita o nome no código PHP dela, usa numa condição
-    //    `*-when`. Também o campo `secao__coluna` do assistente (quem grava a
+    //    `get()` ou o formulário inteiro com `getData()`/`getDataRaw()`,
+    //    valida, cita o nome no código PHP dela, usa numa condição `*-when`. Também o campo `secao__coluna` do assistente (quem grava a
     //    seção é a tela), o somente leitura, o desabilitado, o que o código
     //    atribuiu e o que o Model conhece (mutator, relação, cast).
     //
@@ -3603,7 +3621,9 @@ class MadForm
     /** O aviso (diálogo) do que o usuário digitou e este Salvar não gravou, ou null se não há o que avisar. */
     private function _notStoredNoticeOp(): ?array
     {
-        $fields  = $this->_notStored['fields'];
+        // A tela que leu o formulário inteiro pode ter gravado o campo por
+        // conta própria: não dá para afirmar que ele não foi gravado (fw#473).
+        $fields  = $this->_readAllNow ? [] : $this->_notStored['fields'];
         $rows    = $this->_notStored['rows'];
         $guarded = $this->_settleGuardedTyped();
         $this->_notStored = ['fields' => [], 'rows' => []];
@@ -3665,6 +3685,8 @@ class MadForm
             'message' => implode(' ', $parts),
             'type'    => 'warning',
             'title'   => self::_text('mad.form.not_stored_title', [], 'Valor não gravado'),
+            // Vai para baixo da mensagem da própria tela: ver settleNoticeTails().
+            'notice'  => true,
         ];
     }
 
@@ -10297,7 +10319,31 @@ class MadForm
             $ops[$i] = $op;
         }
 
-        return $ops;
+        // O aviso do formulário abre ANTES da mensagem da própria tela: cada
+        // diálogo abre por cima do anterior, e o aviso montado no fim cobria a
+        // recusa ou o erro da mesma ação (fw#473). A chave `notice` nunca sai.
+        $notices = [];
+        $others  = [];
+        foreach ($ops as $op) {
+            if (is_array($op) && !empty($op['notice'])) {
+                unset($op['notice']);
+                $notices[] = $op;
+            } else {
+                $others[] = $op;
+            }
+        }
+        if ($notices === []) {
+            return $ops;
+        }
+        foreach ($others as $i => $op) {
+            if (is_array($op) && ($op['op'] ?? null) === 'alert') {
+                array_splice($others, $i, 0, $notices);
+
+                return $others;
+            }
+        }
+
+        return [...$others, ...$notices];
     }
 
     // ── Escopo do editor de <mad-detail-form> (mad:change no sub-form) ────────

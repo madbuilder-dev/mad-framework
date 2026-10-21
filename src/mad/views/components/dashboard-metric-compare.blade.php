@@ -59,6 +59,15 @@
         }
     }
 
+    // :compare-query="$that->compareQuery(...)" (o que o Studio gera) num
+    // painel sem janela anterior: é a tabela inteira, não há trend.
+    if (\Mad\Database\QuerySource::isQuery($compareQuery)) {
+        $__cmpHost = \Mad\Component\MadRenderContext::getComponent();
+        if ($__cmpHost instanceof \Mad\Dashboard\MadDashboard && $__cmpHost->isWindowlessCompare($compareQuery)) {
+            $compareQuery = null;
+        }
+    }
+
     // ── Computa delta executando 2 queries de agregacao ───────────────────
     $delta            = ['label' => null, 'trend' => 'flat'];
     $__currentSql     = null; $__currentBinds = []; $__currentError = null;

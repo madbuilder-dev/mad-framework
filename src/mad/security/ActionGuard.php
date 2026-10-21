@@ -145,8 +145,46 @@ final class ActionGuard
             return self::liberado(null);
         }
 
-        // Sem sessão de perfil (fora do painel, app sem permissões carregadas)
-        // não há o que perguntar — fail-open, como o resto.
+        $semAcesso = self::screenDenied($class);
+        if ($semAcesso !== null) {
+            return $semAcesso;
+        }
+
+        return self::opensNewRecord($class)
+            ? self::decide($class, 'insert', true)
+            : self::liberado(null);
+    }
+
+    /**
+     * Botão/ação que abre OUTRA tela num método nomeado
+     * (`navigate="Tela" method="onEdit"`, ação de linha que navega, ação em
+     * lote com `target`).
+     *
+     * Primeiro o acesso à tela de destino, como no {@see decideOpen()}: sem a
+     * tela no grupo, o clique só levaria a "Você não tem acesso a esta tela"
+     * (mad-framework#469). Depois a ação, como no {@see decide()}.
+     *
+     * @return array{mode: 'allow'|'disable'|'hide', key: string|null, title: string}
+     */
+    public static function decideNav(string $class, string $method, ?bool $isNew = null): array
+    {
+        $class = ltrim(trim($class), '\\');
+        if ($class === '') {
+            return self::liberado(null);
+        }
+
+        return self::screenDenied($class) ?? self::decide($class, $method, $isNew);
+    }
+
+    /**
+     * O perfil não tem a tela no grupo? Devolve a decisão de "sem acesso";
+     * null = tem acesso, ou não há o que perguntar. Sem sessão de perfil (fora
+     * do painel, app sem permissões carregadas) é fail-open, como o resto.
+     *
+     * @return array{mode: 'disable'|'hide', key: string, title: string}|null
+     */
+    private static function screenDenied(string $class): ?array
+    {
         if (PermissionGate::isLogged() && is_array(session('programs')) && !PermissionGate::canAccess($class)) {
             return [
                 'mode'  => self::mode(),
@@ -155,9 +193,7 @@ final class ActionGuard
             ];
         }
 
-        return self::opensNewRecord($class)
-            ? self::decide($class, 'insert', true)
-            : self::liberado(null);
+        return null;
     }
 
     /**

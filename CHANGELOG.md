@@ -12,6 +12,50 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.197.1] — 2026-10-21
+
+### Correções
+
+- **Dashboard:** o card de comparação gerado pelo Studio num painel sem período não mostra mais variação falsa (ex.: "↓ 100%"). Sem período anterior para comparar, o card mostra só o valor.
+
+## [5.197.0] — 2026-10-21
+
+### Novidades
+
+- **Calendário:** o `<mad-gantt>` ganha `tooltip-field` (texto a mais na dica da barra), `badge-field` (selo ao lado da barra) e `class-field` (classe CSS da barra), por tarefa. Cada um aceita uma coluna ou um accessor do Model.
+
+## [5.196.7] — 2026-10-21
+
+### Correções
+
+- **Formulário:** a tela que lê o formulário inteiro (`getData()`) e grava o campo por conta própria não abre mais o aviso falso "Valor não gravado". E esse aviso não cobre mais a mensagem da própria tela na mesma resposta.
+
+## [5.196.6] — 2026-10-21
+
+### Correções
+
+- **Workflow:** no Teste Online e em hospedagem com Docker, a decisão do workflow e o registro de acessos gravam o IP de quem acessou, e não mais o endereço interno 172.18.0.1 igual para todos.
+
+## [5.196.5] — 2026-10-21
+
+### Correções
+
+- **Formulário:** em `<mad-comments>`, o autor do comentário aparece pelo nome do usuário do sistema, e não mais como "Usuário #3", quando os usuários ficam num banco e os comentários em outro.
+
+## [5.196.4] — 2026-10-21
+
+### Correções
+
+- **Permissões:** botão que abre outra tela num método (`<mad-btn navigate="Tela" method="onEdit">`), ação de linha que navega e ação em lote com `target` saem cinza com "Sem acesso a esta tela" quando o perfil não tem a tela de destino. Antes ficavam ativos e o clique caía no aviso de acesso negado.
+- **Listagem (grid):** com `row-click`, quando o perfil esconde a ação principal da linha, o clique na linha não dispara mais a ação seguinte: a linha fica sem clique, como já acontecia com a ação desabilitada.
+
+## [5.196.3] — 2026-10-21
+
+### Correções
+
+- **Formulário:** `<mad-comments>` (e todo `<mad-db-blocks>`) dentro de um `<mad-form>` passou a funcionar. Antes o botão Comentar enviava o formulário da tela, que recarregava com erro; agora grava só o comentário, e o Salvar da tela não leva o que está na caixa de comentário.
+- **Formulário:** comentários na cortina de edição do Gantt gravam ligados à tarefa aberta sem precisar de `record-id`. Antes saíam sem a tarefa e o banco recusava a gravação.
+
 ## [5.196.2] — 2026-10-21
 
 ### Correções

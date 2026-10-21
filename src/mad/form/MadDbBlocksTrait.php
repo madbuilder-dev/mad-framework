@@ -481,14 +481,21 @@ trait MadDbBlocksTrait
         $mode = $cfg['addMode'] ?? 'popover';
         $name = $cfg['name'];
         if ($mode === 'inline') {
-            // reset() zera todos os campos do form do adder (o form tem
-            // data-mad-block-form com o nome do bloco). Alpine/mad:model
-            // acompanham via evento input disparado pelo próprio reset.
+            // Volta cada campo do adder ao valor com que foi desenhado (o
+            // container tem data-mad-block-form com o nome do bloco). É um
+            // <div>, não um <form> (fw#466): sem reset() nativo, o laço faz o
+            // que ele fazia. Os `__mad_*` (state do bloco) ficam. Alpine/
+            // mad:model acompanham via input/change disparados aqui.
             $resp->script(
-                "(function(){var f=document.querySelector('form[data-mad-block-form=\"{$name}\"]');"
-                . "if(f){f.reset();f.querySelectorAll('input,textarea,select').forEach(function(el){"
+                "(function(){var f=document.querySelector('[data-mad-block-form=\"{$name}\"]');"
+                . "if(!f)return;f.querySelectorAll('input,textarea,select').forEach(function(el){"
+                . "if((el.name||'').indexOf('__mad_')===0)return;"
+                . "if(el.type==='checkbox'||el.type==='radio'){el.checked=el.defaultChecked;}"
+                . "else if(el.tagName==='SELECT'){Array.prototype.forEach.call(el.options,function(o){o.selected=o.defaultSelected;});}"
+                . "else if(el.type==='file'){el.value='';}"
+                . "else{el.value=el.defaultValue;}"
                 . "el.dispatchEvent(new Event('input',{bubbles:true}));"
-                . "el.dispatchEvent(new Event('change',{bubbles:true}));});}})()"
+                . "el.dispatchEvent(new Event('change',{bubbles:true}));});})()"
             );
             return;
         }

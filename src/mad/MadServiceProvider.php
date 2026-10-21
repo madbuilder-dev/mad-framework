@@ -171,17 +171,51 @@ class MadServiceProvider extends ServiceProvider
      * nginx/Traefik todo visitante aparecia com o IP do proxy (o limite de
      * tentativas do login de um trancava o de todos). Aqui o `.env` já foi lido
      * (e `config:cache` também serve, pela chave `mad.trusted_proxies`).
-     * Vazio = não mexe no que o `bootstrap/app.php` já aplicou.
+     *
+     * Num CONTAINER (Teste Online, MadCloud, hospedagem com Traefik), vazio ou
+     * só loopback (`127.0.0.1,::1`, o padrão que o MadBuilder grava no `.env`
+     * para o nginx do mesmo servidor) confia nas redes privadas
+     * ({@see CONTAINER_PROXIES}): ali o proxy conecta pela rede do Docker, não
+     * pelo loopback, e o app via o gateway (172.18.0.1) como o endereço de
+     * todo mundo — inclusive na prova da decisão do workflow, o IP que vai
+     * para o registro de aprovação (fw#470). Visitante que chega direto no
+     * container (NAT do Docker) traz o próprio endereço público, fora da
+     * lista: o cabeçalho dele não é lido. Lista com outro endereço é escolha
+     * de quem configurou e vale como está. Fora de container, vazio = não
+     * mexe no que o `bootstrap/app.php` já aplicou (não confia em ninguém).
+     * `none` = não confia em ninguém, nem no container.
+     *
+     * @param  bool|null  $inContainer  null = detecta ({@see runningInContainer()})
      */
-    public static function applyTrustedProxies(mixed $raw): void
+    public static function applyTrustedProxies(mixed $raw, ?bool $inContainer = null): void
     {
         $raw = trim((string) $raw);
+        if (strtolower($raw) === 'none') {
+            \Illuminate\Http\Middleware\TrustProxies::at(['none']);
+
+            return;
+        }
+        $list = $raw === '' || $raw === '*' ? [] : array_values(array_filter(array_map('trim', explode(',', $raw))));
+        if ($raw !== '*' && array_diff($list, ['127.0.0.1', '::1']) === [] && ($inContainer ?? self::runningInContainer())) {
+            \Illuminate\Http\Middleware\TrustProxies::at(self::CONTAINER_PROXIES);
+
+            return;
+        }
         if ($raw === '') {
             return;
         }
-        \Illuminate\Http\Middleware\TrustProxies::at(
-            $raw === '*' ? '*' : array_values(array_filter(array_map('trim', explode(',', $raw)))),
-        );
+        \Illuminate\Http\Middleware\TrustProxies::at($raw === '*' ? '*' : $list);
+    }
+
+    /** Redes de onde o proxy de um container conecta: privadas e loopback. */
+    public const CONTAINER_PROXIES = [
+        '127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7',
+    ];
+
+    /** O app roda dentro de um container (Docker ou Podman)? */
+    public static function runningInContainer(): bool
+    {
+        return is_file('/.dockerenv') || is_file('/run/.containerenv');
     }
 
     /**

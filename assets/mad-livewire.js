@@ -920,7 +920,7 @@ const MadWire = (() => {
             // When a sourceForm is provided, skip elements inside OTHER forms
             // (prevents duplicate model names from overwriting each other)
             if (sourceForm) {
-                const elForm = _closestAcross(el, 'form[data-mad-submit]');
+                const elForm = _closestAcross(el, 'form[data-mad-submit], [data-mad-block-form]');
                 if (elForm && elForm !== sourceForm) return;
             }
 
@@ -1287,7 +1287,7 @@ const MadWire = (() => {
     // Botões de ação (mad:click) que ficaram de fora do carregando por estarem
     // pressionados: o clique deles cai na fila atrás do pedido do campo.
     const _heldOpen = new WeakSet();
-    const _PRESSABLE = 'button[type="submit"], input[type="submit"], [data-mad-click]';
+    const _PRESSABLE = 'button[type="submit"], input[type="submit"], [data-mad-block-submit], [data-mad-click]';
     if (typeof document.addEventListener === 'function') {
         document.addEventListener('pointerdown', (e) => {
             const btn = e.target && e.target.closest ? e.target.closest(_PRESSABLE) : null;
@@ -1315,11 +1315,12 @@ const MadWire = (() => {
         // Submit buttons: if a sourceForm was provided (real submit event),
         // mark only its submits; otherwise mark all submits inside any
         // data-mad-submit form within this wrapper (defensive default).
+        // Formulário de <mad-db-blocks> (div, fw#466) entra junto.
         const formsToTreat = sourceForm
             ? [sourceForm]
-            : _componentNodes(wrapper, 'form[data-mad-submit]');
+            : _componentNodes(wrapper, 'form[data-mad-submit]').concat(_componentNodes(wrapper, '[data-mad-block-form]'));
         formsToTreat.forEach(form => {
-            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(btn => {
+            form.querySelectorAll('button[type="submit"], input[type="submit"], [data-mad-block-submit]').forEach(btn => {
                 if (active && btn === _pressedBtn) return;
                 btn.disabled = active;
                 btn.classList.toggle('mad-btn-loading-active', active);
@@ -1568,7 +1569,7 @@ const MadWire = (() => {
             var val = input.value;
             if (val === undefined || val === '') return;
             // Se o input esta dentro de um form data-mad-submit, so usa se for o sourceForm
-            var parentForm = _closestAcross(input, 'form[data-mad-submit]');
+            var parentForm = _closestAcross(input, 'form[data-mad-submit], [data-mad-block-form]');
             if (parentForm && sourceForm && parentForm !== sourceForm) return;
             if (parentForm && !sourceForm) return; // ignora forms se nao foi submit
             body.append(input.name, val);
@@ -1808,6 +1809,8 @@ const MadWire = (() => {
             if (/^(file|button|submit|reset|image)$/i.test(c.type || '')) return false;
             // Linhas de detail-form/field-list e checklist têm estado próprio.
             if (c.closest && c.closest('[data-mad-df-name], [data-mad-fl-name], .mad-checklist')) return false;
+            // Campo do formulário de um <mad-db-blocks> dentro deste: é dele.
+            if (c.closest && c.closest('form[data-mad-submit], [data-mad-block-form]') !== form) return false;
             return true;
         });
     }
@@ -1837,7 +1840,7 @@ const MadWire = (() => {
     }
 
     function _otherFormsEdits(wrapper, sourceForm) {
-        const forms = _componentNodes(wrapper, 'form[data-mad-submit]');
+        const forms = _componentNodes(wrapper, 'form[data-mad-submit], [data-mad-block-form]');
         const items = [];
         forms.forEach((form, i) => {
             if (form === sourceForm) return;
@@ -1854,7 +1857,7 @@ const MadWire = (() => {
     }
 
     function _restoreOtherForms(wrapper, keep) {
-        const forms = _componentNodes(wrapper, 'form[data-mad-submit]');
+        const forms = _componentNodes(wrapper, 'form[data-mad-submit], [data-mad-block-form]');
         // A tela mudou de forma (formulário a mais/a menos): não dá para casar.
         if (forms.length !== keep.count) return;
         const byKey = {};
@@ -2256,12 +2259,18 @@ const MadWire = (() => {
 
     document.addEventListener('submit', async (e) => {
         const form = e.target;
-        const raw  = form.dataset.madSubmit || '';
-        if (!raw) return;
-        const wrapper = _getWrapper(form);
-        if (!wrapper) return;
+        if (!form.dataset || !form.dataset.madSubmit || !_getWrapper(form)) return;
         e.preventDefault();
         e.stopPropagation();
+        await _submitForm(form);
+    });
+
+    // Envia um formulário MAD: o <form data-mad-submit> (listener acima) e o
+    // formulário do <mad-db-blocks> (botão e Enter, ver _submitBlockForm).
+    async function _submitForm(form) {
+        const raw  = form.dataset.madSubmit || '';
+        const wrapper = raw ? _getWrapper(form) : null;
+        if (!wrapper) return;
         // Obrigatório (`required` e `required-when`) vazio segura o Salvar e
         // avisa no próprio campo — o form é `novalidate`, então sem isto o
         // asterisco era só desenho (mad-ui.js, _madWhen.blockSubmit).
@@ -2277,6 +2286,40 @@ const MadWire = (() => {
         // não traz nada novo — é ignorado. Em voo, o Salvar já está ocupado.
         if (_queuedOnce(key)) return;
         await _request(wrapper, action, params, {}, form, { key, onStart: _queuedOnce.hold(key) });
+    }
+
+    // Formulário do <mad-db-blocks> (comentários, anexos…): é um
+    // <div data-mad-block-form>, não um <form>, para poder morar dentro de um
+    // <mad-form> — <form> dentro de <form> o navegador descarta, e o botão do
+    // bloco enviava o formulário da tela (fw#466). O botão e o Enter num campo
+    // de uma linha enviam direto: um `submit` disparado no div não serviria, o
+    // navegador o barra no <form> de fora antes de chegar ao document. Onde o
+    // MadWire separa "campos deste formulário" dos de outro, o seletor casa os
+    // dois: 'form[data-mad-submit], [data-mad-block-form]'.
+    function _submitBlockForm(box) {
+        const btn = box.querySelector('[data-mad-block-submit]');
+        if (btn && btn.disabled) return;
+        return _submitForm(box);
+    }
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('[data-mad-block-submit]') : null;
+        if (!btn) return;
+        const box = btn.closest('[data-mad-block-form]');
+        if (!box) return;
+        e.preventDefault();
+        _submitBlockForm(box);
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing) return;
+        const el = e.target;
+        if (!el || el.tagName !== 'INPUT') return;
+        if (/^(button|submit|reset|image|file|checkbox|radio|hidden)$/i.test(el.type || '')) return;
+        const box = el.closest('[data-mad-block-form]');
+        if (!box) return;
+        e.preventDefault();
+        _submitBlockForm(box);
     });
 
     document.addEventListener('change', async (e) => {
@@ -2326,7 +2369,7 @@ const MadWire = (() => {
     // referência "do servidor" dele no redesenho (ver _fieldBaseline, fw#384).
     document.addEventListener('focusin', (e) => {
         const box = e.target && e.target.closest ? e.target.closest('.mad-field') : null;
-        if (!box || !box.closest('form[data-mad-submit]')) return;
+        if (!box || !box.closest('form[data-mad-submit], [data-mad-block-form]')) return;
         box.querySelectorAll('input[type="hidden"][name]').forEach(h => {
             if (!_fieldBaseline.has(h)) _fieldBaseline.set(h, h.value);
         });
@@ -2364,6 +2407,13 @@ const MadWire = (() => {
          * elemento não pertence a componente nenhum.
          */
         closestComponent(el) { return el ? _closestAcross(el, '[mad-component]') : null; },
+
+        /**
+         * Envia o formulário MAD `el` como o botão de envio faria: o
+         * <form data-mad-submit> ou o formulário de um <mad-db-blocks>
+         * (um div, que não recebe `submit` dentro de outro form — fw#466).
+         */
+        submit(el) { return el ? _submitForm(el) : Promise.resolve(); },
 
         /**
          * Raízes DOM do componente: o wrapper + os painéis que ele teleportou

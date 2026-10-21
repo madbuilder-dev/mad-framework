@@ -628,6 +628,18 @@ html.dark .mad-gantt {
     filter: drop-shadow(0 0 4px color-mix(in oklch, var(--mg-critical) 40%, transparent));
 }
 
+/* Selo da tarefa (badge-field), ao lado do fim da barra */
+.mad-gantt-bar-badge rect {
+    fill: var(--mg-surface-2);
+    stroke: var(--mg-border);
+    stroke-width: 1;
+}
+.mad-gantt-bar-badge text {
+    fill: var(--mg-text);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 10px; font-weight: 600;
+}
+
 /* Connection anchors (bolinhas de dependencia) */
 .mad-gantt-bar-anchor {
     fill: var(--mg-surface);
@@ -882,6 +894,21 @@ html.dark .mad-gantt-tooltip {
     background: color-mix(in oklch, oklch(0.62 0.16 155) 12%, transparent);
     color: oklch(0.50 0.18 155);
     border: 1px solid color-mix(in oklch, oklch(0.62 0.16 155) 30%, transparent);
+}
+.mad-gantt-tooltip .tt-badge {
+    font-size: 10px; font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--mg-surface-2);
+    border: 1px solid var(--mg-border);
+    color: inherit;
+}
+.mad-gantt-tooltip .tt-note {
+    font-size: 12px;
+    line-height: 1.4;
+    margin: -4px 0 10px;
+    opacity: 0.85;
+    white-space: pre-line;
 }
 .mad-gantt-tooltip .tt-name {
     font-size: 13.5px; font-weight: 600;

@@ -421,6 +421,13 @@ class GridAction
     {
         $acao = $this->permAction !== '' ? $this->permAction : $this->method;
 
+        // Ação que navega pergunta também se o perfil tem a tela de destino:
+        // sem ela o clique (no ícone ou na linha, `row-click`) só abria o
+        // aviso de acesso negado (#469).
+        if ($this->isNav && ltrim($this->permClass, '\\') === ltrim($this->navClass, '\\')) {
+            return \Mad\Security\ActionGuard::decideNav($this->permClass, $acao);
+        }
+
         return \Mad\Security\ActionGuard::decide($this->permClass, $acao);
     }
 

@@ -66,6 +66,11 @@ abstract class MadGanttComponent extends MadComponent
     protected string $codeField      = '';        // codigo curto exibido na sidebar
     protected string $milestoneField = '';        // bool — task vira milestone (diamante)
     protected string $resourceField  = '';        // CSV de resourceIds (ou nome de relacao hasMany)
+    // Por tarefa (coluna ou accessor do Model): texto a mais na dica, selo ao
+    // lado da barra e classe CSS da barra (fw#471).
+    protected string $tooltipField   = '';
+    protected string $badgeField     = '';
+    protected string $classField     = '';
 
     // ── Dependencias ─────────────────────────────────────────────────────
 
@@ -160,6 +165,7 @@ abstract class MadGanttComponent extends MadComponent
         'idField', 'nameField', 'startField', 'endField', 'parentField',
         'progressField', 'colorField', 'ownerField', 'typeField',
         'codeField', 'milestoneField', 'resourceField',
+        'tooltipField', 'badgeField', 'classField',
         'orderBy', 'dependencySource',
         'resourceModel', 'resourceIdField', 'resourceNameField',
         'resourceRoleField', 'resourceCapacityField',
@@ -320,6 +326,9 @@ abstract class MadGanttComponent extends MadComponent
         if ($this->phaseField)     $m['phase']     = $this->phaseField;
         if ($this->codeField)      $m['code']      = $this->codeField;
         if ($this->milestoneField) $m['milestone'] = $this->milestoneField;
+        if ($this->tooltipField)   $m['tooltip']   = $this->tooltipField;
+        if ($this->badgeField)     $m['badge']     = $this->badgeField;
+        if ($this->classField)     $m['class']     = $this->classField;
         return $m;
     }
 
@@ -798,6 +807,7 @@ abstract class MadGanttComponent extends MadComponent
             'idField','nameField','startField','endField','parentField',
             'progressField','colorField','ownerField','typeField',
             'codeField','milestoneField','resourceField',
+            'tooltipField','badgeField','classField',
             'orderBy','dependencySource',
             'resourceModel','resourceIdField','resourceNameField',
             'resourceRoleField','resourceCapacityField',

@@ -69,7 +69,7 @@
     $class = $class ?? '';
 
     // Sem `record-id` na tag, o pai vem do componente que está renderizando
-    // (registroId → recordId → id). A view é anônima e NÃO enxerga as variáveis
+    // (registroId → recordId → editingId → id). A view é anônima e NÃO enxerga as variáveis
     // da tela, então sem isso a FK do filho sairia nula.
     if ($mode !== 'flat' && ($recordId === null || $recordId === '')) {
         $recordId = \Mad\Form\MadDbBlocks::resolveRecordId(null);
@@ -145,34 +145,38 @@
         @endif
     </div>
 
+    {{-- O formulário do bloco é um div, não um form: dentro do formulário
+         da tela o navegador descarta o form de dentro e o botão enviava o
+         formulário da tela (fw#466). O botão e o Enter enviam pelo MadWire
+         (mad-livewire.js, data-mad-block-submit). --}}
     @if($addMode === 'inline')
         {{-- Form FIXO: sem overlay, sem botão de abrir. `order` decide se
              aparece acima ou abaixo da lista sem duplicar markup. --}}
         @if($formSlot)
             <div class="mad-db-blocks-inline-form" style="order:{{ $formPosition === 'above' ? -1 : 1 }};">
-                <form data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" novalidate>
+                <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:10px;display:flex;justify-content:flex-end;">
-                        <button type="submit" class="mad-btn mad-btn-primary mad-btn-sm">
+                        <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary mad-btn-sm">
                             <i data-lucide="{{ $submitIcon }}"></i> {{ $submitLabel }}
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         @endif
     @elseif($addMode === 'popover')
         <div class="mad-db-blocks-popover" x-ref="popover" x-show="open" x-cloak @click.away="open = false" x-transition>
             @if($formSlot)
-                <form data-mad-submit="blockAdd" novalidate>
+                <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
-                        <button type="submit" class="mad-btn mad-btn-primary mad-btn-sm">
+                        <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary mad-btn-sm">
                             <i data-lucide="check"></i> Salvar
                         </button>
                     </div>
-                </form>
+                </div>
             @endif
         </div>
     @elseif($addMode === 'modal')
@@ -180,29 +184,29 @@
              digitado) — X e Esc fecham. --}}
         <mad-modal name="db-blocks-{{ $name }}-modal" :title="'Adicionar'" size="md" :close-on-backdrop="false">
             @if($formSlot)
-                <form data-mad-submit="blockAdd" novalidate>
+                <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
-                        <button type="submit" class="mad-btn mad-btn-primary mad-btn-sm">
+                        <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary mad-btn-sm">
                             <i data-lucide="check"></i> Salvar
                         </button>
                     </div>
-                </form>
+                </div>
             @endif
         </mad-modal>
     @else
         <mad-drawer name="db-blocks-{{ $name }}-drawer" :title="'Adicionar'" size="md" :close-on-backdrop="false">
             @if($formSlot)
-                <form data-mad-submit="blockAdd" novalidate>
+                <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
-                        <button type="submit" class="mad-btn mad-btn-primary">
+                        <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary">
                             <i data-lucide="check"></i> Salvar
                         </button>
                     </div>
-                </form>
+                </div>
             @endif
         </mad-drawer>
     @endif

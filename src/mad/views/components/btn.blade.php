@@ -121,9 +121,16 @@
                 }
             }
             // `@open` = navigate sem método: a tela de destino decide (#356).
-            $_permDec   = $_permAction === '@open'
-                ? \Mad\Security\ActionGuard::decideOpen($_permOwner)
-                : \Mad\Security\ActionGuard::decide($_permOwner, $_permAction, $_permIsNew);
+            // Dono que é OUTRA tela (navigate com method, perm-class): sem
+            // acesso a ela o botão sai cinza com "Sem acesso a esta tela" em
+            // vez de levar ao aviso de acesso negado (#469).
+            $_permOther = is_string($permClass) && trim($permClass) !== ''
+                && (!$_permComp || ltrim($_permOwner, '\\') !== get_class($_permComp));
+            $_permDec   = match (true) {
+                $_permAction === '@open' => \Mad\Security\ActionGuard::decideOpen($_permOwner),
+                $_permOther              => \Mad\Security\ActionGuard::decideNav($_permOwner, $_permAction, $_permIsNew),
+                default                  => \Mad\Security\ActionGuard::decide($_permOwner, $_permAction, $_permIsNew),
+            };
             $_permMode  = $_permDec['mode'];
             $_permTitle = $_permDec['title'];
         }

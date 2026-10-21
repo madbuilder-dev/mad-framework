@@ -21,6 +21,9 @@ namespace Mad\Calendar;
  * │                            resource-id-field, resource-name-field,           │
  * │                            resource-role-field, resource-capacity-field,     │
  * │                            assignment-source, filters                        │
+ * │    Por tarefa (coluna ou accessor do Model): tooltip-field (texto na dica),  │
+ * │                            badge-field (selo ao lado da barra),              │
+ * │                            class-field (classe CSS na barra)                 │
  * │                                                                              │
  * │    Atributos visuais:     title, start-date, interval, view-mode, zoom,      │
  * │                            striped-rows, critical-path, auto-schedule,       │
@@ -278,6 +281,9 @@ class MadGanttCompiler
             'code-field'               => 'codeField',
             'milestone-field'          => 'milestoneField',
             'resource-field'           => 'resourceField',
+            'tooltip-field'            => 'tooltipField',
+            'badge-field'              => 'badgeField',
+            'class-field'              => 'classField',
             'order-by'                 => 'orderBy',
             'dependency-source'        => 'dependencySource',
             'resource-model'           => 'resourceModel',

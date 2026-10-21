@@ -65,6 +65,21 @@
     $deferred   = $deferred ?? false;
     // row-click: clicar na linha/card executa a 1ª ação (madDataGrid.onRowClick).
     $rowClick   = (bool) ($rowClick ?? false);
+    // A ação do clique na linha é a 1ª que não é de exclusão (onRowClick do
+    // mad-ui.js). Escondida pelo perfil, o clique pegaria a ação SEGUINTE,
+    // que ninguém escolheu (ex.: "Ver" de uma tela sem acesso → aviso de
+    // acesso negado). Como a desabilitada, ela deixa a linha sem clique (#469).
+    if ($rowClick) {
+        foreach ($actions as $_rcAct) {
+            if (!$_rcAct instanceof \Mad\Grid\GridAction || $_rcAct->isDanger) {
+                continue;
+            }
+            if ($_rcAct->permMode() === 'hide') {
+                $rowClick = false;
+            }
+            break;
+        }
+    }
     // require-filter: a dica pede filtro e $filterMissing vira aviso quando o
     // usuário tentou carregar sem preencher. load-hint troca o texto padrão.
     $requireFilter = $requireFilter ?? false;

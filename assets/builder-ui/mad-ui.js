@@ -3257,6 +3257,10 @@ var _madWhen = (function () {
             if (f.querySelector('.mad-field')) continue;
             if (editor ? f.closest(EDITORS) !== form : f.closest(EDITORS)) continue;
             if (comp && f.closest('[mad-component]') !== comp) continue;
+            // Campo do formulário de um <mad-db-blocks> (comentários, anexos)
+            // dentro deste: só conta no envio do próprio bloco (fw#466).
+            var blk = f.closest('[data-mad-block-form]');
+            if (blk && blk !== form) continue;
             var ctl = missing(f, form);
             if (ctl) out.push({ field: f, control: ctl, name: fieldName(f, ctl) });
         }
@@ -14229,7 +14233,10 @@ document.addEventListener('alpine:init', () => {
                     var form = this.$el.closest('[data-mad-submit]');
                     if (form) {
                         setTimeout(function() {
-                            form.dispatchEvent(new Event('submit', { bubbles: true }));
+                            // Formulário de <mad-db-blocks> é um div (fw#466): o
+                            // `submit` disparado nele não sai do form da tela.
+                            if (form.tagName !== 'FORM' && window.MadWire && MadWire.submit) MadWire.submit(form);
+                            else form.dispatchEvent(new Event('submit', { bubbles: true }));
                         }, 50);
                     }
                 }

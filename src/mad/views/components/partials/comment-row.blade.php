@@ -18,7 +18,13 @@
     $dateCol  = (string) ($vars['date'] ?? 'created_at');
     $bodyCol  = (string) ($vars['body'] ?? 'body');
 
-    $autor    = $item->{$autorCol} ?? (!empty($item->{$userCol}) ? ('Usuário #' . $item->{$userCol}) : 'Sistema');
+    // Nome gravado no comentário → nome do usuário no IAM (os usuários moram
+    // em outro banco, sem relação Eloquent para seguir — #467) → "Usuário #N".
+    $autor    = $item->{$autorCol} ?? null;
+    if ($autor === null || trim((string) $autor) === '') {
+        $_uid  = $item->{$userCol} ?? null;
+        $autor = empty($_uid) ? 'Sistema' : (\Mad\Support\UserNames::of($_uid) ?? ('Usuário #' . $_uid));
+    }
     $iniciais = strtoupper(mb_substr(preg_replace('/\s+/u', ' ', trim((string) $autor)), 0, 2));
     $avatarBg = $isInt ? 'var(--mad-color-secondary, #6c757d)' : 'var(--mad-color-primary, #0d6efd)';
 @endphp

@@ -1165,7 +1165,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 ];
             }
             if ($target !== '') {
-                $d = \Mad\Security\ActionGuard::decide($target, (string) ($b['targetMethod'] ?? 'show') ?: 'show');
+                // Abre a tela de destino: sem acesso a ela, nem adianta (#469).
+                $d = \Mad\Security\ActionGuard::decideNav($target, (string) ($b['targetMethod'] ?? 'show') ?: 'show');
 
                 return ['mode' => $d['mode'], 'title' => (string) $d['title']];
             }

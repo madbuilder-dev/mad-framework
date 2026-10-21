@@ -207,7 +207,29 @@ abstract class MadDashboard extends MadComponent implements MadFilterable
      */
     public function compareQuery(string $model, array $opts = []): \Illuminate\Database\Eloquent\Builder
     {
-        return $this->comparePeriodQuery($model, $opts);
+        [$query, $windowed] = $this->buildComparePeriodQuery($model, $opts);
+        if (!$windowed) {
+            $this->_windowlessCompare ??= new \WeakMap();
+            $this->_windowlessCompare[$query] = true;
+        }
+
+        return $query;
+    }
+
+    /**
+     * Consultas que compareQuery() devolveu SEM janela anterior (painel sem
+     * período, ou período que não alcança a tabela). O Blade gerado pelo
+     * Studio passa `:compare-query="$that->compareQuery(...)"` explícito, e o
+     * card confiava nela: comparava o valor de agora com a tabela inteira e
+     * mostrava "↓ 100%" (builder#496). A marca segue a consulta inclusive com
+     * as regras do widget encadeadas (`->where(...)` devolve a mesma).
+     */
+    private ?\WeakMap $_windowlessCompare = null;
+
+    /** A consulta veio de compareQuery() sem janela anterior? O card que a recebe não compara. */
+    public function isWindowlessCompare(mixed $query): bool
+    {
+        return is_object($query) && $this->_windowlessCompare !== null && isset($this->_windowlessCompare[$query]);
     }
 
     /**

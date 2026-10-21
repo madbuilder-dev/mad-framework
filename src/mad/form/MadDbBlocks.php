@@ -24,7 +24,9 @@ class MadDbBlocks
      * renderizando (ou executando a ação) — e só então entra no state cifrado;
      * o cliente nunca escolhe o pai.
      *
-     * Ordem: valor explícito → `registroId` → `recordId` → `id` do componente.
+     * Ordem: valor explícito → `registroId` → `recordId` → `editingId` → `id`
+     * do componente. `editingId` é o registro aberto no formulário do Gantt (a
+     * cortina de edição): sem ele o comentário gravava com a FK nula (fw#466).
      *
      * @param object|null $component Componente; null = o do contexto de render.
      */
@@ -39,7 +41,7 @@ class MadDbBlocks
             return $explicit;
         }
 
-        foreach (['registroId', 'recordId', 'id'] as $prop) {
+        foreach (['registroId', 'recordId', 'editingId', 'id'] as $prop) {
             if (!property_exists($comp, $prop)) {
                 continue;
             }

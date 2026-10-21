@@ -202,6 +202,9 @@ class MadGantt
         $ownerF   = $cfg['owner_field']    ?? '';
         $typeF    = $cfg['type_field']     ?? '';
         $msF      = $cfg['milestone_field'] ?? '';
+        $tipF     = $cfg['tooltip_field']   ?? '';
+        $badgeF   = $cfg['badge_field']     ?? '';
+        $classF   = $cfg['class_field']     ?? '';
 
         if (!empty($cfg['progress_scale'])) $g->progressScale((string) $cfg['progress_scale']);
 
@@ -243,6 +246,11 @@ class MadGantt
                     $props['milestone'] = !empty($mv) && (string) $mv !== '0';
                     if ($props['milestone']) $props['type'] = 'milestone';
                 }
+                $props += self::taskHints(
+                    $tipF ? ($r->{$tipF} ?? null) : null,
+                    $badgeF ? ($r->{$badgeF} ?? null) : null,
+                    $classF ? ($r->{$classF} ?? null) : null,
+                );
                 $g->addTask($id, $props);
             }
 
@@ -776,6 +784,9 @@ class MadGantt
      *   - expanded  bool    Se filhos comecam expandidos (default true)
      *   - resourceIds array IDs dos recursos atribuidos (Fase 3)
      *   - baseline  array   ['start' => '...', 'end' => '...'] (Fase 4)
+     *   - tooltip   string  Texto a mais na dica da barra ("Início fixado em 03/11")
+     *   - badge     string  Selo curto ao lado da barra
+     *   - className string  Classe(s) CSS da barra (letras, números, `-`, `_`)
      *   - extras    array   Dados extras passados ao client
      */
     public function addTask(string $id, array $props = []): static
@@ -841,6 +852,8 @@ class MadGantt
      *   - progress -> float;
      *   - parentId -> null explicito quando vazio (JS trata como raiz);
      *   - owner/color/type/code/phase -> string, pulam quando vazio;
+     *   - tooltip/badge -> string, pulam quando vazias; class -> `className`
+     *     (só letras, números, `-` e `_`; o resto sai) — fw#471;
      *   - milestone truthy e != '0' -> milestone=true + type='milestone';
      *     senao -> milestone=false (permite "desmarcar" via upsert).
      *
@@ -885,6 +898,11 @@ class MadGantt
                 if ($v !== null && $v !== '') $task[$role] = (string) $v;
             }
         }
+        $task += self::taskHints(
+            $col('tooltip') ? $get($col('tooltip')) : null,
+            $col('badge') ? $get($col('badge')) : null,
+            $col('class') ? $get($col('class')) : null,
+        );
 
         // Fase: emitida sob o nome da coluna (cfg.phaseField casa com isso).
         if ($col('phase')) {
@@ -908,6 +926,25 @@ class MadGantt
         $task['type'] = $type;
 
         return $task;
+    }
+
+    /**
+     * Dica, selo e classe CSS de UMA tarefa (fw#471): texto vazio não vai; a
+     * classe só leva letras, números, `-` e `_` (vira atributo de SVG).
+     *
+     * @return array{tooltip?: string, badge?: string, className?: string}
+     */
+    public static function taskHints(mixed $tooltip, mixed $badge, mixed $class): array
+    {
+        $out = [];
+        $tooltip = is_scalar($tooltip) ? trim((string) $tooltip) : '';
+        $badge   = is_scalar($badge) ? trim((string) $badge) : '';
+        $class   = is_scalar($class) ? trim((string) preg_replace('/[^A-Za-z0-9_\s-]+/', '', (string) $class)) : '';
+        if ($tooltip !== '') $out['tooltip'] = $tooltip;
+        if ($badge !== '') $out['badge'] = $badge;
+        if ($class !== '') $out['className'] = (string) preg_replace('/\s+/', ' ', $class);
+
+        return $out;
     }
 
     /** Mapa role => coluna default (convencao de nomes do GanttTask). */

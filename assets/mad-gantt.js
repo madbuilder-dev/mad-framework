@@ -1692,6 +1692,29 @@
 
     const TEXT_PADDING = 8;
 
+    // Classe(s) CSS da tarefa (`class-field`, fw#471): só letras, números, - e _.
+    function taskClass(task) {
+        const cls = String((task && task.className) || '').replace(/[^A-Za-z0-9_\s-]+/g, '').trim();
+        return cls ? ` ${cls.replace(/\s+/g, ' ')}` : '';
+    }
+
+    // Selo curto ao lado da barra (`badge-field`, fw#471). `x` = onde começa.
+    function appendBadge(group, task, x, cy) {
+        const text = String((task && task.badge) || '').trim();
+        if (!text) return;
+        const h = 16;
+        const w = Math.round(text.length * 6.2 + 12);
+        const g = createNS('g', { class: 'mad-gantt-bar-badge', 'data-badge-x': x, 'pointer-events': 'none' });
+        g.appendChild(createNS('rect', { x, y: cy - h / 2, width: w, height: h, rx: h / 2 }));
+        const label = createNS('text', {
+            x: x + w / 2, y: cy + 1,
+            'text-anchor': 'middle', 'dominant-baseline': 'middle',
+        });
+        label.textContent = text;
+        g.appendChild(label);
+        group.appendChild(g);
+    }
+
     function renderBar(group, task, geom, ctx) {
         const phase = ctx.phaseOfTask(task);
         const dark  = ctx.theme === 'dark';
@@ -1703,7 +1726,7 @@
         const radius = 4;
         const phaseId = phase ? phase.id : '';
 
-        group.setAttribute('class', `mad-gantt-bar-group${isCrit ? ' is-critical' : ''}${isDim ? ' is-dimmed' : ''}`);
+        group.setAttribute('class', `mad-gantt-bar-group${isCrit ? ' is-critical' : ''}${isDim ? ' is-dimmed' : ''}${taskClass(task)}`);
         group.setAttribute('data-task-id', task.id);
 
         // Track
@@ -1798,6 +1821,8 @@
             'data-dep-anchor': 'end',
             'data-dep-task': task.id,
         }));
+
+        appendBadge(group, task, geom.x + geom.w + 8, cy);
     }
 
     function renderSummary(group, task, geom, ctx) {
@@ -1808,7 +1833,7 @@
         const barY = geom.y + (geom.h - barH) / 2;
         const phaseId = phase ? phase.id : '';
 
-        group.setAttribute('class', 'mad-gantt-bar-group is-summary');
+        group.setAttribute('class', `mad-gantt-bar-group is-summary${taskClass(task)}`);
         group.setAttribute('data-task-id', task.id);
 
         // Body (slim bar)
@@ -1829,6 +1854,7 @@
             points: `${geom.x + geom.w},${barY - 2} ${geom.x + geom.w - 5},${barY - 2} ${geom.x + geom.w},${barY + capH - 2}`,
             fill: c.label,
         }));
+        appendBadge(group, task, geom.x + geom.w + 8, barY + barH / 2);
     }
 
     function renderMilestone(group, task, geom, ctx) {
@@ -1842,7 +1868,7 @@
         const cy = geom.y + geom.h / 2;
         const phaseId = phase ? phase.id : '';
 
-        group.setAttribute('class', `mad-gantt-milestone${isCrit ? ' is-critical' : ''}${isDim ? ' is-dimmed' : ''}`);
+        group.setAttribute('class', `mad-gantt-milestone${isCrit ? ' is-critical' : ''}${isDim ? ' is-dimmed' : ''}${taskClass(task)}`);
         group.setAttribute('data-task-id', task.id);
         group.setAttribute('data-cx', cx); // âncora p/ patchBar mover via transform no drag
 
@@ -1868,6 +1894,8 @@
             opacity: '0.5',
             'pointer-events': 'none',
         }));
+
+        appendBadge(group, task, cx + size + 6, cy);
     }
 
     function renderBaseline(group, task, geom, ctx) {
@@ -2351,6 +2379,12 @@
         if (hR) hR.setAttribute('x', geom.x + geom.w - 3);
         if (label) label.setAttribute('x', geom.x + 8);
         if (pct)   pct.setAttribute('x', geom.x + geom.w - 8);
+        // Selo ao lado da barra acompanha o fim dela.
+        const badge = group.querySelector('.mad-gantt-bar-badge');
+        if (badge) {
+            const baseX = parseFloat(badge.getAttribute('data-badge-x'));
+            if (Number.isFinite(baseX)) badge.setAttribute('transform', `translate(${geom.x + geom.w + 8 - baseX},0)`);
+        }
     }
 
     function cssEscape(s) {
@@ -2550,8 +2584,10 @@
         // Template custom via popover()/popover-title/popover-content —
         // placeholders {title} {start} {end} {percent} {rowId} {owner} {code}.
         if (ctx && (ctx.popTitle || ctx.popContent)) {
-            const sub = (tpl) => String(tpl || '').replace(/\{(title|start|end|percent|rowId|owner|code)\}/g, (_, k) => {
+            const sub = (tpl) => String(tpl || '').replace(/\{(title|start|end|percent|rowId|owner|code|tooltip|badge)\}/g, (_, k) => {
                 switch (k) {
+                    case 'tooltip': return String(task.tooltip || '');
+                    case 'badge':   return String(task.badge || '');
                     case 'title':   return String(task.name || '');
                     case 'start':   return String(task.start || '');
                     case 'end':     return String(task.end || '');
@@ -2581,6 +2617,7 @@
         const chips = [
             code ? `<span class="tt-code" style="background:${c.chipBg};color:${c.chipText};border-color:${c.label}">${escText(code)}</span>` : '',
             phase ? `<span class="tt-phase">${escText(phase.name)}</span>` : '',
+            task.badge ? `<span class="tt-badge">${escText(task.badge)}</span>` : '',
             isCrit ? `<span class="tt-crit">${tag(L.criticalTag)}</span>` : '',
             task.milestone ? `<span class="tt-milestone">${tag(L.milestoneTag)}</span>` : '',
         ].filter(Boolean).join('');
@@ -2615,6 +2652,7 @@
         return `
             <div class="tt-head">${chips}</div>
             <div class="tt-name">${escText(task.name || '')}</div>
+            ${task.tooltip ? `<div class="tt-note">${escText(task.tooltip)}</div>` : ''}
             <div class="tt-grid">
                 <div class="tt-cell"><div class="tt-key">${escText(L.start)}</div><div class="tt-val">${escText(startLbl)}</div></div>
                 <div class="tt-cell"><div class="tt-key">${escText(L.end)}</div><div class="tt-val">${escText(endLbl)}</div></div>
