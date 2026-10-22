@@ -7,11 +7,17 @@
      *   class    string                   Classe CSS extra no wrapper.
      *   height   int|null                 Sobrescreve a altura (px).
      *   title    string|null              Sobrescreve o título.
+     *   theme    string                   auto|brand|classic (ver <mad-db-chart>).
+     *   empty-text string                 Texto do estado vazio.
      */
     $config = $config ?? null;
     $class  = $class  ?? '';
     $height = $height ?? null;
     $title  = $title  ?? null;
+    $theme  = in_array($theme ?? 'auto', ['auto', 'brand', 'classic'], true) ? ($theme ?? 'auto') : 'auto';
+    // theme fixo vira classe no contêiner: os tokens de cor (--mad-chart-auto-N) seguem o tema pedido.
+    $themeClass = $theme === 'auto' ? '' : 'mad-chart-' . $theme;
+    $emptyText = (string) ($emptyText ?? '');
 
     // Click-to-filter (drill-through) — calls MadWire action on slice/bar click.
     $clickAction = $clickAction ?? '';
@@ -51,9 +57,9 @@
                 @endif
             </div>
         @endif
-        <div class="mad-card-content" style="text-align:center;padding:2rem;color:var(--mad-muted);">
-            <i data-lucide="chart-bar" style="width:40px;height:40px;margin-bottom:.5rem;opacity:.3;display:block;margin-left:auto;margin-right:auto;"></i>
-            <p style="margin:0;font-size:.9rem;">Sem dados para exibir</p>
+        <div class="mad-card-content mad-chart-empty" style="min-height:{{ $chartHeight }};">
+            <i data-lucide="chart-bar" aria-hidden="true"></i>
+            <p>{{ $emptyText !== '' ? $emptyText : mad_t('mad.chart.no_data') }}</p>
         </div>
     </div>
 
@@ -71,6 +77,7 @@
         <div class="mad-card-content" style="padding:0;">
             <div
                 id="{{ $chartName }}-container"
+                @if($themeClass) class="{{ $themeClass }}" @endif
                 style="width:100%;height:{{ $chartHeight }};"
             ></div>
         </div>
@@ -80,7 +87,7 @@
     {{-- Sem painel — container bare --}}
     <div
         id="{{ $chartName }}-container"
-        class="{{ $class }}"
+        class="{{ trim($class . ' ' . $themeClass) }}"
         style="width:{{ $chartWidth }};height:{{ $chartHeight }};"
     ></div>
 @endif
@@ -92,6 +99,7 @@
     const NAME    = '{{ $chartName }}';
     const OPTIONS = {!! $cfg->optionsJson !!};
     const __dv_{{ $chartName }} = {!! $cfg->displayValuesJson !!};
+@include('components.partials.chart-runtime')
 @if($cfg->themeTokens)
 @include('components.partials.chart-tokens')
 @endif
@@ -112,9 +120,13 @@
 
         el.dataset.echartInited = '1';
         var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const chart = echarts.init(el, isDark ? 'dark' : null, { renderer: 'svg' });
+        var __brand = window.__madChartTheme(el, {!! json_encode($theme) !!}, isDark);
+        const chart = echarts.init(el, __brand || (isDark ? 'dark' : null), { renderer: 'svg' });
         if (isDark) { OPTIONS.backgroundColor = 'transparent'; }
-        chart.setOption({!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!});
+        const __opt = {!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!};
+        const __font = __brand ? __brand.__madFont : null;
+        let __fit = window.__madChartFit(__opt, el, __font);
+        chart.setOption(__fit.option);
 
         if (!window.__madCharts) window.__madCharts = {};
         window.__madCharts[NAME] = chart;
@@ -142,7 +154,14 @@
             try { window.__madChartCleanup[NAME](); } catch {}
         }
         const __cleanupFns = [];
-        const __safeResize = () => { try { chart.resize(); } catch {} };
+        // Rótulo de pizza/donut: na largura nova cabe ou vai para a legenda.
+        const __safeResize = () => {
+            try {
+                const f = window.__madChartFit(__opt, el, __font);
+                if (f.key !== __fit.key) { __fit = f; chart.setOption(Object.assign({}, f.option, { animation: false }), true); }
+                chart.resize();
+            } catch {}
+        };
 
         if (window.ResizeObserver) {
             const target = el.closest('.mad-card') || el.parentElement || el;

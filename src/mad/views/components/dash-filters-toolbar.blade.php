@@ -14,10 +14,19 @@
     $component    = \Mad\Component\MadRenderContext::getComponent();
     $isFilterable = $component instanceof \Mad\Filters\MadFilterable;
     $totalActive  = $isFilterable ? $component->activeFiltersCount($fields) : 0;
+    // Celular (fw#495): abaixo de 640 px a barra vira um botão "Filtros (n)"
+    // que abre os filtros empilhados — padrão no tema ERP, opt-in com
+    // mobile="button" (mobile="inline" desliga). Fora disso o botão some.
+    $_mobile = strtolower(trim((string) ($wrapper['mobile'] ?? '')));
 @endphp
 
 <mad-form submit="onShow">
-    <div class="mad-dashf-toolbar">
+    <div class="mad-dashf-toolbar" x-data="{ mOpen: false }" :class="{ 'mad-dashf-m-open': mOpen }"@if (in_array($_mobile, ['button', 'inline'], true)) data-mobile="{{ $_mobile }}"@endif>
+        <button type="button" class="mad-dashf-m-toggle" @click="mOpen = !mOpen" :aria-expanded="mOpen ? 'true' : 'false'">
+            <i data-lucide="sliders-horizontal" style="width:15px;height:15px;"></i>
+            <span>{{ $totalActive > 0 ? mad_t('mad.dashf.filters_with_count', ['n' => $totalActive]) : mad_t('mad.dashf.filters') }}</span>
+            <span class="mad-dashf-mini-chev" aria-hidden="true">▾</span>
+        </button>
         @foreach ($fields as $field)
             @if ($field['type'] === 'period-monthyear')
                 {{-- period-monthyear sem form interno — Apply submete o form pai --}}

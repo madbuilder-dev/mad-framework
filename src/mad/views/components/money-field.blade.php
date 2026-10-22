@@ -54,6 +54,11 @@
     ]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $_rawStr, 'text' => \Mad\Form\ReadMode::money($_rawStr, (string) $prefix, (int) $decimals, (string) $decimalSep, (string) $thousandSep, (string) $suffix), 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field" x-data="madMoneyField({{ $alpineCfg }})"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
@@ -88,3 +93,4 @@
     <input type="hidden" name="{{ $name }}" :value="rawValue" mad:model="{{ $name }}">
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

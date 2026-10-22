@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => '', 'model' => '', 'display' => '', 'key' => '', 'attrs' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => '', 'model' => '', 'display' => '', 'key' => '', 'attrs' => '', 'options' => [], 'hideEmpty' => false])
 @php
     $copyable   = !empty($copyable);
     $expandable = !empty($expandable);
@@ -25,10 +25,30 @@
             $value = implode(', ', array_map(fn ($k) => $_labels[$k] ?? $k, $_keys));
         }
     }
+    // Opções de um select (`:options="['ti' => 'TI']"` ou "ti:TI|rh:RH"): mostra o
+    // rótulo, não o código gravado (fw#498).
+    if ($options !== [] && $options !== null && $options !== '' && $value !== null && $value !== '' && empty($badge)) {
+        $_opts = is_array($options) ? $options : [];
+        if (is_string($options)) {
+            foreach (explode('|', $options) as $_o) {
+                $_p = explode(':', $_o, 2);
+                $_opts[$_p[0]] = $_p[1] ?? $_p[0];
+            }
+        }
+        $value = \Mad\Form\ReadMode::optionText($_opts, $value);
+    }
+    // Sim/Não: booleano sem selo (antes `true` saía "1" e `false` "—") e
+    // `format="bool"` para o 0/1 do banco (fw#498).
+    if (empty($badge) && (is_bool($value) || (in_array($format, ['bool', 'boolean'], true) && $value !== null && $value !== ''))) {
+        $value  = \Mad\Form\ReadMode::truthy($value) ? mad_t('mad.field.yes') : mad_t('mad.field.no');
+        $format = '';
+    }
     // Selo de coluna boolean: `(string) false` é '' — o campo saía "—" em vez
     // do "0:danger:Inativo" do mapa. Com selo, boolean vira '1'/'0'.
     $rawValue  = (is_bool($value) && !empty($badge)) ? ($value ? '1' : '0') : (string) $value;
     $isEmpty   = ($rawValue === '' || $rawValue === null);
+    // `hide-empty`: campo vazio não aparece (a ficha mostra só o preenchido).
+    $hideEmpty = !empty($hideEmpty) && $hideEmpty !== 'false';
     $displayHtml = '';
 
     if ($isEmpty) {
@@ -148,6 +168,9 @@
     $copyVal = htmlspecialchars($rawValue, ENT_QUOTES);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle('', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
 @endphp
+@if($hideEmpty && $isEmpty)
+<div class="mad-field-read-skip" hidden></div>
+@else
 <div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif {!! $attrs !!}>
     @if($label)
     <div class="mad-display-field-header">
@@ -181,3 +204,4 @@
         <p class="mad-display-field-hint">{!! $hint !!}</p>
     @endif
 </div>
+@endif

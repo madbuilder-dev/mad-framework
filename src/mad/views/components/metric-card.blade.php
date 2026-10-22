@@ -11,8 +11,12 @@
     $variant    = $variant    ?? 'default';
     $iconColor  = $iconColor  ?? null;
     $iconBg     = $iconBg     ?? null;
+    // Linha de contexto sob o valor ("R$ 5,1M previsto", "2 vencem esta semana").
+    $context    = trim((string) ($context ?? ''));
     $class      = $class      ?? '';
     $style      = $style      ?? '';
+    // click-filter="campo=valor" / click-target="Tela" — ver Mad\Ui\MadKpi.
+    $__click    = \Mad\Ui\MadKpi::click($clickFilter ?? null, $clickTarget ?? null, (string) $label);
 
     $iconColors = [
         'default' => ['bg' => 'color-mix(in srgb,var(--mad-primary) 8%,transparent)',  'fg' => 'var(--mad-primary)'],
@@ -40,12 +44,15 @@
     $trendIcon  = $trendUp ? 'trending-up' : ($trendDown ? 'trending-down' : 'minus');
 @endphp
 
-<div class="mad-stat {{ $class }}" @if($style) style="{{ $style }}" @endif>
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+<div class="mad-stat{{ $__click['clickable'] ? ' mad-kpi-clickable' : '' }} {{ $class }}"{!! $__click['attrs'] !!} @if($style) style="{{ $style }}" @endif>
+    <div class="mad-stat-body">
 
-        <div style="flex:1;min-width:0;">
-            <p class="mad-stat-label">{{ $label }}</p>
-            <p class="mad-stat-value">{{ $value }}</p>
+        <div class="mad-stat-main">
+            <p class="mad-stat-label" title="{{ $label }}">{{ $label }}</p>
+            <p class="mad-stat-value" title="{{ $value }}"><span class="mad-kpi-num" style="--mad-kpi-len:{{ \Mad\Ui\MadKpi::valueWidth((string) $value) }}">{{ $value }}</span></p>
+            @if($context !== '')
+                <p class="mad-stat-context">{{ $context }}</p>
+            @endif
 
             @if($trend)
                 <div class="mad-stat-change {{ $trendClass }}" style="display:inline-flex;align-items:center;gap:4px;">
@@ -59,8 +66,8 @@
         </div>
 
         @if($icon)
-            <div style="width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:{{ $c['bg'] }};">
-                <i data-lucide="{{ $icon }}" style="width:22px;height:22px;color:{{ $c['fg'] }};"></i>
+            <div class="mad-stat-icon" style="background:{{ $c['bg'] }};">
+                <i data-lucide="{{ $icon }}" class="mad-stat-icon-glyph" style="color:{{ $c['fg'] }};"></i>
             </div>
         @endif
 

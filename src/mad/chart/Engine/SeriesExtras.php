@@ -34,8 +34,35 @@ trait SeriesExtras
     /** O caller escolheu as cores (:colors)? Sem isso, as séries do PHP usam os tokens do tema. */
     protected bool $customColors = false;
 
-    /** Cores das séries quando o caller não escolhe: tokens do tema com reserva. */
+    /**
+     * Cores das séries quando o caller não escolhe: a paleta automática do tema
+     * (--mad-chart-auto-N, a mesma das fatias; no ERP o navegador ainda ajusta
+     * ao card) e, sem ela, os tokens do tema com reserva — o preset default sai
+     * como sempre (fw#498).
+     */
     public const SERIES_PALETTE = [
+        'var(--mad-chart-auto-1, var(--mad-chart-1, #2563eb))',
+        'var(--mad-chart-auto-2, var(--mad-chart-2, #f97316))',
+        'var(--mad-chart-auto-3, var(--mad-chart-3, #16a34a))',
+        'var(--mad-chart-auto-4, var(--mad-chart-4, #0891b2))',
+        'var(--mad-chart-auto-5, var(--mad-chart-5, #d97706))',
+        'var(--mad-chart-auto-6, var(--mad-chart-6, #dc2626))',
+        'var(--mad-chart-auto-7, var(--mad-chart-7, #0d9488))',
+        'var(--mad-chart-auto-8, var(--mad-chart-8, #64748b))',
+    ];
+
+    /**
+     * Cor automática da série $i: o token --mad-chart-auto-N (até 12 no tema
+     * da marca; da 9ª em diante o navegador varia a luminosidade da família,
+     * fw#499) com a reserva de sempre — no preset default sai igual.
+     */
+    public static function paletteColor(int $i): string
+    {
+        return $i < 8 ? self::SERIES_PALETTE[$i] : preg_replace('/^var\(--mad-chart-auto-\d+,/', 'var(--mad-chart-auto-' . ($i % 12 + 1) . ',', self::SERIES_PALETTE[$i % 8]);
+    }
+
+    /** `chart-N` pedido pelo caller: o token do tema, fora da ordem automática. */
+    private const CHART_TOKENS = [
         'var(--mad-chart-1, #2563eb)',
         'var(--mad-chart-2, #f97316)',
         'var(--mad-chart-3, #16a34a)',
@@ -52,7 +79,7 @@ trait SeriesExtras
         'info'    => 'var(--mad-chart-4, #0891b2)',
         'success' => 'var(--mad-chart-3, #16a34a)',
         'warning' => 'var(--mad-chart-5, #d97706)',
-        'orange'  => 'var(--mad-chart-2, #f97316)',
+        'orange'  => 'var(--mad-chart-orange, #f97316)',
         'danger'  => 'var(--mad-chart-6, #dc2626)',
         'neutral' => 'var(--mad-chart-8, #64748b)',
         'muted'   => 'var(--mad-chart-track, #e5e7eb)',
@@ -141,9 +168,15 @@ trait SeriesExtras
         }
     }
 
+    /**
+     * Cores do caller. Tom (`success`, `danger`…) e `chart-N` viram o token do
+     * tema também nos gráficos do banco e de `:data` — antes só as séries do
+     * PHP traduziam, e o tom chegava cru ao ECharts (fatia preta).
+     */
     public function setColors(array $colors)
     {
         $this->customColors = $colors !== [];
+        $colors = array_map(static fn ($c) => is_string($c) ? (self::seriesColor($c) ?? $c) : $c, $colors);
 
         return parent::setColors($colors);
     }
@@ -264,7 +297,7 @@ trait SeriesExtras
         if (!is_string($c) || trim($c) === '') return null;
         $c = trim($c);
         if (isset(self::SERIES_TONES[$c])) return self::SERIES_TONES[$c];
-        if (preg_match('/^chart-([1-8])$/', $c, $m)) return self::SERIES_PALETTE[(int) $m[1] - 1];
+        if (preg_match('/^chart-([1-8])$/', $c, $m)) return self::CHART_TOKENS[(int) $m[1] - 1];
 
         return preg_match('/^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|oklch)\([0-9.,%\s\/a-z-]+\)|var\(--[a-z0-9-]+(,\s*#[0-9a-f]{3,8})?\))$/i', $c) ? $c : null;
     }
@@ -312,12 +345,12 @@ trait SeriesExtras
         $count = count($ms['series']);
         foreach ($ms['series'] as $i => $s) {
             $type = $s['type'] ?? $defaultType;
-            $color = $s['color'] ?? (self::seriesColor($colors[$i] ?? null) ?? ($colors[$i] ?? self::SERIES_PALETTE[$i % 8]));
+            $color = $s['color'] ?? (self::seriesColor($colors[$i] ?? null) ?? ($colors[$i] ?? self::paletteColor($i)));
             $e = ['name' => $s['name'], 'type' => $type, 'data' => $s['data']];
             if ($type === 'bar') {
                 $hasBar = true;
                 $e['itemStyle'] = ['color' => $color, 'borderRadius' => $horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]];
-                $e['barMaxWidth'] = 36;
+                $e['barMaxWidth'] = $this->barMaxWidth === null ? 36 : ($this->barMaxWidth ?: null);
                 $stack = $s['stack'] ?? ($this->barStack ? 'total' : null);
                 if ($stack !== null) $e['stack'] = $stack;
             } elseif ($type === 'line') {

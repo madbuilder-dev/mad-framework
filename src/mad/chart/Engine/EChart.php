@@ -404,9 +404,19 @@ abstract class EChart extends BaseChart
                 'yAxis'   => $yAxis,
                 'series'  => $series,
             ];
+
+            if ($this->barStack === 'parts') {
+                $option = $this->buildPartsBar($categories, $seriesData, $labelTexts, $horizontal);
+            }
         }
 
-        if ($this->grid) {
+        if ($this->barMaxWidth !== null) {
+            foreach ($option['series'] as $i => $s) {
+                $option['series'][$i]['barMaxWidth'] = $this->barMaxWidth ?: null;
+            }
+        }
+
+        if ($this->grid && !isset($option['grid'])) {
             $option['grid'] = ['containLabel' => true, 'left' => '3%', 'right' => '4%', 'bottom' => '3%'];
         }
 
@@ -414,7 +424,7 @@ abstract class EChart extends BaseChart
         // eixo passavam da borda direita — o containLabel só mede os eixos.
         // Folga só em contêiner estreito (media do ECharts): no largo, o
         // desenho é o de sempre.
-        if ($horizontal && $countGroups <= 1 && $this->grid && !empty($labelTexts)) {
+        if ($horizontal && $countGroups <= 1 && $this->grid && !empty($labelTexts) && $this->barStack !== 'parts') {
             $widest = max(array_map('mb_strlen', $labelTexts));
             $option['media'] = [[
                 'query'  => ['maxWidth' => 420],
@@ -432,6 +442,82 @@ abstract class EChart extends BaseChart
         }
 
         return $option;
+    }
+
+    /**
+     * `stacked="parts"` com uma série: cada categoria vira um pedaço de UMA
+     * barra (composição do total — farol, status), na cor da categoria. Valor
+     * dentro do pedaço quando ele tem espaço (>= 8% do total); a legenda leva
+     * o valor de todos, então pedaço estreito não perde o número.
+     */
+    private function buildPartsBar(array $categories, array $seriesData, array $labelTexts, bool $horizontal): array
+    {
+        $n     = $this->name;
+        $total = 0.0;
+        foreach ($seriesData as $d) {
+            $total += (float) $d['value'];
+        }
+
+        $texts  = [];
+        $series = [];
+        foreach ($seriesData as $i => $d) {
+            $name  = $categories[$i];
+            $value = (float) $d['value'];
+            $pct   = $total > 0 ? $value / $total * 100 : 0.0;
+            $texts[$name] = $this->percentage ? self::pctText($pct) : (string) ($labelTexts[$i] ?? $value);
+
+            $s = [
+                'name'  => $name,
+                'type'  => 'bar',
+                'stack' => 'parts',
+                'data'  => [$value],
+                // color null: o tema da marca não pinta o número de dentro; o
+                // ECharts escolhe claro ou escuro pelo fundo do pedaço.
+                'label' => ['show' => $pct >= 8, 'position' => 'inside', 'color' => null, 'formatter' => "::function(p) { return __dv_{$n}.parts[p.seriesName]; }::"],
+            ];
+            $style = $d['itemStyle'] ?? null;
+            if ($style) {
+                // Pedaço sólido: a cor viva (borda) no lugar do preenchimento claro.
+                $s['itemStyle'] = ['color' => $style['borderColor'] ?? $style['color']];
+            }
+            $series[] = $s;
+        }
+        $this->ecDisplayValues = ['parts' => $texts];
+
+        $catAxis   = ['type' => 'category', 'data' => [''], 'show' => false];
+        $valueAxis = ['type' => 'value', 'show' => false, 'max' => $total > 0 ? $total : null];
+
+        return [
+            'tooltip' => ['trigger' => 'item', 'formatter' => "::function(p) { return p.marker + p.seriesName + ': ' + __dv_{$n}.parts[p.seriesName]; }::"],
+            'legend'  => ['show' => true, 'bottom' => 0, 'formatter' => "::function(name) { var t = __dv_{$n}.parts[name]; return t !== undefined ? name + '  ' + t : name; }::"],
+            'grid'    => ['left' => 8, 'right' => 8, 'top' => 8, 'bottom' => 36, 'containLabel' => false],
+            'xAxis'   => $horizontal ? $valueAxis : $catAxis,
+            'yAxis'   => $horizontal ? $catAxis : $valueAxis,
+            'series'  => $series,
+        ];
+    }
+
+    /**
+     * Nada para desenhar: pizza/donut/rosa/funil/árvore ou barra de
+     * composição com todos os valores zerados. O ECharts desenhava fatias
+     * iguais sem valor (donut "cheio" de nada); vira o estado vazio.
+     */
+    private function hasDrawableData(): bool
+    {
+        if (empty($this->data)) {
+            return false;
+        }
+        $parts = $this->type === 'bar' && $this->barStack === 'parts' && count($this->fieldGroup) <= 1;
+        if ($this->manualSeries !== null || (!$parts && !in_array($this->type, ['pie', 'donut', 'rose', 'funnel', 'treemap'], true))) {
+            return true;
+        }
+        foreach ($this->data as $row) {
+            if ((float) ($row[1] ?? 0) != 0.0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function buildLineOptions(): array
@@ -1173,13 +1259,14 @@ abstract class EChart extends BaseChart
             subtitle:          (string) ($this->subtitle ?? ''),
             width:             (string) ($this->width    ?? '100%'),
             height:            (int)    ($this->height   ?? 300),
-            hasData:           !empty($this->data),
+            hasData:           $this->hasDrawableData(),
             showPanel:         (bool)   ($this->showPanel ?? true),
             sql:               $this->getLastSql(),
             sqlBinds:          $this->getLastSqlBinds(),
             sqlInlined:        $this->getLastSqlInlined(),
             sqlError:          $this->getLastSqlError(),
-            themeTokens:       $this->themeTokens,
+            // A paleta automática e os tons também saem como var(--mad-…).
+            themeTokens:       $this->themeTokens || str_contains($optJson, 'var(--'),
         );
     }
 }

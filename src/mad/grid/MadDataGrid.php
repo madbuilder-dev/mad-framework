@@ -250,6 +250,33 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected bool $rowClick = false;
 
+    /**
+     * Acabamento da linha (fw#494) — as props do <mad-grid> density,
+     * truncate, header-icons e actions-inline, para subclasse com columns().
+     * Vazio/null = o padrão do tema: no ERP linha 11px, texto numa linha com
+     * reticências, ícones do cabeçalho só no hover e 2 ações na linha; no
+     * default tudo como sempre foi. O Blade vence (ver _rowLookViewData).
+     */
+    protected string $density = '';          // compact | comfortable | spacious
+    protected ?bool $truncate = null;
+    protected string $headerIcons = '';      // hover | always
+    protected int|string|null $actionsInline = null;  // N >= 1 | 'all'
+
+    /**
+     * Celular e lista curta (fw#495) — as props do <mad-grid> mobile,
+     * card-columns, footer e compact, para subclasse com columns().
+     * mobile: 'cards' (abaixo de 640 px a linha vira cartão; padrão no ERP) |
+     * 'table' (fica tabela, também no ERP) | '' (o padrão do tema).
+     * cardColumns: campos do cartão, na ordem ([] = escolha automática).
+     * footer: 'auto' (some quando tudo cabe numa página; padrão no ERP) |
+     * 'false' (nunca) | 'true' (sempre) | '' (o padrão do tema).
+     * compact: lista de painel — rodapé 'auto' e sem o alternador tabela/cartão.
+     */
+    protected string $mobile = '';
+    protected array|string $cardColumns = [];
+    protected string $footer = '';
+    protected bool $compact = false;
+
     /** Lado das ações: 'left' | 'right' */
     protected string $actionSide = 'right';
 
@@ -592,6 +619,44 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected function _showLoadButton(): bool
     {
         return !$this->_filterGateOn() && (($this->_bladeGridConfig()['loadButton'] ?? true) !== false);
+    }
+
+    /**
+     * Acabamento da linha para o template, com nome próprio na view (o
+     * contexto achata o gridConfig do <mad-grid model> e um `density` cru
+     * passaria por cima). Valor inválido vira o padrão do tema.
+     *
+     * @return array{gridDensity: string, gridTruncate: ?bool, gridHeaderIcons: string, gridActionsInline: int|string, gridMobile: string, gridCardColumns: list<string>, gridFooter: string, gridCompact: bool}
+     */
+    protected function _rowLookViewData(): array
+    {
+        $cfg = $this->_bladeGridConfig();
+        $density = strtolower(trim((string) ($cfg['density'] ?? $this->density)));
+        $icons   = strtolower(trim((string) ($cfg['headerIcons'] ?? $this->headerIcons)));
+        $trunc   = array_key_exists('truncate', $cfg) ? (bool) $cfg['truncate'] : $this->truncate;
+        $inline  = $cfg['actionsInline'] ?? $this->actionsInline;
+        $inline  = is_string($inline) && strtolower(trim($inline)) === 'all' ? 'all'
+                 : (is_numeric($inline) && (int) $inline > 0 ? (int) $inline : 0);
+        $mobile   = strtolower(trim((string) ($cfg['mobile'] ?? $this->mobile)));
+        $cardCols = $cfg['cardColumns'] ?? $this->cardColumns;
+        $cardCols = array_values(array_filter(array_map('trim', is_array($cardCols) ? array_map('strval', $cardCols) : explode(',', (string) $cardCols)), 'strlen'));
+        $footer   = $cfg['footer'] ?? $this->footer;
+        $footer   = is_bool($footer) ? ($footer ? 'true' : 'false') : strtolower(trim((string) $footer));
+        $compact  = (bool) ($cfg['compact'] ?? $this->compact);
+
+        return [
+            'gridDensity'       => in_array($density, ['compact', 'comfortable', 'spacious'], true) ? $density : '',
+            'gridTruncate'      => $trunc,
+            'gridHeaderIcons'   => in_array($icons, ['hover', 'always'], true) ? $icons : '',
+            // 0 = não declarado: o template usa 2 (o padrão do ERP) para montar
+            // o menu ⋮, que no default só aparece com a prop.
+            'gridActionsInline' => $inline,
+            // Celular e lista curta (fw#495): o CSS decide pelo tema.
+            'gridMobile'        => in_array($mobile, ['cards', 'table'], true) ? $mobile : '',
+            'gridCardColumns'   => $cardCols,
+            'gridFooter'        => in_array($footer, ['auto', 'false', 'true'], true) ? $footer : ($compact ? 'auto' : ''),
+            'gridCompact'       => $compact,
+        ];
     }
 
     /** Texto personalizado da listagem vazia (load-hint); '' = texto traduzido padrão. */
@@ -4077,6 +4142,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
+     * x-data do menu de uma linha (grupo "..." e ⋮ do actions-inline), na
+     * tabela e no cartão (fw#494): a lista abre em posição fixa sob o botão e
+     * para dentro da grade — alinhada pela esquerda quando o botão está na
+     * metade esquerda dela (coluna de ações à esquerda), senão pela direita.
+     * Sem lugar embaixo (última linha perto do fim da tela), abre para cima:
+     * a lista se registra em `menu` (x-init) e a altura dela é medida depois
+     * de aparecer (fw#495).
+     * Vai por `{{ }}` (as aspas viram entidade dentro do atributo).
+     */
+    public const ROW_MENU_XDATA = "{open:false,menu:null,pos:{top:'0px',side:'right',x:'0px'},"
+        . "place(){const r=this.\$refs.btn.getBoundingClientRect(),w=this.\$refs.btn.closest('.mad-dg-wrap'),"
+        . "b=w?w.getBoundingClientRect():{left:0,right:window.innerWidth},l=(r.left+r.right)/2<(b.left+b.right)/2;"
+        . "this.pos={top:(r.bottom+4)+'px',side:l?'left':'right',x:(l?r.left:window.innerWidth-r.right)+'px'};"
+        . "this.\$nextTick(()=>{const h=this.menu?this.menu.offsetHeight:0;"
+        . "if(h&&r.bottom+4+h>window.innerHeight&&r.top-4-h>=0)this.pos.top=(r.top-4-h)+'px'})}}";
+
+    /**
      * Literal JS do id da linha, pros `isEditing(id, campo)` / `startEdit(...)`
      * do inline-edit. Inteiro sai cru (saida byte-identica a de sempre); todo
      * o resto vira string JSON — sem isto uma PK de texto chegava no Alpine
@@ -4168,7 +4250,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => false,
             'cardBelow'    => 0,
             'cardCols'     => '',
-        ] + $this->_selectionViewData()];
+        ] + $this->_selectionViewData() + $this->_rowLookViewData()];
     }
 
     // ── Inline grid (<mad-grid self>) ─────────────────────────────────────
@@ -4436,7 +4518,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => $this->_inlineConfig['cardDefault'] ?? false,
             'cardBelow'    => max(0, (int) ($this->_inlineConfig['cardBelow'] ?? 0)),
             'cardCols'     => $this->_inlineConfig['cardCols'] ?? '',
-        ] + $this->_selectionViewData());
+        ] + $this->_selectionViewData() + $this->_rowLookViewData());
     }
 
     /**
@@ -4844,6 +4926,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($c['mediaCaption'])) {
             $col->mediaCaption((string) $c['mediaCaption']);
         }
+        // Acabamento da célula (fw#494): linhas antes das reticências e a 2ª linha.
+        if (isset($c['lines']) && is_numeric($c['lines'])) $col->lines((int) $c['lines']);
+        if (!empty($c['subtitleField'])) $col->subtitle((string) $c['subtitleField']);
+        if (!empty($c['codeField']))     $col->code((string) $c['codeField']);
+        if (!empty($c['grow']))          $col->grow();
 
         // Evaluate: expressão computada '{valor} * {quantidade}'
         if (!empty($c['evaluate'])) {
@@ -4892,6 +4979,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($a['confirmPopover'])) $act->confirmPopover = (string) $a['confirmPopover'];
         if (!empty($a['title']))   $act->title((string) $a['title']);
         if (!empty($a['color']))   $act->color((string) $a['color']);
+        if (!empty($a['showLabel'])) $act->showLabel();
         if (!empty($a['danger']))  $act->danger();
         if (!empty($a['primary'])) $act->primary();
         // success/warning/info/ghost do painel (danger e primary têm flag própria).
@@ -6078,7 +6166,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         foreach ($columns as $col) {
             if (!$col instanceof GridColumn) continue;
-            if ($col->hasTransform || $col->transform !== null || $col->mediaCaption !== '') {
+            if ($col->hasTransform || $col->transform !== null || $col->mediaCaption !== ''
+                || $col->subtitleField !== '' || $col->codeField !== '') {
                 return true;
             }
             $start = trim($col->runningStart);
@@ -8386,7 +8475,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // sem ela a <tr> entraria com uma coluna a menos.
             !empty($cfg['selectable']) || $grid->selectable,
             $rowHighlight,
-            $rowExpand
+            $rowExpand,
+            // actions-inline: a linha redesenhada separa o menu ⋮ igual à lista.
+            $grid->_rowLookViewData()['gridActionsInline'],
+            // card-columns e row-click: o cartão do celular da linha redesenhada (fw#495).
+            $grid->_rowLookViewData()['gridCardColumns'],
+            !empty($cfg['rowClick']) || $grid->rowClick
         );
 
         // Se card view está habilitado, gera card HTML também
@@ -9003,7 +9097,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         array $editSearchPreloaded = [],
         bool $selectable = false,
         ?array $rowHighlight = null,
-        ?GridAction $rowExpand = null
+        ?GridAction $rowExpand = null,
+        int|string $actionsInline = 0,
+        array $cardColumns = [],
+        bool $rowClick = false
     ): string {
         // Reusa o partial Blade da row (mesmo render do primeiro paint)
         // — assim o manage_row tem os mesmos editores inline / click / dblclick.
@@ -9026,6 +9123,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 '_lastRow'            => null,
                 '_hl'                 => $rowHighlight,
                 'rowExpandAction'     => $rowExpand,
+                'gridActionsInline'   => $actionsInline,
+                'gridCardColumns'     => $cardColumns,
+                'rowClick'            => $rowClick,
             ]);
         } catch (\Throwable $e) {
             // Fallback minimo — texto cru sem editores. Nao deveria acontecer em

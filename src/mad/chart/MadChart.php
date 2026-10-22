@@ -94,6 +94,8 @@ class MadChart
 
     // ── Tipo-específico ─────────────────────────────────────────────────────────
     private bool   $stacked         = false;
+    private bool   $stackedParts    = false;
+    private ?int   $barMaxWidth     = null;
     private bool   $stackedInternal = false;
     private ?array $nestedWidths    = null;
     private ?int   $nestedCap       = null;
@@ -318,6 +320,16 @@ class MadChart
     public function stacked(): self { $this->stacked = true; return $this; }
 
     /**
+     * Bar com uma série: cada categoria vira um pedaço de UMA barra — a
+     * composição do total (farol, status), com o valor na legenda. Com
+     * várias séries, empilha como stacked().
+     */
+    public function stackedParts(): self { $this->stackedParts = true; return $this; }
+
+    /** Bar: largura máxima da barra em px (0 = sem limite). Sem chamar, vale a do tema (ERP: 48). */
+    public function barMaxWidth(int $px): self { $this->barMaxWidth = max(0, $px); return $this; }
+
+    /**
      * Bar: séries sobrepostas ANINHADAS ("stacked internal") — maior série
      * mais larga e atrás, menor mais estreita e na frente, centralizadas no
      * mesmo slot (boneca russa). Ver EChart::applyNestedBars().
@@ -517,9 +529,12 @@ class MadChart
             if ($this->horizontal && $this->firstOnTop) $chart->setFirstOnTop();
             if ($this->stackedInternal) {
                 $chart->setStackInternal($this->nestedWidths, $this->nestedCap);
+            } elseif ($this->stackedParts) {
+                $chart->setStack('parts');
             } elseif ($this->stacked) {
                 $chart->setStack(true);
             }
+            if ($this->barMaxWidth !== null) $chart->setBarMaxWidth($this->barMaxWidth);
         }
 
         if ($this->chartType === 'mixed') {
@@ -537,6 +552,7 @@ class MadChart
                 $chart->setLineMetric($this->lineMetricTotal, $this->lineMetricField, $this->lineMetricLabel, $this->lineSecondaryAxis);
             }
             if ($this->stacked) $chart->setStack(true);
+            if ($this->barMaxWidth !== null) $chart->setBarMaxWidth($this->barMaxWidth);
         }
 
         if ($this->chartType === 'line' && $this->area) {

@@ -356,9 +356,17 @@ return [
         // opção do valor que o campo já tem e a lista de quem edita não mostra.
         'field' => [
             'outside_option' => 'Registro atual (fora da sua lista)',
+            // Campo de arquivo no celular (fw#495).
+            'take_photo'     => 'Tirar foto',
+            'tap_to_choose'  => 'Toque para escolher um arquivo',
+            // Campo em leitura e <mad-display-field> booleano (fw#498).
+            'yes'            => 'Sim',
+            'no'             => 'Não',
         ],
 
         'grid' => [
+            // Menu ⋮ do fim da linha com as ações que não couberam (actions-inline).
+            'more_actions' => 'Mais ações',
             'export_disabled' => 'A exportação está desativada nesta listagem.',
             // Chevron do <mad-row-expand> sem `label`.
             'expand_row'      => 'Expandir linha',

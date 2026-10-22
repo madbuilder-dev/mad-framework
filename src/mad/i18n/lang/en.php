@@ -363,9 +363,17 @@ return [
         // option for the value the field already holds and the editor's list does not show.
         'field' => [
             'outside_option' => 'Current record (not in your list)',
+            // Campo de arquivo no celular (fw#495).
+            'take_photo'     => 'Take photo',
+            'tap_to_choose'  => 'Tap to choose a file',
+            // Campo em leitura e <mad-display-field> booleano (fw#498).
+            'yes'            => 'Yes',
+            'no'             => 'No',
         ],
 
         'grid' => [
+            // Menu ⋮ do fim da linha com as ações que não couberam (actions-inline).
+            'more_actions' => 'More actions',
             'export_disabled' => 'Export is disabled for this list.',
             // <mad-row-expand> chevron without `label`.
             'expand_row'      => 'Expand row',

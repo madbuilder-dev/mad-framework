@@ -60,7 +60,13 @@
      *   stacked           bool|string false         Bar empilhado; "internal" = barras
      *                                                ANINHADAS (sobrepostas e centralizadas
      *                                                no slot: maior série mais larga e
-     *                                                atrás, menor mais estreita na frente)
+     *                                                atrás, menor mais estreita na frente);
+     *                                                "parts" = uma série vira UMA barra com
+     *                                                um pedaço por categoria (composição do
+     *                                                total: farol, status), valor na legenda
+     *   bar-max-width     int         tema          Largura máxima da barra em px (0 = sem
+     *                                                limite). Sem a prop: tema da marca 48,
+     *                                                clássico sem limite
      *   nested-widths     array       null          stacked="internal": escada de larguras
      *                                                em % do slot (ordem irrelevante —
      *                                                aplicada do maior valor pro menor;
@@ -104,6 +110,13 @@
      *                                                  year|month|month-short|month-year|month-year-short
      *                                                  weekday|weekday-short|quarter|quarter-year
      *                                                  integer|numeric|currency|percent|abbreviate
+     *   theme             string      'auto'        auto|brand|classic — brand = paleta da
+     *                                                marca e do status, grade e eixos em cinza
+     *                                                claro, fonte do app (auto: brand quando o
+     *                                                tema do app liga --mad-chart-theme, como o
+     *                                                preset ERP; senão o clássico de sempre)
+     *   empty-text        string      'Sem dados para exibir'  Texto do estado vazio (sem
+     *                                                linhas, ou pizza/donut só com zeros)
      *   options           array       []            Extra ECharts options (merge)
      *   debug-sql         string|array ''           SQL raw executado no HOST (charts :data,
      *                                                onde o componente não vê a query). Exibido
@@ -179,6 +192,11 @@
 
     // ── ECharts extras ─────────────────────────────────────────────────────
     $options  = $options  ?? [];
+    $theme       = in_array($theme ?? 'auto', ['auto', 'brand', 'classic'], true) ? ($theme ?? 'auto') : 'auto';
+    // theme fixo vira classe no contêiner: os tokens de cor (--mad-chart-auto-N) seguem o tema pedido.
+    $themeClass  = $theme === 'auto' ? '' : 'mad-chart-' . $theme;
+    $barMaxWidth = $barMaxWidth ?? null;
+    $emptyText   = (string) ($emptyText ?? '');
 
     // ── Debug SQL manual (charts :data — a query roda no host, não aqui) ───
     // Capturado ANTES do bloco de debug abaixo, que reusa a var $debugSql.
@@ -346,8 +364,13 @@
             is_array($nestedWidths) && $nestedWidths !== [] ? $nestedWidths : null,
             $nestedCap !== null && $nestedCap !== '' ? (int) $nestedCap : null
         );
+    } elseif ($stacked === 'parts') {
+        $chart->stackedParts();
     } elseif ($stacked) {
         $chart->stacked();
+    }
+    if ($barMaxWidth !== null && $barMaxWidth !== '' && is_numeric($barMaxWidth)) {
+        $chart->barMaxWidth((int) $barMaxWidth);
     }
     if ($area)       $chart->area($smooth);
     if ($type === 'mixed') {
@@ -516,9 +539,11 @@
                 </div>
             </div>
         @endif
-        <div class="mad-card-content" style="text-align:center;padding:2rem;color:var(--mad-muted);">
-            <i data-lucide="chart-bar" style="width:40px;height:40px;margin-bottom:.5rem;opacity:.3;display:block;margin-left:auto;margin-right:auto;"></i>
-            <p style="margin:0;font-size:.9rem;">{{ mad_t('mad.chart.no_data') }}</p>
+        {{-- Na altura do gráfico: ao lado de outro gráfico na mesma linha, o card
+             vazio não fica baixinho com um buraco embaixo. --}}
+        <div class="mad-card-content mad-chart-empty" style="{{ $autoHeight ? '' : 'min-height:' . $chartHeight . ';' }}">
+            <i data-lucide="chart-bar" aria-hidden="true"></i>
+            <p>{{ $emptyText !== '' ? $emptyText : mad_t('mad.chart.no_data') }}</p>
         </div>
         @if($debugEnabled && $debugSql)
             @include('components.partials.db-chart-debug', [
@@ -544,7 +569,7 @@
             </div>
         @endif
         <div class="mad-card-content" style="padding:0;{{ $autoHeight ? 'flex:1;min-height:0;' : '' }}">
-            <div id="{{ $chartName }}-container" style="width:100%;{{ $autoHeight ? 'height:100%;min-height:200px;' : 'height:'.$chartHeight.';' }}"></div>
+            <div id="{{ $chartName }}-container" @if($themeClass) class="{{ $themeClass }}" @endif style="width:100%;{{ $autoHeight ? 'height:100%;min-height:200px;' : 'height:'.$chartHeight.';' }}"></div>
         </div>
         @if($debugEnabled && $debugSql)
             @include('components.partials.db-chart-debug', [
@@ -558,7 +583,7 @@
 
 @elseif($cfg)
     {{-- Sem painel — container bare --}}
-    <div id="{{ $chartName }}-container" class="{{ $class }}" style="width:{{ $chartWidth }};height:{{ $chartHeight }};"></div>
+    <div id="{{ $chartName }}-container" class="{{ trim($class . ' ' . $themeClass) }}" style="width:{{ $chartWidth }};height:{{ $chartHeight }};"></div>
     @if($debugEnabled && $debugSql)
         @include('components.partials.db-chart-debug', [
             'debugSql' => $debugSql,
@@ -576,6 +601,7 @@
     const NAME    = '{{ $chartName }}';
     const OPTIONS = {!! $cfg->optionsJson !!};
     const __dv_{{ $chartName }} = {!! $cfg->displayValuesJson !!};
+@include('components.partials.chart-runtime')
 @if($cfg->themeTokens)
 @include('components.partials.chart-tokens')
 @endif
@@ -613,12 +639,19 @@
 
         el.dataset.echartInited = '1';
         var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        // Tema custom do app (echarts.registerTheme) via window.__madEchartsTheme{Light,Dark};
-        // fallback: comportamento original ('dark' nativo / default).
-        var __madTheme = isDark ? (window.__madEchartsThemeDark || 'dark') : (window.__madEchartsThemeLight || null);
+        // Tema da marca (theme="brand" ou o tema do app liga --mad-chart-theme);
+        // senão o tema custom do app (echarts.registerTheme) via
+        // window.__madEchartsTheme{Light,Dark}; senão o original ('dark' nativo / default).
+        var __brand = window.__madChartTheme(el, {!! json_encode($theme) !!}, isDark);
+        var __madTheme = __brand || (isDark ? (window.__madEchartsThemeDark || 'dark') : (window.__madEchartsThemeLight || null));
         const chart = echarts.init(el, __madTheme, { renderer: 'svg' });
         if (isDark) { OPTIONS.backgroundColor = 'transparent'; }
-        chart.setOption({!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!});
+        const __opt = {!! $cfg->themeTokens ? 'window.__madChartTokens(OPTIONS, el)' : 'OPTIONS' !!};
+        const __font = __brand ? __brand.__madFont : null;
+        let __fit = window.__madChartFit(__opt, el, __font);
+        chart.setOption(__fit.option);
+        // Barra de composição (stacked="parts"): cada pedaço é uma série.
+        const __PARTS = Array.isArray(__opt.series) && !!__opt.series.length && __opt.series[0].stack === 'parts';
 
         if (!window.__madCharts) window.__madCharts = {};
         window.__madCharts[NAME] = chart;
@@ -666,6 +699,7 @@
             var wrapper = el.closest('[mad-component]');
             if (!wrapper) return;
             if (typeof MadWire === 'undefined' || !MadWire.call) return;
+            if (__PARTS) params = Object.assign({}, params, { name: params.seriesName, dataIndex: params.seriesIndex });
 
             @if($clickAction)
             // Forma 1 — handler custom
@@ -744,10 +778,9 @@
                     }
                 }
                 if (activeIdx >= 0) {
-                    chart.dispatchAction({
-                        type: 'highlight',
-                        dataIndex: activeIdx
-                    });
+                    chart.dispatchAction(__PARTS
+                        ? { type: 'highlight', seriesIndex: activeIdx }
+                        : { type: 'highlight', dataIndex: activeIdx });
                     // Marca container pra CSS opcional (ex: badge "filtrado")
                     el.dataset.madFiltered = '1';
                 } else {
@@ -768,7 +801,14 @@
             try { window.__madChartCleanup[NAME](); } catch {}
         }
         const __cleanupFns = [];
-        const __safeResize = () => { try { chart.resize(); } catch {} };
+        // Rótulo de pizza/donut: na largura nova cabe ou vai para a legenda.
+        const __safeResize = () => {
+            try {
+                const f = window.__madChartFit(__opt, el, __font);
+                if (f.key !== __fit.key) { __fit = f; chart.setOption(Object.assign({}, f.option, { animation: false }), true); }
+                chart.resize();
+            } catch {}
+        };
 
         if (window.ResizeObserver) {
             const target = el.closest('.mad-card') || el.parentElement || el;

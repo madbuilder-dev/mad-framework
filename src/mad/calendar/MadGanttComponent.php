@@ -107,7 +107,7 @@ abstract class MadGanttComponent extends MadComponent
     protected string $startDate     = '';
     protected string $interval      = '30 days';
     protected string $viewMode      = 'days';
-    protected string $zoom          = 'md';
+    protected string $zoom          = 'auto';
     /** Escala do progress no banco: auto | fraction (0..1) | percent (0-100). */
     protected string $progressScale = 'auto';
     protected bool   $criticalPath  = false;
@@ -1010,6 +1010,8 @@ abstract class MadGanttComponent extends MadComponent
                 'showGrid'    => array_key_exists('showGrid',    $config) ? $this->_truthy($config['showGrid'])    : null,
                 'showAvatars' => array_key_exists('showAvatars', $config) ? $this->_truthy($config['showAvatars']) : null,
                 'taskColWidth'=> $config['taskColWidth'] ?? null,
+                'compactColumns' => array_key_exists('compactColumns', $config) ? $this->_truthy($config['compactColumns']) : null,
+                'fitBtn'         => array_key_exists('fitBtn',         $config) ? $this->_truthy($config['fitBtn'])         : null,
             ],
         ];
     }
@@ -1168,6 +1170,8 @@ abstract class MadGanttComponent extends MadComponent
         if ($vt['showGrid']     !== null) $gantt->showGridLines((bool) $vt['showGrid']);
         if ($vt['showAvatars']  !== null) $gantt->showAvatars((bool) $vt['showAvatars']);
         if (!empty($vt['taskColWidth'])) $gantt->taskColWidth((int) $vt['taskColWidth']);
+        if (($vt['compactColumns'] ?? null) !== null) $gantt->compactColumns((bool) $vt['compactColumns']);
+        if (($vt['fitBtn'] ?? null) !== null)         $gantt->fitButton((bool) $vt['fitBtn']);
 
         // Pass-through das props v2 set diretamente no subclass via prop
         if (!empty($this->phaseField ?? null) && method_exists($gantt, 'phaseField')) {

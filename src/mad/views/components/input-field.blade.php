@@ -84,6 +84,11 @@
         'stripMask' => $stripMask,
     ]);
 @endphp
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '' && $type !== 'hidden')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => ($__rv = \Mad\Support\MadFieldValue::resolve((string) $name, $value ?? '')), 'text' => ($_effectiveType === 'password' && $__rv !== '' ? '••••••' : $__rv), 'hidden' => $_isHidden, 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }}"
      @if($name) data-mad-field="{{ $name }}" @endif
      @if($togglePassword) x-data="{ visible: false }" @endif{!! $_styleAttr !!}>
@@ -149,3 +154,4 @@
 
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

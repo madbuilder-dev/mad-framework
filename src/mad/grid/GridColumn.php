@@ -129,6 +129,40 @@ class GridColumn
     // Card view: papel da coluna no layout de card
     public string  $cardRole   = '';          // 'title' | 'subtitle' | 'image' | 'badge' | 'highlight' | ''
 
+    // ── Acabamento da célula (fw#494) ──────────────────────────────────────
+    /**
+     * Linhas de texto antes das reticências. null = o padrão da grade (no ERP
+     * ou com `truncate`, 1); 0 = quebra livre, nunca corta; N = até N linhas,
+     * em qualquer tema. O valor inteiro aparece na dica quando cortou.
+     */
+    public ?int    $lines         = null;
+    /** Campo (ou máscara `{campo}`) da 2ª linha menor da célula: meta. */
+    public string  $subtitleField = '';
+    /** Campo (ou máscara `{campo}`) da 2ª linha em fonte mono: código. */
+    public string  $codeField     = '';
+    /** align() chamado (atributo center/right/align): o tema não mexe no alinhamento. */
+    public bool    $alignSet      = false;
+    /** grow(): a coluna fica com a sobra da largura quando o texto corta (fw#494b). */
+    public bool    $grow          = false;
+    /**
+     * Forma da coluna na página, calculada a cada render por assignShapes():
+     * 'grow' (fica com a sobra), 'token' (valores de uma palavra só: sai
+     * inteira) ou '' (texto que cede quando falta largura).
+     */
+    public string  $shape         = '';
+    /**
+     * Coluna de texto puro (assignShapes): a célula de valor curto — nome,
+     * setor — quebra só entre palavras, sem partir palavra (fw#495). Decidido
+     * por célula (cellClass), para a linha redesenhada sair igual à da página.
+     */
+    public bool    $wrapWords     = false;
+    /**
+     * Lugar da coluna no cartão do celular (fw#495), calculado a cada render
+     * por assignCardRoles(): 'title', 'code' (linha pequena acima do título),
+     * 'meta' (rótulo: valor), 'badge' (linha dos selos) ou '' (fora do cartão).
+     */
+    public string  $cardSlot      = '';
+
     // Col-filter dbcombo: model/display para resolver display do filtro ativo
     public string  $filterModel    = '';
     public string  $filterDisplay  = '';
@@ -159,7 +193,36 @@ class GridColumn
 
     public function align(string $align): self
     {
-        $this->align = $align;
+        $this->align    = $align;
+        $this->alignSet = true;
+        return $this;
+    }
+
+    /** Até N linhas de texto na célula antes das reticências (0 = sem limite). */
+    public function lines(int $n): self
+    {
+        $this->lines = max(0, $n);
+        return $this;
+    }
+
+    /** 2ª linha menor sob o valor: campo da linha ou máscara '{campo} · {outro}'. */
+    public function subtitle(string $fieldOrMask): self
+    {
+        $this->subtitleField = trim($fieldOrMask);
+        return $this;
+    }
+
+    /** 2ª linha em fonte mono sob o valor (código, número do documento). */
+    public function code(string $fieldOrMask): self
+    {
+        $this->codeField = trim($fieldOrMask);
+        return $this;
+    }
+
+    /** Fica com a largura que sobra quando o texto da grade corta (título, descrição). */
+    public function grow(bool $on = true): self
+    {
+        $this->grow = $on;
         return $this;
     }
 
@@ -865,6 +928,236 @@ class GridColumn
         }
 
         return in_array($this->builtinFormat, self::NOWRAP_FORMATS, true) ? ' mad-dg-cell-nowrap' : '';
+    }
+
+    /** Formatos de número (sem data/documento): coluna de valor, alinhada à direita no ERP. */
+    private const NUMERIC_FORMATS = [
+        'money', 'currency-usd', 'currency-eur', 'currency-gbp', 'currency-jpy',
+        'number', 'number-en', 'integer', 'percent', 'decimal-4',
+    ];
+
+    /** Coluna de valor ou número, sem transformador/HTML próprio. */
+    public function isNumeric(): bool
+    {
+        if ($this->hasTransform || $this->mediaFormat !== '' || $this->isBadge || $this->isHtml) {
+            return false;
+        }
+
+        return $this->isMoney || $this->isNumber || in_array($this->builtinFormat, self::NUMERIC_FORMATS, true);
+    }
+
+    /**
+     * text-align da <th>/<td>. Coluna numérica sem alinhamento declarado segue
+     * --mad-dg-num-align: o tema ERP põe à direita; no default a var não
+     * existe e fica o `left` de sempre.
+     */
+    public function alignCss(): string
+    {
+        return $this->isNumeric() && !$this->alignSet
+            ? 'var(--mad-dg-num-align, ' . $this->align . ')'
+            : $this->align;
+    }
+
+    /**
+     * Classes extras da <td> (com o espaço na frente): número, célula de 2
+     * linhas, forma da coluna e, com o valor da célula, texto curto (fw#495).
+     */
+    public function cellClass(mixed $value = null): string
+    {
+        return ($this->isNumeric() ? ' mad-dg-cell-num' : '')
+            . ($this->subtitleField !== '' || $this->codeField !== '' ? ' mad-dg-cell-rich' : '')
+            . match ($this->shape) { 'grow' => ' mad-dg-col-grow', 'token' => ' mad-dg-cell-token', default => '' }
+            . ($this->wrapWords && self::isShortText($value) ? ' mad-dg-cell-short' : '');
+    }
+
+    /**
+     * Texto curto (nome de pessoa, setor, unidade): até 5 palavras e 32
+     * letras, ou uma palavra de até 24 ("Infraestrutura" numa coluna de setor
+     * não vira "Infraestrut…").
+     */
+    public static function isShortText(mixed $value): bool
+    {
+        if (!is_scalar($value) || ($v = trim((string) $value)) === '' || mb_strlen($v) > 32) return false;
+        $words = count(preg_split('/\s+/u', $v));
+
+        return $words === 1 ? mb_strlen($v) <= 24 : $words <= 5;
+    }
+
+    /**
+     * Largura da grade com o texto cortado (fw#494b): cada coluna de texto
+     * ganha uma forma, que o CSS lê (só com truncate ligado, ou no ERP).
+     *  - grow: fica com a sobra da largura — a marcada com grow() ou, sem
+     *    ela, a 1ª coluna de texto longo de várias palavras na página (o
+     *    título); sem isto a tabela repartia a largura e o título saía tão
+     *    estreito quanto as colunas curtas;
+     *  - token: coluna cujos valores na página são uma palavra só, de até 24
+     *    letras (código, tipo): sai inteira, sem reticências;
+     *  - '': o resto do texto, que cede até 5em quando falta largura.
+     * Nas colunas de texto fora do grow, a célula de valor curto (até 5
+     * palavras e 32 letras, ou uma de até 24: nome, setor) quebra só entre
+     * palavras, em até 2 linhas — ninguém vira "Gestor de…" nem
+     * "Infraestrut…" (wrapWords, fw#495).
+     * Valor, data, selo, mídia, HTML, transform, edição e `lines` ficam fora.
+     */
+    public static function assignShapes(array $columns, array $rows): void
+    {
+        $stats = [];
+        foreach ($columns as $i => $col) {
+            if (!$col instanceof self) continue;
+            $col->shape = '';
+            $col->wrapWords = false;
+            if ($col->grow || $col->hasTransform || $col->transform !== null || $col->mediaFormat !== '' || $col->isBadge || $col->isHtml
+                || $col->editable || $col->lines !== null || $col->nowrapClass() !== '' || $col->isNumeric()) {
+                continue;
+            }
+            $st = ['seen' => false, 'multi' => false, 'len' => 0, 'words' => 0];
+            foreach ($rows as $row) {
+                $v = is_array($row) ? ($row[$col->field] ?? null) : null;
+                if (!is_scalar($v) || ($v = trim((string) $v)) === '') continue;
+                $words = count(preg_split('/\s+/u', $v));
+                $st['seen']  = true;
+                $st['multi'] = $st['multi'] || $words > 1;
+                $st['len']   = max($st['len'], mb_strlen($v));
+                $st['words'] = max($st['words'], $words);
+            }
+            $col->wrapWords = true;
+            if ($st['seen']) $stats[$i] = $st;
+        }
+        // Coluna só de texto curto (nome, setor): não é o título.
+        $short = fn (array $st) => $st['len'] <= 32 && $st['words'] <= 5;
+
+        // grow: as declaradas (sem width) ou, sem nenhuma, a 1ª com texto longo
+        // de várias palavras na página (o título); sem texto longo, a 1ª de
+        // várias palavras.
+        $growAt = [];
+        foreach ($columns as $i => $col) {
+            if ($col instanceof self && $col->grow && trim((string) $col->width) === '') $growAt[] = $i;
+        }
+        foreach ([fn ($st) => !$short($st), fn ($st) => true] as $pick) {
+            if ($growAt !== []) break;
+            foreach ($stats as $i => $st) if ($st['multi'] && $pick($st) && trim((string) $columns[$i]->width) === '') { $growAt = [$i]; break; }
+        }
+        foreach ($columns as $i => $col) {
+            if (!$col instanceof self) continue;
+            if (in_array($i, $growAt, true)) { $col->shape = 'grow'; $col->wrapWords = false; continue; }
+            $st = $stats[$i] ?? null;
+            if ($st !== null && !$st['multi'] && $st['len'] <= 24) { $col->shape = 'token'; $col->wrapWords = false; }
+        }
+    }
+
+    /** Nome de campo de código/número do registro: vai na linha pequena acima do título. */
+    private const CARD_CODE_FIELD = '/^(id|cod|codigo|code|num|numero|number|nr|no|n|sku|ref|referencia|protocolo|matricula)(_|$)/i';
+
+    /**
+     * Cartão do celular (fw#495): abaixo de 640 px a linha vira cartão (o CSS
+     * empilha a própria <tr>; no ERP é o padrão, no default `mobile="cards"`).
+     * Cada coluna ganha um lugar, que a célula leva em `data-card`:
+     *  - title: a marcada com card-role="title" ou a 1ª coluna de texto que
+     *    não é código (nem número, data, valor, documento, selo ou mídia),
+     *    de preferência sem transform/HTML;
+     *  - code: a marcada com card-role="subtitle" ou, antes do título, a 1ª
+     *    com cara de código/número (nome de campo, inteiro ou valores de uma
+     *    palavra na página): "Nº 1042" acima do título;
+     *  - badge: selo (badge, card-role="badge"); a célula de transform/HTML
+     *    que desenhou um selo também vai para a linha dos selos (cardAttrs);
+     *  - meta: as demais, "Rótulo: valor" — sem `card-columns` o CSS mostra
+     *    as 3 primeiras.
+     * `card-columns` escolhe as colunas do cartão (as outras saem); a 1ª de
+     * texto da lista vira o título, as metas seguem a ordem da tabela.
+     * Mídia e card-role="image" ficam de fora. A forma (assignShapes) vem antes.
+     *
+     * @param list<string> $cardColumns campos de `card-columns` ([] = todas)
+     */
+    public static function assignCardRoles(array $columns, array $cardColumns, array $rows): void
+    {
+        $cols = array_values(array_filter($columns, fn ($c) => $c instanceof self));
+        foreach ($cols as $c) $c->cardSlot = '';
+        if ($cardColumns !== []) {
+            $byName = [];
+            foreach ($cols as $c) { $byName[$c->field] = $c; $byName[$c->fieldKey] = $c; }
+            $cols = [];
+            foreach ($cardColumns as $f) {
+                $c = $byName[trim((string) $f)] ?? null;
+                if ($c !== null && !in_array($c, $cols, true)) $cols[] = $c;
+            }
+        }
+        $cols = array_values(array_filter($cols, fn ($c) => $c->mediaFormat === '' && $c->cardRole !== 'image'));
+        $isBadge  = fn ($c) => $c->isBadge || $c->cardRole === 'badge';
+        $isCode   = fn ($c) => preg_match(self::CARD_CODE_FIELD, $c->field) === 1
+            || in_array($c->builtinFormat, ['integer'], true)
+            || ($c->shape === 'token' && count($rows) > 1);
+        $isText   = fn ($c) => !$isBadge($c) && !$c->isNumeric() && !$c->isDate
+            && !in_array($c->builtinFormat, self::NOWRAP_FORMATS, true);
+        $isPlain  = fn ($c) => !$c->hasTransform && $c->transform === null && !$c->isHtml;
+
+        $title = null;
+        foreach ($cols as $c) if ($c->cardRole === 'title') { $title = $c; break; }
+        if ($title === null) foreach ($cols as $c) if ($isText($c) && !$isCode($c) && $isPlain($c)) { $title = $c; break; }
+        if ($title === null) foreach ($cols as $c) if ($isText($c) && !$isCode($c)) { $title = $c; break; }
+        if ($title === null) foreach ($cols as $c) if (!$isBadge($c)) { $title = $c; break; }
+        $code = null;
+        foreach ($cols as $c) if ($c->cardRole === 'subtitle') { $code = $c; break; }
+        if ($code === null && $title !== null) {
+            foreach ($cols as $c) {
+                if ($c === $title) break;
+                if ($isCode($c) && !$isBadge($c)) { $code = $c; break; }
+            }
+        }
+        foreach ($cols as $c) {
+            $c->cardSlot = match (true) {
+                $c === $title => 'title',
+                $c === $code  => 'code',
+                $isBadge($c)  => 'badge',
+                default       => 'meta',
+            };
+        }
+    }
+
+    /**
+     * Atributos do cartão na <td> (fw#495): `data-card` e, na meta e no
+     * código, `data-label` com o rótulo. Célula vazia sai do cartão; transform
+     * ou HTML que desenhou um selo vai para a linha dos selos. Sem lugar: nada.
+     */
+    public function cardAttrs(string $rendered): string
+    {
+        if ($this->cardSlot === '') return '';
+        $slot = $this->cardSlot;
+        if (trim(strip_tags($rendered, '<img><svg><i>')) === '') {
+            $slot = 'off';
+        } elseif ($slot === 'meta' && str_contains($rendered, 'mad-badge')) {
+            $slot = 'badge';
+        }
+        $label = in_array($slot, ['meta', 'code'], true) && trim($this->label) !== ''
+            ? ' data-label="' . htmlspecialchars(trim(strip_tags($this->label)), ENT_QUOTES) . '"'
+            : '';
+
+        return ' data-card="' . $slot . '"' . $label;
+    }
+
+    /**
+     * Conteúdo da <td> de leitura: o valor dentro de `.mad-dg-text` (o CSS
+     * corta em 1 linha no ERP ou com `truncate`; inerte no default) e a 2ª
+     * linha do subtitle/code. Mídia e as células que não quebram (valor, data)
+     * saem como antes, sem invólucro.
+     */
+    public function cellHtml(string $rendered, array $row): string
+    {
+        $rich = $this->subtitleField !== '' || $this->codeField !== '';
+        if ($this->mediaFormat !== '' || ($this->nowrapClass() !== '' && !$rich && $this->lines === null)) {
+            return $rendered;
+        }
+        $attr = $this->lines !== null
+            ? ' data-lines="' . $this->lines . '"' . ($this->lines > 0 ? ' style="--mad-dg-lines:' . $this->lines . '"' : '')
+            : '';
+        $html = '<div class="mad-dg-text"' . $attr . '>' . $rendered . '</div>';
+        $sub  = [];
+        foreach (['mad-dg-sub mad-dg-sub-code' => $this->codeField, 'mad-dg-sub' => $this->subtitleField] as $cls => $src) {
+            if ($src === '') continue;
+            $text = GridRenderHelpers::resolveTemplate(str_contains($src, '{') ? $src : '{' . $src . '}', $row['__record'] ?? $row, $row);
+            if (trim($text) !== '') $sub[] = '<div class="' . $cls . '">' . htmlspecialchars($text, ENT_QUOTES) . '</div>';
+        }
+
+        return $html . implode('', $sub);
     }
 
     /**

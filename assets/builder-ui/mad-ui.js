@@ -5257,6 +5257,19 @@ document.addEventListener('alpine:init', () => {
             this.removed = false;
             if (f) { this._autoFillName(f); this._fireMadChange(); }
         },
+        // "Tirar foto" no celular (fw#495): a foto vem da entrada da câmera e
+        // passa para a entrada do campo, que é a que vai no POST.
+        onCamera(e) {
+            var f = e.target.files && e.target.files[0];
+            if (!f) return;
+            try {
+                var dt = new DataTransfer();
+                dt.items.add(f);
+                this.$refs.fileInput.files = dt.files;
+            } catch (_) { return; }
+            e.target.value = '';
+            this.onSelect({ target: this.$refs.fileInput });
+        },
         onDrop(e, input) {
             this.dragOver = false;
             var dt = e.dataTransfer;
@@ -6968,6 +6981,29 @@ if (typeof window !== 'undefined') window.MadNewItems = MadNewItems;
    via x-data="madDataGrid()".
 
    ─────────────────────────────────────────────────────────────── */
+// Célula cortada pelas reticências (fw#494): a dica mostra o valor inteiro.
+// Só quando cortou de fato — medido no hover, porque a largura da coluna muda
+// com a tela e com o seletor de colunas. Dica posta pelo app não é tocada.
+const MadDgCellTitle = {
+    sync(el) {
+        if (!el || (el.hasAttribute('title') && !el.hasAttribute('data-mad-auto-title'))) return;
+        const cut = el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+        if (cut) {
+            el.setAttribute('title', String(el.textContent || '').replace(/\s+/g, ' ').trim());
+            el.setAttribute('data-mad-auto-title', '');
+        } else if (el.hasAttribute('data-mad-auto-title')) {
+            el.removeAttribute('title');
+            el.removeAttribute('data-mad-auto-title');
+        }
+    },
+};
+if (typeof window !== 'undefined') window.MadDgCellTitle = MadDgCellTitle;
+document.addEventListener('mouseover', (e) => {
+    const t = e.target;
+    const el = t && typeof t.closest === 'function' ? t.closest('.mad-dg-text, .mad-dg-sub') : null;
+    if (el) MadDgCellTitle.sync(el);
+});
+
 // Edição inline da listagem (edit-mode="inline"): o campo ainda mostra o valor
 // que o servidor desenhou? `defaultValue` é o atributo `value` do HTML (ou o
 // texto do <textarea>). Campo sem esse atributo (cor, MAD Select) nunca conta
@@ -7043,6 +7079,7 @@ document.addEventListener('alpine:init', () => {
         const _edit     = { rowKey: null, from: null, input: null, moved: false };
         let   _root     = null;
         let   _onFocusOut = null;
+        let   _onCardTap  = null;
         // Relatório por janelas (#439). Fora do objeto do Alpine de propósito:
         // a sentinela e o IntersectionObserver são do navegador, e um Proxy
         // reativo em volta deles quebra o `observe()`.
@@ -7101,6 +7138,13 @@ document.addEventListener('alpine:init', () => {
             if (_root && typeof _root.addEventListener === 'function') {
                 _onFocusOut = () => { if (Object.keys(_held).length) setTimeout(() => this._releaseIdle(), 0); };
                 _root.addEventListener('focusout', _onFocusOut);
+                // Sem row-click a raiz não leva o @click: o cartão do celular
+                // (#495) ainda abre a ação de ver/editar com um toque. O Alpine
+                // roda o init() e o x-init de novo: um ouvinte só.
+                if (!this._cfg.rowClick && !_onCardTap) {
+                    _onCardTap = (e) => this.onRowClick(e);
+                    _root.addEventListener('click', _onCardTap);
+                }
             }
 
             if (this._cfg.sticky) {
@@ -7143,6 +7187,9 @@ document.addEventListener('alpine:init', () => {
             if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
             if (_root && _onFocusOut && typeof _root.removeEventListener === 'function') {
                 _root.removeEventListener('focusout', _onFocusOut);
+            }
+            if (_root && _onCardTap && typeof _root.removeEventListener === 'function') {
+                _root.removeEventListener('click', _onCardTap);
             }
             // A grade saiu da tela: resposta guardada não tem mais onde entrar.
             Object.keys(_held).forEach(k => { delete _held[k]; });
@@ -7299,7 +7346,11 @@ document.addEventListener('alpine:init', () => {
         // padrão; a 1ª ação restante desabilitada = linha sem clique (não
         // pula para a seguinte, que o usuário não escolheu).
         onRowClick(e) {
-            if (!this._cfg.rowClick || !e || e.defaultPrevented) return;
+            if (!e || e.defaultPrevented) return;
+            // Cartão do celular (fw#495): a linha empilhada em cartão abre a
+            // ação de abrir o registro mesmo sem row-click (o botão dela sai do
+            // cartão). O CSS do modo cartão liga --mad-dg-stacked no .mad-dg-wrap.
+            if (!this._cfg.rowClick && !this._stacked(e.currentTarget)) return;
             if (e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             const t = e.target;
             if (!t || typeof t.closest !== 'function') return;
@@ -7324,8 +7375,17 @@ document.addEventListener('alpine:init', () => {
                 if (!prev || prev.getAttribute('data-row-id') !== item.getAttribute('data-detail-for')) return;
                 item = prev;
             }
-            const btn = this._rowClickAction(item);
+            // Só o cartão (sem row-click): a ação marcada pelo servidor, a de
+            // abrir o registro — nunca um "Aprovar" escondido (fw#495).
+            let btn = this._rowClickAction(item);
+            if (!this._cfg.rowClick && (!btn || !btn.hasAttribute('data-row-act'))) btn = null;
             if (btn) btn.click();
+        },
+
+        _stacked(wrap) {
+            try {
+                return !!wrap && getComputedStyle(wrap).getPropertyValue('--mad-dg-stacked').trim() === '1';
+            } catch (_) { return false; }
         },
 
         // Botão do clique padrão da linha/card: a 1ª ação que não é de
@@ -15626,6 +15686,66 @@ document.addEventListener("alpine:init", function () {
         var next = row && row.children[col + dx];
         var btn = next && next.querySelector('[data-hm-cell]');
         if (btn) { e.preventDefault(); btn.focus(); }
+    });
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// <mad-kpi-card> / <mad-metric-card> clicáveis (Mad\Ui\MadKpi::click):
+//   data-kpi-field/value → MadWire.call(tela, 'setProp', [campo, valor]) —
+//                          de novo no card ativo, limpa (valor ''); tela sem
+//                          setProp (sem data-kpi-wire) recebe só o evento
+//   data-kpi-target      → Mad.go(Tela, método, {}, url)
+// Todo clique dispara `mad-kpi-click` {label, field, value, pressed} no card
+// (bubbles, cancelável: preventDefault() fica com o clique). O estado ativo
+// muda na hora (aria-pressed) e o render da tela confirma. Delegado no
+// document: vale para HTML trocado pelo wire.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+    if (window.__madKpiClickBound) return;
+    window.__madKpiClickBound = true;
+
+    var activate = function (card) {
+        var field = card.getAttribute('data-kpi-field');
+        var pressed = card.getAttribute('aria-pressed') === 'true';
+        var value = field !== null ? (pressed ? '' : (card.getAttribute('data-kpi-value') || '')) : null;
+        var ev = new CustomEvent('mad-kpi-click', {
+            bubbles: true, cancelable: true,
+            detail: { label: card.getAttribute('data-kpi-label') || '', field: field, value: value, pressed: field !== null ? (card.getAttribute('data-kpi-value') || '') === value : null }
+        });
+        if (!card.dispatchEvent(ev)) return;
+
+        if (field !== null) {
+            var host = card.closest('[mad-component]');
+            if (!host || !card.hasAttribute('data-kpi-wire') || typeof MadWire === 'undefined' || !MadWire.call) return;
+            host.querySelectorAll('[data-mad-kpi-click][data-kpi-field]').forEach(function (c) {
+                if (c.getAttribute('data-kpi-field') !== field || c.closest('[mad-component]') !== host) return;
+                c.setAttribute('aria-pressed', (c.getAttribute('data-kpi-value') || '') === value ? 'true' : 'false');
+            });
+            MadWire.call(host, 'setProp', [field, value]);
+            return;
+        }
+        var target = card.getAttribute('data-kpi-target');
+        if (target && window.Mad && typeof window.Mad.go === 'function') {
+            window.Mad.go(target, card.getAttribute('data-kpi-method') || 'show', {}, card.getAttribute('data-kpi-url') || undefined);
+        }
+    };
+
+    document.addEventListener('click', function (e) {
+        var card = e.target && e.target.closest ? e.target.closest('[data-mad-kpi-click]') : null;
+        if (!card) return;
+        // ⓘ de ajuda, link ou botão dentro do card seguem o próprio clique.
+        var inner = e.target.closest('a, button, input, select, textarea, .mad-kpi-help');
+        if (inner && card.contains(inner) && inner !== card) return;
+        activate(card);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var card = e.target;
+        if (!card || !card.hasAttribute || !card.hasAttribute('data-mad-kpi-click')) return;
+        e.preventDefault();
+        activate(card);
     });
 })();
 

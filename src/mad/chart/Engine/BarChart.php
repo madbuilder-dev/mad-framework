@@ -39,10 +39,19 @@ class BarChart extends EChart
         $this->barFirstOnTop = $on;
     }
 
-    /** Enable stacked bars. */
+    /**
+     * Enable stacked bars. `'parts'` com uma série só: cada categoria vira um
+     * pedaço de UMA barra (composição do total — farol, status).
+     */
     public function setStack($stack = true)
     {
         $this->barStack = $stack;
+    }
+
+    /** Largura máxima da barra em px (0 = sem limite; null = a do tema). */
+    public function setBarMaxWidth(?int $px)
+    {
+        $this->barMaxWidth = $px === null ? null : max(0, $px);
     }
 
     /**

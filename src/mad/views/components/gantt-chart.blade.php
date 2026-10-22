@@ -6,7 +6,7 @@
 @endphp
 <div class="mad-gantt" id="{{ $uid }}"
      x-data="madGantt({{ $cfgJson }})"
-     :class="['mad-gantt--zoom-' + zoom, 'mad-gantt--density-' + density, criticalMode ? 'mad-gantt--critmode' : '']">
+     :class="['mad-gantt--zoom-' + zoomBase(), 'mad-gantt--density-' + density, criticalMode ? 'mad-gantt--critmode' : '', narrow ? 'mad-gantt--narrow' : '']">
 
     {{-- ══════════════════ TOPBAR ══════════════════ --}}
     <div class="mad-gantt-topbar">
@@ -84,22 +84,31 @@
 
             {{-- Segmented zoom --}}
             <div class="mad-gantt-seg" role="group" aria-label="{{ __('gantt.zoom') }}">
-                <button type="button" class="mad-gantt-seg-btn" :class="zoom === 'hour'  ? 'is-active' : ''" :aria-pressed="zoom === 'hour'  ? 'true' : 'false'" @click="setZoom('hour')">{{ __('gantt.zoom_hour') }}</button>
-                <button type="button" class="mad-gantt-seg-btn" :class="zoom === 'day'   ? 'is-active' : ''" :aria-pressed="zoom === 'day'   ? 'true' : 'false'" @click="setZoom('day')">{{ __('gantt.zoom_day') }}</button>
-                <button type="button" class="mad-gantt-seg-btn" :class="zoom === 'week'  ? 'is-active' : ''" :aria-pressed="zoom === 'week'  ? 'true' : 'false'" @click="setZoom('week')">{{ __('gantt.zoom_week') }}</button>
-                <button type="button" class="mad-gantt-seg-btn" :class="zoom === 'month' ? 'is-active' : ''" :aria-pressed="zoom === 'month' ? 'true' : 'false'" @click="setZoom('month')">{{ __('gantt.zoom_month') }}</button>
-                <button type="button" class="mad-gantt-seg-btn" :class="zoom === 'year'  ? 'is-active' : ''" :aria-pressed="zoom === 'year'  ? 'true' : 'false'" @click="setZoom('year')">{{ __('gantt.zoom_year') }}</button>
+                <button type="button" class="mad-gantt-seg-btn" :class="zoomBase() === 'hour'  ? 'is-active' : ''" :aria-pressed="zoomBase() === 'hour'  ? 'true' : 'false'" @click="setZoom('hour')">{{ __('gantt.zoom_hour') }}</button>
+                <button type="button" class="mad-gantt-seg-btn" :class="zoomBase() === 'day'   ? 'is-active' : ''" :aria-pressed="zoomBase() === 'day'   ? 'true' : 'false'" @click="setZoom('day')">{{ __('gantt.zoom_day') }}</button>
+                <button type="button" class="mad-gantt-seg-btn" :class="zoomBase() === 'week'  ? 'is-active' : ''" :aria-pressed="zoomBase() === 'week'  ? 'true' : 'false'" @click="setZoom('week')">{{ __('gantt.zoom_week') }}</button>
+                <button type="button" class="mad-gantt-seg-btn" :class="zoomBase() === 'month' ? 'is-active' : ''" :aria-pressed="zoomBase() === 'month' ? 'true' : 'false'" @click="setZoom('month')">{{ __('gantt.zoom_month') }}</button>
+                <button type="button" class="mad-gantt-seg-btn" :class="zoomBase() === 'year'  ? 'is-active' : ''" :aria-pressed="zoomBase() === 'year'  ? 'true' : 'false'" @click="setZoom('year')">{{ __('gantt.zoom_year') }}</button>
             </div>
 
+            {{-- Caber tudo (fw#499): volta ao zoom em que o projeto inteiro cabe.
+                 Sem fit-btn, só aparece no tema ERP. --}}
+            <button type="button" class="mad-gantt-btn mad-gantt-btn-fit" x-show="showFitBtn()" style="display:none"
+                    @click="fitAll()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                {{ $config['labels']['fit'] ?? 'Caber tudo' }}
+            </button>
+
             {{-- Critical path toggle --}}
-            <button type="button" class="mad-gantt-btn"
+            <button type="button" class="mad-gantt-btn mad-gantt-btn-critical"
                     :class="criticalMode ? 'is-critical-active' : ''"
                     :aria-pressed="criticalMode ? 'true' : 'false'"
+                    title="{{ __('gantt.critical_path') }}"
                     @click="toggleCriticalMode()">
-                <svg width="14" height="14" viewBox="0 0 8 6" style="margin-right:2px">
+                <svg width="14" height="14" viewBox="0 0 8 6" aria-hidden="true">
                     <polygon points="0,6 4,0 8,6" fill="currentColor"/>
                 </svg>
-                {{ __('gantt.critical_path') }}
+                <span class="mad-gantt-btn-label">{{ __('gantt.critical_path') }}</span>
             </button>
 
         </div>

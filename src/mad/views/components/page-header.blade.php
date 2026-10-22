@@ -1,6 +1,7 @@
 @php
     $title      = $title      ?? '';
     $breadcrumb = $breadcrumb ?? null;  // ex: 'Módulo > Submódulo'
+    $subtitle   = $subtitle   ?? null;  // frase curta sob o título (o que a tela resolve)
     $icon       = $icon       ?? null;  // lucide icon name
     $actions    = $actions    ?? null;  // HTML string com botões
     $class      = $class      ?? '';
@@ -48,6 +49,9 @@
                 <div class="mad-page-breadcrumb">{!! $breadcrumb !!}</div>
             @endif
             <h1 class="mad-page-title">{{ $title }}</h1>
+            @if((string) $subtitle !== '')
+                <p class="mad-page-subtitle">{{ $subtitle }}</p>
+            @endif
         </div>
     </div>
     @if($_hasActions)

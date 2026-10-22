@@ -45,8 +45,8 @@ final class GridRowRenderer
             $this->cells[] = [
                 'fk'    => $col->fieldKey,
                 'field' => $col->field,
-                'class' => 'mad-dg-cell' . $col->nowrapClass(),
-                'align' => $col->align,
+                'class' => 'mad-dg-cell' . $col->nowrapClass() . $col->cellClass(),
+                'align' => $col->alignCss(),
             ];
         }
     }
@@ -105,9 +105,10 @@ final class GridRowRenderer
             $rendered = $col->renderValue($row[$c['field']] ?? '', $row, $lastRow);
             $cellHl   = $hl !== null ? MadDataGrid::cellHighlightStyle($hl, $col) : '';
             $style    = $c['align'] !== 'left' || $cellHl !== '' ? 'text-align:' . $c['align'] . $cellHl . ';' : '';
-            $html .= '<td class="' . $c['class'] . ($hl !== null ? e(MadDataGrid::cellHighlightClass($hl, $col)) : '') . '" data-k="' . e($c['fk']) . '"'
+            $short    = $col->wrapWords && GridColumn::isShortText($row[$c['field']] ?? null) ? ' mad-dg-cell-short' : '';
+            $html .= '<td class="' . $c['class'] . $short . ($hl !== null ? e(MadDataGrid::cellHighlightClass($hl, $col)) : '') . '"' . $col->cardAttrs($rendered) . ' data-k="' . e($c['fk']) . '"'
                 . ($style !== '' ? ' style="' . e($style) . '"' : '')
-                . '>' . $rendered . '</td>';
+                . '>' . $col->cellHtml($rendered, $row) . '</td>';
         }
         $html .= '</tr>';
 

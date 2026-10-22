@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
 @php
     $required   = !empty($required);
     $disabled   = !empty($disabled);
@@ -14,6 +14,13 @@
     $hasError   = !empty($error);
     $reqStar    = $required ? ' <span class="mad-required">*</span>' : '';
     $maxFiles   = (int)($maxFiles ?? 0);
+    // Câmera no celular (fw#495): com o campo aceitando imagem, "Tirar foto"
+    // abre a câmera ao lado de escolher o arquivo. Sem a prop o tema ERP mostra
+    // (data-camera="auto"); `camera` liga em qualquer tema; camera="false" tira.
+    $_camAttr = is_bool($camera) ? ($camera ? 'true' : 'false') : strtolower(trim((string) $camera));
+    $_camOk   = $_camAttr !== 'false' && !$disabled
+        && ((string) $accept === '' || (string) $accept === '*' || preg_match('#image/|\*/\*|\.(jpe?g|png|gif|webp|heic|heif|bmp)\b#i', (string) $accept));
+    $_camMode = $_camOk ? ($_camAttr === '' ? 'auto' : 'on') : '';
     $maxSize    = (int)($maxSize  ?? 0);
 
     // Extract mad:change from attrs (same pattern as scanner-field)
@@ -137,7 +144,7 @@
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
-<div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+<div class="mad-field"@if($_camMode !== '') data-camera="{{ $_camMode }}"@endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <span class="mad-label">{!! $label !!}{!! $reqStar !!}</span>
     @endif
@@ -175,10 +182,21 @@
         {{-- Dropzone --}}
         <div class="mad-file-body" @click="$refs.fileInput.click()" style="cursor:pointer;">
             <i data-lucide="upload-cloud" style="width:32px;height:32px;margin-bottom:8px;color:var(--mad-muted);"></i>
-            <span>Arraste arquivos aqui ou <strong>clique para selecionar</strong></span>
+            <span class="mad-file-text-drop">Arraste arquivos aqui ou <strong>clique para selecionar</strong></span>
+            <span class="mad-file-text-touch"><strong>{{ mad_t('mad.field.tap_to_choose') }}</strong></span>
             @if($maxFiles) <small style="color:var(--mad-muted);">Máx. {{ $maxFiles }} arquivo(s)</small> @endif
             @if($maxSize)  <small style="color:var(--mad-muted);">Máx. {{ round($maxSize / 1024, 1) }}MB por arquivo</small> @endif
         </div>
+        @if($_camMode !== '')
+        {{-- Tirar foto (celular): outra entrada, só de imagem, com a câmera de
+             trás; a foto entra na lista do campo. Sem name: não vai no POST. --}}
+        <input type="file" accept="image/*" capture="environment" class="mad-multi-file-input" x-ref="camInput" tabindex="-1" aria-hidden="true" @change="addFiles($event.target.files); $event.target.value = ''">
+        <div class="mad-file-camera-row">
+            <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-file-camera" @click="$refs.camInput.click()">
+                <i data-lucide="camera" style="width:15px;height:15px;"></i> {{ mad_t('mad.field.take_photo') }}
+            </button>
+        </div>
+        @endif
         {{-- Galeria de thumbnails --}}
         <div class="mad-multi-file-gallery" x-show="files.length" x-cloak>
             <template x-for="(f, i) in files" :key="i">

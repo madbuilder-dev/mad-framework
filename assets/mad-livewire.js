@@ -2149,6 +2149,42 @@ const MadWire = (() => {
         });
     }
 
+    // Foco sem id nem name (card de KPI que filtra, botão de ação, aba): o
+    // replace recria o nó e o foco caía no <body> — quem usa só o teclado
+    // voltava ao começo da página a cada Enter. A chave é o tag com os data-*,
+    // aria-label, title e href do elemento; sem eles, o caminho até o wrapper.
+    const _FOCUS_ATTR = /^(data-(?!echart|mad-filtered|loading)[\w-]+|aria-label|title|href)$/;
+
+    function _focusKey(el, root) {
+        if (!el || !root || el === root || !el.tagName) return null;
+        const path = [];
+        for (let n = el; n !== root; n = n.parentElement) {
+            if (!n || !n.parentElement) return null;
+            path.unshift(Array.prototype.indexOf.call(n.parentElement.children, n));
+        }
+        const attrs = [];
+        for (const a of el.attributes || []) if (_FOCUS_ATTR.test(a.name)) attrs.push([a.name, a.value]);
+        return { tag: el.tagName, attrs, path };
+    }
+
+    function _findByFocusKey(root, key) {
+        if (!root || !key) return null;
+        let atPath = root;
+        for (const i of key.path) atPath = atPath && atPath.children[i];
+        if (!key.attrs.length) {
+            return atPath && atPath.tagName === key.tag && atPath.tabIndex >= 0 ? atPath : null;
+        }
+        const hits = [];
+        const walk = (n) => {
+            for (const c of n.children) {
+                if (c.tagName === key.tag && key.attrs.every(([k, v]) => c.getAttribute(k) === v)) hits.push(c);
+                walk(c);
+            }
+        };
+        walk(root);
+        return hits.length > 1 && hits.includes(atPath) ? atPath : (hits[0] || null);
+    }
+
     function _morph(oldWrapper, newHtml) {
         const temp = document.createElement('div');
         temp.innerHTML = newHtml;
@@ -2162,6 +2198,7 @@ const MadWire = (() => {
         const selStart    = focused?.selectionStart ?? null;
         const selEnd      = focused?.selectionEnd   ?? null;
         const focusedVal  = focused?.value ?? null;
+        const focusKey    = (!focusedId && !focusedName && !focusedClass && typeof _focusKey === 'function') ? _focusKey(focused, oldWrapper) : null;
 
         // Aba ativa (de toda <mad-tabs>, inclusive das telas embutidas) e
         // rolagem: o replace recria o Alpine e as abas voltariam à `default`.
@@ -2176,9 +2213,11 @@ const MadWire = (() => {
         if (focusedId)        refocus = document.getElementById(focusedId);
         else if (focusedName) refocus = newWrapper.querySelector(`[name="${focusedName}"]`);
         else if (focusedClass) refocus = newWrapper.querySelector(`.${focusedClass}`);
+        else if (focusKey)     refocus = _findByFocusKey(newWrapper, focusKey);
 
         if (refocus) {
-            refocus.focus();
+            if (focusKey) { try { refocus.focus({ preventScroll: true }); } catch { refocus.focus(); } }
+            else refocus.focus();
             if (focusedVal !== null) refocus.value = focusedVal;
             if (selStart !== null) try { refocus.setSelectionRange(selStart, selEnd); } catch {}
         }

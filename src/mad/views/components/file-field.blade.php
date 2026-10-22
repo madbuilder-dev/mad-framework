@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'file-name' => 'prefix', 'auto-fill-name' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'file-name' => 'prefix', 'auto-fill-name' => ''])
 @php
     $multiple   = !empty($multiple);
     $required   = !empty($required);
@@ -43,8 +43,20 @@
         'fileName'   => $fileName ?? 'prefix',
     ]);
 
+    // Câmera no celular (fw#495): com o campo aceitando imagem, "Tirar foto"
+    // abre a câmera ao lado de escolher o arquivo. Sem a prop o tema ERP mostra
+    // (data-camera="auto"); `camera` liga em qualquer tema; camera="false" tira.
+    $_camAttr = is_bool($camera) ? ($camera ? 'true' : 'false') : strtolower(trim((string) $camera));
+    $_camOk   = $_camAttr !== 'false' && !$disabled
+        && ((string) $accept === '' || (string) $accept === '*' || preg_match('#image/|\*/\*|\.(jpe?g|png|gif|webp|heic|heif|bmp)\b#i', (string) $accept));
+    $_camMode = $_camOk ? ($_camAttr === '' ? 'auto' : 'on') : '';
+    // Tipos aceitos em texto de gente ("Imagens", "PDF", "Imagens, PDF") —
+    // nunca o `accept` cru ("image/*", ".pdf"). Traduzido em lang/<idioma>/form.php.
     $acceptHint = '';
-    if ($accept) $acceptHint .= $accept;
+    if (!in_array(trim((string) $accept), ['', '*', '*/*'], true)) {
+        $_acceptText = \Mad\Form\MadUploadRules::acceptLabel((string) $accept);
+        $acceptHint .= mb_strtoupper(mb_substr($_acceptText, 0, 1)) . mb_substr($_acceptText, 1);
+    }
     if ($maxSize) $acceptHint .= ($acceptHint ? ' · ' : '') . 'Máx. ' . $maxSize;
 
     // Valor existente (edição) — path do arquivo no servidor ou base64 (storage=db)
@@ -104,7 +116,7 @@
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
-<div class="mad-field" x-data="madFileField({{ $fileCfg }})" data-mad-upload="{{ $name }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+<div class="mad-field" x-data="madFileField({{ $fileCfg }})" data-mad-upload="{{ $name }}"@if($_camMode !== '') data-camera="{{ $_camMode }}"@endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
     @endif
@@ -137,10 +149,19 @@
             <span class="mad-file-text">
                 <strong>Clique para enviar</strong> ou arraste aqui
             </span>
+            <span class="mad-file-text-touch"><strong>{{ mad_t('mad.field.tap_to_choose') }}</strong></span>
             @if($acceptHint)
                 <span class="mad-file-hint">{{ $acceptHint }}</span>
             @endif
         </div>
+        @if($_camMode !== '')
+        {{-- Tirar foto (celular): outra entrada, só de imagem, com a câmera de trás;
+             o arquivo passa para a entrada do campo (onCamera). Sem name: não vai no POST. --}}
+        <input type="file" accept="image/*" capture="environment" class="mad-file-input" x-ref="camInput" tabindex="-1" aria-hidden="true" @change="onCamera($event)">
+        <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-file-camera" x-show="!file" @click="$refs.camInput.click()">
+            <i data-lucide="camera" style="width:15px;height:15px;"></i> {{ mad_t('mad.field.take_photo') }}
+        </button>
+        @endif
         {{-- Preview card (com arquivo — novo ou existente) --}}
         <div class="mad-file-card" x-show="file" x-cloak>
             {{-- Thumbnail area --}}

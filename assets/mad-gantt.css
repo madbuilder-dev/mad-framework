@@ -186,6 +186,7 @@ html.dark .mad-gantt {
     border-color: var(--mg-accent);
     color: var(--mg-accent);
 }
+.mad-gantt-btn-critical svg { margin-right: 2px; }
 .mad-gantt-btn.is-critical-active {
     background: var(--mg-critical-soft);
     border-color: var(--mg-critical);
@@ -341,9 +342,24 @@ html.dark .mad-gantt {
 .mad-gantt-tasklist-head {
     flex-shrink: 0;
     display: flex;
+    position: relative;
     border-right: 1px solid var(--mg-border-2);
     background: var(--mg-surface-2);
 }
+/* Lateral enxuta: mostrar/recolher as colunas que não couberam */
+.mad-gantt-cols-toggle {
+    appearance: none;
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0;
+    border: 1px solid var(--mg-border-2);
+    border-radius: 5px;
+    background: var(--mg-surface);
+    color: var(--mg-text-3);
+    cursor: pointer;
+}
+.mad-gantt-cols-toggle:hover { color: var(--mg-text); background: var(--mg-surface-3); }
+.mad-gantt-cols-toggle:focus-visible { outline: 2px solid var(--mg-accent); outline-offset: 1px; }
 
 .mad-gantt-header-scroll { flex: 1; overflow: hidden; }
 
@@ -970,6 +986,22 @@ html.dark .mad-gantt-tooltip {
     font-weight: 500;
     opacity: 0.85;
 }
+
+/* ── Tema ERP, gantt estreito (aba, cartão de 2/3): topo e rodapé
+       enxutos para a altura ficar com as linhas; o minimapa sai (com o
+       zoom automático o projeto já cabe na largura). ─────────────────── */
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-topbar { padding: 8px 12px; gap: 8px; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-search { width: 150px; min-width: 120px; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-search kbd { display: none; }
+/* Caminho crítico só com o ícone (o nome segue na dica e no leitor de tela) */
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-btn-critical { padding: 0 9px; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-btn-critical svg { margin-right: 0; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-btn-critical .mad-gantt-btn-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-footer { min-height: 0; padding: 6px 12px; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-footer-stats { gap: 4px 14px; }
+.mad-layout-erp .mad-gantt--narrow .mad-gantt-minimap { display: none; }
 
 /* ── Responsive (mobile) ──────────────────────────────────────────── */
 @media (max-width: 768px) {

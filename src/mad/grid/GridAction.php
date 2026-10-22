@@ -58,6 +58,8 @@ class GridAction
     public string  $permClass  = '';
     /** Ação a perguntar ao perfil; vazio = o próprio $method. */
     public string  $permAction = '';
+    /** Rótulo visível ao lado do ícone na linha — ver showLabel(). */
+    public bool    $showLabel = false;
 
     public static function make(string $method): self
     {
@@ -75,6 +77,17 @@ class GridAction
     public function icon(string $lucideIcon): self
     {
         $this->icon = $lucideIcon;
+        return $this;
+    }
+
+    /**
+     * Rótulo ao lado do ícone no botão da linha (<mad-act show-label>): a
+     * ação principal fica legível sem passar o mouse. Sem ícone o rótulo já
+     * aparece sozinho; no menu ⋮ e nos grupos ele sempre aparece.
+     */
+    public function showLabel(bool $on = true): self
+    {
+        $this->showLabel = $on;
         return $this;
     }
 
@@ -649,5 +662,22 @@ class GridAction
         if ($this->isDanger) return 'mad-dg-card-action mad-dg-card-action-danger';
         if ($this->variant !== '') return 'mad-dg-card-action mad-dg-card-action-' . $this->variant;
         return 'mad-dg-card-action';
+    }
+
+    /** Ícones de abrir/ver/editar: a ação só mostra o registro (fw#495). */
+    private const OPEN_ICONS = [
+        'eye', 'scan-eye', 'view', 'pencil', 'pen', 'pen-line', 'edit', 'edit-2', 'edit-3', 'square-pen',
+        'file-text', 'file-search', 'folder-open', 'external-link', 'maximize', 'maximize-2',
+        'arrow-right', 'chevron-right', 'search', 'info',
+    ];
+
+    /**
+     * A ação abre o registro (navega, ou tem ícone de ver/editar)? No cartão do
+     * celular (fw#495) só ela vira o toque no cartão sem `row-click`: tocar
+     * num cartão nunca dispara "Aprovar" ou "Baixar" sem botão à vista.
+     */
+    public function opensRecord(): bool
+    {
+        return !$this->isDanger && ($this->isNav || in_array(strtolower($this->icon), self::OPEN_ICONS, true));
     }
 }

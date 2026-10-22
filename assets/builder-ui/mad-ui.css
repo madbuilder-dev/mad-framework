@@ -1511,10 +1511,25 @@ textarea.mad-textarea:read-only:focus {
 .mad-sel:has(> select.mad-readonly-select) > .mad-sel-control {
   background: var(--mad-input-bg, var(--mad-bg-subtle));
   pointer-events: none;
-  opacity: .7;
 }
 .mad-sel:has(> select.mad-readonly-select) .mad-sel-caret,
 .mad-sel:has(> select.mad-readonly-select) .mad-sel-clear { display: none !important; }
+/* O campo inteiro (.mad-readonly) também ficava a 75%: rótulo e valor apagados,
+   com cara de desabilitado. Select e combo travados leem como o input (fw#498). */
+.mad-field.mad-readonly:has(select.mad-readonly-select) { opacity: 1; }
+/* Desabilitado também sem a seta (e o date sem o calendário): não abre, não
+   precisa parecer que abre (fw#498). */
+.mad-sel:has(> select:disabled) .mad-sel-caret { display: none !important; }
+.mad-input-group:has(> .mad-datepicker-btn:disabled) > .mad-datepicker-btn { display: none; }
+.mad-input-group:has(> .mad-datepicker-btn:disabled) > .mad-input {
+  border-top-right-radius: var(--mad-radius);
+  border-bottom-right-radius: var(--mad-radius);
+}
+/* Tema ERP: travado é leitura — fundo cinza, sem a borda de campo. */
+/* Só o campo solto: input com botão ao lado (busca, calendário) mantém a borda. */
+.mad-layout-erp .mad-field > input.mad-input:read-only,
+.mad-layout-erp .mad-field > textarea:is(.mad-input, .mad-textarea):read-only,
+.mad-layout-erp .mad-sel:has(> select.mad-readonly-select) > .mad-sel-control { border-color: transparent; }
 
 /* <select> nativo desabilitado (prop `disabled` ou `disabled-when`): o clique
    já não abre (onControlClick checa `_native.disabled`); aqui o controle
@@ -1796,6 +1811,9 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   padding: var(--mad-card-header-py, var(--mad-s4)) var(--mad-s5);
   border-bottom: 1px solid var(--mad-border);
 }
+
+.mad-card-heading { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.mad-card-heading > :is(svg, i) { flex: none; width: 16px; height: 16px; color: var(--mad-text-muted); }
 
 .mad-card-title {
   font-size: var(--mad-text-base);
@@ -2549,6 +2567,15 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-stat-change { font-size: var(--mad-text-xs); margin-top: 4px; }
 .mad-stat-change-up   { color: var(--mad-success); }
 .mad-stat-change-down { color: var(--mad-danger); }
+.mad-stat-context { font-size: var(--mad-text-xs); color: var(--mad-text-muted); line-height: 1.35; margin-top: 4px; }
+/* Esqueleto do <mad-metric-card>: rótulo/valor à esquerda, ícone à direita. */
+.mad-stat-body { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.mad-stat-main { flex: 1; min-width: 0; }
+.mad-stat-icon {
+  width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.mad-stat-icon-glyph { width: 22px; height: 22px; }
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2649,6 +2676,35 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   font-size: var(--mad-text-xs);
   color: var(--mad-text-subtle);
   line-height: 1.4;
+}
+
+/* Formulário em leitura (<mad-form read>, $this->form->readMode(), fw#498): os
+   campos que conhecem o modo saem como .mad-display-field; o vazio do
+   read="filled" e o <mad-display-field hide-empty> não ocupam célula da grade.
+   Campo que não conhece o modo fica travado, e a lista de itens sem adicionar,
+   remover e arrastar. */
+.mad-field-read-skip { display: none; }
+.mad-form-grid > :has(> .mad-field-read-skip:only-child) { display: none; }
+.mad-form-read .mad-field:not(.mad-field-read) :is(input:not([type="hidden"]), select, textarea, .mad-sel-control) { pointer-events: none; }
+.mad-form-read :is(.mad-fl-add-btn, .mad-fl-add-row, .mad-fl-remove-btn, .mad-fl-handle) { display: none; }
+
+/* Tema ERP: ficha em leitura — rótulo 12 mudo, valor 13.5 (rubrica da ficha). */
+.mad-layout-erp .mad-display-field-label {
+  font-size: var(--mad-label-size, 12px);
+  font-weight: var(--mad-label-weight, 500);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--mad-label-color, var(--mad-text-muted));
+}
+.mad-layout-erp .mad-display-field-value { font-size: 13.5px; line-height: 1.45; }
+.mad-layout-erp .mad-display-field-empty { font-style: normal; }
+.mad-layout-erp .mad-form-grid-read { align-items: start; }
+@media (max-width: 640px) {
+  /* Leitura no celular: 2 colunas quando cabe; o que ocupava mais de uma
+     coluna (descrição) fica na linha inteira. !important: colunas e span vêm
+     no style da grade. */
+  .mad-layout-erp .mad-form-grid.mad-form-grid-read { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
+  .mad-layout-erp .mad-form-grid-read > [style*="span"] { grid-column: 1 / -1 !important; }
 }
 
 
@@ -3313,6 +3369,15 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 }
 .mad-callout-body  { color: var(--mad-text-muted); line-height: 1.6; margin-left: 24px; }
 .mad-callout-footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; margin-left: 24px; }
+/* Faixa de próximo passo: texto à esquerda, botão da ação à direita; no
+   estreito o botão desce e ocupa a linha (fw#498). */
+.mad-callout-has-action { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.mad-callout-main { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.mad-callout-action { flex: none; display: flex; }
+@media (max-width: 640px) {
+  .mad-callout-action { flex: 1 1 100%; }
+  .mad-callout-action > .mad-btn { flex: 1; justify-content: center; }
+}
 
 .mad-callout-info    { border-color: rgba(74,144,217,.35);  background: var(--mad-info-subtle);    color: var(--mad-alert-info-text, #1a3a5c); }
 .mad-callout-success { border-color: rgba(22,163,74,.35);   background: var(--mad-success-subtle); color: var(--mad-alert-success-text, #14532d); }
@@ -5346,6 +5411,21 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 /* O cinza mais fraco dava 2,5:1 no claro e 3,4:1 no escuro (fw#322). */
 .mad-file-hint { font-size: var(--mad-text-xs); color: var(--mad-text-muted); }
 
+/* Campo de arquivo no celular (fw#495): "Toque para escolher um arquivo" no
+   lugar de "arraste aqui" e o botão "Tirar foto" (câmera de trás). Padrão no
+   tema ERP (data-camera="auto"); `camera` liga nos outros. Tela estreita ou
+   toque (tablet): o arrastar não existe ali. */
+.mad-file-camera,
+.mad-file-camera-row,
+.mad-file-text-touch { display: none; }
+@media (max-width: 639.98px), (pointer: coarse) {
+  :is([data-camera="on"], .mad-layout-erp [data-camera="auto"]) .mad-file-camera { display: inline-flex; align-items: center; gap: 6px; }
+  :is([data-camera="on"], .mad-layout-erp [data-camera="auto"]) .mad-file-camera-row { display: flex; justify-content: center; padding: 0 12px 14px; }
+  :is([data-camera="on"], .mad-layout-erp [data-camera="auto"]) .mad-file-text-touch { display: inline; }
+  :is([data-camera="on"], .mad-layout-erp [data-camera="auto"]) :is(.mad-file-text, .mad-file-text-drop) { display: none; }
+  :is([data-camera="on"], .mad-layout-erp [data-camera="auto"]) .mad-file-wrap:has(> .mad-file-camera) { flex-direction: column; gap: 10px; }
+}
+
 /* File field — card preview (arquivo selecionado) */
 .mad-file-card {
   width: 100%;
@@ -5516,6 +5596,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   white-space: nowrap;
   margin: 0;
   padding: 0;
+}
+/* <mad-page-header subtitle="…">: a frase que diz o que a tela resolve. */
+.mad-page-subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mad-text-muted);
 }
 .mad-page-header-actions {
   display: flex;
@@ -8756,6 +8843,224 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 /* Valor, número, data e formatos curtos (CPF, telefone…) numa linha só:
    "R$ 6,00" não vira "R$" em cima e "6,00" embaixo quando a grade aperta. */
 .mad-dg-cell-nowrap { white-space: nowrap; }
+
+/* ── Acabamento da linha (fw#494) ─────────────────────────────────────────
+   O servidor não sabe qual tema o navegador escolheu: a marcação é a mesma
+   em todos e quem liga cada parte é o CSS — no tema ERP já por padrão
+   (notch-erp.css), no default pelas props do <mad-grid>, que saem como
+   data-* no .mad-dg-wrap. Sem a prop, nada muda no default. */
+
+/* density="compact|comfortable|spacious": respiro da linha 7/11/15px.
+   Mais específico que o `.mad-table td` e que os layouts (dock, stripe…):
+   a prop declarada vence. */
+.mad-dg-wrap[data-density="compact"]     { --mad-dg-cell-py: 7px; }
+.mad-dg-wrap[data-density="comfortable"] { --mad-dg-cell-py: 11px; }
+.mad-dg-wrap[data-density="spacious"]    { --mad-dg-cell-py: 15px; }
+.mad-dg-wrap[data-density] .mad-table td.mad-dg-cell {
+  padding-top: var(--mad-dg-cell-py);
+  padding-bottom: var(--mad-dg-cell-py);
+}
+
+/* Texto da célula: `.mad-dg-text` é inerte (sem caixa) até alguém pedir o
+   corte. O corte usa line-clamp, não nowrap: a coluna continua podendo
+   encolher até a maior palavra, então a tabela cabe na largura e o texto
+   longo vira "…" (o valor inteiro aparece na dica, ver mad-ui.js).
+   `lines="N"` na coluna corta em N linhas em qualquer tema; `lines="0"` nunca. */
+.mad-dg-text { display: contents; }
+.mad-dg-wrap[data-truncate="on"] .mad-dg-text:not([data-lines="0"]),
+.mad-dg-text[data-lines]:not([data-lines="0"]) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--mad-dg-lines, 1);
+  line-clamp: var(--mad-dg-lines, 1);
+  overflow: hidden;
+  min-width: 3em;
+}
+/* A quebra fica entre palavras: break-word só parte a palavra que não cabe
+   na largura fixa da coluna (`width`). */
+.mad-dg-wrap[data-truncate="on"] .mad-dg-text:not([data-lines="0"]),
+.mad-dg-text[data-lines]:not([data-lines="0"]) { overflow-wrap: break-word; }
+
+/* Largura com o texto cortado (fw#494b; forma da coluna em
+   GridColumn::assignShapes). Sem isto a tabela repartia a largura e o título
+   saía tão estreito quanto as colunas curtas:
+   - grow (`<mad-col grow>`, ou a 1ª com texto de várias palavras): fica com a
+     sobra, até 40% da tabela (repartidos entre as grow, se forem várias);
+   - token (valores de uma palavra: código, tipo): inteira, sem reticências;
+   - short (nome, setor): logo abaixo;
+   - o resto do texto cede, sem partir abaixo de 5em. */
+.mad-dg-wrap[data-truncate="on"] .mad-table th.mad-dg-col-grow { width: var(--mad-dg-grow-w, 40%); }
+.mad-dg-wrap[data-truncate="on"] td.mad-dg-cell-token .mad-dg-text:not([data-lines]) {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mad-dg-wrap[data-truncate="on"] td.mad-dg-cell:not(.mad-dg-cell-token, .mad-dg-col-grow, .mad-dg-cell-short) .mad-dg-text:not([data-lines]) {
+  overflow-wrap: anywhere;
+  min-width: 5em;
+}
+/* Texto curto (nome de pessoa, setor): quebra só entre palavras, em até 2
+   linhas — cortado numa linha, todo responsável virava "Gestor de…" (fw#495). */
+.mad-dg-wrap[data-truncate="on"] td.mad-dg-cell-short .mad-dg-text:not([data-lines]) {
+  overflow-wrap: normal;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Célula de duas linhas (subtitle-field / code-field na coluna): o valor em
+   destaque e, embaixo, a meta ou o código mono, cada um numa linha. */
+.mad-dg-cell-rich > .mad-dg-text { display: block; font-weight: 600; color: var(--mad-text); }
+.mad-dg-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--mad-text-muted);
+}
+.mad-dg-sub-code {
+  font-family: var(--mad-dg-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+  font-size: 11px;
+}
+
+/* Ícones de ordenar/filtrar/colunas na cor do texto do cabeçalho quando o
+   tema a define (cabeçalho escuro com texto claro: os ícones cinza sumiam). */
+.mad-dg-th :is(.mad-dg-sort-btn, .mad-dg-filter-btn):not(.mad-dg-sort-asc, .mad-dg-sort-desc, .mad-dg-filter-active, :hover) {
+  color: var(--mad-dg-head-color, var(--mad-text-subtle));
+}
+.mad-dg-th .mad-dg-col-chooser-btn { color: var(--mad-dg-head-color, var(--mad-text)); }
+
+/* header-icons="hover": ordenar/filtrar só aparecem com o mouse no título
+   (ou o foco), por cima da borda dele, sem tomar largura da coluna. Coluna
+   ordenada ou filtrada mostra os ícones sempre, no lugar de sempre. */
+.mad-dg-th-icons { display: contents; }
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-icons {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 6px;
+  border-radius: 4px;
+  background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s;
+}
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th-align-right:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-icons {
+  right: auto;
+  left: 6px;
+  padding: 2px 6px 2px 2px;
+}
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered):is(:hover, :focus-within) .mad-dg-th-icons {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th-icons:not(:has(*)) { display: none; }
+
+/* actions-inline="N": as ações além da vaga N-1 saem da linha e vão para o
+   menu ⋮ do fim (o servidor marca as duas formas, o CSS escolhe uma). */
+.mad-dg-act-more { display: none; }
+.mad-dg-wrap[data-actions-inline] .mad-dg-act-more { display: block; }
+.mad-dg-wrap[data-actions-inline] .mad-dg-actions > [data-act-over] { display: none; }
+/* <mad-act show-label>: o rótulo ao lado do ícone, botão do tamanho do texto. */
+.mad-dg-action-btn:has(> .mad-dg-action-btn-label) { padding: 3px 8px; gap: 5px; }
+
+/* Cartão do celular (fw#495). Abaixo de 640 px a própria <tr> vira cartão,
+   sem segundo HTML: número/código na linha pequena de cima, o título, até 3
+   "Rótulo: valor", os selos embaixo e o ⋮ no canto; as outras colunas saem.
+   O servidor marca o lugar de cada célula (data-card, GridColumn::
+   assignCardRoles); aqui só se empilha. Padrão no tema ERP e opt-in com
+   mobile="cards" (mobile="table" desliga) — um bloco só para os dois, por
+   isso o seletor do ERP mora aqui. --mad-dg-stacked avisa o madDataGrid que
+   o cartão inteiro abre a ação da linha (o botão dela sai do cartão).
+   text-align com !important: a <td> traz o alinhamento da coluna no style. */
+@media (max-width: 639.98px) {
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) { --mad-dg-stacked: 1; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table-wrap { overflow-x: visible; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table,
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody,
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr:not(.mad-dg-row),
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr:not(.mad-dg-row) > td { display: block; width: 100%; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > thead { display: none; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px 8px;
+    position: relative;
+    padding: 12px 52px 12px 14px;
+    border-bottom: 1px solid var(--mad-border);
+  }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td {
+    display: none;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row:not(.mad-dg-row-selected).mad-dg-hl { background: var(--mad-dg-hl-bg); box-shadow: inset 3px 0 0 var(--mad-dg-hl-accent); }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row.mad-dg-row-selected { background: color-mix(in srgb, var(--mad-primary) 9%, transparent); }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card] { display: block; flex: 0 0 100%; text-align: left !important; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="code"] {
+    order: 0;
+    font-family: var(--mad-dg-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+    font-size: 12px;
+    color: var(--mad-text-subtle);
+  }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="code"]::before { content: attr(data-label) " "; font-family: var(--mad-font); }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="title"] { order: 1; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--mad-text); }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="title"] .mad-dg-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    min-width: 0;
+    white-space: normal;
+  }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="meta"] {
+    order: 2;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--mad-text-muted);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="meta"]::before { content: attr(data-label) ": "; color: var(--mad-text-subtle); }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td:is([data-card="meta"], [data-card="code"], [data-card="badge"]) .mad-dg-text { display: inline; min-width: 0; white-space: nowrap; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="badge"] { order: 3; flex: 0 0 auto; margin-top: 4px; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="off"] { display: none; }
+  /* Sem card-columns: até 3 metas (as outras ficam na tabela do computador). */
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])):not([data-card-columns]) .mad-dg-table > tbody > tr.mad-dg-row > td[data-card="meta"] ~ td[data-card="meta"] ~ td[data-card="meta"] ~ td[data-card="meta"] { display: none; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td.mad-dg-actions-cell { display: block; position: absolute; top: 8px; right: 8px; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td.mad-dg-select-cell { display: block; position: absolute; top: 12px; left: 12px; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row:has(> td.mad-dg-select-cell) { padding-left: 44px; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row > td.mad-dg-expand-cell { display: block; order: 4; flex: 0 0 auto; }
+  /* O cartão abre a ação da linha: o botão dela sai; o resto vai para o ⋮. */
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row .mad-dg-actions > [data-row-act]:not(:disabled):not([aria-disabled="true"]),
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row .mad-dg-actions > [data-act-over] { display: none; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row .mad-dg-act-more { display: block; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row:has(.mad-dg-actions > [data-row-act]:not(:disabled):not([aria-disabled="true"])) { cursor: pointer; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row:has(.mad-dg-actions > [data-row-act]:not(:disabled):not([aria-disabled="true"])):active { background: var(--mad-bg-subtle); }
+  /* row-detail: continua dentro do cartão, logo abaixo. */
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row:has(+ tr.mad-dg-row-detail) { padding-bottom: 4px; border-bottom: 0; }
+  :is(.mad-dg-wrap[data-mobile="cards"], .mad-layout-erp .mad-dg-wrap:not([data-mobile="table"])) .mad-dg-table > tbody > tr.mad-dg-row-detail { padding: 0 2px 8px; border-bottom: 1px solid var(--mad-border); }
+}
+
+/* Rodapé de paginação (fw#495): footer="false" some sempre; footer="auto"
+   (e o compact) some quando tudo cabe numa página — lista curta de painel
+   sem "1–1 de 1". O padrão do ERP está no notch-erp.css. */
+.mad-dg-wrap[data-footer="false"] > .mad-dg-footer,
+.mad-dg-wrap[data-footer="auto"] > .mad-dg-footer-single { display: none; }
 
 /* Relatório por janelas (#439): a célula enxuta (`td[data-k]`) leva o
    alinhamento no style só quando não é à esquerda — a célula de sempre leva
@@ -14112,6 +14417,38 @@ textarea.mad-dg-inline-input {
     font-weight: 600;
 }
 
+/* Celular (fw#495): abaixo de 640 px a barra vira um botão "Filtros (n)" que
+   abre os filtros empilhados, um por linha, em vez de quebrar em duas linhas
+   desalinhadas. Padrão no tema ERP; opt-in com mobile="button" e
+   mobile="inline" desliga (o seletor do ERP fica aqui, como o do cartão da
+   grade). Fora disso o botão não aparece. */
+.mad-dashf-m-toggle { display: none; }
+@media (max-width: 639.98px) {
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) > .mad-dashf-m-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--mad-text, #0f172a);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) > .mad-dashf-m-toggle .mad-dashf-mini-chev { margin-left: auto; transition: transform .15s; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open > .mad-dashf-m-toggle .mad-dashf-mini-chev { transform: rotate(180deg); }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])):not(.mad-dashf-m-open) > :not(.mad-dashf-m-toggle),
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) > :is(.mad-dashf-tb-divider, .mad-dashf-spacer, .mad-dashf-pill) { display: none; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open { flex-direction: column; align-items: stretch; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open > .mad-dashf-anchor { display: block; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-mini { width: 100%; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-mini .mad-dashf-mini-chev { margin-left: auto; }
+}
+
 /* --- Chips style --- */
 .mad-dashf-chips-bar {
     background: var(--mad-bg, #fff);
@@ -14778,13 +15115,18 @@ textarea.mad-dg-inline-input {
 }
 
 /* ── <mad-kpi-strip> ── */
-.mad-kpi-strip { display: grid; }
+.mad-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--mad-kpi-strip-min, 200px), 1fr));
+    gap: var(--mad-kpi-strip-gap, 14px);
+}
+.mad-kpi-strip[data-cols] { grid-template-columns: repeat(var(--mad-kpi-strip-cols), minmax(0, 1fr)); }
 .mad-kpi-strip-sticky {
     position: sticky; top: var(--mad-kpi-sticky-top, 0); z-index: 30;
     background: var(--mad-bg, transparent);
     padding-bottom: 6px;
 }
-.mad-kpi-strip .mad-kpi-card { min-width: 0; } /* obrigatório em grid */
+.mad-kpi-strip > :is(.mad-kpi-card, .mad-stat) { min-width: 0; } /* obrigatório em grid */
 
 /* ── <mad-kpi-card> ── */
 .mad-kpi-card { padding: 0; }
@@ -14801,6 +15143,7 @@ textarea.mad-dg-inline-input {
 .mad-kpi-icon { width: 14px; height: 14px; color: var(--mad-text-muted); flex: 0 0 auto; }
 .mad-kpi-value { font-size: 1.55rem; font-weight: 800; line-height: 1.15; color: var(--mad-text); }
 .mad-kpi-foot { font-size: .72rem; color: var(--mad-text-muted); }
+.mad-kpi-context { font-size: .72rem; color: var(--mad-text-muted); line-height: 1.35; }
 .mad-kpi-progress {
     height: 7px; border-radius: 99px; overflow: hidden;
     background: color-mix(in srgb, var(--mad-text-muted) 16%, transparent);
@@ -14829,6 +15172,71 @@ textarea.mad-dg-inline-input {
     box-shadow: 0 8px 24px rgba(0,0,0,.18);
 }
 .mad-kpi-help:hover .mad-kpi-help-tip, .mad-kpi-help:focus .mad-kpi-help-tip { display: block; }
+
+/* Card que filtra a lista ou abre outra tela (click-filter / click-target,
+   <mad-kpi-card> e <mad-metric-card>). Ativo = o filtro da tela está nele. */
+.mad-kpi-clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s, background-color .15s; }
+.mad-kpi-clickable:hover { border-color: color-mix(in srgb, var(--mad-primary) 45%, var(--mad-border)); }
+.mad-kpi-clickable:focus-visible { outline: 2px solid var(--mad-primary); outline-offset: 2px; }
+.mad-kpi-clickable[aria-pressed="true"] {
+    border-color: var(--mad-primary);
+    background: color-mix(in srgb, var(--mad-primary) 5%, var(--mad-bg));
+    box-shadow: inset 0 0 0 1px var(--mad-primary), var(--mad-shadow-sm);
+}
+
+/* ── KPI no tema ERP: um visual só para <mad-kpi-card>, <mad-metric-card> e
+   <mad-db-metric-card> — padding 14×16, rótulo 12/500 mudo, valor 22/700 numa
+   linha só. O valor encolhe para caber: a largura do card (100cqi do
+   .mad-*-value) dividida pela largura estimada do texto (--mad-kpi-len, em
+   dígitos, calculada no Blade; um dígito mede ~0,6em); abaixo de 11px corta
+   com reticências e o valor inteiro fica no title. */
+.mad-layout-erp .mad-stat { padding: 14px 16px; }
+.mad-layout-erp :is(.mad-kpi-label, .mad-stat-label) {
+    font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+    line-height: 1.35; color: var(--mad-text-muted);
+}
+.mad-layout-erp .mad-stat-label { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mad-layout-erp :is(.mad-kpi-value, .mad-stat-value) {
+    container-type: inline-size;
+    font-size: 22px; font-weight: 700; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mad-layout-erp .mad-kpi-num { font-size: clamp(11px, 100cqi / (var(--mad-kpi-len, 6) * .61), 22px); }
+/* Mesmos vãos do .mad-kpi (gap 6px): o <p> do metric-card trazia 1em de margem. */
+.mad-layout-erp .mad-stat-value { margin: 6px 0 0; }
+.mad-layout-erp :is(.mad-kpi-context, .mad-kpi-foot, .mad-stat-context) {
+    font-size: 12.5px; line-height: 1.35; color: var(--mad-text-muted);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.mad-layout-erp .mad-stat-context { margin: 6px 0 0; }
+.mad-layout-erp .mad-stat-change { font-size: 12px; margin-top: 6px; flex-wrap: wrap; row-gap: 0; }
+.mad-layout-erp .mad-stat-change > span { white-space: nowrap; }
+/* Ícone vira um selo pequeno no canto, na altura do rótulo: o valor fica com
+   a largura toda do card. */
+.mad-layout-erp .mad-stat { position: relative; }
+.mad-layout-erp .mad-stat-icon { position: absolute; top: 11px; right: 12px; width: 24px; height: 24px; border-radius: 6px; }
+.mad-layout-erp .mad-stat-icon-glyph { width: 14px; height: 14px; }
+.mad-layout-erp .mad-stat-body:has(> .mad-stat-icon) .mad-stat-label { padding-right: 26px; }
+
+/* Faixa sem :cols no ERP: de 4 a 7 cards por linha, sem sobra — o nº de
+   colunas sai da quantidade de filhos (8 → 4+4, 10 → 5+5, 12 → 6+6) e cai
+   para menos colunas quando o card ficaria abaixo de 116px (celular: 2). */
+.mad-layout-erp .mad-kpi-strip:not([data-cols]) {
+    --mad-kpi-strip-auto: 7;
+    grid-template-columns: repeat(auto-fit, minmax(max(var(--mad-kpi-strip-min, 116px),
+        (100% - (var(--mad-kpi-strip-auto) - 1) * var(--mad-kpi-strip-gap, 14px)) / var(--mad-kpi-strip-auto) - .1px), 1fr));
+}
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(1)) { --mad-kpi-strip-auto: 1; }
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(2)) { --mad-kpi-strip-auto: 2; }
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(3)) { --mad-kpi-strip-auto: 3; }
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(4)),
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(8)) { --mad-kpi-strip-auto: 4; }
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(5)),
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(9)),
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(10)) { --mad-kpi-strip-auto: 5; }
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(6)),
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(11)),
+.mad-layout-erp .mad-kpi-strip:has(> :last-child:nth-child(12)) { --mad-kpi-strip-auto: 6; }
 
 /* ── <mad-goal-ladder> ── */
 .mad-goal-ladder { display: flex; flex-direction: column; align-items: center; gap: 0; }
@@ -15526,6 +15934,7 @@ summary:focus-visible,
   --mad-chart-8: #64748b;
   --mad-chart-track: #e5e7eb;
   --mad-chart-marker: #ea580c;
+  --mad-chart-orange: #f97316;
 }
 html[data-theme="dark"] {
   --mad-chart-1: #60a5fa;
@@ -15538,7 +15947,69 @@ html[data-theme="dark"] {
   --mad-chart-8: #94a3b8;
   --mad-chart-track: #3f3f46;
   --mad-chart-marker: #fb923c;
+  --mad-chart-orange: #fb923c;
 }
+
+/* Tema ERP: gráficos na marca (fw#497). `--mad-chart-theme: brand` liga o tema
+   da marca no ECharts (fonte do app, grade e eixos em cinza claro, barra de no
+   máximo 48px); a paleta sai da cor primária e das cores de status. As cores
+   automáticas (--mad-chart-auto-N) só existem aqui: sem elas o gráfico usa a
+   paleta de sempre. Qualquer tema pode ligar o mesmo nos seus tokens.
+   `theme="brand"` no gráfico (.mad-chart-brand) liga o mesmo em qualquer preset. */
+body.mad-layout-erp,
+.mad-chart-brand {
+  --mad-chart-theme: brand;
+  --mad-chart-1: var(--mad-primary);
+  --mad-chart-2: color-mix(in srgb, var(--mad-primary) 55%, var(--mad-bg, #fff));
+  --mad-chart-3: var(--mad-success);
+  --mad-chart-4: var(--mad-info);
+  --mad-chart-5: var(--mad-warning);
+  --mad-chart-6: var(--mad-danger);
+  --mad-chart-7: color-mix(in srgb, var(--mad-primary) 28%, var(--mad-bg, #fff));
+  --mad-chart-8: color-mix(in srgb, var(--mad-text-muted) 70%, var(--mad-bg, #fff));
+  --mad-chart-track: var(--mad-border);
+  --mad-chart-axis: var(--mad-border);
+  --mad-chart-grid: color-mix(in srgb, var(--mad-border) 60%, var(--mad-bg, #fff));
+  /* Ordem automática: só a família da marca e neutros — verde, âmbar e
+     vermelho são status e entram só por `colors`, tom explícito ou farol
+     (fw#499). O gráfico ainda ajusta cada cor ao fundo do card (contraste de
+     3:1), varia a luminosidade quando as séries passam de 8 e, com marca
+     vermelha, começa pelos neutros (fw#498). */
+  --mad-chart-auto-1: var(--mad-chart-1);
+  --mad-chart-auto-2: var(--mad-chart-2);
+  --mad-chart-auto-3: var(--mad-chart-8);
+  --mad-chart-auto-4: color-mix(in srgb, var(--mad-primary) 62%, var(--mad-text, #1a1d21));
+  --mad-chart-auto-5: color-mix(in srgb, var(--mad-text, #1a1d21) 78%, var(--mad-bg, #fff));
+  --mad-chart-auto-6: var(--mad-chart-7);
+  --mad-chart-auto-7: color-mix(in srgb, var(--mad-primary) 45%, var(--mad-text-muted, #6b7280));
+  --mad-chart-auto-8: color-mix(in srgb, var(--mad-text-muted, #6b7280) 45%, var(--mad-bg, #fff));
+  --mad-chart-auto-fill-1: var(--mad-chart-auto-1);
+  --mad-chart-auto-fill-2: var(--mad-chart-auto-2);
+  --mad-chart-auto-fill-3: var(--mad-chart-auto-3);
+  --mad-chart-auto-fill-4: var(--mad-chart-auto-4);
+  --mad-chart-auto-fill-5: var(--mad-chart-auto-5);
+  --mad-chart-auto-fill-6: var(--mad-chart-auto-6);
+  --mad-chart-auto-fill-7: var(--mad-chart-auto-7);
+  --mad-chart-auto-fill-8: var(--mad-chart-auto-8);
+}
+/* `theme="classic"`: a paleta de sempre mesmo no ERP (sem valor, o var() cai na reserva). */
+.mad-chart-classic {
+  --mad-chart-theme: classic;
+  --mad-chart-auto-1: initial; --mad-chart-auto-2: initial; --mad-chart-auto-3: initial; --mad-chart-auto-4: initial;
+  --mad-chart-auto-5: initial; --mad-chart-auto-6: initial; --mad-chart-auto-7: initial; --mad-chart-auto-8: initial;
+  --mad-chart-auto-fill-1: initial; --mad-chart-auto-fill-2: initial; --mad-chart-auto-fill-3: initial; --mad-chart-auto-fill-4: initial;
+  --mad-chart-auto-fill-5: initial; --mad-chart-auto-fill-6: initial; --mad-chart-auto-fill-7: initial; --mad-chart-auto-fill-8: initial;
+}
+
+/* Gráfico sem dados: aviso no meio, na altura que o gráfico teria. */
+.mad-chart-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 2rem; color: var(--mad-muted);
+}
+.mad-chart-empty > :is(svg, i) { display: block; width: 40px; height: 40px; margin-bottom: .5rem; opacity: .3; }
+.mad-chart-empty > p { margin: 0; font-size: .9rem; }
+.mad-layout-erp .mad-chart-empty > :is(svg, i) { width: 28px; height: 28px; opacity: .45; }
+.mad-layout-erp .mad-chart-empty > p { font-size: 13px; color: var(--mad-text-muted); }
 
 /* <mad-db-blocks>: a lista não carregou (fw#481) — no lugar do "Nenhum item". */
 .mad-db-blocks-error { font-size: 12px; color: var(--mad-danger, #dc2626); padding: 8px 4px; }

@@ -107,6 +107,9 @@
         'variant'        => $variant,
         'iconColor'      => $iconColor,
         'iconBg'         => $iconBg,
+        'context'        => $context ?? '',
+        'clickFilter'    => $clickFilter ?? null,
+        'clickTarget'    => $clickTarget ?? null,
         'class'          => $class,
         'style'          => $style,
     ];

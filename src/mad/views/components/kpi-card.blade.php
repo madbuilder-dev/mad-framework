@@ -21,6 +21,10 @@
        spark-color      string   cor da sparkline (default #2563EB)
        trend            string   texto da variação ("+12,3%")
        trend-label      string   legenda ("vs mês anterior")
+       context          string   linha de contexto sob o valor ("R$ 5,1M previsto")
+       click-filter     string   campo=valor → clicar grava o filtro da tela (setProp);
+                                 de novo no card ativo, limpa. Ver Mad\Ui\MadKpi
+       click-target     string   Tela ou Tela::metodo → clicar abre a tela
        trend-direction  string   up | down | flat
        :trend-invert    bool     true = subir é RUIM (inverte só a cor)
        help             string   tooltip ⓘ de origem/fórmula
@@ -41,6 +45,7 @@
     $trendLabel = $trendLabel ?? null;
     $trendDirection = $trendDirection ?? null;
     $trendInvert = filter_var($trendInvert ?? false, FILTER_VALIDATE_BOOL);
+    $context    = trim((string) ($context ?? ''));
     $help       = $help ?? null;
     $icon       = $icon ?? null;
     $variant    = ($variant ?? 'solid') === 'outline' ? 'outline' : 'solid';
@@ -212,8 +217,10 @@
     }
 
     $pct = $progress !== null ? max(0, min(100, $progress)) : null;
+
+    $__click = \Mad\Ui\MadKpi::click($clickFilter ?? null, $clickTarget ?? null, (string) $label);
 @endphp
-<div class="mad-card mad-kpi-card mad-kpi-{{ $variant }} {{ $class }}"
+<div class="mad-card mad-kpi-card mad-kpi-{{ $variant }}{{ $__click['clickable'] ? ' mad-kpi-clickable' : '' }} {{ $class }}"{!! $__click['attrs'] !!}
      @if($variant === 'outline' || $style) style="{{ $variant === 'outline' ? '--mad-kpi-accent:' . ($valueColor ?: 'var(--mad-primary)') . ';' : '' }}{{ $style }}" @endif>
     <div class="mad-kpi">
         <div class="mad-kpi-top">
@@ -228,7 +235,10 @@
                     title="{{ $trendLabel ?? '' }}">{{ $arrow }} {{ $trendText }}</span>
             @endif
         </div>
-        <div class="mad-kpi-value" @if($valueColor) style="color:{{ $valueColor }}" @endif>{{ $value }}</div>
+        <div class="mad-kpi-value" title="{{ $value }}" @if($valueColor) style="color:{{ $valueColor }}" @endif><span class="mad-kpi-num" style="--mad-kpi-len:{{ \Mad\Ui\MadKpi::valueWidth((string) $value) }}">{{ $value }}</span></div>
+        @if($context !== '')
+            <div class="mad-kpi-context">{{ $context }}</div>
+        @endif
         @if($pct !== null)
             <div class="mad-kpi-progress" role="progressbar" aria-valuenow="{{ $pct }}" aria-valuemin="0" aria-valuemax="100">
                 <span style="width:{{ $pct }}%;background:{{ $progressColor }}"></span>

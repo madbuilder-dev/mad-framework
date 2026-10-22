@@ -28,6 +28,11 @@
     $_h = is_scalar($height ?? null) ? \Mad\Support\CssUnits::length((string) $height) : '';
     $_taStyle = ($_h !== '' ? 'height:' . $_h . ';' : '') . (string) $style;
 @endphp
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $value, 'text' => $value, 'hidden' => $_isHidden, 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }}" @if($name) data-mad-field="{{ $name }}" @endif @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
@@ -46,3 +51,4 @@
     >{!! htmlspecialchars($value, ENT_QUOTES) !!}</textarea>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

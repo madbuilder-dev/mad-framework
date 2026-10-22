@@ -97,6 +97,13 @@ class MadForm
     public array $disabled = [];
 
     /**
+     * Formulário em leitura (fw#498): '' = edição, 'all' = rótulo e valor em
+     * todos os campos ("—" no vazio), 'filled' = só os preenchidos.
+     * Alterado via `$this->form->readMode()`; a tag `<mad-form read>` faz o mesmo.
+     */
+    public string $readMode = '';
+
+    /**
      * Ops fl_combo pendentes geradas por setItems('campo[]').
      * Coletadas pelo MadComponentHandler após a action e mescladas no response.
      * Não serializada (consumida no mesmo request).
@@ -7172,6 +7179,23 @@ class MadForm
     }
 
     /**
+     * Mostra o formulário inteiro em leitura: rótulo e valor no lugar dos
+     * controles — sem "Selecione..." vazio nem toggle desligado — para quem só
+     * pode ler o registro (fw#498). Vale no próximo desenho da tela.
+     *
+     *   $this->form->readMode();           // todos os campos, "—" no vazio
+     *   $this->form->readMode('filled');   // só os preenchidos
+     *   $this->form->readMode(false);      // volta à edição
+     *
+     * O valor de cada campo segue no formulário (hidden): a ação da tela que lê
+     * getData() recebe o mesmo de antes.
+     */
+    public function readMode(bool|string $mode = true): void
+    {
+        $this->readMode = ReadMode::normalize($mode);
+    }
+
+    /**
      * Desabilita um botão (aplica atributo `disabled` no `<button data-mad-btn="X">`).
      * Bloqueia clique e o hover-efeito. Use para botões de ação como "Salvar",
      * "Aprovar", etc, quando o registro está em estado que não permite a ação.
@@ -10461,6 +10485,9 @@ class MadForm
             'readonly'        => $this->readonly,
             'disabled'        => $this->disabled,
         ];
+        if ($this->readMode !== '') {
+            $state['readMode'] = $this->readMode;
+        }
 
         // Só quando há o que lembrar (registro carregado, linha filha, anexo):
         // o formulário de filtro ou de cadastro novo mantém o estado de sempre.
@@ -10485,6 +10512,7 @@ class MadForm
         $instance->placeholders = $data['placeholders'] ?? [];
         $instance->hidden       = $data['hidden']       ?? [];
         $instance->readonly     = $data['readonly']     ?? [];
+        $instance->readMode     = ReadMode::normalize($data['readMode'] ?? '');
         $instance->disabled     = $data['disabled']     ?? [];
         $instance->_known       = is_array($data['known'] ?? null) ? $data['known'] : [];
         $instance->_flFiltered  = is_array($data['flf'] ?? null) ? array_filter($data['flf'], 'is_string') : [];

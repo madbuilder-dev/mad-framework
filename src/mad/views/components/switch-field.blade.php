@@ -45,6 +45,11 @@
     ]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false); @endphp
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'bool' => true, 'on' => ($__on = isset($isChecked) ? $isChecked : !empty($checked)), 'raw' => $__on ? (string) $valueOn : (string) $valueOff, 'hidden' => $_isHidden, 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }}{{ $_isReadonly ? ' mad-readonly' : '' }}" @if($name) data-mad-field="{{ $name }}" @endif @if($style || $_dimStyle) style="{{ $style }}{{ $_dimStyle }}" @endif>
     <div class="{{ $rowClass }}">
         <div class="mad-switch-text">
@@ -67,3 +72,4 @@
     </div>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

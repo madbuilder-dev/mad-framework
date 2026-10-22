@@ -1767,6 +1767,65 @@ class MadGridCompiler
         if (static::has($a, 'row-click') && strtolower(static::str($a, 'row-click')) !== 'false') {
             $c[] = "'rowClick' => true";
         }
+        // Acabamento da linha (fw#494). No tema ERP já é o padrão; no default
+        // cada prop liga a sua parte. density="compact|comfortable|spacious";
+        // truncate (nu) = texto numa linha com reticências, truncate="false"
+        // desliga também no ERP; header-icons="hover|always"; actions-inline="2"
+        // = ações visíveis na linha, as demais no menu ⋮ ("all" = nunca menu).
+        // Valor literal fora da lista não emite nada; :prop passa e o
+        // MadDataGrid valida no render.
+        foreach (['density' => ['compact', 'comfortable', 'spacious'], 'header-icons' => ['hover', 'always']] as $_attr => $_ok) {
+            if (!isset($a[$_attr])) continue;
+            $_key = $_attr === 'density' ? 'density' : 'headerIcons';
+            if ($a[$_attr]['type'] === 'php') {
+                $c[] = static::kv($_key, static::emit($a[$_attr]));
+            } elseif (in_array($_v = strtolower(trim(static::str($a, $_attr))), $_ok, true)) {
+                $c[] = static::kv($_key, static::qs($_v));
+            }
+        }
+        if (isset($a['truncate'])) {
+            $c[] = $a['truncate']['type'] === 'php'
+                ? "'truncate' => (bool) (" . static::emit($a['truncate']) . ')'
+                : "'truncate' => " . (strtolower(trim(static::str($a, 'truncate'))) === 'false' ? 'false' : 'true');
+        }
+        if (isset($a['actions-inline'])) {
+            $_ai = $a['actions-inline'];
+            if ($_ai['type'] === 'php') {
+                $c[] = static::kv('actionsInline', static::emit($_ai));
+            } elseif (($_v = strtolower(trim(static::str($a, 'actions-inline')))) === 'all') {
+                $c[] = "'actionsInline' => 'all'";
+            } elseif (ctype_digit($_v) && (int) $_v > 0) {
+                $c[] = "'actionsInline' => " . (int) $_v;
+            }
+        }
+        // Celular e lista curta (fw#495). mobile="cards" = abaixo de 640 px a
+        // linha vira cartão (padrão no ERP), mobile="table" = fica tabela;
+        // card-columns="numero,assunto,status" = colunas do cartão, na ordem;
+        // footer="auto|false|true" = rodapé de paginação (auto some quando tudo
+        // cabe numa página; padrão no ERP); compact = lista de painel (rodapé
+        // auto, sem o alternador tabela/cartão).
+        if (isset($a['mobile'])) {
+            if ($a['mobile']['type'] === 'php') {
+                $c[] = static::kv('mobile', static::emit($a['mobile']));
+            } elseif (in_array($_v = strtolower(trim(static::str($a, 'mobile'))), ['cards', 'table'], true)) {
+                $c[] = static::kv('mobile', static::qs($_v));
+            }
+        }
+        if (isset($a['card-columns'])) {
+            $c[] = $a['card-columns']['type'] === 'php'
+                ? static::kv('cardColumns', static::emit($a['card-columns']))
+                : static::kv('cardColumns', var_export(array_values(array_filter(array_map('trim', explode(',', static::str($a, 'card-columns'))), 'strlen')), true));
+        }
+        if (isset($a['footer'])) {
+            if ($a['footer']['type'] === 'php') {
+                $c[] = static::kv('footer', static::emit($a['footer']));
+            } elseif (in_array($_v = strtolower(trim(static::str($a, 'footer'))), ['auto', 'false', 'true'], true)) {
+                $c[] = static::kv('footer', static::qs($_v));
+            }
+        }
+        if (static::has($a, 'compact') && strtolower(static::str($a, 'compact')) !== 'false') {
+            $c[] = "'compact' => true";
+        }
         // Carga adiada ("Carregar registros ao abrir = Não" do 4.0): o grid abre
         // vazio e só consulta o banco na primeira ação explícita do usuário
         // (Buscar/filtro/sort). Flag negativa nua, mesma convenção do no-export.
@@ -2265,6 +2324,21 @@ class MadGridCompiler
             $c[] = static::kv('mediaCaption', static::emit($a['media-caption']));
         }
 
+        // Acabamento da célula (fw#494): lines="2" = até 2 linhas antes das
+        // reticências (0 = nunca corta); subtitle-field/code-field = 2ª linha
+        // menor (meta / código mono) com um campo da linha ou máscara `{campo}`.
+        if (isset($a['lines'])) {
+            if ($a['lines']['type'] === 'php') {
+                $c[] = "'lines' => (int) (" . static::emit($a['lines']) . ')';
+            } elseif (ctype_digit($_l = trim(static::str($a, 'lines')))) {
+                $c[] = "'lines' => " . (int) $_l;
+            }
+        }
+        if (isset($a['subtitle-field'])) $c[] = static::kv('subtitleField', static::emit($a['subtitle-field']));
+        if (isset($a['code-field']))     $c[] = static::kv('codeField',     static::emit($a['code-field']));
+        // grow (fw#494b): a coluna fica com a sobra da largura quando o texto corta.
+        if (static::has($a, 'grow') && strtolower(static::str($a, 'grow')) !== 'false') $c[] = "'grow' => true";
+
         // Evaluate: expressão computada '{campo} * {campo}' ou '{rel->campo}'
         if (isset($a['evaluate'])) {
             $c[] = static::kv('evaluate', static::emit($a['evaluate']));
@@ -2630,6 +2704,9 @@ class MadGridCompiler
         $c = [];
         if (isset($a['title']) && static::str($a, 'title') !== '') $c[] = static::kv('title', static::strExpr($a, 'title'));
         if (isset($a['color']) && static::str($a, 'color') !== '') $c[] = static::kv('color', static::strExpr($a, 'color'));
+        // show-label: o rótulo aparece ao lado do ícone (ação principal da
+        // linha, fw#494). Sem ícone o rótulo já aparece sozinho.
+        if (static::has($a, 'show-label') && strtolower(static::str($a, 'show-label')) !== 'false') $c[] = "'showLabel' => true";
 
         return $c;
     }

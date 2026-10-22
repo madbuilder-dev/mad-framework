@@ -70,6 +70,8 @@ abstract class BaseChart
     protected $barStack;
     /** Bar aninhado ("stacked internal"): null | ['widths' => ?array, 'cap' => ?int]. */
     protected $barNested;
+    /** Largura máxima da barra em px; null = a do tema (ERP: 48), 0 = sem limite. */
+    protected ?int $barMaxWidth = null;
     /** Mixed (coluna+linha) modo A: null | ['series' => array, 'secondary' => bool]. */
     protected $mixedLine;
     /** Mixed modo B (2ª métrica): null | ['total' => string, 'field' => ?string, 'label' => ?string, 'secondary' => bool]. */
@@ -361,7 +363,17 @@ abstract class BaseChart
                 'fill' => '#E0E7FF'    // Íris claro
             ]
         ];
-
+        // Paleta automática como token do tema, com a cor de sempre como
+        // reserva: sem os tokens (preset default) o gráfico sai igual; o tema
+        // que define --mad-chart-auto-N (ERP) troca a paleta sem tocar no PHP.
+        // Até 12 cores automáticas (fw#499); a reserva é a cor da própria fatia.
+        foreach ($this->colors as $i => $c) {
+            $k = $i % 12 + 1;
+            $this->colors[$i] = [
+                'stroke' => "var(--mad-chart-auto-{$k}, {$c['stroke']})",
+                'fill'   => "var(--mad-chart-auto-fill-{$k}, {$c['fill']})",
+            ];
+        }
     }
 
     /**

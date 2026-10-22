@@ -12,6 +12,70 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.211.0] — 2026-10-22
+
+### Novidades
+
+- **Layout:** `<mad-page-header>` ganha `subtitle`, uma linha curta sob o título dizendo o que a tela resolve. No tema ERP sai em 13 px na cor suave.
+- **Layout:** os itens do topo (apps, busca, notificações, e-mail, chat e tema escuro) podem ser ligados ou desligados no tema (`layout.topbar`) ou no `.env` (`MAD_TOPBAR_*`). No tema ERP, sem configuração, some o que o app não usa.
+- **Listagem (grid):** `<mad-grid>` ganha `density` (altura da linha), `truncate` (texto longo em 1 linha, com o texto inteiro ao parar o mouse), `header-icons="hover"` e `actions-inline` (as ações que passam do limite vão para um menu ⋮).
+- **Listagem (grid):** `<mad-col>` ganha `lines` (linhas antes de cortar), `subtitle-field` (segunda linha menor sob o valor) e `code-field` (código sob o valor). As ações ganham `show-label`, que mostra o texto ao lado do ícone.
+- **Listagem (grid):** no celular cada registro vira um cartão com número, título, até 3 "Rótulo: valor", selos e o menu ⋮; tocar no cartão abre o registro. Padrão no tema ERP; nos outros, `mobile="cards"`.
+- **Listagem (grid):** `card-columns="numero,assunto,status"` escolhe as colunas do cartão do celular; as outras ficam só na tabela do computador.
+- **Listagem (grid):** `footer="auto"` tira o rodapé "1–1 de 1" quando tudo cabe numa página (padrão no ERP), e `compact` deixa a lista curta de painel sem o botão tabela/cartões.
+- **Listagem (grid):** no celular a barra de filtros vira o botão "Filtros (n)", que abre os filtros um por linha. Padrão no ERP; nos outros temas, `mobile="button"` no `<mad-grid-filters>`.
+- **Upload:** no celular o campo que aceita imagem oferece "Tirar foto", com a câmera de trás. Padrão no tema ERP; nos outros, `camera`.
+- **Dashboard:** `<mad-kpi-card>`, `<mad-metric-card>` e `<mad-db-metric-card>` ganham `context`, uma linha curta sob o valor que diz se o número está bom ou ruim ("R$ 5,1M previsto", "2 vencem esta semana").
+- **Dashboard:** `click-filter="status=Aberto"` faz o card filtrar a lista da tela, e clicar de novo limpa; `click-target="Tela"` abre outra tela.
+- **Dashboard:** `theme="brand"` nos gráficos desenha com as cores do tema do app (a cor primária e tons dela), grade clara e a fonte do app. `theme="classic"` mantém o visual de sempre.
+- **Dashboard:** `stacked="parts"` no `<mad-db-chart type="bar">` mostra uma barra só, com um pedaço por categoria (farol, status) e o valor de cada um na legenda.
+- **Dashboard:** `bar-max-width` limita a largura da barra, e `empty-text` troca o texto do gráfico sem dados.
+- **Formulário:** `<mad-form read>` mostra a ficha em leitura, com rótulo e valor no lugar dos campos, para quem só consulta o registro. `read="filled"` mostra só os preenchidos; pelo código, `$this->form->readMode()`.
+- **Detalhe:** `<mad-callout>` ganha o botão da ação à direita do texto (`action-label` com `action` ou `action-href`), a faixa de próximo passo da ficha.
+- **Detalhe:** `<mad-display-field>` ganha `options` (mostra o nome da opção, não o código gravado), `hide-empty` (o vazio não aparece) e `format="bool"` (Sim/Não).
+- **Gantt:** o `<mad-gantt>` abre no zoom em que o projeto inteiro cabe na tela (Dia, Semana, Mês ou Ano). Com `zoom` fixo, o zoom escolhido continua. Quando hoje fica fora do projeto, abre no começo dele, com qualquer zoom.
+- **Gantt:** botão "Caber tudo" (`fit-btn`) volta ao zoom que mostra o projeto inteiro, e `compact-columns` deixa na lista lateral só as colunas que cabem, com um botão para mostrar todas. Os dois vêm ligados no tema ERP.
+- **Tema:** logo próprio para a faixa do topo no celular (`layout.images.headerLogoMobile`), por exemplo a versão branca do logotipo sobre a cor da marca.
+
+### Melhorias
+
+- **Tema:** no tema ERP o cabeçalho da página fica direto sobre o fundo cinza, sem cartão nem faixa de outra cor abaixo de página curta; título maior, campos e botões na mesma altura (36 px) e o filtro vira um cartão.
+- **Tema:** no tema ERP a ficha em leitura tem rótulo pequeno e discreto com o valor em destaque, e no celular fica em 2 colunas quando cabe.
+- **Tema:** no tema ERP o Gantt ocupa a altura que sobra na tela, também dentro de uma aba, e em tela estreita a barra fica enxuta.
+- **Tema:** no celular, a faixa do logo do tema ERP ocupa a largura toda na cor da marca, com o logo num cartão branco.
+- **Listagem (grid):** no tema ERP a grade fica sem zebra, com divisória clara entre linhas e destaque neutro ao passar o mouse, no lugar da cor da marca.
+- **Listagem (grid):** no tema ERP a linha fica numa altura só: texto longo em 1 linha com reticências e no máximo 2 ações na linha, o resto no menu ⋮ (fecha com Esc, abre um por vez, para dentro da listagem e para cima na última linha). Os outros temas só mudam com os atributos novos.
+- **Listagem (grid):** no tema ERP os ícones de ordenar e filtrar aparecem ao passar o mouse, na cor do cabeçalho, e valores e números ficam à direita com os algarismos alinhados.
+- **Listagem (grid):** com o texto longo cortado (padrão no tema ERP), a coluna do título fica com a sobra da largura e sai inteira quando cabe, em vez de cortar tão cedo quanto as colunas curtas, e nomes e setores curtos quebram entre palavras em vez de cortar no meio. `<mad-col grow>` escolhe outra coluna para isso.
+- **Dashboard:** no tema ERP os três cards de indicador ficam com o mesmo visual compacto, e o valor longo encolhe para caber numa linha em vez de quebrar ("R$" em cima, "830,00" embaixo).
+- **Dashboard:** no tema ERP, `<mad-kpi-strip>` sem `cols` põe de 4 a 7 cards por linha sem sobra (8 cards = 4+4) e 2 por linha no celular; a faixa aceita também `<mad-metric-card>`.
+- **Dashboard:** no tema ERP os gráficos seguem a marca por padrão: tons da marca e cinzas, com contraste no claro e no escuro (verde, âmbar e vermelho ficam para status, com `colors`), barras de no máximo 48 px, grade e eixos em cinza claro e a fonte do app.
+- **Layout:** no tema ERP, entre 993 e 1599 px o painel do módulo começa recolhido e abre por cima da tela ao clicar no módulo. O botão no canto do painel o deixa fixo.
+- **Layout:** a trilha do topo mostra o caminho até a tela (Módulo / Grupo / Item) e, numa ficha, só o código dela, sem repetir o título do cabeçalho. Quando falta espaço, encolhe o meio.
+- **Menu:** no tema ERP, os itens dentro de um grupo usam a mesma letra dos de primeiro nível, com recuo. A Administração ganhou ícone próprio, diferente do Início.
+
+### Correções
+
+- **Listagem (grid):** no tema ERP o cabeçalho da grade respeita as cores escolhidas no tema. Antes o fundo ficava sempre cinza e um texto branco escolhido no tema sumia.
+- **Tema:** no tema ERP a barra de progresso do topo segue a cor da marca (era sempre azul).
+- **Layout:** `<mad-card title="..." icon="...">` aparecia sem o título e sem o ícone. Agora `title` vale como `header`, com o ícone antes dele.
+- **Layout:** os avisos no topo da tela cobriam o cabeçalho e as abas do módulo. Agora aparecem logo abaixo deles.
+- **Upload:** a área de soltar do campo de arquivo mostrava o tipo técnico ("image/*", ".pdf"). Agora mostra "Imagens", "PDF".
+- **Dashboard:** `colors` com nome de tom (`success`, `warning`, `danger`, `orange`) pintava as fatias e barras de preto. Agora usa a cor do tema.
+- **Dashboard:** rótulo de pizza e donut que não cabia saía cortado ("Próximo do ..."). Agora vai inteiro para a legenda, ao lado do gráfico ou embaixo no celular.
+- **Dashboard:** pizza ou donut só com zeros desenhava um anel meio a meio, e o aviso de sem dados ficava no topo do card com um vazio embaixo. Agora os dois mostram o aviso no meio, na altura do gráfico.
+- **Reatividade (MadWire):** depois de ativar um card de indicador pelo teclado (Enter), o foco voltava para o começo da página. Agora continua no card, e o mesmo vale para outros botões sem id que a tela redesenha.
+- **Combo:** select e combo somente leitura apareciam apagados, com cara de campo quebrado. Agora leem como o campo de texto travado, e o desabilitado não mostra mais a seta nem o calendário.
+- **Detalhe:** `<mad-display-field>` com valor sim/não mostrava "1" ou "—". Agora mostra Sim ou Não.
+- **Gantt:** o zoom Ano mostrava os anos inteiros, de janeiro a dezembro: um projeto de junho a março ficava entre meses vazios e com barra de rolagem. Agora vai do mês da primeira tarefa ao da última.
+- **Gantt:** no celular, o gráfico abria com a marca de hoje fora da tela. Agora hoje fica a cerca de um quarto da largura visível.
+- **Menu:** a seta dos grupos do menu lateral apontava para cima com o grupo fechado e para a esquerda com ele aberto. Agora aponta para baixo fechado e para cima aberto.
+- **Menu:** recolher o menu lateral escondia também as abas do módulo no topo da tela.
+
+### Atenção
+
+- **Gantt:** sem `zoom`, o gráfico agora abre no zoom automático (o projeto inteiro na tela). Para continuar abrindo em Dia, use `zoom="day"`.
+
 ## [5.207.0] — 2026-10-22
 
 ### Melhorias

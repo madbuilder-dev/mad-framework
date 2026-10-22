@@ -22,6 +22,14 @@
     $alignCss  = isset($valignMap[$valign]) ? 'align-items:' . $valignMap[$valign] . ';' : '';
     $class = $class ?? '';
     $style = $style ?? '';
+    // Grade só de leitura (<mad-display-field>, campos de <mad-form read>), sem
+    // controle editável: ganha .mad-form-grid-read — no celular, tema ERP, fica
+    // em 2 colunas quando cabe, em vez de uma (fw#498).
+    $_slotHtml = (string) ($slot ?? '');
+    if (str_contains($_slotHtml, 'mad-display-field')
+        && !preg_match('/<(?:select|textarea)\b|<input\b(?![^>]*\btype=["\']hidden["\'])/i', $_slotHtml)) {
+        $class = trim($class . ' mad-form-grid-read');
+    }
 @endphp
 <div style="display:grid;grid-template-columns:{{ $gridCols }};gap:{{ $gapPx }};{{ $alignCss }}{{ $style }}" class="mad-form-grid {{ $class }}">
     {!! $slot !!}

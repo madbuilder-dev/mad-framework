@@ -159,6 +159,11 @@
         : 'display:flex;flex-direction:column;gap:8px;';
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false); @endphp
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $selected, 'text' => \Mad\Form\ReadMode::optionText(is_array($options) ? $options : [], $selected), 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}"@endif
     @if($dependsOn)
         data-mad-depends="{{ $dependsOn }}"
@@ -216,3 +221,4 @@
     @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

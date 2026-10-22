@@ -323,6 +323,8 @@ trait MadGridWindow
         }
 
         $visible  = $this->_windowVisible($columns);
+        GridColumn::assignShapes($visible, $rows);   // código/tipo inteiros nas linhas que chegam (fw#494b)
+        GridColumn::assignCardRoles($visible, $this->_rowLookViewData()['gridCardColumns'], $rows);   // cartão do celular (fw#495)
         $renderer = new GridRowRenderer($visible, static::class . '_', $this->rowIdField());   // = $_rowPrefix do template
         $html     = $renderer->items($items, $start, $last, [
             'visibleColumns'  => $visible,

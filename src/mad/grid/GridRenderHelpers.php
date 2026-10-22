@@ -39,6 +39,20 @@ class GridRenderHelpers
                 $out[$f] = '{' . $f . '}';
             }
         }
+        // 2ª linha da célula (subtitle-field/code-field) com relação: entra no
+        // eager-load, senão cada linha da página faria a sua consulta.
+        foreach ($columns as $col) {
+            foreach ([$col->subtitleField ?? '', $col->codeField ?? ''] as $src) {
+                $src = (string) $src;
+                if (!str_contains($src, '->')) {
+                    continue;
+                }
+                preg_match_all('/\{([^}]+->[^}]+)\}/', str_contains($src, '{') ? $src : '{' . $src . '}', $m);
+                foreach ($m[1] as $chain) {
+                    $out[trim($chain)] ??= '{' . trim($chain) . '}';
+                }
+            }
+        }
         return $out;
     }
 

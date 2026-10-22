@@ -42,7 +42,7 @@ class MadGantt
 
     // ── Propriedades ─────────────────────────────────────────────────────
     protected string $viewMode    = self::MODE_DAYS;
-    protected string $zoom        = 'md';
+    protected string $zoom        = 'auto';
     protected string $startDate   = '';
     protected string $interval    = '15 days';
     protected string $title       = '';
@@ -87,6 +87,10 @@ class MadGantt
     protected bool    $showGridLines  = true;
     protected bool    $showAvatars    = true;
     protected int     $taskColWidth   = 300;
+    /** Lateral enxuta: null = só no tema ERP; true/false fixa. */
+    protected ?bool   $compactColumns = null;
+    /** Botão "Caber tudo": null = só no tema ERP; true/false fixa. */
+    protected ?bool   $fitBtn         = null;
 
     // ── Ações mad-wire ───────────────────────────────────────────────────
     protected string $eventClickMethod  = '';
@@ -146,7 +150,7 @@ class MadGantt
 
         $g = static::make($startDate)
             ->viewMode($cfg['view_mode'] ?? 'days')
-            ->zoom($cfg['zoom'] ?? 'md')
+            ->zoom($cfg['zoom'] ?? 'auto')
             ->interval($cfg['interval'] ?? '30 days')
             ->title($cfg['title'] ?? '')
             ->enableViewModeButton()
@@ -175,6 +179,8 @@ class MadGantt
         if (isset($cfg['show_grid']))       $g->showGridLines((bool) $cfg['show_grid']);
         if (isset($cfg['show_avatars']))    $g->showAvatars((bool) $cfg['show_avatars']);
         if (!empty($cfg['task_col_width'])) $g->taskColWidth((int) $cfg['task_col_width']);
+        if (isset($cfg['compact_columns'])) $g->compactColumns((bool) $cfg['compact_columns']);
+        if (isset($cfg['fit_btn']))         $g->fitButton((bool) $cfg['fit_btn']);
 
         // Callbacks
         if (!empty($cfg['on_task_click']))         $g->onTaskClick($cfg['on_task_click']);
@@ -400,7 +406,10 @@ class MadGantt
 
     /**
      * Define o nível de zoom (granularidade da timeline).
-     * Valores v2: hour | day | week | month | year.
+     * Valores v2: auto (padrão) | hour | day | week | month | year.
+     * `auto`: o client escolhe, pela largura do gráfico, o zoom mais detalhado
+     * em que o projeto inteiro cabe (Dia, Semana, Mês ou Ano). Um valor fixo
+     * trava o zoom inicial.
      * Aliases legados (mapeados pelo client): xs→day, sm→week, md→month, lg→year.
      */
     public function zoom(string $size): static
@@ -618,6 +627,16 @@ class MadGantt
     public function showGridLines(bool $v = true): static  { $this->showGridLines  = $v; return $this; }
     public function showAvatars(bool $v = true): static    { $this->showAvatars    = $v; return $this; }
     public function taskColWidth(int $px): static          { $this->taskColWidth   = max(160, $px); return $this; }
+
+    /**
+     * Lateral enxuta: quando as colunas não cabem (até 38% da largura do
+     * gantt), as secundárias saem — Dias, depois Início — e um botão no
+     * cabeçalho mostra todas. Sem chamar: ligada só no tema ERP.
+     */
+    public function compactColumns(?bool $v = true): static { $this->compactColumns = $v; return $this; }
+
+    /** Botão "Caber tudo" (volta ao zoom em que o projeto inteiro cabe). Sem chamar: só no tema ERP. */
+    public function fitButton(?bool $v = true): static     { $this->fitBtn = $v; return $this; }
 
     // ── Rows ─────────────────────────────────────────────────────────────
 
@@ -1339,6 +1358,9 @@ class MadGantt
                 'day'         => __('gantt.day'),
                 'days'        => __('gantt.days'),
             ] + self::optionalLabels([
+                'fit'          => 'gantt.fit',
+                'showColumns'  => 'gantt.show_columns',
+                'hideColumns'  => 'gantt.hide_columns',
                 // Selos da dica da barra — eram "CRITICAL"/"MILESTONE" fixos.
                 'criticalTag'  => 'gantt.critical_badge',
                 'milestoneTag' => 'gantt.milestone_badge',
@@ -1394,6 +1416,8 @@ class MadGantt
             'showGrid'          => $this->showGridLines,
             'showAvatars'       => $this->showAvatars,
             'taskColWidth'      => $this->taskColWidth,
+            'compactColumns'    => $this->compactColumns,
+            'fitBtn'            => $this->fitBtn,
         ];
 
         return ['components.gantt-chart', ['config' => $config]];

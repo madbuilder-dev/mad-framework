@@ -414,8 +414,19 @@
         day:   { pxPerDay: 36,  minor: 'day',   major: 'month',   barH: 22 },
         week:  { pxPerDay: 16,  minor: 'week',  major: 'month',   barH: 20 },
         month: { pxPerDay: 5,   minor: 'month', major: 'quarter', barH: 16 },
-        year:  { pxPerDay: 3,   minor: 'month', major: 'year',    barH: 14, fitFullYear: true },
+        // Ano: escala do mês da 1ª tarefa ao mês da última (antes eram anos
+        // inteiros — jun/2026–mar/2027 virava 2 anos de largura).
+        year:  { pxPerDay: 3,   minor: 'month', major: 'year',    barH: 14, alignMonth: true },
     };
+
+    /**
+     * `zoom="auto"` (padrão, fw#499) — e o legado `fit` — não é um perfil: o
+     * componente escolhe, pela largura do gráfico, o zoom mais detalhado em
+     * que o projeto inteiro cabe (coords.fitZoom). Zoom declarado fixa.
+     */
+    function isAuto(zoom) {
+        return !zoom || zoom === 'auto' || zoom === 'fit';
+    }
 
     const LEGACY_ALIAS = {
         xs: 'day',     // 36 px/day equivalent to a tight day view
@@ -424,9 +435,16 @@
         lg: 'year',
     };
 
+    // Ano comprimido ('year@<px por dia>', fw#499): quando nem o Ano cabe, o
+    // auto usa a escala do Ano com menos px por dia. Só o auto produz essa
+    // chave; o clique num zoom volta aos perfis fixos.
+    const SQUEEZED = /^year@(\d+(?:\.\d+)?)$/;
+    const squeezedCache = {};
+
     function normalize(zoom) {
         if (!zoom) return 'day';
         if (ZOOM_PROFILES[zoom]) return zoom;
+        if (SQUEEZED.test(zoom)) return zoom;
         if (LEGACY_ALIAS[zoom]) return LEGACY_ALIAS[zoom];
         return 'day';
     }
@@ -436,7 +454,15 @@
     }
 
     function get(zoom) {
-        return ZOOM_PROFILES[normalize(zoom)];
+        const key = normalize(zoom);
+        const m = SQUEEZED.exec(key);
+        if (!m) return ZOOM_PROFILES[key];
+        return squeezedCache[key] || (squeezedCache[key] = Object.assign({}, ZOOM_PROFILES.year, { pxPerDay: +m[1] }));
+    }
+
+    /** Perfil-base do zoom ('year@1.9' → 'year'): o que o seletor mostra como ativo. */
+    function base(zoom) {
+        return String(normalize(zoom)).split('@')[0];
     }
 
     function pxPerDay(zoom) {
@@ -452,6 +478,8 @@
         ZOOM_PROFILES,
         LEGACY_ALIAS,
         normalize,
+        isAuto,
+        base,
         get,
         pxPerDay,
         pxPerHour,
@@ -495,9 +523,9 @@
             minD = maxD = t;
         }
         const profile = zoomMod.get(zoom);
-        if (profile.fitFullYear) {
-            const start = new Date(minD.getFullYear(), 0, 1);
-            const end   = new Date(maxD.getFullYear(), 11, 31);
+        if (profile.alignMonth) {
+            const start = new Date(minD.getFullYear(), minD.getMonth(), 1);
+            const end   = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
             return { start, end, totalDays: daysBetween(start, end) + 1 };
         }
         // No zoom hora, padding menor: barras tem horas, range muito largo gera scroll inutil.
@@ -505,6 +533,29 @@
         const start = addDays(minD, -pad);
         const end   = addDays(maxD, pad + 1);
         return { start, end, totalDays: daysBetween(start, end) + 1 };
+    }
+
+    // Largura do gráfico quando ele ainda não tem tamanho (aba escondida):
+    // ~500 px dá os cortes que a Scherer usava à mão (13 dias Dia, 30 Semana,
+    // 100 Mês, acima disso Ano). Visível, vale a largura real.
+    const FIT_FALLBACK_WIDTH = 500;
+    const FIT_ORDER = ['day', 'week', 'month', 'year'];
+
+    // Ano comprimido não desce disso: o mês ainda mostra o nome (~36 px).
+    const MIN_SQUEEZED_PX = 1.2;
+
+    /**
+     * Zoom mais detalhado em que o projeto inteiro (com a folga do range) cabe
+     * em `widthPx`. Se nem o Ano cabe, o Ano comprimido ('year@px'), até
+     * 1,2 px por dia; projeto maior que isso rola.
+     */
+    function fitZoom(tasks, widthPx) {
+        const w = widthPx > 0 ? widthPx : FIT_FALLBACK_WIDTH;
+        for (const z of FIT_ORDER) {
+            if (computeRange(tasks, z).totalDays * zoomMod.pxPerDay(z) <= w) return z;
+        }
+        const px = Math.floor((w / computeRange(tasks, 'year').totalDays) * 100) / 100;
+        return `year@${Math.max(MIN_SQUEEZED_PX, px)}`;
     }
 
     function dayToX(rangeStart, dateLike, pxPerDay) {
@@ -588,6 +639,7 @@
     root.MadGantt = root.MadGantt || {};
     root.MadGantt.coords = {
         computeRange,
+        fitZoom,
         dayToX,
         xToDay,
         dayOffsetFloat,
@@ -1520,6 +1572,39 @@
         return cols;
     }
 
+    // Lateral enxuta (fw#499): ordem em que as colunas saem quando não cabem.
+    // A coluna da árvore (nome) fica sempre; o Fim é o último a sair — a
+    // pergunta de quem abre o cronograma é "o que termina quando".
+    const DROP_ORDER = { duration: 0, progress: 1, code: 2, owner: 3, start: 4, end: 9 };
+
+    /**
+     * Colunas que cabem em `maxW`: tira colunas (DROP_ORDER, depois da direita
+     * para a esquerda) e, se só a da árvore ainda não couber, estreita ela
+     * até 160 px. Devolve { cols, hidden, width }.
+     */
+    function fitColumns(columns, maxW) {
+        const cols = resolveColumns({ columns, showAvatars: false }).map((c) => Object.assign({}, c));
+        const w = (c) => parseInt(c.width, 10) || 120;
+        let total = cols.reduce((a, c) => a + w(c), 0);
+        const order = cols
+            .map((c, i) => ({ c, i, p: DROP_ORDER[c.field] ?? 5 }))
+            .filter((x) => !x.c.tree)
+            .sort((a, b) => (a.p - b.p) || (b.i - a.i));
+        const out = new Set();
+        for (const x of order) {
+            if (total <= maxW) break;
+            out.add(x.c);
+            total -= w(x.c);
+        }
+        const kept = cols.filter((c) => !out.has(c));
+        if (total > maxW) {
+            const tree = kept.find((c) => c.tree) || kept[0];
+            const shrink = Math.min(total - maxW, w(tree) - 160);
+            if (shrink > 0) { tree.width = w(tree) - shrink; total -= shrink; }
+        }
+        return { cols: kept, hidden: out.size, width: total };
+    }
+
     function render(rootEl, rows, opts = {}) {
         if (!rootEl) return;
         const rowH = opts.rowH || 38;
@@ -1687,13 +1772,19 @@
             const cls = c.tree ? 'mad-gantt-th-cell is-tree' : 'mad-gantt-th-cell';
             return `<span class="${cls}" style="width:${c.width || 120}px;text-align:${align}">${escText(label)}</span>`;
         }).join('');
-        rootEl.innerHTML = `<div class="mad-gantt-tl-head-row">${cells}</div>`;
+        // Lateral enxuta: botão para mostrar/recolher as colunas que saíram.
+        const t = opts.toggle;
+        const btn = t ? `<button type="button" class="mad-gantt-cols-toggle" data-gantt-cols-toggle aria-expanded="${t.expanded ? 'true' : 'false'}" title="${escAttr(t.label)}" aria-label="${escAttr(t.label)}">`
+            + `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.expanded ? '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>' : '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>'}</svg>`
+            + `</button>` : '';
+        rootEl.innerHTML = `<div class="mad-gantt-tl-head-row">${cells}</div>${btn}`;
     }
 
     root.MadGantt = root.MadGantt || {};
     root.MadGantt.sidebar = {
         render,
         renderHead,
+        fitColumns,
     };
 
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -3562,7 +3653,9 @@
         root.Alpine.data('madGantt', (cfg = {}) => ({
 
             // ── PUBLIC reactive state ───────────────────────────────────────
-            zoom:               zoom.normalize(cfg.zoom || 'day'),
+            // Zoom auto (padrão): o valor real sai do fitZoom no 1º desenho;
+            // 'month' é só o lugar até lá.
+            zoom:               zoom.isAuto(cfg.zoom) ? 'month' : zoom.normalize(cfg.zoom),
             viewMode:           cfg.viewMode || 'days',
             startDate:          cfg.startDate || '',
             endDate:            cfg.endDate || '',
@@ -3594,6 +3687,16 @@
                 if (vis.length) return vis.reduce((s, c) => s + (parseInt(c.width, 10) || 120), 0);
                 return cfg.taskColWidth || 300;
             })(),
+            // Lateral enxuta (fw#499): colunas que cabem; true/false fixa,
+            // null = ligada só no tema ERP. colsExpanded = o usuário abriu tudo.
+            compactColumns:     (cfg.compactColumns === true || cfg.compactColumns === false) ? cfg.compactColumns : null,
+            sideColumns:        cfg.columns || [],
+            colsHidden:         0,
+            colsExpanded:       false,
+            // Gantt estreito (aba, cartão): o tema ERP enxuga topo e rodapé.
+            narrow:             false,
+            // Botão "Caber tudo": true/false fixa, null = só no tema ERP.
+            fitBtn:             (cfg.fitBtn === true || cfg.fitBtn === false) ? cfg.fitBtn : null,
             showMinimap:        cfg.showMinimap !== false,
             showSearch:         cfg.showSearch !== false,
             showWeekends:       cfg.showWeekends !== false,
@@ -3639,6 +3742,15 @@
             popContentText: '',
 
             _ganttId: cfg.id || null,
+            // true enquanto o zoom é o escolhido pelo componente (auto ou
+            // "Caber tudo"); o clique num zoom fixa.
+            _zoomFit: zoom.isAuto(cfg.zoom),
+            _resizeObs: null,
+            _onWinResize: null,
+            // Raiz do gantt: num método chamado por @click o $el é o botão.
+            _root: null,
+            _lastW: -1,
+            _rafResize: 0,
             _today: new Date(),
             _range: null,
             _rows:  [],
@@ -3660,8 +3772,15 @@
                     this._ganttId = `mad-gantt:${location.pathname}#${idx >= 0 ? idx : 0}`;
                 }
                 if (!this.$el.id) this.$el.id = `mad-gantt-${Math.random().toString(36).slice(2, 9)}`;
+                this._root = this.$el;
                 const prefs = persistence.load(this._ganttId);
-                if (prefs.zoom)            this.zoom = zoom.normalize(prefs.zoom);
+                // Zoom escolhido na sessão. No auto, só vale para o mesmo
+                // projeto (a mesma rota serve fichas de projetos diferentes).
+                if (prefs.zoom && (!this._zoomFit || prefs.zoomFor === this._tasksKey())) {
+                    this.zoom = zoom.normalize(prefs.zoom);
+                    this._zoomFit = false;
+                }
+                if (prefs.colsExpanded)    this.colsExpanded = true;
                 if (prefs.viewMode)        this.viewMode = prefs.viewMode;
                 if (prefs.expanded)        this.expanded = prefs.expanded;
                 if (prefs.collapsedPhases) this.collapsedPhases = prefs.collapsedPhases;
@@ -3701,8 +3820,11 @@
                 this._markDirty('all');
                 this.$nextTick(() => {
                     this._setup();
+                    this._fitLayout();
                     this._flush();
-                    this._scrollToToday();
+                    this._scrollInitial();
+                    this._fillHeight();
+                    this._observeSize();
                 });
             },
 
@@ -3710,6 +3832,9 @@
                 if (this._rafFlush) { cancelAnimationFrame(this._rafFlush); this._rafFlush = 0; }
                 for (const b of this._bindings) { try { b.detach && b.detach(); } catch (_) {} }
                 if (this._themeMo) this._themeMo.disconnect();
+                if (this._resizeObs) this._resizeObs.disconnect();
+                if (this._rafResize) cancelAnimationFrame(this._rafResize);
+                if (this._onWinResize) root.removeEventListener('resize', this._onWinResize);
                 tooltip.hide();
             },
 
@@ -3721,6 +3846,16 @@
                 const svgEl = this.$refs.chartSvg;
                 const mmEl  = this.$refs.minimap;
                 const tasklistEl = tasklist;
+
+                // Botão da lateral enxuta (o cabeçalho é refeito por innerHTML).
+                const head = this.$refs.tasklistHead;
+                if (head) {
+                    const onHeadClick = (e) => {
+                        if (e.target.closest && e.target.closest('[data-gantt-cols-toggle]')) this.toggleColumns();
+                    };
+                    head.addEventListener('click', onHeadClick);
+                    this._bindings.push({ detach: () => head.removeEventListener('click', onHeadClick) });
+                }
 
                 if (chartScroll) {
                     this._bindings.push(scrollSync.attach({
@@ -3816,13 +3951,155 @@
                 this._themeMo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
             },
 
+            // ── Tamanho: zoom auto, lateral enxuta e altura (fw#499) ───────
+            _isErp() {
+                return !!(document.body && document.body.classList.contains('mad-layout-erp'));
+            },
+            showFitBtn() {
+                return this.fitBtn === null ? this._isErp() : this.fitBtn;
+            },
+            /** Assinatura do projeto (1º início–último fim): o zoom salvo no auto vale só para ela. */
+            _tasksKey() {
+                let a = '', b = '';
+                for (const t of this.tasks) {
+                    const s = String(t.start || '').slice(0, 10);
+                    const e = String(t.end || t.start || '').slice(0, 10);
+                    if (s && (!a || s < a)) a = s;
+                    if (e && (!b || e > b)) b = e;
+                }
+                return a + '|' + b;
+            },
+            /** Lateral (colunas que cabem) e, no auto, o zoom pela largura que sobra. Devolve true se algo mudou. */
+            _fitLayout() {
+                const W = this._root.clientWidth;
+                let changed = false;
+                this.narrow = W > 0 && W < 760;
+                const declared = (this.columns || []).filter((c) => c && !c.hidden && c.field);
+                if (declared.length) {
+                    const on = this.compactColumns === null ? this._isErp() : this.compactColumns;
+                    let next = { cols: this.columns, hidden: 0, width: declared.reduce((a, c) => a + (parseInt(c.width, 10) || 120), 0) };
+                    if (on && W > 0) {
+                        // Até 38% do gantt (160–360 px): no cartão de 2/3 fica só o
+                        // nome; na tela cheia, nome + Fim.
+                        const fit = sidebar.fitColumns(declared, Math.max(160, Math.min(360, Math.round(W * 0.38))));
+                        if (fit.hidden > 0 || fit.width < next.width) {
+                            this.colsHidden = fit.hidden;
+                            if (!this.colsExpanded) next = fit;
+                        } else {
+                            this.colsHidden = 0;
+                        }
+                    } else if (!on) {
+                        this.colsHidden = 0;
+                    }
+                    if (next.width !== this.taskColWidth || next.cols.length !== (this.sideColumns || []).length) changed = true;
+                    this.sideColumns = next.cols;
+                    this.taskColWidth = next.width;
+                }
+                if (this._zoomFit) {
+                    // Largura do gráfico = gantt − lateral − borda (não espera o
+                    // reflow do :style). No celular o CSS trava a lateral em 45vw.
+                    const mobile = root.matchMedia && root.matchMedia('(max-width: 768px)').matches;
+                    const side = mobile ? Math.min(this.taskColWidth, root.innerWidth * 0.45) : this.taskColWidth;
+                    const z = coords.fitZoom(this.tasks, W > 0 ? W - side - 2 : 0);
+                    if (z !== this.zoom) { this.zoom = z; changed = true; }
+                }
+                return changed;
+            },
+            _observeSize() {
+                this._onWinResize = () => this._fillHeight();
+                root.addEventListener('resize', this._onWinResize);
+                if (!root.ResizeObserver) return;
+                this._lastW = this._root.clientWidth;
+                this._resizeObs = new root.ResizeObserver(() => {
+                    if (this._rafResize) return;
+                    this._rafResize = requestAnimationFrame(() => {
+                        this._rafResize = 0;
+                        const W = this._root.clientWidth;
+                        if (W === this._lastW) return;
+                        const wasHidden = this._lastW <= 0;
+                        this._lastW = W;
+                        if (W <= 0) return;
+                        // Gantt numa aba escondida nasce com largura 0: o zoom e a
+                        // lateral são refeitos quando a aba abre (e a cada mudança
+                        // de largura enquanto o zoom é o automático).
+                        if (this._fitLayout()) {
+                            this._markDirty('all');
+                            this._scheduleFlush(wasHidden ? () => this._scrollInitial() : null);
+                        } else if (wasHidden) {
+                            this._scrollInitial();
+                        }
+                        if (wasHidden) this._fillHeight();
+                    });
+                });
+                this._resizeObs.observe(this._root);
+            },
+            /**
+             * Tema ERP: o gantt cresce até o fim da janela quando a página
+             * ainda cabe nela — usa a sobra, nunca cria rolagem nova nem
+             * empurra para fora o que vem depois dele.
+             */
+            _fillHeight() {
+                const el = this._root;
+                if (!this._isErp() || !el.offsetParent) return;
+                el.style.minHeight = '';
+                const doc = document.documentElement;
+                const sc = scrollParent(el);
+                const overflow = () => Math.max(doc.scrollHeight - root.innerHeight, sc ? sc.scrollHeight - sc.clientHeight : 0);
+                if (overflow() > 0) return;
+                const base = el.getBoundingClientRect().height;
+                // Sobra = fim da janela − fim do conteúdo da área que rola (o shell
+                // pode rolar num contêiner, não no documento). Se mesmo assim algo
+                // passar a rolar (rodapé fixo, limite de altura), devolve o excesso.
+                let grow = Math.floor(root.innerHeight - contentBottom(sc || document.body) - 16);
+                if (grow <= 8) return;
+                el.style.minHeight = `${Math.round(base + grow)}px`;
+                const over = overflow();
+                if (over > 0) {
+                    grow -= over;
+                    el.style.minHeight = grow > 8 ? `${Math.round(base + grow)}px` : '';
+                }
+            },
+            /** Botão "Caber tudo": volta ao zoom automático e mostra o projeto desde o começo. */
+            fitAll() {
+                this._zoomFit = true;
+                persistence.save(this._ganttId, { zoom: null, zoomFor: null });
+                this._fitLayout();
+                this._markDirty('all');
+                this._scheduleFlush(() => { if (this.$refs.chartScroll) this.$refs.chartScroll.scrollLeft = 0; });
+            },
+            toggleColumns() {
+                this.colsExpanded = !this.colsExpanded;
+                persistence.save(this._ganttId, { colsExpanded: this.colsExpanded });
+                this._fitLayout();
+                this._markDirty('all');
+                this._scheduleFlush();
+            },
+            /** Rolagem ao abrir: hoje (−200 px) quando hoje cai entre o 1º início e o último fim; fora disso, o começo. */
+            _scrollInitial() {
+                if (!this._range || !this.$refs.chartScroll) return;
+                const [a, b] = this._tasksKey().split('|');
+                const t = dates.fmtISO(this._today);
+                if (a && t >= a && t <= b) this._scrollToToday();
+                else this.$refs.chartScroll.scrollLeft = 0;
+            },
+            /** Zoom que o seletor mostra como ativo (o Ano comprimido acende o Ano). */
+            zoomBase() {
+                return zoom.base(this.zoom);
+            },
+
             _scrollToToday() {
                 if (!this._range || !this.$refs.chartScroll) return;
                 const pxPerDay = zoom.get(this.zoom).pxPerDay;
                 // Offset DST-safe (dia inteiro round + fração intradia)
                 const offFloat = coords.dayOffsetFloat(this._range.start, this._today);
-                const x = Math.max(0, offFloat * pxPerDay - 200);
-                this.$refs.chartScroll.scrollLeft = x;
+                // Hoje a ~1/4 da largura visível (fw#500): o recuo fixo de 200 px
+                // passava da janela inteira no celular (marca de hoje fora da
+                // tela). Preso ao começo e ao fim do gráfico.
+                const chart = this.$refs.chartScroll;
+                const vw = chart.clientWidth;
+                const want = offFloat * pxPerDay - (vw > 0 ? vw / 4 : 200);
+                const max = Math.max(0, chart.scrollWidth - vw);
+                chart.scrollLeft = Math.min(Math.max(0, want), max);
             },
 
             // ── Reactive watchers via Alpine $watch (set up in init) ───────
@@ -3846,11 +4123,13 @@
             goToday() { this._scrollToToday(); },
 
             setZoom(z) {
+                if (zoom.isAuto(z)) { this.zoomOpen = false; this.fitAll(); return; }
                 this.zoom = zoom.normalize(z);
-                persistence.save(this._ganttId, { zoom: this.zoom });
+                this._zoomFit = false;
+                persistence.save(this._ganttId, { zoom: this.zoom, zoomFor: this._tasksKey() });
                 this.zoomOpen = false;
                 this._markDirty('all');
-                this._scheduleFlush(() => this._scrollToToday());
+                this._scheduleFlush(() => this._scrollInitial());
             },
             setViewMode(m) {
                 this.viewMode = m;
@@ -4183,9 +4462,14 @@
                 // Sidebar (head + body)
                 if (all || d.sidebar) {
                     if (this.$refs.tasklistHead) {
+                        const L = cfg.labels || {};
                         sidebar.renderHead(this.$refs.tasklistHead, {
                             showAvatars: this.showAvatars,
-                            columns: this.columns,
+                            columns: this.sideColumns,
+                            toggle: this.colsHidden > 0 ? {
+                                expanded: this.colsExpanded,
+                                label: this.colsExpanded ? (L.hideColumns || 'Recolher colunas') : (L.showColumns || 'Mostrar todas as colunas'),
+                            } : null,
                         });
                     }
                     if (this.$refs.tasklist) {
@@ -4195,7 +4479,7 @@
                             expanded: this.expanded,
                             showAvatars: this.showAvatars,
                             people: this.people,
-                            columns: this.columns,
+                            columns: this.sideColumns,
                             criticalSet: this.criticalSet,
                             criticalMode: this.criticalMode,
                             theme: this.theme,
@@ -4269,6 +4553,26 @@
     }
 
     // ── Module-private helpers ────────────────────────────────────────────
+
+    /** Ancestral mais próximo que rola na vertical (null = o documento). */
+    function scrollParent(el) {
+        for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+            const oy = getComputedStyle(p).overflowY;
+            if (oy === 'auto' || oy === 'scroll') return p;
+        }
+        return null;
+    }
+
+    /** Fim (y na janela) do conteúdo de `box`: o filho mais baixo no fluxo + o padding de baixo. */
+    function contentBottom(box) {
+        let bottom = box.getBoundingClientRect().top;
+        for (const c of box.children) {
+            const cs = getComputedStyle(c);
+            if (cs.display === 'none' || cs.position === 'fixed' || cs.position === 'absolute') continue;
+            bottom = Math.max(bottom, c.getBoundingClientRect().bottom + (parseFloat(cs.marginBottom) || 0));
+        }
+        return bottom + (parseFloat(getComputedStyle(box).paddingBottom) || 0);
+    }
 
     function detectTheme() {
         const d = document.documentElement;

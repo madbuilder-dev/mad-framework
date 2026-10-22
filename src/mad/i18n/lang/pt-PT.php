@@ -253,6 +253,12 @@ return [
         // opção do valor que o campo já tem e a lista de quem edita não mostra.
         'field' => [
             'outside_option' => 'Registo atual (fora da sua lista)',
+            // Campo de arquivo no celular (fw#495).
+            'take_photo'     => 'Tirar fotografia',
+            'tap_to_choose'  => 'Toque para escolher um ficheiro',
+            // Campo em leitura e <mad-display-field> booleano (fw#498).
+            'yes'            => 'Sim',
+            'no'             => 'Não',
         ],
 
         'grid' => [
