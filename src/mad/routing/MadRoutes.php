@@ -109,14 +109,22 @@ class MadRoutes
      * resource()). Use p/ telas auxiliares de uma tela principal (ex.: FolderForm
      * do GED, auxiliar de DocumentList) — sem isso, um banco sem o programa
      * seedado nega o acesso SILENCIOSAMENTE (o botão "não funciona").
+     *
+     * $opts['middleware'] = classe(s) de middleware só desta tela, na rota do
+     * slug (ex.: o login manda quem já entrou para a tela inicial).
      */
     public static function expose(string $key, string $class, array $opts = []): void
     {
         foreach (self::slugsFor($key, $opts) as $slug) {
             self::$uris['app/' . $slug] = true;
-            Route::match(['get', 'post'], '/app/' . $slug . '/{method?}', [MadAppController::class, 'run'])
+            $route = Route::match(['get', 'post'], '/app/' . $slug . '/{method?}', [MadAppController::class, 'run'])
                 ->where('method', '[A-Za-z][A-Za-z0-9_]*')
                 ->defaults('class', $class);
+            // Middleware só desta tela (ex.: o login manda quem já entrou
+            // para a tela inicial).
+            if (!empty($opts['middleware'])) {
+                $route->middleware($opts['middleware']);
+            }
         }
 
         if (!empty($opts['permissionFrom'])) {
@@ -127,7 +135,7 @@ class MadRoutes
             // expose() registra GET+POST /{slug}/{method?} → aceita método no slug.
             self::$routeMap[$class] = ['kind' => 'list', 'path' => '/' . $slug, 'methodRoute' => true];
             // Mesma rota pelo NOME da classe: Mad.go('Classe') sem URL amigável.
-            self::classAlias($class, ['GET', 'POST'], '[A-Za-z][A-Za-z0-9_]*');
+            self::classAlias($class, ['GET', 'POST'], '[A-Za-z][A-Za-z0-9_]*', null, [], $opts['middleware'] ?? null);
         }
     }
 
@@ -592,7 +600,7 @@ class MadRoutes
      *                                       só a abertura (/<Classe> e /<Classe>/show)
      * @param array<string, string> $fixed   segmento de método com rota própria => método
      */
-    private static function classAlias(string $class, array $verbs, ?string $methods, ?string $defaultMethod = null, array $fixed = []): void
+    private static function classAlias(string $class, array $verbs, ?string $methods, ?string $defaultMethod = null, array $fixed = [], array|string|null $middleware = null): void
     {
         // FQCN (com `\\`) ou nome fora do padrão de classe não vira segmento de URL.
         if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class)) {
@@ -606,9 +614,12 @@ class MadRoutes
         self::$uris[$uri] = true;
 
         if ($methods !== null) {
-            Route::match($verbs, '/' . $uri . '/{method?}', [MadAppController::class, 'run'])
+            $route = Route::match($verbs, '/' . $uri . '/{method?}', [MadAppController::class, 'run'])
                 ->where('method', $methods)
                 ->defaults('class', $class);
+            if (!empty($middleware)) {
+                $route->middleware($middleware);
+            }
 
             return;
         }

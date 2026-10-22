@@ -113,6 +113,15 @@ class MadDashFiltersCompiler
      * (`<mad-grid-filters style="form"><mad-date-field … />`): o padrão do
      * bloco self-closing casava até o `/>` do CAMPO e o campo sumia da tela.
      */
+    /**
+     * Marcador de origem do Modo Vibe (MadSourceMarkers), abertura e fim. O
+     * `e` depois do filtro entra possessivo (`?+`): devolvido no backtracking,
+     * o lookahead de idempotência do wrap do dashboard deixava de ver o
+     * `mad-dashf-main` e embrulhava duas vezes.
+     */
+    private const SRC_S = '(?:<!--mad:s\d+@[^>]*?-->)';
+    private const SRC_E = '(?:<!--mad:e\d+@[^>]*?-->)';
+
     private const ATTR_PATTERN = '(?:\s+(?:@?:?[a-zA-Z0-9_:.-]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?))*';
 
     /**
@@ -160,16 +169,20 @@ class MadDashFiltersCompiler
 
             // (?![-\w]) e NÃO \b: `<mad-grid\b` casaria `<mad-grid-filters`, e
             // `<mad-calendar\b` casaria `<mad-calendar-toolbar`.
+            // O marcador de origem do host (MAD_SOURCE_MARKERS) vai junto com a
+            // tag, e o do filtro, junto com o filtro: o par de cada um continua
+            // em volta da própria tag depois do içamento. Sem marcador os grupos
+            // opcionais casam vazio.
             $template = preg_replace_callback(
-                '#<' . $host . '(?![-\w])(' . self::ATTR_PATTERN . ')\s*>(.*?)</' . $host . '\s*>#s',
+                '#(' . self::SRC_S . '?)<' . $host . '(?![-\w])(' . self::ATTR_PATTERN . ')\s*>(.*?)</' . $host . '\s*>#s',
                 static function (array $m) use ($alias, $host, $open): string {
-                    $body = $m[2];
+                    $body = $m[3];
                     if (strpos($body, $open) === false) return $m[0];
 
                     $lifted = '';
                     $body = preg_replace_callback(
-                        '#' . preg_quote($open, '#') . '(?![-\w])(' . self::ATTR_PATTERN . ')\s*'
-                            . '(?:/\s*>|>(.*?)</mad-' . $alias . '-filters\s*>)#s',
+                        '#(?:<!--mad:s(\d+)@[^>]*?-->)?' . preg_quote($open, '#') . '(?![-\w])(' . self::ATTR_PATTERN . ')\s*'
+                            . '(?:/\s*>|>(.*?)</mad-' . $alias . '-filters\s*>)(?(1)<!--mad:e\1@[^>]*?-->)#s',
                         static function (array $f) use (&$lifted): string {
                             $lifted .= $f[0];
                             return '';
@@ -178,7 +191,7 @@ class MadDashFiltersCompiler
                     );
                     if ($lifted === '') return $m[0];
 
-                    return $lifted . '<' . $host . $m[1] . '>' . $body . '</' . $host . '>';
+                    return $lifted . $m[1] . '<' . $host . $m[2] . '>' . $body . '</' . $host . '>';
                 },
                 $template
             );
@@ -255,9 +268,11 @@ class MadDashFiltersCompiler
         }
 
         return preg_replace_callback(
-            '#(<mad-grid-filters' . self::ATTR_PATTERN . '\s*>.*?</mad-grid-filters>'
-                . '|<mad-grid-filters' . self::ATTR_PATTERN . '\s*/\s*>)'
-                . '\s*(<mad-grid\b.*?</mad-grid>)#s',
+            // Marcadores de origem (MAD_SOURCE_MARKERS) entre o filtro e a grade
+            // ficam cada um com a sua tag, dentro da coluna certa do layout.
+            '#(' . self::SRC_S . '?(?:<mad-grid-filters' . self::ATTR_PATTERN . '\s*>.*?</mad-grid-filters>'
+                . '|<mad-grid-filters' . self::ATTR_PATTERN . '\s*/\s*>)' . self::SRC_E . '?)'
+                . '\s*(' . self::SRC_S . '?<mad-grid\b.*?</mad-grid>' . self::SRC_E . '?)#s',
             function ($m) {
                 if (!preg_match('#style\s*=\s*["\']sidebar-(left|right)["\']#', $m[1], $s)) {
                     return $m[0];
@@ -291,8 +306,8 @@ class MadDashFiltersCompiler
         }
 
         return preg_replace_callback(
-            '#(<mad-dash-filters' . self::ATTR_PATTERN . '\s*>.*?</mad-dash-filters>'
-                . '|<mad-dash-filters' . self::ATTR_PATTERN . '\s*/\s*>)'
+            '#(' . self::SRC_S . '?(?:<mad-dash-filters' . self::ATTR_PATTERN . '\s*>.*?</mad-dash-filters>'
+                . '|<mad-dash-filters' . self::ATTR_PATTERN . '\s*/\s*>)' . self::SRC_E . '?+)'
                 . '(?!\s*<div class="mad-dashf-main")'
                 . '\s*(.*?)(</mad-page-content>)#s',
             function ($m) {

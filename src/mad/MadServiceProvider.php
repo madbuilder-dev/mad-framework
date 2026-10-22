@@ -158,7 +158,31 @@ class MadServiceProvider extends ServiceProvider
         $this->bootSchedulePause();
         $this->bootWebhooks();
         $this->bootRoutines();
+        $this->bootVibePreview();
         self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));
+    }
+
+    /**
+     * Modo Vibe (só no Teste Online — a plataforma escreve as chaves no `.env`
+     * do container). Sem as chaves, nada é registrado: o app fica idêntico.
+     */
+    private function bootVibePreview(): void
+    {
+        if (\Mad\Support\VibePreview::agentBridge()) {
+            // GLOBAL e na FRENTE de todos: vê a resposta que o handler de
+            // exceção renderizou (404 sem rota, 419, 500) e a de manutenção.
+            $this->app->make(\Illuminate\Contracts\Http\Kernel::class)
+                ->prependMiddleware(\Mad\Http\Middleware\InjectAgentBridge::class);
+        }
+
+        if (\Mad\Support\VibePreview::previewLoginSecret() !== '') {
+            // SSO do preview. GET (fora do CSRF) e FORA do log de requisições:
+            // o token na query não pode ir parar no banco.
+            Route::middleware(['web'])
+                ->withoutMiddleware([\App\Http\Middleware\LogRequest::class])
+                ->get('/__mad/preview-login', \Mad\Http\Controllers\PreviewLoginController::class)
+                ->name('mad.preview-login');
+        }
     }
 
     /**

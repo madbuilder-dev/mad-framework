@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.207.0] — 2026-10-22
+
+### Melhorias
+
+- **Login:** quem já entrou e abre o endereço do sistema, `/app` ou a tela de login vai direto para a tela inicial, em vez de ver o formulário de login outra vez. Sair, recarregar permissões e entrar com outro usuário continuam funcionando pelo login.
+- **Modo Vibe:** o app de teste aberto no Studio passa a ligar clique no app ao componente da tela, entrada sem senha e controle do agente também nas páginas de erro. Esses recursos só valem no Teste Online: no app publicado nada muda.
+
 ## [5.202.0] — 2026-10-22
 
 ### Novidades

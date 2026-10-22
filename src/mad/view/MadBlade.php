@@ -23,8 +23,43 @@ class MadBladeCompiler extends BladeCompiler
     /** Desliga o ComponentTagCompiler nativo — <x-*> é nosso. */
     protected $compilesComponentTags = false;
 
+    /** Diretório de views do app — só views dali ganham marcador de origem. */
+    protected ?string $appViewsPath = null;
+
+    public function setAppViewsPath(?string $path): void
+    {
+        $this->appViewsPath = $path;
+    }
+
+    /**
+     * Com marcadores ligados, o compilado vai para OUTRO arquivo de cache: o
+     * compilado sem marcador que já estava lá (mesmo mtime da view) não serve.
+     * Desligado, o caminho é o de sempre.
+     */
+    public function getCompiledPath($path)
+    {
+        $compiled = parent::getCompiledPath($path);
+        return MadSourceMarkers::enabled()
+            ? substr($compiled, 0, -strlen('.' . $this->compiledExtension)) . '.src.' . $this->compiledExtension
+            : $compiled;
+    }
+
     public function compileString($value)
     {
+        // 0. Marcadores de origem do Modo Vibe (MAD_SOURCE_MARKERS=1, só no
+        //    Teste Online): <!--mad:s{n}@{view}--> em volta de cada <mad-*> da
+        //    view do app, ANTES de qualquer precompiler mexer no texto — o
+        //    ordinal é o da tag como o Studio a vê. Desligado, nada muda.
+        if (MadSourceMarkers::enabled()) {
+            $viewKey = MadSourceMarkers::viewKey(
+                $this->getPath(),
+                $this->appViewsPath ?? (function_exists('resource_path') ? resource_path('views') : null)
+            );
+            if ($viewKey !== null) {
+                $value = MadSourceMarkers::annotate($value, $viewKey);
+            }
+        }
+
         // 0.85. Canonicaliza a POSIÇÃO do bloco de filtros: escrito DENTRO do
         //       componente que ele filtra (<mad-grid-filters> dentro de
         //       <mad-grid>, idem kanban/calendar/gantt), o bloco é içado pra
@@ -1474,6 +1509,7 @@ HTML;
         $files = new \Illuminate\Filesystem\Filesystem();
 
         self::$compiler = new MadBladeCompiler($files, $cache);
+        self::$compiler->setAppViewsPath($views);
 
         $resolver = new \Illuminate\View\Engines\EngineResolver();
         $resolver->register('blade', fn () => new \Illuminate\View\Engines\CompilerEngine(self::$compiler, $files));
