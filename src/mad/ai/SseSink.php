@@ -125,9 +125,16 @@ final class SseSink
         $this->emit('message_end', $data);
     }
 
-    public function error(string $message): void
+    /**
+     * Erro do turno. `$code`/`$resetAt` dizem ao chat embutido o MOTIVO (chat
+     * desligado, plano, cota — e quando volta) sem depender do texto; sem
+     * motivo conhecido o frame é só `{message}`, como sempre foi.
+     */
+    public function error(string $message, ?string $code = null, ?string $resetAt = null): void
     {
-        $this->emit('error', ['message' => $message]);
+        $this->emit('error', ['message' => $message]
+            + ($code !== null && $code !== '' ? ['code' => $code] : [])
+            + ($resetAt !== null && $resetAt !== '' ? ['reset_at' => $resetAt] : []));
     }
 
     /** Evento opcional p/ o cliente exibir a contagem de tokens do turno. */

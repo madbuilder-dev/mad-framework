@@ -31,6 +31,11 @@ use Laravel\Ai\Tools\ToolNameResolver;
  *
  * Fail-fast: mint/stream indisponível → sink->error (não cai em provider
  * local — este app não tem chave de IA).
+ *
+ * Modo proxy (viaProxy — MAD_AI_PROXY, app sem chave de IA e sem Coding
+ * Plan): o MESMO loop, com o modelo servido pela chave da plataforma. Sem
+ * mint: cada rodada vai para POST {MAD_BUILDER_URL}/api/app/ai/chat com o
+ * MAD_PROJECT_TOKEN, mesmo corpo {messages, tools} e mesmos quadros SSE.
  */
 final class CodingPlanAgentRunner
 {
@@ -150,6 +155,8 @@ final class CodingPlanAgentRunner
     /** Sem sessão e sem motivo conhecido (rede, resposta sem `code`). */
     private const MINT_UNAVAILABLE = 'Mad Coding Plan indisponível (falha ao autenticar no builder).';
 
+    private const NOT_LINKED = 'Chat IA sem vínculo com o MadBuilder (MAD_BUILDER_URL / MAD_PROJECT_TOKEN ausentes no .env do app).';
+
     /**
      * Saída não entregue a partir da qual a rodada é fantasma. Uma chamada de
      * tool perdida custa 200–450 tokens; o texto que chega é estimado com
@@ -167,6 +174,9 @@ final class CodingPlanAgentRunner
     /** @var array{token: string, endpoint: string, exp: int}|null cache por worker */
     private static ?array $session = null;
 
+    /** Modelo pela plataforma (POST /api/app/ai/chat) em vez do Coding Plan. */
+    private bool $proxy = false;
+
     /**
      * @param (\Closure(string $endpoint, string $token, string $body, \Closure(string): bool $feed): array{0: bool, 1: int, 2: string})|null $stream
      *        transporte da rodada (testes); null = cURL no stream do builder.
@@ -174,6 +184,19 @@ final class CodingPlanAgentRunner
      */
     public function __construct(private SseSink $sink, private ?\Closure $stream = null)
     {
+    }
+
+    /**
+     * Runner do modo proxy (MAD_AI_PROXY): mesmo loop, mesmo contrato do
+     * stream; só a sessão (token do projeto, sem mint) e os textos de falha
+     * mudam.
+     */
+    public static function viaProxy(SseSink $sink, ?\Closure $stream = null): self
+    {
+        $runner        = new self($sink, $stream);
+        $runner->proxy = true;
+
+        return $runner;
     }
 
     /**
@@ -185,10 +208,11 @@ final class CodingPlanAgentRunner
      */
     public function run(string $system, array $history, array $tools, string $userMessage, string $context = ''): AgentResult
     {
-        $refusal = null;
-        $sess    = self::mintSession($refusal);
+        $refusal     = null;
+        $refusalBody = [];
+        $sess        = $this->proxy ? self::proxySession($refusal) : self::mintSession($refusal, $refusalBody);
         if ($sess === null) {
-            $this->sink->error($refusal ?? self::MINT_UNAVAILABLE);
+            $this->fail($refusal ?? self::MINT_UNAVAILABLE, $refusalBody);
 
             return new AgentResult('', null, false);
         }
@@ -459,7 +483,9 @@ final class CodingPlanAgentRunner
         $pending = [];   // id => {id, name, json}
         $order   = [];   // ordem de chegada dos tool_use
         $failed  = null;
+        $failedData = []; // frame de erro da plataforma: code/reset_at seguem até o iframe
         $buffer  = '';
+        $raw     = ''; // começo da resposta crua: corpo JSON de uma recusa (4xx)
         $sink    = $this->sink;
 
         $muted = false;
@@ -471,7 +497,7 @@ final class CodingPlanAgentRunner
         $deliveredChars = 0;
         $unmeasurable   = false;
 
-        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, &$usage, $sink, &$aborted, &$leaked, &$muted, &$roundOut, &$deliveredChars, &$unmeasurable): void {
+        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, &$failedData, &$usage, $sink, &$aborted, &$leaked, &$muted, &$roundOut, &$deliveredChars, &$unmeasurable): void {
             $type = (string) ($ev['type'] ?? '');
             $d    = (array) ($ev['data'] ?? []);
             if ($type === 'text_delta') {
@@ -516,21 +542,27 @@ final class CodingPlanAgentRunner
                     $deliveredChars += mb_strlen((string) ($d['thinking'] ?? ''));
                 }
             } elseif ($type === 'usage') {
-                $roundOut                      = ($roundOut ?? 0) + (int) ($d['completion_tokens'] ?? 0);
+                // Raciocínio cobrado sem bloco no stream (o proxy da plataforma
+                // repassa o usage cru do OpenRouter) não é saída perdida.
+                $roundOut                      = ($roundOut ?? 0) + max(0, (int) ($d['completion_tokens'] ?? 0) - (int) ($d['completion_tokens_details']['reasoning_tokens'] ?? 0));
                 // `prompt_tokens` do agente ja inclui o cache (mesma semantica do TextUsage).
                 $usage['in']          += (int) ($d['prompt_tokens'] ?? 0);
                 $usage['out']         += (int) ($d['completion_tokens'] ?? 0);
-                $usage['cache_read']  += (int) ($d['cache_read_input_tokens'] ?? 0);
+                $usage['cache_read']  += (int) ($d['cache_read_input_tokens'] ?? $d['prompt_tokens_details']['cached_tokens'] ?? 0);
                 $usage['cache_write'] += (int) ($d['cache_creation_input_tokens'] ?? 0);
             } elseif ($type === 'error') {
-                $failed = (string) ($d['message'] ?? 'Erro no modelo de IA.');
+                $failed     = (string) ($d['message'] ?? 'Erro no modelo de IA.');
+                $failedData = $d;
             }
             if ($sink->aborted()) {
                 $aborted = true;
             }
         };
 
-        $feed = function (string $chunk) use (&$buffer, $onFrame, &$aborted): bool {
+        $feed = function (string $chunk) use (&$buffer, &$raw, $onFrame, &$aborted): bool {
+            if (strlen($raw) < 4096) {
+                $raw .= $chunk;
+            }
             $buffer .= $chunk;
             while (($pos = strpos($buffer, "\n")) !== false) {
                 $line   = rtrim(substr($buffer, 0, $pos), "\r");
@@ -555,15 +587,27 @@ final class CodingPlanAgentRunner
             return [$text, [], 0];
         }
         if ($failed !== null) {
-            $this->sink->error($failed);
+            $this->fail($failed, $failedData);
+
+            return null;
+        }
+        // Recusa em JSON (4xx do /api/app/ai/chat ou do Node): o `code` segue.
+        $refusalBody = [];
+        if ($okCurl !== false && $status >= 400) {
+            $decoded     = json_decode($raw, true);
+            $refusalBody = is_array($decoded) ? $decoded : [];
+        }
+        if (($okCurl === false || $status >= 400) && $this->proxy) {
+            \error_log('[embed-proxy] HTTP ' . $status . ($err !== '' ? " ({$err})" : '') . ': ' . mb_substr($raw, 0, 200));
+            $this->fail(self::proxyFailure($status, $raw, $err), $refusalBody);
 
             return null;
         }
         if ($okCurl === false || $status >= 400) {
             self::$session = null; // JWT pode ter expirado — próximo turno re-minta
-            $this->sink->error($status === 401
+            $this->fail($status === 401
                 ? 'Sessão do Mad Coding Plan expirou — tente novamente.'
-                : ('Stream do Mad Coding Plan falhou' . ($err !== '' ? " ({$err})" : " (HTTP {$status})") . '.'));
+                : ('Stream do Mad Coding Plan falhou' . ($err !== '' ? " ({$err})" : " (HTTP {$status})") . '.'), $refusalBody);
 
             return null;
         }
@@ -585,6 +629,24 @@ final class CodingPlanAgentRunner
     }
 
     /**
+     * Erro do turno com o motivo da plataforma, quando ela deu um: `code` e
+     * `reset_at` do corpo da recusa (ou do frame de erro) vão no frame para o
+     * chat embutido escolher a mensagem do usuário final sem ler o texto.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function fail(string $message, array $body = []): void
+    {
+        $code    = $body['code'] ?? null;
+        $resetAt = $body['reset_at'] ?? null;
+        $this->sink->error(
+            $message,
+            is_string($code) && $code !== '' ? $code : null,
+            is_string($resetAt) && $resetAt !== '' ? $resetAt : null,
+        );
+    }
+
+    /**
      * Texto para o usuário quando a plataforma recusa a sessão: um por `code`
      * da resposta (403 do /api/embed-llm/session). Código desconhecido cai na
      * falha genérica com o status HTTP.
@@ -592,6 +654,18 @@ final class CodingPlanAgentRunner
      * @param array<string, mixed> $body
      */
     public static function refusalMessage(int $status, array $body): string
+    {
+        return self::knownRefusal($status, $body)
+            ?? 'Mad Coding Plan indisponível (o MadBuilder recusou: HTTP ' . $status . ').';
+    }
+
+    /**
+     * Texto de uma recusa da plataforma com motivo conhecido (`code` da
+     * resposta ou 401); null quando não há motivo para contar.
+     *
+     * @param array<string, mixed> $body
+     */
+    private static function knownRefusal(int $status, array $body): ?string
     {
         $code = (string) ($body['code'] ?? '');
 
@@ -617,7 +691,24 @@ final class CodingPlanAgentRunner
             return 'O MadBuilder não reconheceu este app (token do projeto inválido ou revogado). Publique o projeto de novo.';
         }
 
-        return 'Mad Coding Plan indisponível (o MadBuilder recusou: HTTP ' . $status . ').';
+        return null;
+    }
+
+    /**
+     * Texto para o usuário quando a rodada do modo proxy falha: a recusa da
+     * plataforma (chat desligado no projeto, plano sem o Chat IA, token
+     * revogado), o `error` que ela mandou ou a falha de rede.
+     */
+    private static function proxyFailure(int $status, string $raw, string $err): string
+    {
+        if ($status < 400) {
+            return 'O Chat IA não conseguiu falar com o MadBuilder' . ($err !== '' ? " ({$err})" : '') . '. Tente de novo.';
+        }
+        $body = json_decode($raw, true);
+        $body = is_array($body) ? $body : [];
+
+        return self::knownRefusal($status, $body)
+            ?? (trim((string) ($body['error'] ?? '')) ?: 'O Chat IA está indisponível (o MadBuilder recusou: HTTP ' . $status . ').');
     }
 
     /** 'd/m/Y H:i' no fuso do app; '' quando não dá para ler. */
@@ -677,11 +768,13 @@ final class CodingPlanAgentRunner
      *
      * Sem sessão, `$refusal` diz ao usuário POR QUÊ — o chat desligado no
      * projeto, a franquia que acabou, o app sem vínculo — em vez da falha
-     * genérica (null = sem motivo conhecido: MINT_UNAVAILABLE).
+     * genérica (null = sem motivo conhecido: MINT_UNAVAILABLE). `$refusalBody`
+     * = corpo da recusa, para o `code`/`reset_at` seguirem até o iframe.
      *
+     * @param array<string, mixed> $refusalBody
      * @return array{token: string, endpoint: string, exp: int}|null
      */
-    private static function mintSession(?string &$refusal = null): ?array
+    private static function mintSession(?string &$refusal = null, array &$refusalBody = []): ?array
     {
         if (self::$session !== null && self::$session['exp'] - time() > 60) {
             return self::$session;
@@ -690,7 +783,7 @@ final class CodingPlanAgentRunner
         $builderUrl   = rtrim((string) config('mad.builder.url'), '/');
         $projectToken = (string) config('mad.builder.token');
         if ($builderUrl === '' || $projectToken === '') {
-            $refusal = 'Chat IA sem vínculo com o MadBuilder (MAD_BUILDER_URL / MAD_PROJECT_TOKEN ausentes no .env do app).';
+            $refusal = self::NOT_LINKED;
 
             return null;
         }
@@ -708,7 +801,8 @@ final class CodingPlanAgentRunner
         }
         if (! $resp->successful()) {
             \error_log('[coding-plan] mint HTTP ' . $resp->status() . ': ' . mb_substr((string) $resp->body(), 0, 200));
-            $refusal = self::refusalMessage($resp->status(), (array) $resp->json());
+            $refusalBody = (array) $resp->json();
+            $refusal     = self::refusalMessage($resp->status(), $refusalBody);
 
             return null;
         }
@@ -731,5 +825,24 @@ final class CodingPlanAgentRunner
             'endpoint' => $endpoint,
             'exp'      => time() + (int) ($data['expires_in'] ?? 900),
         ];
+    }
+
+    /**
+     * Sessão do modo proxy: o próprio MAD_PROJECT_TOKEN autentica cada rodada
+     * no /api/app/ai/chat da plataforma (sem mint, sem expiração local).
+     *
+     * @return array{token: string, endpoint: string, exp: int}|null
+     */
+    private static function proxySession(?string &$refusal = null): ?array
+    {
+        $builderUrl   = rtrim((string) config('mad.builder.url'), '/');
+        $projectToken = (string) config('mad.builder.token');
+        if ($builderUrl === '' || $projectToken === '') {
+            $refusal = self::NOT_LINKED;
+
+            return null;
+        }
+
+        return ['token' => $projectToken, 'endpoint' => $builderUrl . '/api/app/ai/chat', 'exp' => PHP_INT_MAX];
     }
 }

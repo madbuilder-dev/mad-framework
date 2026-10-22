@@ -47,25 +47,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Filtro do dashboard do chat: `dashboardAction {dashboardId, values}` (sem
  * message). Widgets de SQL/tool salvos no registro da conversa são reexecutados
  * aqui, sem o modelo; senão vira um turno sintético (ChatDashboards).
+ *
+ * O modelo do turno vem de um de três lugares — Coding Plan (franquia do
+ * dono), proxy da plataforma (app sem chave de IA, MAD_AI_PROXY) ou provider
+ * local —, mas o loop é sempre este: tools, permissão, histórico e
+ * confirmação de escrita rodam AQUI, no app.
  */
 final class EmbedChatController
 {
     public function __invoke(Request $request): StreamedResponse
     {
-        // Proxy de IA: app gerado SEM chave de IA → encaminha as mensagens pro
-        // builder (Bearer MAD_PROJECT_TOKEN), que chama o modelo + debita no
-        // developer e faz stream. A chave de IA fica SÓ no builder. Ligado por
-        // config('mad.ai.proxy') (env MAD_AI_PROXY) + MAD_BUILDER_URL/TOKEN.
-        // Coding Plan tem precedência e NÃO usa o proxy: o loop roda AQUI
-        // (ramo local abaixo, CodingPlanAgentRunner) com o builder só de LLM.
-        if (! (bool) config('mad.ai.coding_plan')
-            && (bool) config('mad.ai.proxy')
-            && (string) config('mad.builder.url') !== ''
-            && (string) config('mad.builder.token') !== ''
-        ) {
-            return self::proxyToBuilder($request);
-        }
-
         // --- entradas (ANTES do stream — request já parseado) ---
         $bearer = trim((string) $request->bearerToken());
         $sessionKey = hash('sha256', $bearer !== '' ? $bearer : 'anon');
@@ -197,7 +188,7 @@ final class EmbedChatController
                         'embed_chat'
                     );
                 } catch (\Mad\Usage\QuotaExceededException $q) {
-                    $sink->error(self::quotaMessage($q));
+                    $sink->error(self::quotaMessage($q), 'USAGE_QUOTA_REACHED', self::quotaResetAt($q));
                     $sink->done();
 
                     return; // não constrói tools, não chama o modelo
@@ -223,10 +214,15 @@ final class EmbedChatController
                 $context = SystemPromptAssembler::runtimeContext();
 
                 // Coding Plan: mesmo loop, modelo servido pelo builder (MiniMax
-                // da franquia do dono) — sem chave de IA local.
-                $runner = (bool) config('mad.ai.coding_plan')
-                    ? new CodingPlanAgentRunner($sink)
-                    : new AgentRunner($sink);
+                // da franquia do dono) — sem chave de IA local. Proxy (app sem
+                // chave de IA): mesmo loop, modelo pela chave da plataforma, que
+                // debita no developer. Antes o proxy repassava à plataforma só a
+                // frase do usuário: sem system, tools, histórico nem confirmação.
+                $runner = match (true) {
+                    (bool) config('mad.ai.coding_plan') => new CodingPlanAgentRunner($sink),
+                    self::proxyEnabled()                => CodingPlanAgentRunner::viaProxy($sink),
+                    default                             => new AgentRunner($sink),
+                };
                 $result    = $runner->run($system, $history, $tools, $message, $context);
                 $finalText = $result->text;
 
@@ -491,6 +487,27 @@ final class EmbedChatController
         return 'Limite de uso de IA atingido. Tente novamente mais tarde.';
     }
 
+    /**
+     * Quando o chat volta (ISO 8601): a última janela estourada a zerar. null
+     * quando uma delas é `total` (não zera sozinha) ou não dá para saber.
+     */
+    private static function quotaResetAt(\Mad\Usage\QuotaExceededException $q): ?string
+    {
+        $latest = null;
+        foreach ($q->result()['periods'] ?? [] as $period => $info) {
+            if (($info['action'] ?? '') !== 'block' || empty($info['over'])) {
+                continue;
+            }
+            $at = \Mad\Usage\Period::nextReset((string) $period, $info['resetDay'] ?? null);
+            if ($at === null) {
+                return null;
+            }
+            $latest = max($latest ?? 0, $at);
+        }
+
+        return $latest !== null ? date('c', $latest) : null;
+    }
+
     /** Manifest MCP é opcional no slice (chat funciona sem). */
     private static function manifest(): ?McpManifest
     {
@@ -537,53 +554,15 @@ final class EmbedChatController
     }
 
     /**
-     * Proxy de IA: encaminha a mensagem do embed pro builder e faz passthrough
-     * do stream. O app NÃO lê chave de IA — só o token MadBuilder; o builder
-     * autentica, chama o modelo (chave dele) e debita no developer.
+     * Proxy de IA ligado: app gerado SEM chave de IA (MAD_AI_PROXY) com o
+     * vínculo do builder (MAD_BUILDER_URL + MAD_PROJECT_TOKEN). A chave de IA
+     * fica SÓ no builder. O Coding Plan tem precedência (testado antes).
      */
-    private static function proxyToBuilder(Request $request): StreamedResponse
+    private static function proxyEnabled(): bool
     {
-        $url     = rtrim((string) config('mad.builder.url'), '/') . '/api/app/ai/chat';
-        $token   = (string) config('mad.builder.token');
-        $payload = self::readPayload($request);
-        $message = trim((string) ($payload['message'] ?? ''));
-
-        return new StreamedResponse(function () use ($url, $token, $message): void {
-            try {
-                $resp = \Illuminate\Support\Facades\Http::withToken($token)
-                    ->withOptions(['stream' => true])
-                    ->timeout(120)
-                    ->post($url, ['messages' => [['role' => 'user', 'content' => $message]]]);
-
-                // Upstream negou (403 de plano, 401, 5xx, ...): o corpo é JSON de
-                // erro, não SSE. Fazer passthrough cru mandaria esse JSON pro
-                // browser como se fosse um frame SSE — o widget não reconhece e a
-                // mensagem do usuário "some". Traduz pro mesmo frame event:error
-                // do catch abaixo (o embed já sabe renderizar).
-                if (! $resp->successful()) {
-                    $raw = (string) $resp->body();
-                    $decoded = json_decode($raw, true);
-                    $msg = is_array($decoded)
-                        ? (string) ($decoded['error'] ?? $decoded['message'] ?? 'Recurso indisponível no seu plano')
-                        : ($raw !== '' ? $raw : 'Recurso indisponível no seu plano');
-                    echo 'event: error' . "\n" . 'data: ' . json_encode(['message' => $msg]) . "\n\n";
-                    @flush();
-                    return;
-                }
-
-                $body = $resp->toPsrResponse()->getBody();
-                while (! $body->eof()) {
-                    echo $body->read(8192);
-                    if (function_exists('ob_flush')) {
-                        @ob_flush();
-                    }
-                    @flush();
-                }
-            } catch (\Throwable $e) {
-                echo 'event: error' . "\n" . 'data: ' . json_encode(['message' => $e->getMessage()]) . "\n\n";
-                @flush();
-            }
-        }, 200, self::sseHeaders());
+        return (bool) config('mad.ai.proxy')
+            && (string) config('mad.builder.url') !== ''
+            && (string) config('mad.builder.token') !== '';
     }
 
     /** @return array<string, string> CORS sai nas rotas (iframe cross-origin). */

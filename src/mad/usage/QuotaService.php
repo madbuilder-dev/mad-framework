@@ -94,7 +94,7 @@ final class QuotaService
      * Estado de cota do chamador.
      *
      * @param int[] $groupIds
-     * @return array{blocked:bool, warn:bool, periods: array<string, array{used:int,max:int,remaining:int,over:bool,action:string,scope:string}>}
+     * @return array{blocked:bool, warn:bool, periods: array<string, array{used:int,max:int,remaining:int,over:bool,action:string,scope:string,resetDay:?int}>}
      */
     public function check(?int $userId, array $groupIds, ?int $unitId, ?int $tokenId, ?string $context): array
     {
@@ -121,6 +121,7 @@ final class QuotaService
                 'over'      => $over,
                 'action'    => $rule['action'],
                 'scope'     => $rule['scope'],
+                'resetDay'  => $rule['resetDay'], // quando a janela zera (Period::nextReset)
             ];
 
             if ($over && $rule['action'] === 'block') {

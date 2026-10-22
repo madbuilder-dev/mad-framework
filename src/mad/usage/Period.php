@@ -42,4 +42,18 @@ final class Period
 
         return date('Y-m-d H:i:s', $start);
     }
+
+    /**
+     * Quando a janela atual acaba (o consumo zera): meia-noite de amanhã,
+     * o próximo `reset_day` ou null (`total` nunca zera). Timestamp unix.
+     */
+    public static function nextReset(string $period, ?int $resetDay = null, ?int $now = null): ?int
+    {
+        $start = self::windowStart($period, $resetDay, $now);
+        if ($start === null) {
+            return null;
+        }
+
+        return (int) strtotime($period === 'day' ? '+1 day' : '+1 month', (int) strtotime($start));
+    }
 }

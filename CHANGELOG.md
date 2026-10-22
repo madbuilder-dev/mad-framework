@@ -12,6 +12,23 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.202.0] — 2026-10-22
+
+### Novidades
+
+- **Usuários › Entrar como:** enquanto o administrador acessa a conta de outra pessoa, uma faixa no topo da área de trabalho avisa "Você está acessando como {nome}" com o link "Voltar para minha conta". A volta não pede a senha de novo, abre a tela de Usuários e fica registrada no log de acesso (a linha da personificação ganha a hora de saída). Vale nos temas notch e ERP, claro e escuro, e no celular.
+- **Usuários › Entrar como:** só volta quem realmente entrou como a outra pessoa, e só se a conta dele continuar ativa e com a permissão "Impersonar"; senão a sessão é encerrada e o login explica o motivo. "Recarregar" no menu do usuário não perde mais a volta.
+
+### Melhorias
+
+- **Chat IA:** quando o assistente não pode responder (chat desligado no projeto, plano sem o Chat IA, franquia ou cota de uso esgotada), o aviso passa a levar o motivo e a hora em que volta, e o chat embutido mostra ao usuário o que fazer em vez de "tente novamente".
+
+### Correções
+
+- **Chat IA:** no app que usa o modelo servido pelo MadBuilder (sem chave de IA própria e sem Coding Plan), o assistente agora enxerga as tabelas liberadas no Configurador MCP, mostra tabelas e gráficos, lembra da conversa e pede confirmação antes de gravar. Antes ele respondia só à frase, como um chatbot genérico: "liste os setores cadastrados" voltava setores da economia em vez dos do sistema.
+- **Assistente:** o painel lateral agora empurra a tela em vez de cobri-la: a área de trabalho encolhe e a tabela continua inteira à vista; ao fechar, a tela volta à largura cheia. Em tela estreita ele abre por cima, com fundo escurecido, e um clique no fundo fecha.
+- **Assistente:** a etiqueta ao lado do título mostra o perfil da pessoa no sistema (ex.: "RH") e some quando não há um; o administrador não vê mais "Admin".
+
 ## [5.201.0] — 2026-10-21
 
 ### Novidades
