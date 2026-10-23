@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.215.0] — 2026-10-23
+
+### Novidades
+
+- **Banco de dados:** chamar stored procedure e function do banco pelo `StoredRoutine`, sem escrever o SQL de cada banco: `StoredRoutine::call('sp_fechar_mes', [$mes])` devolve as linhas da procedure (ou, se ela só preenche parâmetros de saída, os valores deles), `StoredRoutine::value('fn_saldo', [$id])` devolve o valor da function e `StoredRoutine::rows('fn_extrato', [$id])` devolve as linhas de uma function que retorna tabela (PostgreSQL). Funciona em MySQL, MariaDB e PostgreSQL; no SQLite, que não tem procedure, aparece uma mensagem dizendo isso.
+
 ## [5.214.0] — 2026-10-23
 
 ### Correções
