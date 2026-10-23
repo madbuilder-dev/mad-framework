@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.212.1] — 2026-10-23
+
+### Correções
+
+- **Central de Comando:** no card Menu, "Aplicar menus" falhava sempre com "Falha ao atualizar menus" e nenhum menu era gravado (o mesmo acontecia quando o agente do app sincronizava os menus). Agora os menus do MadBuilder são aplicados de novo.
+
 ## [5.212.0] — 2026-10-23
 
 ### Novidades
