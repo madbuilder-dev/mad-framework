@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.212.0] — 2026-10-23
+
+### Novidades
+
+- **Webhooks recebidos:** num SaaS com webhook por unidade, o admin de cada empresa cliente agora abre Administração › Webhooks recebidos e gera sozinho a chave e o segredo do endereço da própria empresa. Ele vê só os webhooks e as entregas da empresa dele, nunca os do dono do sistema. Antes, só o dono chegava nessa tela e tinha de gerar a chave de cada cliente.
+
 ## [5.211.1] — 2026-10-23
 
 ### Correções
