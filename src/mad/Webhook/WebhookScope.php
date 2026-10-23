@@ -20,9 +20,11 @@ use Mad\Database\UnitContext;
  *    teria filtro nem banco próprio);
  *  - banco dedicado ligado + empresa sem banco provisionado = recusa, exceto a
  *    empresa padrão (dona do banco principal);
- *  - `TenantContext`/`UnitContext` fixados, unidade e empresa na sessão em
- *    memória (carimbo de auditoria), data-plane repontado com
- *    `TenantConnectionResolver::applyTenant`.
+ *  - `TenantContext`/`UnitContext` fixados como vindos de uma credencial
+ *    (`setFromToken()`: a chave do endpoint é o token da unidade — o que o
+ *    handler grava é conferido contra a empresa/unidade dela, fw#534),
+ *    unidade e empresa na sessão em memória (carimbo de auditoria), data-plane
+ *    repontado com `TenantConnectionResolver::applyTenant`.
  *
  * Qualquer regra quebrada lança {@see WebhookScopeException} e NADA fica
  * aplicado: a entrega falha em vez de rodar no escopo errado.
@@ -83,8 +85,8 @@ final class WebhookScope
         $previous = self::snapshot();
 
         try {
-            TenantContext::set($tenant?->id !== null ? (int) $tenant->id : null);
-            UnitContext::set((int) $unit->id);
+            TenantContext::setFromToken($tenant?->id !== null ? (int) $tenant->id : null);
+            UnitContext::setFromToken((int) $unit->id);
             self::session(['userunitid' => (int) $unit->id, 'tenant_id' => $tenant?->id]);
 
             if ($database !== '') {
@@ -133,8 +135,8 @@ final class WebhookScope
         }
 
         return [
-            'tenant' => TenantContext::overridden() ? [TenantContext::id()] : null,
-            'unit' => UnitContext::overridden() ? [UnitContext::id()] : null,
+            'tenant' => TenantContext::overridden() ? [TenantContext::id(), TenantContext::fromToken()] : null,
+            'unit' => UnitContext::overridden() ? [UnitContext::id(), UnitContext::fromToken()] : null,
             'session' => $session,
             'connection' => \TenantConnectionResolver::current(),
         ];
@@ -143,8 +145,17 @@ final class WebhookScope
     /** @param  array<string, mixed>  $state */
     private static function restore(array $state): void
     {
-        $state['tenant'] !== null ? TenantContext::set($state['tenant'][0]) : TenantContext::clear();
-        $state['unit'] !== null ? UnitContext::set($state['unit'][0]) : UnitContext::clear();
+        // Com a origem: o token de API que estava valendo continua conferido.
+        if ($state['tenant'] === null) {
+            TenantContext::clear();
+        } else {
+            $state['tenant'][1] ? TenantContext::setFromToken($state['tenant'][0]) : TenantContext::set($state['tenant'][0]);
+        }
+        if ($state['unit'] === null) {
+            UnitContext::clear();
+        } else {
+            $state['unit'][1] ? UnitContext::setFromToken($state['unit'][0]) : UnitContext::set($state['unit'][0]);
+        }
 
         try {
             if (app()->bound('session')) {

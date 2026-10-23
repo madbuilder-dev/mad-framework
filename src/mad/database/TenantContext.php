@@ -7,7 +7,8 @@ namespace Mad\Database;
  *
  * Fonte padrão: session('tenant_id') (populada no login por
  * ApplicationAuthenticationService::loadSessionVars). Override explícito p/ jobs/
- * console/testes via set(). null = sem tenant (scope não filtra).
+ * console/testes via set(); p/ a API REST e o webhook por unidade via
+ * setFromToken() (a empresa vem da credencial). null = sem tenant (scope não filtra).
  *
  * id() = tenant ATIVO (carimbo, MCP, PDV); readId() = o que a leitura filtra
  * (null na visão de todas as empresas do administrador — AdminScope).
@@ -28,17 +29,32 @@ class TenantContext
 {
     private static ?int $override = null;
     private static bool $hasOverride = false;
+    private static bool $byToken = false;
 
     public static function set(?int $id): void
     {
         self::$override = $id;
         self::$hasOverride = true;
+        self::$byToken = false;
+    }
+
+    /**
+     * Fixa o contexto a partir de uma credencial — token da API REST, chave do
+     * webhook por unidade: a empresa é a da credencial, e o que se grava nela
+     * é conferido como o que um usuário logado grava ({@see fromToken()}). O
+     * set() de código (comando, fila, seed) não é conferido.
+     */
+    public static function setFromToken(?int $id): void
+    {
+        self::set($id);
+        self::$byToken = true;
     }
 
     public static function clear(): void
     {
         self::$override = null;
         self::$hasOverride = false;
+        self::$byToken = false;
     }
 
     public static function id(): ?int
@@ -65,6 +81,12 @@ class TenantContext
     public static function overridden(): bool
     {
         return self::$hasOverride;
+    }
+
+    /** Contexto fixado por setFromToken() (API REST, webhook) — e não por código? */
+    public static function fromToken(): bool
+    {
+        return self::$hasOverride && self::$byToken;
     }
 
     /** Nome do tenant atual; '' sem tenant, sem sessão ou sem DB (nunca lança). */

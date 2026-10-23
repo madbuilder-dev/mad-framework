@@ -49,7 +49,10 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  *   - sem contexto que diga o que o usuário enxerga: comando, agendador, fila,
  *     ou código que fixou o contexto com `TenantContext::set()` /
  *     `UnitContext::set()` — quem fixou responde por ele (a mesma regra do
- *     UnitScopeViolation);
+ *     UnitScopeViolation). O contexto fixado por um TOKEN (`setFromToken()`:
+ *     API REST, webhook por unidade) é conferido, e contra a empresa e a
+ *     unidade do token — não a do registro, que o corpo do pedido pode
+ *     trazer (fw#534);
  *   - na visão de todas as empresas do administrador do dono
  *     ({@see AdminScope::readsAll()}) a unidade não restringe, e a empresa
  *     conferida é a do REGISTRO (ele edita registros de outras empresas, sem
@@ -372,17 +375,18 @@ final class ScopedReferences
 
     /**
      * Empresa do registro gravado: o `tenant_id` dele (o carimbo do
-     * BelongsToTenant) ou a empresa ativa. null quando não há contexto de
-     * usuário — comando, fila, ou contexto fixado com set().
+     * BelongsToTenant) ou a empresa ativa; com token, a empresa do token.
+     * null quando não há contexto de usuário — comando, fila, ou contexto
+     * fixado por código com set().
      */
     private static function recordTenant(Model $model): ?int
     {
-        if (TenantContext::overridden() || UnitContext::overridden()) {
+        if (self::fixedByCode()) {
             return null;
         }
         $active = TenantContext::id();
-        if ($active === null) {
-            return null;
+        if ($active === null || TenantContext::fromToken()) {
+            return $active;
         }
         if (method_exists($model, 'madTenantScoped') && $model::madTenantScoped()) {
             $own = $model->getAttributes()['tenant_id'] ?? null;
@@ -392,6 +396,18 @@ final class ScopedReferences
         }
 
         return $active;
+    }
+
+    /**
+     * Contexto fixado por código (comando, fila, agendador, seed, teste): nada
+     * a conferir. O fixado por um token (API REST, webhook por unidade) não
+     * conta aqui: a unidade dele vem de {@see UnitContext::allowedIds()} e a
+     * empresa, de recordTenant().
+     */
+    private static function fixedByCode(): bool
+    {
+        return (TenantContext::overridden() && ! TenantContext::fromToken())
+            || (UnitContext::overridden() && ! UnitContext::fromToken());
     }
 
     /**

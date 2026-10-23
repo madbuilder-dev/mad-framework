@@ -181,6 +181,13 @@ no payload). Resposta = o master recarregado com eager-load.
 Validação falha → `422` (Laravel `ValidationException`, corpo `{message, errors}`),
 com as mensagens no idioma do app (`APP_LOCALE`; arquivos `lang/<idioma>/validation.php`).
 
+A chave para outro cadastro (`paciente_id`, `profissional_id`…) é conferida contra a
+empresa e a unidade do **token**: id de outra empresa, de outra unidade ou que não
+existe → `422` no mesmo formato, com o erro no campo da chave
+(`errors.paciente_id`), e nada é gravado. Vale também para `unit_id` explícito no
+corpo (só a unidade do token) e para a rota escrita à mão que grava com
+`create()`/`save()`. A chave que não muda numa edição não é conferida.
+
 ### Delete — `DELETE /orders/{id}`
 
 Apaga master + detalhes (cascata pelas relações de `$details`), em transação.

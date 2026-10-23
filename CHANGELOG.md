@@ -12,6 +12,28 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.214.0] — 2026-10-23
+
+### Correções
+
+- **API REST:** com o token de uma empresa, a rota que grava um cadastro aceitava a chave de um registro de outra empresa (o `paciente_id` de um paciente da empresa 3, por exemplo), de outra unidade ou que não existe. Agora a gravação é recusada com 422 e o erro no campo (`errors.paciente_id`), no mesmo formato das outras validações da API, e nada é gravado. Vale também para a rota escrita à mão que grava com `create()` ou `save()`.
+- **Webhooks:** num webhook por unidade, o que o handler grava com a chave de um cadastro de outra empresa ou unidade é recusado e a entrega fica com falha, com a mensagem do campo no histórico.
+
+### Atenção
+
+- **API REST e webhooks:** o token grava só na unidade dele. `unit_id` de outra unidade no corpo, mesmo de uma que o usuário do token acessa, passa a ser recusado com 422; emita um token para cada unidade. Comandos, filas, agendador e seeds que fixam a empresa ou a unidade por código continuam sem essa conferência.
+
+## [5.213.2] — 2026-10-23
+
+### Correções
+
+- **Formulários:** quem alterava a requisição do Salvar conseguia trocar o arquivo de `<mad-file-field>` pelo caminho de um arquivo de outra empresa ou de outro registro, e o link de download passava a abrir esse arquivo. Agora o campo de arquivo só aceita o arquivo enviado no próprio Salvar, o arquivo que o registro já tinha ou a remoção; outro caminho, ou um conteúdo em `data:` posto no lugar dele, é ignorado.
+- **Formulários:** a mesma regra vale para `<mad-image-field>`, `<mad-avatar-field>`, `<mad-signature-field>` e `<mad-multi-file-field>`, e para as colunas de arquivo das linhas de `<mad-field-list>` e `<mad-detail-form>`. Nos campos de imagem, avatar e assinatura a imagem nova escolhida ou desenhada continua chegando normalmente. Também na tela que grava por conta própria: `getData()`, `getDataRaw()`, `get()` e `validate()` não devolvem o caminho trocado.
+
+### Atenção
+
+- **Formulários:** o caminho de um campo de arquivo não é mais aceito quando vem do navegador. Tela que punha um caminho no campo por JavaScript (`MadWire.call(..., {arquivo: 'uploads/...'})`) deve pôr o valor pelo código da tela, com `$this->form->set('arquivo', $caminho)`.
+
 ## [5.213.1] — 2026-10-23
 
 ### Correções

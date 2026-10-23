@@ -156,7 +156,8 @@ trait BelongsToUnit
             // unit_id explícito (form, import, código): só pode ir para uma
             // unidade do usuário. Olha apenas o valor que MUDA — editar outro
             // campo de uma linha legada não trava. Sem lista na sessão (job,
-            // console, API com override) não há como conferir.
+            // console, código que fixou a unidade) não há como conferir; com
+            // token (API REST, webhook por unidade), só a unidade do token.
             if ($model->exists && ! $model->isDirty('unit_id')) {
                 return;
             }

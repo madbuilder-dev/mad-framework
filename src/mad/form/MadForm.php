@@ -214,7 +214,11 @@ class MadForm
      *     `d` = por Lista de itens / Detail Form, as colunas que ele tem (`c`),
      *     as que são Editor HTML (`z`), o Model e a chave estrangeira com que
      *     foi desenhado (`m`, `f`), a chave da linha (`pk`) e as impressões
-     *     digitais do que o servidor ENTREGOU nas colunas fora da grade (`s`).
+     *     digitais do que o servidor ENTREGOU nas colunas fora da grade (`s`),
+     *     as colunas de arquivo (`fc`) e os caminhos entregues nelas (`fd`);
+     *     `fv` = os campos de arquivo (nome => 'f' arquivo, 'i' imagem, 'm'
+     *     Upload Múltiplo), cujo caminho não é aceito do navegador — ver
+     *     _fileValueRefusal().
      *     É por ela que o formulário só aceita do navegador o que a tela tem —
      *     ver takesFromBrowser() e takeRowsFromBrowser() — e que o conteúdo de
      *     um Editor HTML é limpo sem depender do token `__mad_form`, que é o
@@ -336,6 +340,15 @@ class MadForm
      * @var array<string,string>
      */
     private array $_renderingDetailFiles = [];
+
+    /**
+     * Caminhos que as colunas de arquivo de cada detalhe estão entregando no
+     * render EM CURSO (impressão de cada um — ver _cellPathPrints). Vira `fd`
+     * só quando o HTML é entregue (renderDelivered). Não serializado.
+     *
+     * @var array<string, array<string,int>>
+     */
+    private array $_renderingFileCells = [];
 
     /**
      * Detalhes cujas linhas o Salvar NÃO gravou porque o formulário recebido os
@@ -2125,6 +2138,12 @@ class MadForm
         if (is_string($before['fpd'] ?? null)) {
             $entry['fpd'] = $before['fpd'];
         }
+        // As colunas de arquivo e os caminhos entregues nelas (fw#533).
+        foreach (['fc', 'fd'] as $part) {
+            if (is_array($before[$part] ?? null)) {
+                $entry[$part] = $before[$part];
+            }
+        }
         // Colunas em que o usuário DIGITA: no Detail Form, os campos do editor
         // (a grade só exibe); na Lista de itens quem diz é a view — ver
         // detailTypedColumns().
@@ -2179,6 +2198,21 @@ class MadForm
         unset($prints[$print]);
         $prints[$print] = 1;
         $this->_known[self::DECLARED]['d'][$name]['fp'] = array_slice($prints, -self::WRITE_PRINTS, null, true);
+        // As colunas cujo valor é o CAMINHO do arquivo (arquivo único e vários
+        // arquivos na própria linha): o navegador não troca esse caminho por
+        // outro (fw#533 — ver takeRowsFromBrowser). A coluna Arquivos (tabela
+        // neta) não guarda caminho na linha.
+        $paths = [];
+        foreach ($columns as $column => $meta) {
+            if (is_array($meta) && ($meta['kind'] ?? '') !== 'grandchild') {
+                $paths[(string) $column] = (($meta['kind'] ?? '') === 'multifile' || !empty($meta['multi'])) ? 'm' : 'f';
+            }
+        }
+        if ($paths) {
+            $this->_known[self::DECLARED]['d'][$name]['fc'] = $paths;
+        } else {
+            unset($this->_known[self::DECLARED]['d'][$name]['fc']);
+        }
         // A forma do render que o navegador recebe fica guardada à parte (`fpd`,
         // em renderDelivered): passadas mais de WRITE_PRINTS ações cujo HTML foi
         // descartado, ela já teria saído da lista acima.
@@ -2427,6 +2461,13 @@ class MadForm
     public function takesFromBrowser(string $field, mixed $value = null): bool
     {
         if (!$this->declares() || isset($this->_known[self::DECLARED]['k'][$field])) {
+            // Caminho de arquivo que o campo não tem (fw#533): descartado.
+            $refusal = $this->_fileValueRefusal($field, $value);
+            if ($refusal !== null) {
+                $this->_refused[$field] = $refusal;
+
+                return false;
+            }
             $this->noteBrowserValue($field, $value);
 
             return true;
@@ -2609,6 +2650,295 @@ class MadForm
         return $errors;
     }
 
+    // ── Caminho de arquivo: só o que o campo tem (fw#533) ────────────────────
+    //
+    // O valor de um campo de arquivo é o CAMINHO do arquivo no disco, e o
+    // navegador o devolvia: trocado na requisição (o PDF de outra empresa, de
+    // nome previsível), era gravado no registro — `form->save()` ou a tela que
+    // grava o que leu do `getData()` — e a tela de detalhe assinava a URL de
+    // download dele.
+    //
+    // O valor que o formulário aceita do navegador num campo de arquivo é só o
+    // que o campo já TEM: o caminho que veio do registro, o que esta tela
+    // gravou, o que o código pôs no campo — ou vazio (remoção). O arquivo
+    // enviado nesta requisição não passa por aqui: vai em `$_FILES`, e o
+    // caminho dele é o framework quem gera. Qualquer outro caminho é
+    // descartado na ENTRADA — e então nenhuma leitura do formulário o vê:
+    // `getData()`, `getDataRaw()`, `get()`, `validate()`, `fillRecord()`/
+    // `save()`. O mesmo vale para as colunas de arquivo das linhas de uma
+    // Lista de itens / Detail Form (takeRowsFromBrowser, beginDetailScope).
+    //
+    // O que o próprio campo manda continua passando: no campo de imagem
+    // (imagem, avatar, assinatura), a imagem nova em data URI — o conteúdo, não
+    // um caminho, conferido à parte pelos Tipos aceitos e Tamanho máximo —; a
+    // URL de download do arquivo que ele mostra e, na célula da lista, o NOME
+    // do arquivo recém-escolhido. No campo de arquivo e no Upload Múltiplo um
+    // `data:…` não é nada que o campo mande: ia cru para a coluna.
+
+    /**
+     * Um campo foi desenhado com estas props: sendo de arquivo, o caminho que
+     * vem do navegador passa a ser conferido (`$_known[DECLARED]['fv']`).
+     *
+     * @param array<string,mixed> $props as props registradas do campo
+     */
+    private function _declareFileValue(string $name, array $props): void
+    {
+        // Campo do editor de um detalhe: é coluna da LINHA (declareDetailFiles).
+        if ($this->_editorScope !== null) {
+            return;
+        }
+        $kind = match ((string) ($props['type'] ?? '')) {
+            'file'       => 'f',
+            'image'      => 'i',
+            'multi-file' => 'm',
+            default      => null,
+        };
+        if ($kind === null) {
+            // A tela passou a desenhar o campo com outra tag.
+            if (isset($this->_known[self::DECLARED]['fv'][$name])) {
+                unset($this->_known[self::DECLARED]['fv'][$name]);
+                if ($this->_known[self::DECLARED]['fv'] === []) {
+                    unset($this->_known[self::DECLARED]['fv']);
+                }
+            }
+
+            return;
+        }
+        $this->_openDeclared();
+        $this->_known[self::DECLARED]['fv'][$name] = $kind;
+    }
+
+    /**
+     * Por que o valor `$value`, vindo do navegador para `$field`, não é aceito —
+     * ou null quando é (ou quando `$field` não é campo de arquivo).
+     */
+    private function _fileValueRefusal(string $field, mixed $value): ?string
+    {
+        $kind = $this->_known[self::DECLARED]['fv'][$field] ?? null;
+        if (!is_string($kind) || $value === null || $value === '') {
+            return null;   // vazio: remoção
+        }
+        if (!is_string($value) && !is_int($value)) {
+            return 'o campo de arquivo recebeu um valor que não é texto; ficou o arquivo que ele já tinha';
+        }
+        $value = (string) $value;
+        if (trim($value) === '' || ($kind === 'i' && MadUploadRules::isDataUrl($value))) {
+            return null;   // a imagem nova é o conteúdo, não um caminho
+        }
+
+        $held = $this->_fileValuesHeld($field);
+        if (isset($held[$value])) {
+            return null;
+        }
+        if (MadUploadRules::isDataUrl($value)) {
+            return 'o campo de arquivo recebeu um conteúdo (data:) no lugar do caminho do arquivo; ficou o arquivo que ele já tinha';
+        }
+        // URL de download (ou endereço público) do arquivo que o campo mostra:
+        // é o que o campo de imagem devolve a cada ação.
+        $linked = self::_linkedUpload($value, $held);
+        if ($linked !== null && isset($held[$linked])) {
+            return null;
+        }
+        // Upload Múltiplo: a lista por vírgula dos arquivos que ele tem.
+        if ($kind === 'm') {
+            $paths = array_filter(array_map('trim', explode(',', $value)), static fn (string $p): bool => $p !== '');
+            if ($paths !== [] && array_diff($paths, array_map('strval', array_keys($held))) === []) {
+                return null;
+            }
+        }
+
+        return 'o campo de arquivo recebeu um caminho que não é o do arquivo que ele tem (nem o de um envio desta requisição);'
+            . ' ficou o arquivo que ele já tinha';
+    }
+
+    /**
+     * Os caminhos que o campo de arquivo `$field` tem: o valor do formulário
+     * (o do registro ao abrir, ou o que o código pôs) e o que a tela entregou
+     * ou gravou nele (`$_known[$field]`, ver fileShown / _baseUpdate).
+     *
+     * @return array<string,true>
+     */
+    private function _fileValuesHeld(string $field): array
+    {
+        $held    = [];
+        $current = $this->fields[$field] ?? null;
+        if (is_scalar($current) && !is_bool($current) && (string) $current !== '') {
+            $held[(string) $current] = true;
+            foreach (explode(',', (string) $current) as $path) {
+                if (trim($path) !== '') {
+                    $held[trim($path)] = true;
+                }
+            }
+        }
+        $known = $this->_known[$field] ?? null;
+        if (is_array($known)) {
+            if (is_string($known['v'] ?? null) && $known['v'] !== '') {
+                $held[$known['v']] = true;
+            }
+            foreach (array_keys(is_array($known['k'] ?? null) ? $known['k'] : []) as $path) {
+                if ((string) $path !== '') {
+                    $held[(string) $path] = true;
+                }
+            }
+        }
+
+        return $held;
+    }
+
+    /**
+     * O caminho para o qual `$url` aponta, quando é a URL de download do
+     * framework (`/app/_mad-download?file=…`) ou o endereço público de um dos
+     * caminhos de `$held` — null quando não é.
+     *
+     * @param array<string,true> $held
+     */
+    private static function _linkedUpload(string $url, array $held): ?string
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts)) {
+            return null;
+        }
+        if (str_ends_with((string) ($parts['path'] ?? ''), '/_mad-download')) {
+            parse_str((string) ($parts['query'] ?? ''), $query);
+
+            return is_string($query['file'] ?? null) ? $query['file'] : null;
+        }
+        foreach (array_keys($held) as $path) {
+            $path = (string) $path;
+            if (str_starts_with($path, \Mad\Service\MadPublicUpload::PREFIX . '/')
+                && in_array($url, [\Mad\Service\MadPublicUpload::url($path, false), \Mad\Service\MadPublicUpload::url($path, true)], true)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parece caminho (ou endereço) de arquivo? O nome de um arquivo escolhido
+     * no navegador não tem barra nem `:` — o caminho que o framework grava tem
+     * sempre a pasta.
+     */
+    private static function _pathLike(string $value): bool
+    {
+        return strpbrk($value, "/\\:\0") !== false || str_starts_with($value, '.');
+    }
+
+    /**
+     * Impressão de cada caminho que as colunas de arquivo `$columns` das
+     * linhas `$rows` trazem (a célula de vários arquivos traz uma lista por
+     * vírgula). O nome do arquivo escolhido não entra; um `data:…` que a
+     * coluna já guardava entra inteiro.
+     *
+     * @param  list<array<string,mixed>>|array<int|string,mixed> $rows
+     * @param  array<string,string>                              $columns coluna => tipo
+     * @return array<string,int>
+     */
+    private static function _cellPathPrints(array $rows, array $columns): array
+    {
+        $prints = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            foreach (array_keys($columns) as $column) {
+                $value = $row[$column] ?? null;
+                if (!is_string($value) || $value === '') {
+                    continue;
+                }
+                if (MadUploadRules::isDataUrl($value)) {
+                    $prints[substr(sha1($value), 0, 16)] = 1;
+                    continue;
+                }
+                foreach (explode(',', $value) as $path) {
+                    $path = trim($path);
+                    if ($path !== '' && self::_pathLike($path)) {
+                        $prints[substr(sha1($path), 0, 16)] = 1;
+                    }
+                }
+            }
+        }
+
+        return $prints;
+    }
+
+    /**
+     * O valor que o navegador mandou na coluna de arquivo `$column` de uma
+     * linha de `$detail`: aceito quando cada caminho dele foi entregue pela
+     * tela nessa lista (`fd`) ou gravado por ela nessa linha (`$rowKey`). A
+     * célula de arquivo não manda conteúdo (`data:…`): só o que a tela entregou
+     * assim passa.
+     */
+    private function _cellValueTaken(string $detail, string $column, mixed $value, mixed $rowKey): bool
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return true;
+        }
+        if (!is_string($value) && !is_int($value)) {
+            return false;
+        }
+        $value     = (string) $value;
+        $delivered = (array) ($this->_known[self::DECLARED]['d'][$detail]['fd'] ?? []);
+        if (MadUploadRules::isDataUrl($value)) {
+            return isset($delivered[substr(sha1($value), 0, 16)]);
+        }
+        $saved     = [];
+        if ($rowKey !== null && $rowKey !== '') {
+            $cell  = $this->_known[self::_cellKnownName($detail, $column, $rowKey)] ?? null;
+            $saved = is_array($cell) && is_array($cell['k'] ?? null) ? $cell['k'] : [];
+        }
+        foreach (explode(',', $value) as $path) {
+            $path = trim($path);
+            if ($path === '' || !self::_pathLike($path)) {
+                continue;   // o nome do arquivo que o usuário escolheu
+            }
+            if (!isset($delivered[substr(sha1($path), 0, 16)]) && !array_key_exists($path, $saved)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * As linhas de `$detail` sem caminho de arquivo que a tela não entregou: a
+     * coluna de arquivo com um caminho trocado chega vazia (ver
+     * _cellValueTaken). Nome do campo da recusa no log: `[detalhe]`.
+     *
+     * @param  array<int|string,mixed> $rows
+     * @return array<int|string,mixed>
+     */
+    private function _withoutForeignCellPaths(string $detail, array $rows, string $pk): array
+    {
+        $columns = (array) ($this->_known[self::DECLARED]['d'][$detail]['fc'] ?? []);
+        if ($columns === []) {
+            return $rows;
+        }
+        $refused = [];
+        foreach ($rows as $i => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowKey = $row[$pk] ?? null;
+            if (($rowKey === null || $rowKey === '') && is_scalar($row['__id'] ?? null)) {
+                $rowKey = $this->knownRowKey($detail, (string) $row['__id']);
+            }
+            foreach (array_keys($columns) as $column) {
+                if (array_key_exists($column, $row) && !$this->_cellValueTaken($detail, (string) $column, $row[$column], $rowKey)) {
+                    $rows[$i][$column] = '';
+                    $refused[$column]  = true;
+                }
+            }
+        }
+        if ($refused) {
+            ksort($refused);
+            $this->_refused['[' . $detail . ']'] = 'alguma linha chegou com um caminho de arquivo que a tela não entregou ('
+                . implode(', ', array_keys($refused)) . '); a coluna foi esvaziada nessas linhas';
+        }
+
+        return $rows;
+    }
+
     // ── Editor HTML: o que chega do navegador é limpo ────────────────────────
     //
     // O conteúdo de um Editor HTML é exibido como HTML (na listagem, no próprio
@@ -2637,6 +2967,15 @@ class MadForm
      */
     public function cleanFromBrowser(string $field, mixed $value): mixed
     {
+        // Campo de arquivo com caminho que ele não tem (fw#533) — o campo
+        // homônimo de uma propriedade da tela chega por aqui: fica o que o
+        // formulário já tinha.
+        $refusal = $this->_fileValueRefusal($field, $value);
+        if ($refusal !== null) {
+            $this->_refused[$field] = $refusal;
+
+            return $this->fields[$field] ?? null;
+        }
         if (!is_string($value) || $value === '' || !isset($this->_known[self::DECLARED]['z'][$field])) {
             return $value;
         }
@@ -2754,6 +3093,9 @@ class MadForm
                 . implode(', ', array_keys($dropped)) . '); nessas linhas só as colunas da lista foram aceitas';
         }
 
+        // Coluna de arquivo: só o caminho que a tela entregou (fw#533).
+        $rows = $this->_withoutForeignCellPaths($name, $rows, $pk);
+
         // Coluna que o editor do detalhe desenha com Editor HTML: limpa.
         if (!empty($entry['z'])) {
             foreach ($rows as $i => $row) {
@@ -2858,6 +3200,7 @@ class MadForm
             return;
         }
         $this->_renderingRows[$name] = $this->_rowPrints($name, $rows);
+        $this->_renderingFileCells[$name] = self::_cellPathPrints($rows, (array) ($this->_known[self::DECLARED]['d'][$name]['fc'] ?? []));
     }
 
     /**
@@ -2887,6 +3230,25 @@ class MadForm
             $this->_known[self::DECLARED]['d'][$name]['s'] = $prints;
         } else {
             unset($this->_known[self::DECLARED]['d'][$name]['s']);
+        }
+        // Os caminhos de arquivo dessas linhas também foram entregues (fw#533).
+        $paths = self::_cellPathPrints($rows, (array) ($this->_known[self::DECLARED]['d'][$name]['fc'] ?? []));
+        if (!$replace) {
+            $paths += (array) ($this->_known[self::DECLARED]['d'][$name]['fd'] ?? []);
+        }
+        $this->_setDeliveredCellPaths($name, $paths);
+    }
+
+    /** Os caminhos que as colunas de arquivo de `$name` entregaram ao navegador (`fd`). */
+    private function _setDeliveredCellPaths(string $name, array $prints): void
+    {
+        if (!isset($this->_known[self::DECLARED]['d'][$name])) {
+            return;
+        }
+        if ($prints) {
+            $this->_known[self::DECLARED]['d'][$name]['fd'] = $prints;
+        } else {
+            unset($this->_known[self::DECLARED]['d'][$name]['fd']);
         }
     }
 
@@ -5853,6 +6215,7 @@ class MadForm
         $this->_declareInlineImage($name, $props);
         $this->_declareColumnSelection($name, $props);
         $this->_declareDateField($name, $props);
+        $this->_declareFileValue($name, $props);
 
         $print = MadUploadRules::writePrint($props);
         if ($print === null) {
@@ -9225,6 +9588,13 @@ class MadForm
         }
         $this->_renderingRows = [];
 
+        // Os caminhos de arquivo dessas linhas: o que o navegador pode devolver
+        // nas colunas de arquivo (fw#533).
+        foreach ($this->_renderingFileCells as $name => $prints) {
+            $this->_setDeliveredCellPaths((string) $name, $prints);
+        }
+        $this->_renderingFileCells = [];
+
         // A forma das colunas de arquivo de cada detalhe que este render entrega.
         foreach ($this->_renderingDetailFiles as $name => $print) {
             if (isset($this->_known[self::DECLARED]['d'][$name])) {
@@ -10838,6 +11208,14 @@ class MadForm
                     ? 'o editor do detalhe mandou campos que ele não tem: '
                     : 'a tela não tem um detalhe com este nome; campos enviados: ') . implode(', ', $names);
                 $values = array_diff_key($values, $extra);
+            }
+            // Coluna de arquivo: só o caminho que a tela entregou (fw#533).
+            foreach (array_keys((array) ($this->_known[self::DECLARED]['d'][$detail]['fc'] ?? [])) as $column) {
+                if (array_key_exists($column, $values) && !$this->_cellValueTaken($detail, (string) $column, $values[$column], null)) {
+                    $this->_refused['[' . $detail . ']'] = 'o editor do detalhe mandou um caminho de arquivo que a tela não entregou ('
+                        . $column . '); a coluna foi esvaziada';
+                    $values[$column] = '';
+                }
             }
         }
 

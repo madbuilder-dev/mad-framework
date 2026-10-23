@@ -7,8 +7,9 @@ namespace Mad\Database;
  *
  * Fonte padrão: session('userunitid') (populada no login / troca de unidade por
  * AuthenticationService::loadSessionVars/setUnit — a unidade ATIVA, não a lista
- * userunitids). Override explícito p/ jobs/console/testes via set(). null = sem
- * unidade (scope não filtra).
+ * userunitids). Override explícito p/ jobs/console/testes via set(); p/ a API
+ * REST e o webhook por unidade via setFromToken(). null = sem unidade (scope não
+ * filtra).
  *
  * Multi-unidade ≠ multi-tenant: aqui é a FILIAL dentro do MESMO cliente; a
  * isolação é por LINHA (unit_id) via trait BelongsToUnit, ligada pela flag
@@ -43,17 +44,31 @@ class UnitContext
 {
     private static ?int $override = null;
     private static bool $hasOverride = false;
+    private static bool $byToken = false;
 
     public static function set(?int $id): void
     {
         self::$override = $id;
         self::$hasOverride = true;
+        self::$byToken = false;
+    }
+
+    /**
+     * Fixa a unidade a partir de uma credencial — token da API REST, chave do
+     * webhook por unidade ({@see TenantContext::setFromToken()}). Estrita como
+     * o set(); a diferença é que a gravação é conferida ({@see fromToken()}).
+     */
+    public static function setFromToken(?int $id): void
+    {
+        self::set($id);
+        self::$byToken = true;
     }
 
     public static function clear(): void
     {
         self::$override = null;
         self::$hasOverride = false;
+        self::$byToken = false;
     }
 
     public static function id(): ?int
@@ -70,6 +85,12 @@ class UnitContext
     public static function overridden(): bool
     {
         return self::$hasOverride;
+    }
+
+    /** Unidade fixada por setFromToken() (API REST, webhook) — e não por código? */
+    public static function fromToken(): bool
+    {
+        return self::$hasOverride && self::$byToken;
     }
 
     /** 'all' só com o valor exato; qualquer outro (inclusive vazio) = 'active'. */
@@ -174,16 +195,17 @@ class UnitContext
 
     /**
      * Unidades em que o usuário do request pode GRAVAR: as dele (userunitids)
-     * mais a ativa. null = não há como saber (override de job/API, console,
-     * sessão sem a lista) e quem chama não confere — o código que fixou a
-     * unidade responde por ela.
+     * mais a ativa; com token (API REST, webhook por unidade), só a do token —
+     * a mesma que a leitura enxerga. null = não há como saber (override de
+     * job/console, sessão sem a lista) e quem chama não confere — o código que
+     * fixou a unidade responde por ela.
      *
      * @return list<int>|null
      */
     public static function allowedIds(): ?array
     {
         if (self::$hasOverride) {
-            return null;
+            return self::$byToken && self::$override !== null ? [self::$override] : null;
         }
         $ids = self::sessionUnitIds();
         if ($ids === null || $ids === []) {

@@ -14,15 +14,26 @@ namespace Mad\Database;
  * tela ("A opção escolhida em Paciente não está na sua lista ou não existe
  * mais."). O texto não diz se o registro existe em outra empresa: para quem
  * grava, ele simplesmente não está disponível.
+ *
+ * Na API REST (e em qualquer pedido que espera JSON) a exceção que escapa da
+ * rota responde 422 com o erro no campo da chave, no formato das outras
+ * validações ({@see Concerns\AnswersAsFieldError}).
  */
 class ReferenceScopeViolation extends \DomainException
 {
+    use Concerns\AnswersAsFieldError;
+
     public function __construct(
         public readonly string $column,
         public readonly int|string $value,
         public readonly string $label,
     ) {
         parent::__construct(self::text($label));
+    }
+
+    public function errorField(): string
+    {
+        return $this->column;
     }
 
     /** "A opção escolhida em <rótulo> não está na sua lista ou não existe mais." */
