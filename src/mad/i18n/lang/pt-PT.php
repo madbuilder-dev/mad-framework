@@ -25,6 +25,9 @@ return [
             'row_invalid'            => 'Na lista :list, linha :row: :message',
             'row_invalid_unnamed'    => 'Linha :row: :message',
             'selection_invalid'      => 'Um dos itens assinalados não pode ser gravado: não está na sua lista ou já não existe.',
+            // Campo de um valor (combo, pesquisa, opção) com a chave de um registo que quem guarda não vê.
+            'option_invalid'         => 'A opção escolhida não está na sua lista ou já não existe.',
+            'option_invalid_in'      => 'A opção escolhida em :field não está na sua lista ou já não existe.',
         ],
 
         'btn' => [

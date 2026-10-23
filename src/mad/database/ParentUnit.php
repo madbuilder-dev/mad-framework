@@ -31,6 +31,12 @@ final class ParentUnit
     /** O pai está em mãos (Detail Form, Lista de itens, Upload em tabela, API). */
     public static function fill(object $child, object $parent): void
     {
+        // A chave que aponta para o pai foi posta aqui pelo framework (o
+        // registro que a tela está gravando), não veio do navegador: a
+        // conferência de escopo das chaves não a recusa (fw#531).
+        if ($child instanceof Model && $parent instanceof Model) {
+            ScopedReferences::trustParent($child, $parent);
+        }
         if (! self::open($child) || ! self::scoped($parent) || ! $parent instanceof Model) {
             return;
         }
@@ -46,6 +52,9 @@ final class ParentUnit
      */
     public static function fillByKey(object $child, string $foreignKey, mixed $parentId): void
     {
+        if ($child instanceof Model && $foreignKey !== '' && is_scalar($parentId) && ! is_bool($parentId) && $parentId !== '') {
+            ScopedReferences::trustKey($child, $foreignKey, $parentId);
+        }
         if ($foreignKey === '' || $parentId === null || $parentId === '' || ! is_scalar($parentId) || ! self::open($child)) {
             return;
         }

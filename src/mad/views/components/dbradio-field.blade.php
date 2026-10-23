@@ -82,6 +82,17 @@
         'label'    => strip_tags($label),
         'required' => $required,
         'emptyAs'  => $emptyAs,
+        // De onde saem as opções: o valor NOVO é conferido nelas no Salvar
+        // (fw#531). Só vai para o estado da tela.
+        'optionsSource' => ($model || \Mad\Database\QuerySource::isQuery($query)) ? [
+            'one'           => true,
+            'model'         => (string) $model,
+            'key'           => (string) $keyField,
+            'query'         => $query,
+            'filters'       => $filters,
+            'dependsOn'     => (string) $dependsOn,
+            'dependsColumn' => (string) $dependsColumn,
+        ] : '',
     ]);
 
     // :filters → Query Builder interno (builder-native), EXCETO com depends-on

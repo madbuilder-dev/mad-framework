@@ -403,6 +403,9 @@ class MadForm
      */
     private array $_passedNow = [];
 
+    /** @var array<string,string> escolhas do navegador conferidas na lista do campo nesta requisição: campo => valor (ver noteBrowserValue) */
+    private array $_verifiedNow = [];
+
     /** @var array<string, array<string,true>|null> colunas da tabela (minúsculas), por "conexão|tabela"; null = não deu para ler */
     private array $_tableColumnsCache = [];
 
@@ -594,6 +597,7 @@ class MadForm
         $loaded = [];
         foreach ($data as $key => $value) {
             $this->fields[$key] = $value;
+            $this->_dropBrowserChoice((string) $key);
             if ($ref !== null) {
                 $loaded[$key] = self::_fingerprint($value);
             } else {
@@ -609,6 +613,7 @@ class MadForm
         // Os extras são do código da tela (padrões, conversões de unidade).
         foreach ($extra as $key => $value) {
             $this->fields[$key] = $value;
+            $this->_dropBrowserChoice((string) $key);
             unset($this->_known[self::LOADED]['k'][$key]);
             $this->_assignedNow[(string) $key] = true;
         }
@@ -644,6 +649,7 @@ class MadForm
     public function getDataRaw(): object
     {
         $this->_readAllNow = true;
+        $this->_verifyBrowserChoices();
 
         // Mesma leitura tolerante do getData(): campo declarado e ausente lê
         // null (ver MadFormData). Os valores continuam crus.
@@ -668,6 +674,9 @@ class MadForm
     /** O {@see getData()} sem contar como leitura da tela — o que o próprio formulário lê para gravar. */
     private function _data(string $tokenField = '__mad_form'): object
     {
+        // Escolha do navegador fora da lista do campo não chega ao código (fw#531).
+        $this->_verifyBrowserChoices();
+
         if ($this->_dataCache !== null) {
             return $this->_dataCache;
         }
@@ -2418,6 +2427,8 @@ class MadForm
     public function takesFromBrowser(string $field, mixed $value = null): bool
     {
         if (!$this->declares() || isset($this->_known[self::DECLARED]['k'][$field])) {
+            $this->noteBrowserValue($field, $value);
+
             return true;
         }
 
@@ -2445,6 +2456,157 @@ class MadForm
         $this->_refused[$field] = $why;
 
         return false;
+    }
+
+    // ── Escolha do navegador em campo de um valor sobre tabela (fw#531) ─────
+    //
+    // O número que um combo, uma busca única ou um rádio sobre tabela manda é
+    // dado do navegador: trocado na requisição, apontava para o paciente de
+    // outra empresa ou para o profissional que o filtro esconde. O Salvar
+    // confere o que vai para a coluna do registro (_guardSingleSource), e o
+    // Model confere a chave em todo save (ScopedReferences) — mas a tela que
+    // grava por conta própria (`DB::table()->insert()`, query builder,
+    // `saveQuietly()`) passava pelos dois sem conferência nenhuma.
+    //
+    // Por isso a escolha que CHEGA do navegador fica anotada no estado da tela
+    // (`qp`: campo => impressão do valor) e é conferida na lista do campo
+    // quando o código da tela LÊ o formulário: getData(), getDataRaw(),
+    // get() do campo, validate(), fillRecord()/save(). Fora da lista: erro no
+    // campo, antes de o valor chegar ao código. Na lista: sai da anotação.
+    //
+    // Fica anotado até ser lido — também quando a ação que o recebeu não lê o
+    // formulário: a ação seguinte o confere. Valor igual ao que o formulário
+    // já tinha (o que veio do registro, o que o código pôs) não é escolha nova.
+
+    /**
+     * O navegador mandou `$value` para `$field`. Campo de um valor sobre
+     * tabela com valor novo: fica anotado para a conferência na leitura.
+     *
+     * @internal chamado por takesFromBrowser() e MadComponent (campo homônimo de propriedade pública)
+     */
+    public function noteBrowserValue(string $field, mixed $value): void
+    {
+        $source = $this->_known[self::DECLARED]['q'][$field] ?? null;
+        if (!is_array($source) || empty($source['one'])) {
+            return;
+        }
+        if (!is_scalar($value) || is_bool($value) || trim((string) $value) === '') {
+            $this->_dropBrowserChoice($field); // limpou o campo: nada a conferir
+
+            return;
+        }
+        $current = $this->fields[$field] ?? null;
+        if (is_scalar($current) && !is_bool($current) && (string) $current === (string) $value) {
+            return;
+        }
+        $this->_known[self::DECLARED]['qp'][$field] = self::_fingerprint((string) $value);
+    }
+
+    /**
+     * A resposta da ação troca as opções de um campo direto no navegador —
+     * `reloadCombo()`, `reloadRadio()`, `addComboOption()` —, sem passar pelo
+     * `setItems()`: a escolha de um valor passa a ser conferida também nelas
+     * (`qr`, à parte da anotação da tag, que o redesenho refaz).
+     *
+     * @internal chamado por MadComponentHandler com as ops da resposta
+     *
+     * @param list<array<string,mixed>> $ops
+     */
+    public function optionsSentToBrowser(array $ops): void
+    {
+        foreach ($ops as $op) {
+            $kind = is_array($op) ? (string) ($op['op'] ?? '') : '';
+            if ($kind !== 'reload_combo' && $kind !== 'reload_radio' && $kind !== 'combo_add_option') {
+                continue;
+            }
+            $name  = (string) preg_replace('/\[\]$/', '', (string) ($op['name'] ?? ''));
+            $entry = $this->_known[self::DECLARED]['q'][$name] ?? null;
+            if (!is_array($entry) || empty($entry['one'])) {
+                continue;
+            }
+            if ($kind === 'combo_add_option') {
+                $sent = (array) ($this->_known[self::DECLARED]['qr'][$name] ?? []);
+                $keys = [...array_values((array) ($sent['o'] ?? [])), $op['value'] ?? null];
+                $prints = array_values((array) ($sent['oh'] ?? []));
+            } else {
+                $keys   = array_map(static fn ($item) => is_array($item) ? ($item['value'] ?? null) : null, (array) ($op['items'] ?? []));
+                $prints = [];
+            }
+            $shown = self::_offeredEntry($keys);
+            if ($prints !== []) {
+                $shown['oh'] = [...$prints, ...(array) ($shown['oh'] ?? [])];
+            }
+            $this->_known[self::DECLARED]['qr'][$name] = $shown;
+        }
+    }
+
+    /** O código atribuiu `$field`: o valor deixou de ser escolha do navegador. */
+    private function _dropBrowserChoice(string $field): void
+    {
+        if (!isset($this->_known[self::DECLARED]['qp'][$field])) {
+            return;
+        }
+        unset($this->_known[self::DECLARED]['qp'][$field]);
+        if ($this->_known[self::DECLARED]['qp'] === []) {
+            unset($this->_known[self::DECLARED]['qp']);
+        }
+    }
+
+    /**
+     * Confere as escolhas anotadas (todas, ou só a de `$only`) antes de o
+     * código da tela ler o formulário.
+     *
+     * @throws ReferenceViolation valor fora da lista do campo
+     */
+    private function _verifyBrowserChoices(?string $only = null): void
+    {
+        $errors = $this->_browserChoiceErrors($only);
+        if ($errors !== []) {
+            throw new ReferenceViolation($errors, array_keys($errors));
+        }
+    }
+
+    /**
+     * As escolhas anotadas que estão fora da lista do campo: campo => mensagem.
+     * A que passa sai da anotação; a recusada fica, e a próxima leitura a
+     * confere de novo.
+     *
+     * @return array<string,string>
+     */
+    private function _browserChoiceErrors(?string $only = null): array
+    {
+        $pending = $this->_known[self::DECLARED]['qp'] ?? null;
+        if (!is_array($pending) || $pending === [] || ($only !== null && !isset($pending[$only]))) {
+            return [];
+        }
+        if ($only !== null) {
+            $pending = [$only => $pending[$only]];
+        }
+
+        $errors = [];
+        foreach ($pending as $name => $print) {
+            $name   = (string) $name;
+            $source = $this->_known[self::DECLARED]['q'][$name] ?? null;
+            $value  = $this->fields[$name] ?? null;
+            // A tela deixou de desenhar o campo com fonte, o código pôs outro
+            // valor, ou o valor de agora não é mais o que o navegador mandou.
+            if (!is_array($source) || empty($source['one']) || isset($this->_assignedNow[$name])
+                || !is_scalar($value) || is_bool($value) || self::_fingerprint((string) $value) !== $print) {
+                $this->_dropBrowserChoice($name);
+                continue;
+            }
+            if ($this->_outsideSingle($name, $source, (string) $value)) {
+                ReferenceGuard::logRefused(sprintf('o campo "%s"', $name));
+                $errors[$name] = self::_optionInvalid();
+                continue;
+            }
+            $this->_dropBrowserChoice($name);
+            $this->_verifiedNow[$name] = (string) $value;
+            // Passou: a mensagem que uma leitura recusada deixou no campo sai da tela.
+            $this->_passedNow[$name] = true;
+        }
+
+        return $errors;
     }
 
     // ── Editor HTML: o que chega do navegador é limpo ────────────────────────
@@ -3924,6 +4086,12 @@ class MadForm
         if ($name === '' || $this->_openedBefore) {
             return;
         }
+        // Campo de um valor no editor de um detalhe: a chave da linha é
+        // conferida pelas regras de referência do Model e pelo escopo dele
+        // (ReferenceGuard, ScopedReferences), não pela fonte do campo.
+        if (!empty($source['one']) && $this->_editorScope !== null) {
+            return;
+        }
         // Campo do editor de um detalhe: as opções valem para a coluna da LINHA.
         if ($this->_editorScope !== null) {
             $this->_declareEditorSource($this->_editorScope, $name, $source, $separator);
@@ -3932,7 +4100,20 @@ class MadForm
         }
         if (array_key_exists('offered', $source)) {
             if (is_array($source['offered'])) {
-                $this->_renderingOffered[$name] = self::_offeredEntry($source['offered'], (string) ($source['records'] ?? ''), $separator);
+                $entry = self::_offeredEntry($source['offered'], (string) ($source['records'] ?? ''), $separator);
+                // Lista fixa de um campo de UM valor (`<mad-select-field>`,
+                // `<mad-radio-field>`): o valor escolhido é conferido nela
+                // (fw#531). Vale toda lista que o servidor desenhou para o
+                // campo — também a de um trecho redesenhado por `->html()`,
+                // que não passa pelo renderDelivered(): todas são opções que
+                // a tela ofereceu, nenhuma veio do navegador.
+                if (!empty($source['one'])) {
+                    $this->_openDeclared();
+                    $this->_known[self::DECLARED]['q'][$name] = self::_offeredUnion($this->_known[self::DECLARED]['q'][$name] ?? null, $entry);
+
+                    return;
+                }
+                $this->_renderingOffered[$name] = $entry;
             }
 
             return;
@@ -3963,7 +4144,70 @@ class MadForm
         if ($separator !== '' && $separator !== ',') {
             $entry['s'] = $separator;
         }
+        if (!empty($source['one'])) {
+            $entry = self::_singleEntry($entry, $source);
+        }
         $this->_known[self::DECLARED]['q'][$name] = $entry;
+    }
+
+    /**
+     * A anotação de um campo de UM valor sobre tabela (combo, busca única,
+     * rádio): marcada com `one`, e — quando a fonte é o Model — com o filtro
+     * da tag (`f`, os `:filters` como a tela os avaliou) e a cascata (`dp` =
+     * campo pai, `dc` = coluna do Model filtrada por ele). O valor novo tem de
+     * estar na lista que o campo mostraria (fw#531): o filtro que esconde o
+     * profissional inativo vale também para quem altera a requisição.
+     *
+     * Filtro que não cabe no estado (objeto, closure) fica de fora: o campo
+     * segue conferido só no Model, como uma regra `exists`.
+     *
+     * @param  array<string,mixed> $entry
+     * @param  array<string,mixed> $source
+     * @return array<string,mixed>
+     */
+    private static function _singleEntry(array $entry, array $source): array
+    {
+        $entry['one'] = 1;
+        if (!isset($entry['m'])) {
+            return $entry;
+        }
+        $filters = $source['filters'] ?? null;
+        if (is_array($filters) && $filters !== [] && self::_plainFilters($filters)) {
+            $entry['f'] = array_values($filters);
+        }
+        $parent = trim((string) ($source['dependsOn'] ?? ''));
+        // Pai como caminho de relação (`{estado->pais_id}`) não é campo do
+        // formulário: a cascata não é conferida.
+        if ($parent !== '' && !str_contains($parent, '->') && !str_contains($parent, '{')) {
+            $column = trim((string) ($source['dependsColumn'] ?? ''));
+            $entry['dp'] = $parent;
+            $entry['dc'] = $column !== '' ? $column : $parent;
+        }
+
+        return $entry;
+    }
+
+    /** Os `:filters` são só triplas de valores simples (cabem no estado e voltam iguais)? */
+    private static function _plainFilters(array $filters): bool
+    {
+        foreach ($filters as $filter) {
+            if (!is_array($filter)) {
+                return false;
+            }
+            foreach ($filter as $part) {
+                if (is_array($part)) {
+                    foreach ($part as $item) {
+                        if ($item !== null && !is_scalar($item)) {
+                            return false;
+                        }
+                    }
+                } elseif ($part !== null && !is_scalar($part)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -4045,6 +4289,32 @@ class MadForm
     }
 
     /**
+     * A anotação de um campo de um valor com lista fixa somada à lista que o
+     * render em curso desenhou (`one` + `o`/`oh`). Anotação de outra fonte
+     * (a tag passou a ser outra) é trocada.
+     *
+     * @param  mixed               $old
+     * @param  array<string,mixed> $new
+     * @return array<string,mixed>
+     */
+    private static function _offeredUnion(mixed $old, array $new): array
+    {
+        $plain  = (array) ($new['o'] ?? []);
+        $prints = (array) ($new['oh'] ?? []);
+        if (is_array($old) && !empty($old['one']) && (isset($old['o']) || isset($old['oh']))) {
+            $plain  = [...(array) ($old['o'] ?? []), ...$plain];
+            $prints = [...(array) ($old['oh'] ?? []), ...$prints];
+        }
+        $entry = self::_offeredEntry($plain);
+        if ($prints !== []) {
+            $entry['oh'] = array_values(array_unique([...$prints, ...(array) ($entry['oh'] ?? [])]));
+        }
+        $entry['one'] = 1;
+
+        return $entry;
+    }
+
+    /**
      * A consulta própria das opções, compilada como a tela a montou (escopos de
      * unidade, empresa e exclusão lógica inclusos). Null quando ela não cabe no
      * estado — um parâmetro que não é texto, número ou data: o campo segue sem
@@ -4096,7 +4366,9 @@ class MadForm
     private function _offeredChanged(string $field, array $items): void
     {
         $entry = $this->_known[self::DECLARED]['q'][$field] ?? null;
-        if (!is_array($entry) || isset($entry['m']) || $this->_openedBefore) {
+        // Campo de um valor (`one`): a lista do setItems() é lida na hora do
+        // Salvar (_outsideSingle), a anotação fica como está.
+        if (!is_array($entry) || isset($entry['m']) || isset($entry['one']) || $this->_openedBefore) {
             return;
         }
         $records = (string) ($entry['r'] ?? '');
@@ -4138,6 +4410,10 @@ class MadForm
                 || ($record instanceof \Illuminate\Database\Eloquent\Model && !$record->isFillable($name))) {
                 continue;
             }
+            if (!empty($source['one'])) {
+                $this->_guardSingleSource($record, $name, $source, $dataArray);
+                continue;
+            }
             // Sem valor a gravar ou valor em lista (o `fill()` não grava lista
             // em coluna): nenhuma marca entra.
             $entering = [];
@@ -4154,6 +4430,106 @@ class MadForm
             }
             $this->_guardSelectionSource($name, $entering);
         }
+    }
+
+    /**
+     * Campo de UM valor sobre tabela (combo, busca única, rádio) gravado na
+     * coluna do registro: o valor NOVO tem de estar na lista que o campo
+     * mostraria a quem salva — o Model com os escopos dele, o filtro da tag e
+     * a cascata, a consulta própria (`:query`) ou a lista que o código pôs com
+     * `setItems()` (fw#531). O número que chega no Salvar é dado do navegador:
+     * trocá-lo pelo de um paciente de outra empresa, ou de um profissional
+     * inativo que o filtro esconde, gravava.
+     *
+     * Só o valor que MUDA em relação ao registro é conferido: ele pode
+     * apontar, de antes, para um item que hoje está fora da lista, e salvar
+     * sem mexer nele continua valendo. O que o código da tela atribui neste
+     * request (`set()`, `fill([...])`, os extras do `save()`) não passa por
+     * aqui — e a rede do Model (ScopedReferences) continua valendo para tudo.
+     *
+     * @param array<string,mixed> $source    a anotação do campo (`$_known[DECLARED]['q']`, com `one`)
+     * @param array<string,mixed> $dataArray campos que vão para o registro
+     *
+     * @throws ReferenceViolation
+     */
+    private function _guardSingleSource(object $record, string $name, array $source, array $dataArray): void
+    {
+        if (!array_key_exists($name, $dataArray) || isset($this->_assignedNow[$name])) {
+            return;
+        }
+        $value = $dataArray[$name];
+        if (!is_scalar($value) || is_bool($value) || trim((string) $value) === '') {
+            return;
+        }
+        $value   = (string) $value;
+        $current = $record instanceof \Illuminate\Database\Eloquent\Model
+            ? ($record->getAttributes()[$name] ?? null)
+            : ($record->$name ?? null);
+        if (is_scalar($current) && (string) $current === $value) {
+            return;
+        }
+        // Conferido na leitura do formulário, nesta mesma requisição.
+        if (($this->_verifiedNow[$name] ?? null) === $value) {
+            $this->_passedNow[$name] = true;
+
+            return;
+        }
+
+        if ($this->_outsideSingle($name, $source, $value)) {
+            ReferenceGuard::logRefused(sprintf('o campo "%s"', $name));
+
+            throw new ReferenceViolation([$name => self::_optionInvalid()], [$name]);
+        }
+        // Passou: a mensagem que um Salvar recusado deixou no campo sai da tela.
+        $this->_passedNow[$name] = true;
+    }
+
+    /** O valor `$value` está fora da lista que o campo de um valor `$name` mostraria? */
+    private function _outsideSingle(string $name, array $source, string $value): bool
+    {
+        // Opção que a resposta de uma ação mandou ao navegador (reloadCombo(),
+        // reloadRadio(), addComboOption()): veio do servidor, vale.
+        $sent = $this->_known[self::DECLARED]['qr'][$name] ?? null;
+        if (is_array($sent) && ReferenceGuard::outsideOffered(array_values((array) ($sent['o'] ?? [])), array_values((array) ($sent['oh'] ?? [])), [$value]) === []) {
+            return false;
+        }
+        // Lista posta pelo código da tela (`setItems()`): é ela que o campo de
+        // banco mostra. A lista fixa da tag (`:items` de um select) volta no
+        // próximo redesenho, e vale junto.
+        if (isset($this->items[$name]) && is_array($this->items[$name])) {
+            $keys = array_map('strval', array_keys(\Mad\Support\MadItems::normalize($this->items[$name])));
+            if (in_array($value, $keys, true)) {
+                return false;
+            }
+            if (!isset($source['o']) && !isset($source['oh'])) {
+                return true;
+            }
+        }
+        if (!isset($source['m'])) {
+            return self::_outsideOptions($source, [$value]) !== [];
+        }
+
+        $filters = is_array($source['f'] ?? null) ? $source['f'] : [];
+        $parent  = (string) ($source['dp'] ?? '');
+        $above   = $parent !== '' ? ($this->fields[$parent] ?? null) : null;
+        $narrow  = null;
+        if ($filters !== [] || (is_scalar($above) && !is_bool($above) && (string) $above !== '')) {
+            $column = (string) ($source['dc'] ?? $parent);
+            $narrow = static function ($query) use ($filters, $above, $column): void {
+                if ($filters !== []) {
+                    \Mad\Database\QuerySource::applyArrayFilters($query, $filters);
+                }
+                // Cascata: a lista do filho é a do pai escolhido (o pai é
+                // conferido como campo próprio). Pai vazio: o filho não é
+                // restringido — a tela não teria lista, mas o valor gravado
+                // de antes continua valendo.
+                if (is_scalar($above) && !is_bool($above) && (string) $above !== '' && $column !== '') {
+                    $query->where($column, '=', (string) $above);
+                }
+            };
+        }
+
+        return ReferenceGuard::outsideSource((string) $source['m'], (string) ($source['k'] ?? 'id'), [$value], $narrow) !== [];
     }
 
     /**
@@ -5256,6 +5632,8 @@ class MadForm
             throw $this->_uniqueViolation($e, $record);
         } catch (\Mad\Database\UnitScopeViolation) {
             throw $this->_unitViolation();
+        } catch (\Mad\Database\ReferenceScopeViolation $e) {
+            throw $this->_referenceViolation($e);
         } catch (\Illuminate\Database\QueryException $e) {
             $column = self::_notNullColumn($e);
             if ($column === null) {
@@ -5314,6 +5692,32 @@ class MadForm
             '',
             $this->_knownFieldNames($this->fields),
         );
+    }
+
+    /**
+     * Chave para um registro que quem salva não enxerga (outra empresa, unidade
+     * que não é do usuário, registro que não existe — ScopedReferences) → erro
+     * no campo da chave. Sem o campo na tela a mensagem diz qual é (o
+     * asInline() a leva para o aviso).
+     */
+    private function _referenceViolation(\Mad\Database\ReferenceScopeViolation $e): MadValidationException
+    {
+        $known = $this->_knownFieldNames($this->fields);
+        $field = $e->column;
+        ReferenceGuard::logRefused(sprintf('o campo "%s"', $field));
+
+        return new MadValidationException(
+            [$field => in_array($field, $known, true) ? self::_optionInvalid() : $e->getMessage()],
+            [$field],
+            '',
+            $known,
+        );
+    }
+
+    /** "A opção escolhida não está na sua lista ou não existe mais." — o erro no próprio campo. */
+    private static function _optionInvalid(): string
+    {
+        return self::_text('mad.form.option_invalid', [], 'A opção escolhida não está na sua lista ou não existe mais.');
     }
 
     /**
@@ -6682,6 +7086,11 @@ class MadForm
 
         $errors = MadValidator::validate($data, $parsedRules, $messages, $attrs);
 
+        // Escolha do navegador fora da lista do campo (fw#531): a tela que
+        // valida e grava por conta própria também não segue com ela.
+        $choices = $this->_browserChoiceErrors();
+        $errors += $choices;
+
         // Arquivo que o navegador recusou e tirou do envio (fw#297): a tela que
         // valida e grava o arquivo à mão também não pode seguir para "salvo".
         $refused = MadUploadRules::refused($this->_drawnUploads());
@@ -6702,7 +7111,7 @@ class MadForm
         if ($errors) {
             throw new MadValidationException(
                 $errors,
-                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused))])),
+                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused)), ...array_map('strval', array_keys($choices))])),
                 '',
                 $this->_knownFieldNames($data),
             );
@@ -6911,6 +7320,7 @@ class MadForm
     public function get(string $field, mixed $default = null): mixed
     {
         $this->_usedNow[$field] = true;
+        $this->_verifyBrowserChoices($field);
         $value = $this->fields[$field] ?? $default;
         if (is_string($value) && isset($this->fields[$field]) && MadFormRegistry::isDisplayDate($value)
             && ($props = $this->_dateProps($field)) !== null) {
@@ -7008,6 +7418,7 @@ class MadForm
         }
         $this->fields[$field] = $value;
         $this->_dataCache = null;
+        $this->_dropBrowserChoice($field);
 
         // Valor atribuído pelo código: é gravado, mesmo igual ao que veio do
         // registro e mesmo sem campo na tela (ver _untouchedLoaded). Menos o
@@ -9212,7 +9623,7 @@ class MadForm
             foreach ($lines as $i => [$row, $instance, $at]) {
                 try {
                     $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
-                } catch (\Illuminate\Database\QueryException $e) {
+                } catch (\Illuminate\Database\QueryException|\Mad\Database\ReferenceScopeViolation $e) {
                     throw self::rowDbRefusal($e, $this->rowLabels($detailName), $detailName, $at) ?? $e;
                 }
             }
@@ -9332,7 +9743,7 @@ class MadForm
             $instance ??= new $cls();
             try {
                 $this->_persistDetailInstance($instance, $fk, $parentId, $row, $hook, $mestre, $detailName, $fileColumns, $values[$i] ?? null);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (\Illuminate\Database\QueryException|\Mad\Database\ReferenceScopeViolation $e) {
                 throw self::rowDbRefusal($e, $this->rowLabels($detailName), $detailName, $at) ?? $e;
             }
 
@@ -9607,6 +10018,19 @@ class MadForm
      */
     public static function rowDbRefusal(\Throwable $e, array $labels, string $name, int $position): ?ReferenceViolation
     {
+        // Chave da linha para um cadastro que quem salva não enxerga
+        // (ScopedReferences): a mesma frase, com o rótulo da coluna da lista.
+        if ($e instanceof \Mad\Database\ReferenceScopeViolation) {
+            $column  = trim((string) ($labels['columns'][$e->column] ?? ''));
+            $message = \Mad\Database\ReferenceScopeViolation::text($column !== '' ? $column : $e->label);
+            $list    = (string) ($labels['list'] ?? '');
+            ReferenceGuard::logRefused(sprintf('a coluna "%s" da linha %d da lista "%s"', $e->column, $position, $list !== '' ? $list : $name));
+
+            return new ReferenceViolation([$name . '.' . $position . '.' . $e->column => $list !== ''
+                ? self::_text('mad.form.row_invalid', ['list' => $list, 'row' => $position, 'message' => $message], 'Na lista :list, linha :row: :message')
+                : self::_text('mad.form.row_invalid_unnamed', ['row' => $position, 'message' => $message], 'Linha :row: :message')]);
+        }
+
         $found = \Mad\Ui\MadDbErrorMessage::classify($e);
         $kinds = [
             \Mad\Ui\MadDbErrorMessage::REQUIRED, \Mad\Ui\MadDbErrorMessage::TOO_LONG,

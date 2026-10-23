@@ -5,6 +5,7 @@ namespace Mad\Database\Concerns;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Mad\Database\AdminScope;
+use Mad\Database\ScopedReferences;
 use Mad\Database\TenantContext;
 use Mad\Database\TenantScopeViolation;
 
@@ -91,6 +92,12 @@ trait BelongsToTenant
                 }
             }
         });
+
+        // Chave para outro cadastro (paciente_id, profissional_id...): tem de
+        // apontar para um registro que quem grava enxerga — o número que vem
+        // do combo é dado do navegador. Depois do carimbo acima: a empresa
+        // conferida é a do registro. Ver ScopedReferences.
+        static::saving(static fn ($model) => ScopedReferences::guard($model));
     }
 
     /**

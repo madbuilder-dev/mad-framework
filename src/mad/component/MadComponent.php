@@ -2071,6 +2071,7 @@ abstract class MadComponent
             }
             foreach ($forms as $form) {
                 if ($form->declaresField($prop)) {
+                    $form->noteBrowserValue($prop, $value);
                     $form->fields[$prop] = $form->cleanFromBrowser($prop, $value);
                 }
             }

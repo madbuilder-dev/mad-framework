@@ -178,6 +178,13 @@ trait BelongsToUnit
                 throw new \Mad\Database\UnitScopeViolation(is_int($value) ? $value : (string) $value);
             }
         });
+
+        // Chave para outro cadastro: tem de apontar para um registro que quem
+        // grava enxerga (ver ScopedReferences). Quem usa também o
+        // BelongsToTenant já ganhou a conferência no boot dele — uma só por model.
+        if (! method_exists(static::class, 'bootBelongsToTenant')) {
+            static::saving(static fn ($model) => \Mad\Database\ScopedReferences::guard($model));
+        }
     }
 
     /**

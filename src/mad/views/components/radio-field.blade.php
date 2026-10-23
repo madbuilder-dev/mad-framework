@@ -58,9 +58,21 @@
     }
     $selected = (string) ($selected ?? '');
 
+    // As opções que a tela desenha (menos as desabilitadas): o valor escolhido
+    // tem de ser uma delas — o que chega no POST é dado do navegador (fw#531).
+    // Só vai para o estado da tela.
+    $__offered = [];
+    foreach ((array) $options as $__k => $__o) {
+        if (!is_array($__o)) {
+            $__offered[] = $__k;
+        } elseif (array_key_exists('value', $__o) && empty($__o['disabled'])) {
+            $__offered[] = $__o['value'];
+        }
+    }
     \Mad\Form\MadFormRegistry::register($name, 'radio', [
         'label'    => strip_tags($label),
         'required' => $required,
+        'optionsSource' => $__offered !== [] ? ['one' => true, 'offered' => $__offered] : '',
     ]);
 
     $sizeCls = $size === 'sm' ? ' mad-radio-group-sm' : ($size === 'lg' ? ' mad-radio-group-lg' : '');

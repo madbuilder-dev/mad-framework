@@ -304,6 +304,9 @@ return [
             'row_invalid'            => 'En la lista :list, fila :row: :message',
             'row_invalid_unnamed'    => 'Fila :row: :message',
             'selection_invalid'      => 'Uno de los elementos marcados no se puede guardar: no está en su lista o ya no existe.',
+            // Campo de un valor (combo, búsqueda, radio) con la clave de un registro que quien guarda no ve.
+            'option_invalid'         => 'La opción elegida no está en su lista o ya no existe.',
+            'option_invalid_in'      => 'La opción elegida en :field no está en su lista o ya no existe.',
         ],
 
         // Guardar desde una pantalla desactualizada: las líneas (lista de ítems /

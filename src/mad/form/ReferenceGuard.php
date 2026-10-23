@@ -124,10 +124,14 @@ final class ReferenceGuard
      * recusam tudo — quem não conseguiu listar as opções não tem marca nova a
      * gravar —, e o motivo vai para o log.
      *
+     * `$narrow` restringe a consulta como o campo de UM valor restringe a
+     * lista dele (o filtro da tag, a cascata) — ver MadForm::_outsideSingle().
+     *
      * @param  list<int|string> $keys   valores de `$key` a conferir (as marcas NOVAS)
+     * @param  (\Closure(\Illuminate\Database\Eloquent\Builder): void)|null $narrow
      * @return list<string> as chaves recusadas (vazio = todas são de quem salva)
      */
-    public static function outsideSource(string $model, string $key, array $keys): array
+    public static function outsideSource(string $model, string $key, array $keys, ?\Closure $narrow = null): array
     {
         $asked = [];
         foreach ($keys as $value) {
@@ -149,7 +153,11 @@ final class ReferenceGuard
 
             $found = [];
             foreach (array_chunk($asked, self::SOURCE_CHUNK) as $chunk) {
-                foreach ($class::query()->whereIn($key, $chunk)->pluck($key) as $value) {
+                $query = $class::query();
+                if ($narrow !== null) {
+                    $narrow($query);
+                }
+                foreach ($query->whereIn($key, $chunk)->pluck($key) as $value) {
                     if (is_scalar($value)) {
                         $found[(string) $value] = true;
                     }

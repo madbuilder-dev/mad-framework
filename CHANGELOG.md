@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.213.0] — 2026-10-23
+
+### Correções
+
+- **Formulários:** num app com várias empresas ou unidades, quem alterava a requisição do Salvar conseguia gravar a chave de um cadastro que não enxerga, como o paciente de outra empresa ou o profissional de uma unidade sem acesso. Agora a gravação é recusada com "A opção escolhida não está na sua lista ou não existe mais." no campo.
+- **Formulários:** o valor de `<mad-dbcombo-field>`, `<mad-dbunique-search-field>` e `<mad-dbradio-field>` tem de estar na lista que o campo mostra, com o `:filters` e o `depends-on` da tag. Antes, o profissional inativo que o filtro esconde entrava se a requisição fosse alterada.
+- **Formulários:** `<mad-select-field>` e `<mad-radio-field>` com lista fixa (`:items`, `:options` ou `<option>` na tag) também conferem a opção escolhida. Antes, `tipo=xpto` numa categoria Receita/Despesa era gravado.
+- **Formulários:** a conferência vale também para a tela que grava por conta própria: ao ler o formulário com `getData()`, `getDataRaw()`, `get()` ou `validate()`, a opção fora da lista vira erro no campo antes de chegar ao código.
+
+### Atenção
+
+- **Cadastros:** código que grava de propósito a chave de um cadastro fora do alcance de quem está logado (uma consolidação entre empresas, por exemplo) passa a ser recusado. Declare a coluna no model em `protected static array $madReferencesOutsideScope = ['coluna_id'];` ou grave dentro de `ScopedReferences::without(fn () => $registro->save())`.
+- **Formulários:** a opção escolhida tem de ter saído do servidor: a lista da tag, `setItems()`, `reloadCombo()`, `reloadRadio()` ou `addComboOption()`. Opção que o JavaScript da tela acrescenta sozinho a um campo que já tem lista é recusada; mande-a por um desses caminhos.
+
 ## [5.212.1] — 2026-10-23
 
 ### Correções

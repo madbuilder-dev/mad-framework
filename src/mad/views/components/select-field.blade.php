@@ -86,9 +86,18 @@
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError = !empty($error);
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
+    // As opções que a tela desenha (`:items`, a lista do setItems() ou as
+    // <option> do slot): o valor escolhido tem de ser uma delas — o que chega
+    // no POST é dado do navegador (fw#531). Cadastro na hora (`no-results-*`)
+    // acrescenta opção no navegador: fica sem conferência. Só vai para o
+    // estado da tela.
+    $__offered = !empty($items) ? array_keys($items) : array_keys(\Mad\Form\ReadMode::slotOptions((string) ($slot ?? '')));
     \Mad\Form\MadFormRegistry::register($name, 'select', [
         'label'    => strip_tags($label),
         'required' => $required,
+        'optionsSource' => ($__offered !== [] && empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction))
+            ? ($_slotMultiple ? ['offered' => $__offered] : ['one' => true, 'offered' => $__offered])
+            : '',
     ]);
 
     $noResultsAttrs = \Mad\Form\MadNoResultsHelper::buildAttrs([

@@ -685,6 +685,15 @@ class MadComponentHandler
 
         // ── 6a/6b. Gerar ops (MadResponse explícito + auto-bind) ─────────────
         $explicitOps = ($result instanceof MadResponse) ? $result->getOps() : [];
+        // Opções que a resposta troca no navegador (reloadCombo e afins): o
+        // formulário confere a escolha também nelas (fw#531).
+        if ($explicitOps !== []) {
+            foreach (get_object_vars($component) as $_propVal) {
+                if ($_propVal instanceof \Mad\Form\MadForm) {
+                    $_propVal->optionsSentToBrowser($explicitOps);
+                }
+            }
+        }
 
         // Render antecipado para popular o VarRegistry
         // (templates registram vars de autocomplete e inputs durante o render)

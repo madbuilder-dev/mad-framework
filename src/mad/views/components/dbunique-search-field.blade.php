@@ -130,6 +130,19 @@
         'label'    => strip_tags($label),
         'required' => $required,
         'emptyAs'  => $emptyAs,
+        // De onde saem as opções: o valor NOVO é conferido nelas no Salvar
+        // (fw#531). Com "Cadastrar novo"/cadastro rápido o registro criado na
+        // hora pode não passar no filtro da tag: confere só o Model. Só vai
+        // para o estado da tela.
+        'optionsSource' => ($model || \Mad\Database\QuerySource::isQuery($query ?? null)) ? [
+            'one'           => true,
+            'model'         => (string) $model,
+            'key'           => (string) $keyField,
+            'query'         => $query ?? null,
+            'filters'       => (empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction)) ? $filters : [],
+            'dependsOn'     => (string) $dependsOn,
+            'dependsColumn' => (string) $dependsColumn,
+        ] : '',
     ]);
 
     // Fonte do filtro → SEMPRE compila pra query_sql/query_bindings (parametrizado),

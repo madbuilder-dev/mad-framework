@@ -309,7 +309,7 @@ trait MadFieldListTrait
         \Mad\Database\ParentUnit::fillByKey($instance, $fk, $parentId);
         try {
             $instance->save();
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (\Illuminate\Database\QueryException|\Mad\Database\ReferenceScopeViolation $e) {
             $labels = $form ? $form->rowLabels($fieldList, $model, $fk, $parentId) : ['list' => '', 'columns' => []];
             throw MadForm::rowDbRefusal($e, $labels, (string) $fieldList, $position) ?? $e;
         }

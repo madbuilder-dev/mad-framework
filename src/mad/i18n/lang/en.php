@@ -311,6 +311,9 @@ return [
             'row_invalid'            => 'In the list :list, row :row: :message',
             'row_invalid_unnamed'    => 'Row :row: :message',
             'selection_invalid'      => 'One of the checked items cannot be saved: it is not in your list or no longer exists.',
+            // Single-value field (combo, search, radio) holding the key of a record the user cannot see.
+            'option_invalid'         => 'The selected option is not in your list or no longer exists.',
+            'option_invalid_in'      => 'The option selected in :field is not in your list or no longer exists.',
         ],
 
         // Save from a stale screen: rows (field list / detail form) and attachments

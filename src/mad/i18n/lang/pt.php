@@ -304,6 +304,9 @@ return [
             'row_invalid'            => 'Na lista :list, linha :row: :message',
             'row_invalid_unnamed'    => 'Linha :row: :message',
             'selection_invalid'      => 'Um dos itens marcados não pode ser gravado: ele não está na sua lista ou não existe mais.',
+            // Campo de um valor (combo, busca, rádio) com a chave de um registro que quem salva não enxerga.
+            'option_invalid'         => 'A opção escolhida não está na sua lista ou não existe mais.',
+            'option_invalid_in'      => 'A opção escolhida em :field não está na sua lista ou não existe mais.',
         ],
 
         // Salvar de uma tela desatualizada: linhas (Lista de itens / Detail Form)
