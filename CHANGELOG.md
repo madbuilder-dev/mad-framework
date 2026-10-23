@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.213.1] — 2026-10-23
+
+### Correções
+
+- **Radio:** o campo Radio com as opções cadastradas no painel do Studio derrubava a tela com "Erro ao abrir a tela" (foreach() argument must be of type array|object, string given). Agora as opções aparecem e a opção escolhida é conferida como nas outras listas.
+
 ## [5.213.0] — 2026-10-23
 
 ### Correções

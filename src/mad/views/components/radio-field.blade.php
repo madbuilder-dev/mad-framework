@@ -20,6 +20,14 @@
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     $breakItems = (int) $breakItems;
 
+    // O editor de opções do Studio grava a lista como JSON num atributo sem `:`
+    // (`options='[{"value":"A","label":"Opção A"}]'`): chega aqui como texto e o
+    // foreach derrubava a tela (fórum #166). Texto que não é lista vira lista vazia.
+    if (is_string($options)) {
+        $__json = json_decode($options, true);
+        $options = is_array($__json) ? $__json : [];
+    }
+
     // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
     // que o reload_radio mostrou. Sem isto o redesenho da tela voltava a lista
     // do Blade (fw#228). A forma de objeto do próprio radio (value, label,
