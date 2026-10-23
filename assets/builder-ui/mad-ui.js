@@ -9547,6 +9547,10 @@ document.addEventListener('alpine:init', () => {
                 if (event && typeof event.stopPropagation === 'function') {
                     event.stopPropagation();
                 }
+                // Linha clicada, lida já: depois do madConfirm (await) o
+                // `currentTarget` do evento é null.
+                const btn   = event && (event.currentTarget || event.target);
+                const rowEl = btn && btn.closest ? btn.closest('.mad-fl-row') : null;
 
                 // Resolve placeholders {campo} usando valores da row.
                 // Ex: { produto_id: '{produto_id}', fixo: 'x' } -> { produto_id: row.produto_id, fixo: 'x' }
@@ -9622,7 +9626,11 @@ document.addEventListener('alpine:init', () => {
                     const rowCopy  = Object.assign({}, row || {});
                     const callArgs = Object.assign({}, rowCopy, extra);
                     if (typeof Mad !== 'undefined' && typeof Mad.call === 'function') {
-                        return Mad.call(act.method, callArgs);
+                        // Contexto = a linha: o pedido vai ao componente DONO da
+                        // lista (sem ele, Mad.call pegava a tela principal — numa
+                        // cortina lateral, a listagem de trás). `flRow`: o
+                        // `$this->form->set('col[]', v)` da resposta cai nesta linha.
+                        return Mad.call(act.method, callArgs, rowEl || this.$el, { flRow: rowEl });
                     }
                     console.warn('[madFieldList] Mad.call nao disponivel');
                 };

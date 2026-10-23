@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.211.1] — 2026-10-23
+
+### Correções
+
+- **Lista de itens:** o botão de ação da linha (`<mad-field-list-action>`) com o "On Click" preenchido no Studio não fazia nada ao ser clicado. Agora chama o método da tela.
+- **Lista de itens:** num cadastro aberto em cortina lateral, a ação da linha dava "Método não permitido": o clique ia para a tela de trás. Agora vai para o cadastro.
+- **Lista de itens:** o valor que o método da ação da linha põe numa coluna (`$this->form->set('coluna[]', $valor)`) não aparecia. Agora entra na linha clicada e vai junto no Salvar.
+
 ## [5.211.0] — 2026-10-22
 
 ### Novidades

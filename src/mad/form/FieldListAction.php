@@ -12,6 +12,17 @@ namespace Mad\Form;
  * Suporta dois modos:
  *   1) Action (mad:click) — chama metodo PHP do componente host
  *   2) Navigate           — abre outra classe com auto-detect de wrapper
+ *
+ * No modo Action o método recebe a linha e o `$this->form->set('col[]', $v)`
+ * da resposta grava na linha clicada:
+ *
+ *   <mad-field-list-action icon="barcode" label="Ean" mad:click="onProximoEan" />
+ *
+ *   public function onProximoEan(array $row): MadResponse
+ *   {
+ *       $this->form->set('barras[]', $codigo);
+ *       return new MadResponse();
+ *   }
  */
 class FieldListAction
 {

@@ -3466,7 +3466,18 @@ class MadGridCompiler
                 $chain .= "->drawer()";
             }
         } else {
+            // method="X" OU mad:click="X" (alias, como no <mad-act>). O "On
+            // Click" do painel do Studio grava `mad:click`; lendo só `method`
+            // a ação saía sem método e o clique não fazia nada. parseAttrs
+            // pode partir "mad:click" em "mad" (bool) + "click".
             $method = static::str($attrs, 'method');
+            if ($method === '') {
+                if (isset($attrs['mad:click'])) {
+                    $method = (string) $attrs['mad:click']['value'];
+                } elseif (isset($attrs['click']) && static::has($attrs, 'mad')) {
+                    $method = (string) $attrs['click']['value'];
+                }
+            }
             $chain  = "\\Mad\\Form\\FieldListAction::make(" . static::qs($method) . ")";
         }
 

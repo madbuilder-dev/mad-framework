@@ -1206,7 +1206,7 @@ const MadWire = (() => {
      * do <mad-field-list>). Antes esses mandavam tudo para o Mad.applyOps, que
      * não conhece `bind`: o resumo de um on-totalize (@madBind) não mudava.
      */
-    function _applyWireOps(ops, wrapper, componentId = '') {
+    function _applyWireOps(ops, wrapper, componentId = '', flRow = null) {
         const data = { id: componentId || (wrapper && wrapper.getAttribute ? wrapper.getAttribute('mad-id') : '') };
         // As ops vão uma a uma para o Mad.applyOps: o lote inteiro (toast +
         // redirect do Após salvar) só é visto aqui.
@@ -1250,6 +1250,12 @@ const MadWire = (() => {
                 // com o valor que têm — coluna com :filters, fw#378).
                 if (typeof _madFlApplyComboAll === 'function') {
                     _madFlApplyComboAll(_flScope(op, wrapper), op.target, op.options, op.keep);
+                }
+            } else if (op.op === 'fl_val' && flRow) {
+                // `$this->form->set('col[]', v)` numa ação da Lista de itens
+                // (<mad-field-list-action>): vale na linha onde ela foi clicada.
+                if (flRow.isConnected && typeof _madFlApplyVal === 'function') {
+                    _madFlApplyVal(flRow, op.target, op.content);
                 }
             } else if (op.op === 'fl_dep_token') {
                 if (typeof _madFlSetDepToken === 'function') {
@@ -1748,7 +1754,7 @@ const MadWire = (() => {
                 // Atualiza o estado encriptado no wrapper (para a próxima ação)
                 wrapper.setAttribute('mad-state', data.mad_state);
                 // Aplica ops — 'bind' é scoped ao wrapper; outros vão via Mad.applyOps
-                _applyWireOps(data.ops || [], wrapper, data.id);
+                _applyWireOps(data.ops || [], wrapper, data.id, opts.flRow || null);
                 _setLoading(wrapper, false, sourceForm);
                 _downBar.answered();
                 return { ok: true };
@@ -2529,6 +2535,8 @@ const MadWire = (() => {
             if (options && options.key != null && options.key !== '') opts.key = String(options.key);
             if (options && options.seq) opts.seq = true;
             if (options && options.quietStale) opts.quietStale = true;
+            // Linha da Lista de itens que pediu (ação da linha): `fl_val` cai nela.
+            if (options && options.flRow) opts.flRow = options.flRow;
             if (wrapper) return await _request(wrapper, action, params, extra, null, opts);
         },
 
