@@ -3973,7 +3973,7 @@ class MadForm
             $props   = (array) ($schema[$name] ?? []);
             $before  = $record->exists ? $record->getRawOriginal($name) : null;
             $changed = $record->exists
-                ? !self::_sameColumnValue($before, $value, $props)
+                ? !(self::_sameListValue($record, $name, $value) ?? self::_sameColumnValue($before, $value, $props))
                 : $this->_typedValue($name, $value, $props);
             if (!$changed) {
                 unset($this->_guardedTyped[$name]);
@@ -4023,6 +4023,79 @@ class MadForm
         $this->_guardedTyped = [];
 
         return $notStored;
+    }
+
+    /**
+     * Coluna de lista (cast `array`/`json`/`collection`…) e o que a tela
+     * mandou: a mesma seleção? A coluna guarda `["a","b"]` e a seleção
+     * múltipla manda `b,a` (ou o JSON) — comparados como texto, pareciam
+     * diferentes e o Salvar avisava "Valor não gravado" com tudo gravado
+     * (fórum #174). A ordem e os repetidos não contam.
+     *
+     * null = não é coluna de lista (ou não dá para ler como lista): vale a
+     * comparação de _sameColumnValue().
+     */
+    private static function _sameListValue(\Illuminate\Database\Eloquent\Model $record, string $name, mixed $posted): ?bool
+    {
+        $cast = (string) ($record->getCasts()[$name] ?? '');
+        $listCasts = ['array', 'json', 'collection', 'object', 'encrypted:array', 'encrypted:collection', 'encrypted:json', 'encrypted:object'];
+        $classCasts = [
+            \Illuminate\Database\Eloquent\Casts\AsArrayObject::class,
+            \Illuminate\Database\Eloquent\Casts\AsCollection::class,
+            \Illuminate\Database\Eloquent\Casts\AsEncryptedArrayObject::class,
+            \Illuminate\Database\Eloquent\Casts\AsEncryptedCollection::class,
+        ];
+        $castClass = explode(':', $cast, 2)[0];
+        if (!in_array(strtolower($cast), $listCasts, true) && !in_array($castClass, $classCasts, true)) {
+            return null;
+        }
+
+        $asList = static function (mixed $v): ?array {
+            if ($v instanceof \Illuminate\Support\Collection) {
+                $v = $v->all();
+            } elseif ($v instanceof \ArrayObject) {
+                $v = $v->getArrayCopy();
+            } elseif ($v instanceof \stdClass) {
+                $v = (array) $v;
+            }
+            if ($v === null) {
+                return [];
+            }
+            if (!is_array($v) || !array_is_list($v)) {
+                return null;
+            }
+            $keys = [];
+            foreach ($v as $item) {
+                if (!is_scalar($item)) {
+                    return null;
+                }
+                $item = trim((string) $item);
+                if ($item !== '') {
+                    $keys[$item] = true;
+                }
+            }
+            $keys = array_map('strval', array_keys($keys));
+            sort($keys, SORT_STRING);
+
+            return $keys;
+        };
+
+        try {
+            $before = $asList($record->getOriginal($name));
+        } catch (\Throwable) {
+            return null;   // valor guardado que o cast não lê (cifra trocada, JSON quebrado)
+        }
+        if (is_string($posted) && in_array(substr(ltrim($posted), 0, 1), ['[', '{'], true)) {
+            $decoded = json_decode($posted, true);
+            $after   = is_array($decoded) ? $asList($decoded) : null;
+        } else {
+            $after = $asList(self::selectionKeys($posted, ','));
+        }
+        if ($before === null || $after === null) {
+            return null;
+        }
+
+        return $before === $after;
     }
 
     /**

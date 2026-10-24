@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.219.0] — 2026-10-24
+
+### Novidades
+
+- **Grupos › API:** nova opção **Vale para todos os usuários** na aba API do grupo: quem entra pela API recebe as rotas marcadas no grupo sem precisar estar nele. As telas do grupo continuam só para quem é dele, e senha, duas etapas, unidade, horário de acesso e plano da unidade valem igual. A opção pede `php artisan migrate` (ou o Deploy completo); também dá para ligar com `php artisan mad:api-abilities <grupo> --all-users=on`.
+
+### Correções
+
+- **Formulários:** salvar de novo um registro com uma lista marcada (como as Permissões da API do Grupo) mostrava "Valor não gravado" mesmo com tudo gravado.
+
 ## [5.218.1] — 2026-10-24
 
 ### Correções

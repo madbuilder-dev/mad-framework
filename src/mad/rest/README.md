@@ -280,7 +280,19 @@ permissões listadas são as que as rotas declaram em `mad.api:<ability>`), ou:
 php artisan mad:api-abilities Standard --set=os.read,clientes.read
 php artisan mad:api-abilities Standard --set='*'      # todas as rotas da API
 php artisan mad:api-abilities Standard --clear        # sem acesso pela API
+php artisan mad:api-abilities Integração --all-users=on   # vale para todos os usuários
 ```
+
+**Vale para todos os usuários.** Para o login pela API funcionar sem colocar
+cada usuário num grupo, marque as rotas na aba API de um grupo e ligue **Vale
+para todos os usuários** (ou `--all-users=on`). Todo usuário ativo que entrar
+pela API recebe aquelas rotas, mesmo sem estar no grupo; as telas do grupo
+continuam só para quem está nele. Nada muda no resto do login: senha, duas
+etapas, unidade, horário de acesso, manutenção e termos valem igual, e o plano
+da unidade (com licenciamento) também corta o grupo. Desligar a opção corta o
+acesso de quem não é do grupo no request seguinte. Pede o framework 5.219.0 ou
+mais novo e a migration da coluna (`php artisan migrate`); sem ela a opção não
+aparece e o grupo vale só para quem está nele.
 
 **Pelo Studio.** No MadBuilder, o dev marca as permissões de API de cada grupo
 em **Grupos de permissão**, e elas chegam ao app quando ele publica. A
@@ -336,7 +348,7 @@ O `mfa_token` vale 5 minutos e 5 códigos.
 |---|---|
 | 400 | `invalid_request`, `invalid_unit`, `invalid_scope`, `invalid_grant` |
 | 401 | `invalid_credentials` (o mesmo corpo para usuário inexistente, inativo ou senha errada) |
-| 403 | `api_login_disabled`, `api_access_denied`, `password_reset_required`, `password_change_required` (+`reason`), `access_schedule_denied`, `unit_required`, `terms_acceptance_required`, `tenant_db_not_provisioned`, `mfa_required`, `invalid_mfa_code` |
+| 403 | `api_login_disabled` (nenhum grupo dá permissão de API — nem com "Vale para todos os usuários" ligado), `api_access_denied`, `password_reset_required`, `password_change_required` (+`reason`), `access_schedule_denied`, `unit_required`, `terms_acceptance_required`, `tenant_db_not_provisioned`, `mfa_required`, `invalid_mfa_code` |
 | 429 | `too_many_attempts`, `mfa_locked` (com `Retry-After`) |
 | 503 | `maintenance` |
 
