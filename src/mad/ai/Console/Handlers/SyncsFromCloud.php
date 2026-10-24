@@ -5,11 +5,13 @@ namespace Mad\Ai\Console\Handlers;
 use App\Http\Controllers\AgentApplyController;
 use App\Service\Builder\BuilderHttpClientService;
 use Illuminate\Http\Request;
+use Mad\Ai\Console\MenuArtifacts;
 
 /**
  * Lógica compartilhada das tools que sincronizam do MadBuilder: (perna 1) buscam
  * a fatia canônica na nuvem (project-token) e (perna 2) aplicam via a API interna
- * do framework (AgentApplyController, in-process — sem sair na rede).
+ * do framework (AgentApplyController, in-process — sem sair na rede). Menu é
+ * aplicado pelo MenuArtifacts do pacote, sem passar pelo controller do app.
  */
 trait SyncsFromCloud
 {
@@ -43,11 +45,27 @@ trait SyncsFromCloud
     }
 
     /**
-     * Aplica os arquivos via o AgentApplyController::{$method} (code|menu|permissions),
+     * Aplica os arquivos via o AgentApplyController::{$method} (code|permissions),
      * in-process. Retorna o array decodificado do JSON da API interna.
+     *
+     * `menu` vai direto ao MenuArtifacts: o controller mora em app/ do esqueleto e
+     * só muda quando o app é republicado — o dos apps publicados antes da 5.212.1
+     * recusa o `page-modules.json` que a nuvem manda (fórum #163 e #173).
      */
     protected function applyArtifacts(string $method, array $files): array
     {
+        if ($method === 'menu') {
+            $map = [];
+            foreach ($files as $f) {
+                $p = (string) ($f['path'] ?? '');
+                if ($p !== '') {
+                    $map[$p] = (string) ($f['content'] ?? '');
+                }
+            }
+
+            return MenuArtifacts::apply($map);
+        }
+
         $req = Request::create(
             '/agent-console/v1/apply/' . $method,
             'POST',

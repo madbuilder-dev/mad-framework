@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.218.1] — 2026-10-24
+
+### Correções
+
+- **Central de Comando:** no card Menu, sistemas publicados antes de 23/10 continuavam com "Falha ao atualizar menus" e nenhum menu era gravado, mesmo com o Mad Framework em dia. Agora basta atualizar o Mad Framework pelo card e rodar o Menu de novo, sem republicar o sistema.
+
 ## [5.218.0] — 2026-10-24
 
 ### Novidades
