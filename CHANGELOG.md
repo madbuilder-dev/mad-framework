@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.217.0] — 2026-10-24
+
+### Novidades
+
+- **Preferências:** em Segurança, "Quem gera acesso MCP" escolhe entre todos os usuários e só o administrador do sistema.
+
+### Correções
+
+- **Meu perfil:** num app com licenciamento, todo usuário das empresas clientes via a aba "Acesso MCP" e gerava o próprio token. Agora a aba e a geração ficam só com o administrador do sistema, e o token que outra pessoa já tinha gerado deixa de funcionar.
+- **Meu perfil:** a aba "Acesso MCP" listava um token do assistente a cada login, e "Revogar todos" derrubava o assistente aberto. Agora ela mostra e revoga só os tokens gerados ali.
+
+### Atenção
+
+- **Acesso MCP:** app com licenciamento passa a liberar a aba só ao administrador do sistema. Para deixar como antes, escolha "Todos os usuários" em Preferências › Segurança.
+
 ## [5.216.0] — 2026-10-23
 
 ### Novidades
