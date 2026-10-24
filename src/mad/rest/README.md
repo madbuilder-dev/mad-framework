@@ -282,6 +282,15 @@ php artisan mad:api-abilities Standard --set='*'      # todas as rotas da API
 php artisan mad:api-abilities Standard --clear        # sem acesso pela API
 ```
 
+**Pelo Studio.** No MadBuilder, o dev marca as permissões de API de cada grupo
+em **Grupos de permissão**, e elas chegam ao app quando ele publica. A
+publicação só grava num grupo cuja aba API ainda está como o Studio deixou da
+última vez (nenhuma marcada vale o mesmo que lista vazia). Se o admin mudou a
+aba API daquele grupo no próprio app, o Studio não sobrescreve o grupo: vale o
+que o admin deixou. Desmarcar tudo no app corta o acesso, e a publicação não
+devolve. Receber as permissões do Studio pede o framework 5.218.0 ou mais novo;
+app em versão anterior não recebe nada pela publicação.
+
 O token do login vale o que os **grupos de agora** dão: tirar a pessoa do grupo
 (ou desmarcar a permissão) corta o acesso no request seguinte. Uma permissão
 nova no grupo chega ao token na próxima renovação. Rota `mad.api` **sem**

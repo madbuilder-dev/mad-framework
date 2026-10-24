@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.218.0] — 2026-10-24
+
+### Novidades
+
+- **Grupos:** a aba **API** do grupo passa a receber o que for marcado em **Grupos de permissão** no MadBuilder, a cada publicação. Se o administrador mudou a aba API no sistema, a publicação não sobrescreve aquele grupo, e desmarcar tudo no sistema corta o acesso de vez.
+
+### Melhorias
+
+- **Tokens de API:** cada sessão de login pela API aparece numa linha só. Antes, cada renovação do acesso deixava mais uma linha "Revogado" na lista e no contador de revogados; esses tokens trocados saem da tela e, depois de vencidos, do banco. Token criado à mão e sessão encerrada continuam aparecendo, e a coluna **Último uso** cabe inteira em telas de 1400 px.
+
 ## [5.217.0] — 2026-10-24
 
 ### Novidades
