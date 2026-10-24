@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.221.0] — 2026-10-24
+
+### Novidades
+
+- **Usuários:** dá para entregar a tela Usuários a quem não é administrador para ele cadastrar a equipe. Essa pessoa só vê e marca os perfis liberados com "Pode ser atribuído por quem não é administrador", não vê as abas Grupos, Unidades e Programas, não enxerga a conta do administrador e não muda nome, e-mail, login, senha, "Ativo" nem horário de quem tem acesso que ela não poderia dar.
+- **Perfis:** o interruptor "Pode ser atribuído por quem não é administrador" aparece sempre para o administrador, com ou sem Licenciamento, e vale também para o administrador da unidade.
+
 ## [5.220.0] — 2026-10-24
 
 ### Melhorias
