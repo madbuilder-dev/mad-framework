@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.220.0] — 2026-10-24
+
+### Melhorias
+
+- **Tema:** visual das telas mais limpo. Cartões sem sombra e com cantos mais arredondados, botões e campos na fonte do tema (antes alguns saíam em Arial) e foco do campo na cor do sistema.
+- **Listagem (grid):** cabeçalho sem caixa alta, linhas sem zebra, ações da linha só com o ícone, busca com lupa e paginação mais discreta. A linha destacada por condição fica com fundo leve e a barra colorida ao lado.
+- **Dashboard:** cartões de indicador com rótulo sem caixa alta e o valor no mesmo tamanho em todos os cartões, com algarismos alinhados; a barra de filtros vira uma faixa só, sem caixa dentro de caixa.
+- **Formulário:** rótulos mais leves, ícone do cabeçalho da página sem círculo nem traço ao lado, selos sem borda (com ponto colorido dentro da listagem) e botões da cortina separados dos campos por uma linha.
+
+### Atenção
+
+- **Tema:** quem tem CSS próprio contando com o cabeçalho da listagem em caixa alta, a sombra dos cartões, a zebra das linhas ou a borda nas ações da linha pode precisar ajustar. Pelo editor de temas dá para voltar a zebra, o fundo, o tamanho e o peso do cabeçalho (**Tabelas (DataGrid)**), o ícone do cabeçalho da página (**Alturas e densidade**) e a sombra dos painéis (**Painéis / Cards**); a caixa alta só por CSS próprio.
+
 ## [5.219.2] — 2026-10-24
 
 ### Correções

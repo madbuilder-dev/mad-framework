@@ -88,10 +88,10 @@
   --mad-danger-subtle:  #fef2f2;
 
   /* ── Radius ── */
-  --mad-radius-sm:   4px;
-  --mad-radius:      6px;
+  --mad-radius-sm:   6px;
+  --mad-radius:      8px;
   --mad-radius-md:   8px;
-  --mad-radius-lg:   10px;
+  --mad-radius-lg:   12px;
   --mad-radius-xl:   16px;
   --mad-radius-full: 9999px;
 
@@ -102,8 +102,9 @@
   --mad-shadow-lg: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.06);
   --mad-shadow-xl: 0 20px 40px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.05);
 
-  /* ── Focus rings (sutil — estilo Notch) ── */
-  --mad-ring:        rgba(0,0,0,.08);
+  /* ── Focus rings: halo na cor primária em volta do campo com foco (o
+     contorno de teclado, mais forte, é o --mad-focus-ring) ── */
+  --mad-ring:        color-mix(in srgb, var(--mad-primary) 20%, transparent);
   --mad-ring-danger: rgba(220,38,38,.15);
 
   /* ── Tooltip ── */
@@ -139,7 +140,9 @@
   --mad-stat-grid-min: 220px;          /* largura min do card (auto-fit) */
 
   /* ── Fonts ── */
-  --mad-font:      -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  /* Segue a fonte do tema (--font-family: Inter no padrão, IBM Plex no ERP);
+     sem tema, a pilha do sistema. */
+  --mad-font:      var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   --mad-font-mono: "JetBrains Mono", "Fira Code", "Courier New", monospace;
 
   /* ── Transition ── */
@@ -175,6 +178,11 @@
 }
 /* Quick-form aberto → floats sobem acima dele (combo interno abre por cima). */
 body.mad-quick-popover-open { --mad-z-float: 10060; }
+
+/* Controles nativos herdam a fonte da tela: sem isto o navegador usa a dele
+   (Arial no Chrome) em <button>/<select> sem classe, e a mesma tela mostrava
+   duas fontes. Especificidade zero: qualquer regra de componente vence. */
+:where(.mad-ui) :where(button, select, input, textarea) { font-family: inherit; }
 
 /* ═══════════════════════════════════════════════════════════════════
    COLOR THEMES — Estilo shadcn/ui
@@ -587,12 +595,14 @@ body.mad-quick-popover-open { --mad-z-float: 10060; }
   --mad-shadow-md: 0 4px 6px -1px rgba(0,0,0,.4), 0 2px 4px -2px rgba(0,0,0,.3);
   --mad-shadow-lg: 0 10px 15px -3px rgba(0,0,0,.5), 0 4px 6px -4px rgba(0,0,0,.4);
 
-  --mad-ring:        rgba(255,255,255,.08);
+  --mad-ring:        color-mix(in srgb, var(--mad-primary-ink, var(--mad-primary)) 30%, transparent);
   --mad-ring-danger: rgba(239,68,68,.25);
 
   color-scheme: dark;
-  /* fundo do destaque por condição (linha da grade, opção do select) */
+  /* fundo do destaque por condição (célula da grade, opção do select) */
   --mad-hl-tone-mix: 28%;
+  /* fundo da linha destacada inteira (tem a barra de acento ao lado) */
+  --mad-hl-row-mix: 12%;
 }
 
 /* Tema escuro do app gerado (html[data-theme="dark"], tema Notch): tem
@@ -613,8 +623,12 @@ html[data-theme="dark"] .mad-ui {
   --mad-badge-info-fg:    #93c5fd;
   /* Filtro ativo da barra: o azul puro dava 2,7:1 no fundo escuro (fw#310). */
   --mad-dashf-ink: #fff;
-  /* fundo do destaque por condição (linha da grade, opção do select) */
+  /* fundo do destaque por condição (célula da grade, opção do select) */
   --mad-hl-tone-mix: 28%;
+  /* fundo da linha destacada inteira (tem a barra de acento ao lado) */
+  --mad-hl-row-mix: 12%;
+  /* halo do foco: a primária do tema costuma ser escura; a tinta clareia */
+  --mad-ring: color-mix(in srgb, var(--mad-primary-ink, var(--mad-primary)) 30%, transparent);
 }
 
 /* Tinta da cor primária no escuro (fw#322). `--mad-primary` é PREENCHIMENTO
@@ -688,8 +702,6 @@ html[data-theme="dark"] .mad-textarea.mad-input-error:focus {
   border-bottom-color: var(--mad-border);
 }
 .mad-dark .mad-page-header-icon {
-  background: var(--mad-bg-muted);
-  border-color: var(--mad-border);
   color: var(--mad-text-muted);
 }
 .mad-dark .mad-page-header-vsep {
@@ -1154,12 +1166,12 @@ html[data-theme="dark"] .mad-textarea.mad-input-error:focus {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1.5px solid transparent;
+  border: 1px solid transparent;
   border-radius: var(--mad-radius);
-  padding: 8px 16px;
+  padding: 9px 16px;
   font-size: var(--mad-text-sm);
   font-family: var(--mad-font);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   user-select: none;
@@ -1242,9 +1254,9 @@ a.mad-btn.mad-when-disabled {
 .mad-btn-secondary:hover { background: var(--mad-border); }
 
 .mad-btn-outline {
-  background: transparent;
+  background: var(--mad-bg);
   color: var(--mad-text);
-  border-color: var(--mad-border-strong);
+  border-color: var(--mad-border);
 }
 .mad-btn-outline:hover { background: var(--mad-bg-subtle); }
 
@@ -1338,8 +1350,9 @@ a.mad-btn.mad-when-disabled {
 
 /* Tamanhos */
 .mad-btn-sm {
-  padding: 5px 10px;
-  font-size: var(--mad-text-xs);
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
   border-radius: var(--mad-radius-sm);
   gap: 4px;
 }
@@ -1354,7 +1367,7 @@ a.mad-btn.mad-when-disabled {
   width: 36px;
   height: 36px;
 }
-.mad-btn-icon.mad-btn-sm { width: 28px; height: 28px; }
+.mad-btn-icon.mad-btn-sm { width: 30px; height: 30px; }
 .mad-btn-icon.mad-btn-lg { width: 44px; height: 44px; }
 .mad-btn-block { width: 100%; }
 
@@ -1367,7 +1380,7 @@ a.mad-btn.mad-when-disabled {
 .mad-textarea {
   display: block;
   width: 100%;
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   border-radius: var(--mad-radius);
   padding: 8px 12px;
   font-size: var(--mad-text-sm);
@@ -1381,6 +1394,7 @@ a.mad-btn.mad-when-disabled {
   background: var(--mad-input-bg, var(--mad-bg));
   line-height: 1.5;
   box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
   transition: border-color var(--mad-t), box-shadow var(--mad-t);
 }
 .mad-input:focus,
@@ -1436,8 +1450,7 @@ textarea.mad-textarea:read-only:focus {
 }
 
 .mad-textarea  { resize: vertical; min-height: 80px; }
-.mad-input-sm,
-.mad-select-sm { padding: 5px 8px; font-size: var(--mad-text-xs); border-radius: var(--mad-radius-sm); }
+.mad-input-sm  { padding: 5px 8px; font-size: var(--mad-text-xs); border-radius: var(--mad-radius-sm); }
 .mad-input-lg  { padding: 10px 14px; font-size: var(--mad-text-base); }
 .mad-input-mono{ font-family: var(--mad-font-mono); font-size: 12px; letter-spacing: .5px; }
 
@@ -1468,7 +1481,7 @@ textarea.mad-textarea:read-only:focus {
      --button-height; sem tema, os 38px de sempre. */
   min-height: var(--button-height, 38px);
   padding: 5px 30px 5px 12px;
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   border-radius: var(--mad-radius);
   background: var(--mad-input-bg, var(--mad-bg));
   color: var(--mad-input-color, var(--mad-text));
@@ -1771,10 +1784,10 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    fallback dentro do var(). Cascata: <mad-form label-*> (style no <form>) <
    campo (style no wrapper .mad-field), emitidas por CssUnits::labelStyle(). */
 .mad-label   {
-  font-size: var(--mad-label-size, var(--mad-text-xs));
-  font-weight: var(--mad-label-weight, 700);
+  font-size: var(--mad-label-size, 12.5px);
+  font-weight: var(--mad-label-weight, 500);
   font-style: var(--mad-label-style, normal);
-  color: var(--mad-label-color, var(--mad-text));
+  color: var(--mad-label-color, color-mix(in srgb, var(--mad-text) 85%, var(--mad-bg)));
 }
 .mad-label-required::after { content: ' *'; color: var(--mad-danger); }
 /* Dica é texto que se lê: texto secundário, não o cinza de placeholder (2,6:1, fw#292). */
@@ -1790,7 +1803,9 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   background: var(--mad-bg);
   border: 1px solid var(--mad-border);
   border-radius: var(--mad-radius-lg);
-  box-shadow: var(--mad-shadow-sm);
+  /* Borda leve, sem sombra; o tema que quiser sombra nos painéis a define em
+     --panel-box-shadow (editor de temas). */
+  box-shadow: var(--panel-box-shadow, none);
 }
 
 /* Alturas ajustáveis pelo tema (editor de temas → "Alturas e densidade"):
@@ -1808,8 +1823,12 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--mad-card-header-py, var(--mad-s4)) var(--mad-s5);
+  padding: var(--mad-card-header-py, 14px) var(--mad-s5);
   border-bottom: 1px solid var(--mad-border);
+  /* Título escrito direto no cabeçalho (sem .mad-card-title) também é título. */
+  font-size: var(--mad-text-base);
+  font-weight: 600;
+  color: var(--mad-text);
 }
 
 .mad-card-heading { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1817,13 +1836,14 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 
 .mad-card-title {
   font-size: var(--mad-text-base);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--mad-text);
   line-height: 1.3;
 }
 
 .mad-card-description {
   font-size: var(--mad-text-sm);
+  font-weight: 400;
   color: var(--mad-text-muted);
   margin-top: 2px;
   line-height: 1.5;
@@ -1863,13 +1883,13 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 2px 8px;
-  border-radius: var(--mad-radius-full);
-  font-size: var(--mad-text-xs);
-  font-weight: 600;
-  line-height: 1.6;
-  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  border: 0;
   white-space: nowrap;
 }
 
@@ -1887,9 +1907,13 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-badge-warning   { background: var(--mad-warning-subtle); color: var(--mad-badge-warning-fg, #92400e); border-color: rgba(217,119,6,.3); }
 .mad-badge-danger    { background: var(--mad-danger-subtle);  color: var(--mad-badge-danger-fg, #991b1b);  border-color: rgba(220,38,38,.3); }
 
-.mad-badge-dot::before {
+/* Ponto na cor do selo: sempre dentro da célula da grade (a situação da
+   linha); fora dela, só com .mad-badge-dot. */
+.mad-badge-dot::before,
+.mad-dg-cell .mad-badge::before {
   content: '';
   display: inline-block;
+  flex: none;
   width: 6px; height: 6px;
   border-radius: 50%;
   background: currentColor;
@@ -1904,7 +1928,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   display: flex;
   gap: var(--mad-s3);
   padding: var(--mad-s3) var(--mad-s4);
-  border-radius: var(--mad-radius);
+  border-radius: var(--mad-radius-lg);
   border: 1px solid var(--mad-border);
   background: var(--mad-bg-subtle);
   font-size: var(--mad-text-sm);
@@ -1918,7 +1942,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    dois temas escuros definem --mad-alert-*-text; o claro usa a reserva. */
 .mad-alert-info    { border-color: rgba(74,144,217,.35); background: var(--mad-info-subtle); color: var(--mad-alert-info-text, #1a3a5c); }
 .mad-alert-success { border-color: rgba(22,163,74,.35);  background: var(--mad-success-subtle); color: var(--mad-alert-success-text, #14532d); }
-.mad-alert-warning { border-color: rgba(217,119,6,.35);  background: var(--mad-warning-subtle); color: var(--mad-alert-warning-text, #78350f); }
+.mad-alert-warning { border-color: rgba(217,119,6,.22);  background: var(--mad-warning-subtle); color: var(--mad-alert-warning-text, #78350f); }
 .mad-alert-danger  { border-color: rgba(220,38,38,.35);  background: var(--mad-danger-subtle);  color: var(--mad-alert-danger-text, #7f1d1d); }
 
 
@@ -2255,17 +2279,15 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-table th {
   padding: 10px 14px;
   text-align: left;
-  font-size: var(--mad-text-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .5px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--mad-text-muted);
   border-bottom: 1px solid var(--mad-border);
   white-space: nowrap;
 }
 
 .mad-table td {
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--mad-border);
   color: var(--mad-text);
   vertical-align: middle;
@@ -2430,14 +2452,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    25. COMPONENTE — DRAWER LAYOUT
    ═══════════════════════════════════════════════════════════════════ */
 
-.mad-drawer        { display: flex; flex-direction: column; height: 100%; background: var(--mad-bg); }
-.mad-drawer-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px;
-  padding: var(--mad-drawer-header-py, var(--mad-s5)) var(--mad-s5);
-  border-bottom: 1px solid var(--mad-border);
-  flex-shrink: 0;
-}
+/* .mad-drawer, -header, -body e -title: ver a seção da cortina (DRAWER), mais
+   abaixo. Aqui ficam só as peças do cabeçalho. */
 .mad-drawer-header-left {
   display: flex; align-items: center; gap: 12px; min-width: 0;
 }
@@ -2460,7 +2476,6 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   flex-shrink: 0;
 }
 .mad-drawer-header-meta { min-width: 0; }
-.mad-drawer-body   { flex: 1; overflow-y: auto; padding: var(--mad-s1) var(--mad-s5) var(--mad-s6); }
 .mad-drawer-footer {
   padding: var(--mad-s3) var(--mad-s5);
   border-top: 1px solid var(--mad-border);
@@ -2475,7 +2490,6 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 15px; flex-shrink: 0;
 }
-.mad-drawer-title    { font-size: var(--mad-page-title-size, 1.1rem); font-weight: 600; color: var(--mad-text); letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mad-drawer-subtitle { font-size: var(--mad-text-xs); color: var(--mad-text-subtle); }
 
 
@@ -2560,14 +2574,14 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   border: 1px solid var(--mad-border);
   border-radius: var(--mad-radius-lg);
   padding: var(--mad-s4) var(--mad-s5);
-  box-shadow: var(--mad-shadow-sm);
+  box-shadow: var(--panel-box-shadow, none);
 }
-.mad-stat-label  { font-size: var(--mad-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--mad-text-muted); }
-.mad-stat-value  { font-size: var(--mad-text-3xl); font-weight: 700; color: var(--mad-text); line-height: 1.1; margin-top: 4px; }
+.mad-stat-label  { font-size: 12.5px; font-weight: 500; color: var(--mad-text-muted); }
+.mad-stat-value  { font-size: var(--mad-text-2xl); font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--mad-text); line-height: 1.15; margin-top: 4px; }
 .mad-stat-change { font-size: var(--mad-text-xs); margin-top: 4px; }
 .mad-stat-change-up   { color: var(--mad-success); }
 .mad-stat-change-down { color: var(--mad-danger); }
-.mad-stat-context { font-size: var(--mad-text-xs); color: var(--mad-text-muted); line-height: 1.35; margin-top: 4px; }
+.mad-stat-context { font-size: 12.5px; color: var(--mad-text-muted); line-height: 1.35; margin-top: 4px; }
 /* Esqueleto do <mad-metric-card>: rótulo/valor à esquerda, ícone à direita. */
 .mad-stat-body { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mad-stat-main { flex: 1; min-width: 0; }
@@ -3418,8 +3432,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 14px 16px;
-  font-size: var(--mad-text-sm);
+  padding: 13px 16px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--mad-text);
   background: transparent;
@@ -3430,6 +3444,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   transition: background var(--mad-t);
 }
 .mad-accordion-trigger:hover { background: var(--mad-bg-subtle); }
+.mad-accordion-trigger > svg { flex: none; width: 16px; height: 16px; color: var(--mad-text-subtle); }
 .mad-accordion-body {
   padding: 0 16px 16px;
   font-size: var(--mad-text-sm);
@@ -4062,12 +4077,12 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--mad-border);
-  border-radius: var(--mad-radius);
-  font-size: var(--mad-text-sm);
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--mad-radius-sm);
+  font-size: 12.5px;
   color: var(--mad-text);
   background: transparent;
   cursor: pointer;
@@ -4076,7 +4091,7 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   user-select: none;
   white-space: nowrap;
 }
-.mad-page-btn:hover { background: var(--mad-bg-subtle); }
+.mad-page-btn:hover { background: var(--mad-bg-muted); }
 .mad-page-btn-active {
   background: var(--mad-primary);
   color: var(--mad-primary-fg);
@@ -4089,8 +4104,8 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
+  min-width: 30px;
+  height: 30px;
   color: var(--mad-text-subtle);
   font-size: var(--mad-text-sm);
 }
@@ -4302,6 +4317,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   flex: 1;
   min-width: 0;
   border-radius: 0;
+  box-shadow: none;
 }
 .mad-input-addon {
   display: inline-flex;
@@ -4311,7 +4327,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-weight: 600;
   color: var(--mad-text-muted);
   background: var(--mad-bg-muted);
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   white-space: nowrap;
   line-height: 1;
 }
@@ -4350,14 +4366,14 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   display: inline-flex;
   align-items: center;
   padding: 0 10px;
-  background: var(--mad-bg-muted);
-  border: 1.5px solid var(--mad-border);
+  background: var(--mad-input-bg, var(--mad-bg));
+  border: 1px solid var(--mad-border-strong);
   border-left: none;
   border-radius: 0 var(--mad-radius) var(--mad-radius) 0;
   color: var(--mad-text-muted);
   cursor: pointer;
   line-height: 1;
-  transition: background var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), color var(--mad-t);
 }
 .mad-datepicker-btn:hover:not(:disabled) {
   background: var(--mad-bg-subtle);
@@ -4375,13 +4391,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   justify-content: center;
   padding: 0 12px;
   background: var(--mad-bg-muted);
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   border-left: none;
   border-radius: 0 var(--mad-radius) var(--mad-radius) 0;
   color: var(--mad-text-muted);
   cursor: pointer;
   line-height: 1;
-  transition: background var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), color var(--mad-t);
 }
 .mad-password-toggle-btn:hover:not(:disabled) {
   background: var(--mad-bg-subtle);
@@ -4426,7 +4442,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   gap: 6px;
   font-size: var(--mad-text-sm);
   color: var(--mad-text-muted);
-  transition: color var(--mad-transition);
+  transition: color var(--mad-t);
 }
 .mad-password-strength-list li.mad-pwd-rule-ok {
   color: var(--mad-success, #16a34a);
@@ -4830,7 +4846,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   gap: 8px;
   height: var(--mad-input-height, 38px);
   padding: 0 10px;
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   border-radius: var(--mad-radius);
   background: var(--mad-input-bg, var(--mad-bg));
   /* Sem fallback: sem input-color/-weight/-italic vira `unset` e herda, como antes. */
@@ -4838,7 +4854,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-weight: var(--mad-input-weight);
   font-style: var(--mad-input-style);
   cursor: pointer;
-  transition: border-color var(--mad-transition), box-shadow var(--mad-transition);
+  transition: border-color var(--mad-t), box-shadow var(--mad-t);
   position: relative;
   user-select: none;
 }
@@ -4870,7 +4886,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   color: var(--mad-text-muted);
   cursor: pointer;
   border-radius: 50%;
-  transition: background var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), color var(--mad-t);
   flex-shrink: 0;
 }
 .mad-drp-clear:hover {
@@ -4927,7 +4943,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: none;
   border-radius: var(--mad-radius);
   cursor: pointer;
-  transition: background var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), color var(--mad-t);
   white-space: nowrap;
   line-height: 1.3;
 }
@@ -4977,7 +4993,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   color: var(--mad-text-muted);
   cursor: pointer;
   border-radius: var(--mad-radius);
-  transition: background var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), color var(--mad-t);
 }
 .mad-drp-nav-btn:hover {
   background: var(--mad-bg-muted);
@@ -5113,7 +5129,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: var(--mad-bg);
   border-radius: var(--mad-radius);
   cursor: pointer;
-  transition: background var(--mad-transition), border-color var(--mad-transition), color var(--mad-transition);
+  transition: background var(--mad-t), border-color var(--mad-t), color var(--mad-t);
 }
 .mad-dp-footer-btn:hover {
   background: var(--mad-bg-muted);
@@ -5337,7 +5353,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border: 1.5px solid var(--mad-border);
+  border: 1px solid var(--mad-border-strong);
   border-radius: var(--mad-radius);
   padding: 6px 12px;
   background: var(--mad-bg);
@@ -5513,9 +5529,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    ═══════════════════════════════════════════════════════ */
 
 .mad-page-container {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  background: var(--mad-bg);
+  border: 1px solid var(--mad-border);
+  border-radius: var(--mad-radius-lg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   padding: 20px 24px 16px;
   width: 100%;
@@ -5533,7 +5549,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   width: 100%;
   padding-bottom: var(--mad-page-header-py, 16px);
   margin-bottom: var(--mad-page-header-mb, 20px);
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--mad-border);
 }
 .mad-page-header-left {
   display: flex;
@@ -5543,30 +5559,28 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   flex: 1;
 }
 .mad-page-header-left > div:last-child { min-width: 0; }
-/* Ícone + divisor do cabeçalho: --mad-page-header-icon-display (tema → "Alturas
-   e densidade" → "Mostrar ícone do cabeçalho da página"; `none` oculta os dois
+/* Ícone do cabeçalho: --mad-page-header-icon-display (tema → "Alturas e
+   densidade" → "Mostrar ícone do cabeçalho da página"; `none` oculta o ícone
    em todas as telas). Sem declaração no framework, como as alturas: o fallback
-   é o display de hoje. Os layouts (stripe, dock…) não redeclaram o display do
-   ícone; os que já escondem o divisor continuam com `display: none` próprio. */
+   é o display de sempre. O ícone é leve — sem círculo nem fundo, na cor do
+   texto secundário — e o traço divisor ao lado não aparece mais. Os layouts
+   (stripe, dock…) não redeclaram o display do ícone. */
 .mad-page-header-icon {
-  width: var(--mad-page-header-icon, 40px);
-  height: var(--mad-page-header-icon, 40px);
-  border-radius: 50%;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  width: var(--mad-page-header-icon, 24px);
+  height: var(--mad-page-header-icon, 24px);
   display: var(--mad-page-header-icon-display, flex);
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #71717a;
-  font-size: 16px;
+  color: var(--mad-text-muted);
+  font-size: 18px;
 }
 .mad-page-header-vsep {
-  display: var(--mad-page-header-icon-display, block);
+  display: none;
   flex-shrink: 0;
   width: 1px;
-  height: calc(var(--mad-page-header-icon, 40px) - 8px);
-  background: #e5e7eb;
+  height: calc(var(--mad-page-header-icon, 24px) - 8px);
+  background: var(--mad-border);
 }
 .mad-page-breadcrumb {
   display: flex;
@@ -5574,7 +5588,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   align-items: center;
   gap: 2px;
   font-size: 11px;
-  color: #71717a;
+  color: var(--mad-text-muted);
   margin-bottom: 2px;
   font-weight: 400;
   line-height: 1.4;
@@ -5583,13 +5597,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   width: 5px;
   height: 8px;
   margin: 0 2px;
-  color: #a1a1aa;
+  color: var(--mad-text-subtle);
 }
 .mad-page-title {
   font-size: var(--mad-page-title-size, 20px);
   font-weight: 600;
-  color: #18181b;
-  letter-spacing: -0.025em;
+  color: var(--mad-text);
+  letter-spacing: -0.015em;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5847,6 +5861,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 8%, transparent);
 }
 .mad-layout-glass .mad-page-header-vsep {
+  /* O padrão não tem mais o divisor; glass e inset mantêm o seu. */
+  display: var(--mad-page-header-icon-display, block);
+  height: calc(var(--mad-page-header-icon, 40px) - 8px);
   background: rgba(0,0,0,.08);
 }
 .mad-layout-glass .mad-page-breadcrumb {
@@ -5972,6 +5989,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   color: #fff;
 }
 .mad-layout-inset .mad-page-header-vsep {
+  display: var(--mad-page-header-icon-display, block);
+  height: calc(var(--mad-page-header-icon, 40px) - 8px);
   background: color-mix(in srgb, var(--mad-accent, var(--mad-primary, #18181b)) 15%, transparent);
 }
 .mad-layout-inset .mad-page-breadcrumb {
@@ -6308,28 +6327,28 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-color: var(--mad-border);
 }
 .mad-dark .mad-dg-toolbar {
-  background: var(--mad-bg-subtle);
+  background: var(--mad-bg);
   border-bottom-color: var(--mad-border);
 }
 .mad-dark .mad-dg-th {
-  background: var(--mad-dg-head-bg, var(--mad-bg-muted));
+  background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
   color: var(--mad-dg-head-color, var(--mad-text-muted));
-  border-bottom-color: var(--mad-dg-head-border-color, var(--mad-border-strong));
+  border-bottom-color: var(--mad-dg-head-border-color, var(--mad-border));
 }
 .mad-dark .mad-dg-head {
-  background: var(--mad-bg-muted);
+  background: var(--mad-bg-subtle);
 }
 .mad-dark .mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
-.mad-dark .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
+.mad-dark .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
 .mad-dark .mad-dg-row:hover td {
-  background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-primary) 6%, transparent));
+  background: var(--mad-dg-row-hover-bg, var(--mad-bg-subtle));
 }
 .mad-dark .mad-dg-cell {
   color: var(--mad-dg-body-color, var(--mad-text));
   border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-dark .mad-dg-footer {
-  background: var(--mad-bg-subtle);
+  background: var(--mad-bg);
   border-top-color: var(--mad-border);
 }
 .mad-dark .mad-dg-info {
@@ -6366,7 +6385,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: var(--mad-bg-subtle);
 }
 .mad-dark .mad-dg-search {
-  background: var(--mad-bg);
+  background-color: var(--mad-bg);
   border-color: var(--mad-border);
   color: var(--mad-text);
 }
@@ -6427,7 +6446,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-color: var(--mad-border);
 }
 .mad-dark .mad-select-sm {
-  background: var(--mad-bg);
+  background-color: var(--mad-bg);
   border-color: var(--mad-border);
   color: var(--mad-text);
 }
@@ -6565,24 +6584,24 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   height: 100%;
   max-width: 100vw;
   overflow: hidden;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, .15);
+  box-shadow: -24px 0 48px -12px rgba(16, 24, 40, .18);
 }
 .mad-drawer-left .mad-drawer {
-  box-shadow: 8px 0 32px rgba(0, 0, 0, .15);
+  box-shadow: 24px 0 48px -12px rgba(16, 24, 40, .18);
 }
 .mad-drawer-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: var(--mad-drawer-header-py, 20px) 20px;
+  padding: var(--mad-drawer-header-py, 18px) 24px;
   border-bottom: 1px solid var(--mad-border);
   flex-shrink: 0;
 }
 .mad-drawer-title {
-  font-weight: 600;
-  font-size: var(--mad-page-title-size, 1.1rem);
-  letter-spacing: -0.02em;
+  font-weight: 650;
+  font-size: var(--mad-page-title-size, 18px);
+  letter-spacing: -0.01em;
   color: var(--mad-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6591,7 +6610,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-drawer-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 24px;
+}
+/* Ações do formulário aberto na cortina: uma linha separa os botões dos campos. */
+.mad-drawer .mad-form-actions {
+  border-top: 1px solid var(--mad-border);
+  padding-top: 16px;
+  margin-top: 20px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -7285,6 +7310,18 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-radius: var(--mad-radius-lg);
   /* overflow: hidden; */
 }
+/* Cantos: o wrap não corta os filhos (overflow visível, por causa dos menus
+   e do cabeçalho fixo), então quem encosta na borda arredondada herda o raio.
+   Sem isso o fundo quadrado da barra e do rodapé cobre a curva da borda e os
+   quatro cantos ficam abertos. Especificidade zero: o raio de cada layout vence. */
+:where(.mad-dg-wrap) > :where(.mad-dg-toolbar, .mad-dg-table-wrap):first-child {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+:where(.mad-dg-wrap) > :where(.mad-dg-footer, .mad-dg-table-wrap:not(:has(~ .mad-dg-footer))) {
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
 
 /* ── Toolbar ──────────────────────────────────────────────────────── */
 .mad-dg-toolbar {
@@ -7293,13 +7330,17 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   gap: 8px;
   padding: var(--mad-dg-toolbar-py, 10px) 14px;
   border-bottom: 1px solid var(--mad-border);
-  background: var(--mad-bg-subtle);
+  background: var(--mad-bg);
   flex-wrap: wrap;
 }
 .mad-dg-search {
   max-width: 220px;
-  height: 30px;
-  font-size: 0.82rem;
+  height: 34px;
+  font-size: var(--mad-text-sm);
+  padding-left: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 11px 50%;
 }
 .mad-dg-toolbar-right {
   display: flex;
@@ -7317,8 +7358,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   padding: 6px 14px;
   min-height: 40px;
   border-bottom: 1px solid var(--mad-border);
-  background: var(--mad-bg-subtle);
-  font-size: 0.82rem;
+  background: var(--mad-bg);
+  font-size: 12.5px;
   color: var(--mad-text-muted);
 }
 .mad-dg-selbar-active {
@@ -7377,7 +7418,10 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    misturada ao transparente (18%; 28% nos temas escuros, --mad-hl-tone-mix):
    lê nos dois temas e sobre a linha zebrada. Não use os *-subtle aqui: #fef2f2 sobre branco dá ~1,1:1 e a
    linha parecia sem destaque (só a barra aparecia; a célula, nada). A linha
-   selecionada continua com a cor da seleção. */
+   selecionada continua com a cor da seleção.
+   A LINHA inteira tem a barra de acento e pinta mais leve (6%; 12% no escuro,
+   --mad-hl-row-mix): uma lista com metade das linhas em atraso não vira um
+   bloco rosa. A célula sozinha, sem barra, segue com o tom forte. */
 .mad-dg-hl--danger  { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-danger) var(--mad-hl-tone-mix, 18%), transparent);  --mad-dg-hl-accent: var(--mad-danger); }
 .mad-dg-hl--warning { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-warning) var(--mad-hl-tone-mix, 18%), transparent); --mad-dg-hl-accent: var(--mad-warning); }
 .mad-dg-hl--success { --mad-dg-hl-bg: color-mix(in srgb, var(--mad-success) var(--mad-hl-tone-mix, 18%), transparent); --mad-dg-hl-accent: var(--mad-success); }
@@ -7387,14 +7431,17 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   --mad-dg-hl-accent: var(--mad-dg-hl-color, var(--mad-warning));
 }
 tr.mad-dg-row.mad-dg-hl:not(.mad-dg-row-selected) > td,
-tr.mad-dg-row.mad-dg-hl:not(.mad-dg-row-selected):hover > td,
+tr.mad-dg-row.mad-dg-hl:not(.mad-dg-row-selected):hover > td {
+  background: color-mix(in srgb, var(--mad-dg-hl-accent) var(--mad-hl-row-mix, 6%), transparent);
+}
 tr.mad-dg-row:not(.mad-dg-row-selected) > td.mad-dg-hl-cell,
 tr.mad-dg-row:not(.mad-dg-row-selected):hover > td.mad-dg-hl-cell {
   background: var(--mad-dg-hl-bg);
 }
 tr.mad-dg-row.mad-dg-hl > td:first-child { box-shadow: inset 3px 0 0 var(--mad-dg-hl-accent); }
+/* Cartão (celular) tem a barra como a linha: mesmo fundo leve. */
 .mad-dg-card.mad-dg-hl {
-  background: var(--mad-dg-hl-bg);
+  background: color-mix(in srgb, var(--mad-dg-hl-accent) var(--mad-hl-row-mix, 6%), var(--mad-bg));
   border-left: 3px solid var(--mad-dg-hl-accent);
 }
 .mad-dg-card-field.mad-dg-hl-cell {
@@ -8502,31 +8549,31 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 
 /* ── Header ──────────────────────────────────────────────────────── */
 .mad-dg-head {
-  background: var(--mad-bg-muted);
+  background: var(--mad-bg-subtle);
 }
+/* Cabeçalho em texto normal (sem caixa alta nem espaçamento), 12/500, num
+   fundo quase branco com uma linha fina embaixo. O tema muda tudo isso em
+   "Grade" (--mad-dg-head-*); o layout border segue em caixa alta. */
 .mad-dg-th {
   padding: 8px 12px;
-  font-weight: var(--mad-dg-head-font-weight, 600);
-  font-size: var(--mad-dg-head-font-size, 0.78rem);
+  font-weight: var(--mad-dg-head-font-weight, 500);
+  font-size: var(--mad-dg-head-font-size, 12px);
   color: var(--mad-dg-head-color, var(--mad-text-muted));
-  text-transform: uppercase;
-  letter-spacing: .03em;
   white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 4;
-  background: var(--mad-dg-head-bg, var(--mad-bg-muted));
-  border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border-strong));
+  background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
+  border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
 /* Na listagem (<table class="mad-table mad-dg-table">) quem desenha a linha
    do cabeçalho é o `.mad-table th`, que é mais específico que o `.mad-dg-th`
-   acima — por isso 1px e não 2px. Esta regra tem a mesma especificidade e vem
-   depois: mantém a medida da listagem e passa a seguir o tema (fórum #126).
-   A lista de itens do formulário (<mad-detail-form>, sem `.mad-table`) segue
-   com os 2px de cima. Os layouts stripe, dock… continuam vencendo as duas. */
+   acima. Esta regra tem a mesma especificidade e vem depois: mantém a medida
+   da listagem e passa a seguir o tema (fórum #126). Os layouts stripe, dock…
+   continuam vencendo as duas. */
 .mad-table th:where(.mad-dg-th) {
-  font-size: var(--mad-dg-head-font-size, var(--mad-text-xs));
-  font-weight: var(--mad-dg-head-font-weight, 700);
+  font-size: var(--mad-dg-head-font-size, 12px);
+  font-weight: var(--mad-dg-head-font-weight, 500);
   color: var(--mad-dg-head-color, var(--mad-text-muted));
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
@@ -8669,9 +8716,11 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 }
 
 /* ── Body rows ───────────────────────────────────────────────────── */
+/* Sem zebra por padrão (o tema liga em "Grade" → --mad-dg-row-odd-bg); o
+   hover é cinza neutro, não a cor primária. */
 .mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
-.mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
-.mad-dg-row:hover td { background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-primary) 4%, transparent)); }
+.mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-dg-row:hover td { background: var(--mad-dg-row-hover-bg, var(--mad-bg-subtle)); }
 
 /* ── Row highlight (manageRow update/insert) ─────────────────────── */
 .mad-dg-row-highlight td {
@@ -9335,23 +9384,29 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   gap: 4px;
   justify-content: center;
 }
+/* Ação da linha sem caixa em cada linha: só o ícone, claro; escurece quando
+   o mouse passa na linha e ganha fundo quando passa no próprio botão. */
 .mad-dg-action-btn {
   background: none;
-  border: 1px solid var(--mad-border);
+  border: 1px solid transparent;
   border-radius: var(--mad-radius-sm);
   cursor: pointer;
-  padding: 4px 6px;
-  color: var(--mad-text-muted);
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  color: var(--mad-text-subtle);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   font-size: 0.8rem;
   transition: background .15s, color .15s, border-color .15s;
 }
-.mad-dg-action-btn:hover {
+.mad-dg-row:hover .mad-dg-action-btn { color: var(--mad-text-muted); }
+.mad-dg-action-btn:hover,
+.mad-dg-row:hover .mad-dg-action-btn:hover {
   background: var(--mad-bg-muted);
   color: var(--mad-text);
-  border-color: var(--mad-border-strong);
 }
 .mad-dg-action-btn:disabled {
   opacity: .4;
@@ -9547,8 +9602,8 @@ textarea.mad-dg-inline-input {
 
 /* ── Tfoot (totals) ──────────────────────────────────────────────── */
 .mad-dg-foot {
-  background: var(--mad-bg-muted);
-  border-top: 2px solid var(--mad-border-strong);
+  background: var(--mad-bg-subtle);
+  border-top: 1px solid var(--mad-border);
 }
 .mad-dg-total-cell {
   font-weight: 600;
@@ -9572,7 +9627,7 @@ textarea.mad-dg-inline-input {
   justify-content: flex-start;
   padding: 8px 14px;
   border-top: 1px solid var(--mad-border);
-  background: var(--mad-bg-subtle);
+  background: var(--mad-bg);
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -9586,14 +9641,25 @@ textarea.mad-dg-inline-input {
   margin-left: auto;
 }
 .mad-dg-per-page-label {
-  font-size: 0.8rem;
+  font-size: 12.5px;
   color: var(--mad-text-muted);
   white-space: nowrap;
 }
+/* Select pequeno (por página): sem a cara do nativo — seta própria, mesma
+   borda e raio dos outros controles. Uma definição só. */
 .mad-select-sm {
-  font-size: 0.8rem;
-  height: 28px;
-  padding: 2px 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 30px;
+  padding: 0 26px 0 10px;
+  font-size: 12.5px;
+  color: var(--mad-text);
+  border: 1px solid var(--mad-border);
+  border-radius: var(--mad-radius-sm);
+  background-color: var(--mad-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 .mad-dg-pagination {
   margin-left: auto;
@@ -14364,9 +14430,10 @@ textarea.mad-dg-inline-input {
     padding: 6px;
     background: var(--mad-bg, #fff);
     border: 1px solid var(--mad-border, #e5e7eb);
-    border-radius: 10px;
+    border-radius: var(--mad-radius-lg, 12px);
     margin-bottom: 16px;
     flex-wrap: wrap;
+    font-family: inherit;
 }
 .mad-dashf-tb-divider {
     width: 1px;
@@ -15136,14 +15203,17 @@ textarea.mad-dg-inline-input {
 .mad-kpi-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 .mad-kpi-head { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .mad-kpi-label {
-    font-size: .72rem; font-weight: 700; letter-spacing: .04em;
-    text-transform: uppercase; color: var(--mad-text-muted);
+    font-size: 12.5px; font-weight: 500;
+    color: var(--mad-text-muted);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mad-kpi-icon { width: 14px; height: 14px; color: var(--mad-text-muted); flex: 0 0 auto; }
-.mad-kpi-value { font-size: 1.55rem; font-weight: 800; line-height: 1.15; color: var(--mad-text); }
-.mad-kpi-foot { font-size: .72rem; color: var(--mad-text-muted); }
-.mad-kpi-context { font-size: .72rem; color: var(--mad-text-muted); line-height: 1.35; }
+.mad-kpi-value {
+    font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+    line-height: 1.15; color: var(--mad-text);
+}
+.mad-kpi-foot { font-size: 12.5px; color: var(--mad-text-muted); }
+.mad-kpi-context { font-size: 12.5px; color: var(--mad-text-muted); line-height: 1.35; }
 .mad-kpi-progress {
     height: 7px; border-radius: 99px; overflow: hidden;
     background: color-mix(in srgb, var(--mad-text-muted) 16%, transparent);
@@ -15185,23 +15255,28 @@ textarea.mad-dg-inline-input {
 }
 
 /* ── KPI no tema ERP: um visual só para <mad-kpi-card>, <mad-metric-card> e
-   <mad-db-metric-card> — padding 14×16, rótulo 12/500 mudo, valor 22/700 numa
+   <mad-db-metric-card> — padding 14×16, rótulo 12.5/500 mudo, valor 24/650 numa
    linha só. O valor encolhe para caber: a largura do card (100cqi do
    .mad-*-value) dividida pela largura estimada do texto (--mad-kpi-len, em
    dígitos, calculada no Blade; um dígito mede ~0,6em); abaixo de 11px corta
    com reticências e o valor inteiro fica no title. */
 .mad-layout-erp .mad-stat { padding: 14px 16px; }
 .mad-layout-erp :is(.mad-kpi-label, .mad-stat-label) {
-    font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+    font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none;
     line-height: 1.35; color: var(--mad-text-muted);
 }
 .mad-layout-erp .mad-stat-label { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Celular: dois cards por linha — o rótulo volta a 12px para "Recebido no mês"
+   caber inteiro. */
+@media (max-width: 640px) {
+    .mad-layout-erp :is(.mad-kpi-label, .mad-stat-label) { font-size: 12px; }
+}
 .mad-layout-erp :is(.mad-kpi-value, .mad-stat-value) {
     container-type: inline-size;
-    font-size: 22px; font-weight: 700; line-height: 1.2;
+    font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.2;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.mad-layout-erp .mad-kpi-num { font-size: clamp(11px, 100cqi / (var(--mad-kpi-len, 6) * .61), 22px); }
+.mad-layout-erp .mad-kpi-num { font-size: clamp(11px, 100cqi / (var(--mad-kpi-len, 6) * .61), 24px); }
 /* Mesmos vãos do .mad-kpi (gap 6px): o <p> do metric-card trazia 1em de margem. */
 .mad-layout-erp .mad-stat-value { margin: 6px 0 0; }
 .mad-layout-erp :is(.mad-kpi-context, .mad-kpi-foot, .mad-stat-context) {
