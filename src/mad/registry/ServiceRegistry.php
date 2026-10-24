@@ -28,7 +28,6 @@ class ServiceRegistry extends AbstractClassRegistry
 {
     /** Nomes ANTIGOS (pré-normalização) dos services renomeados => FQCN novo. */
     private const LEGACY = [
-        'ApplicationAuthenticationRestService' => 'App\\Service\\Iam\\AuthenticationRestService',
         'ApplicationAuthenticationService'     => 'App\\Service\\Iam\\AuthenticationService',
         'SystemPermission'                     => 'App\\Service\\Iam\\PermissionService',
         'SystemDatabaseInformationService'     => 'App\\Service\\Sys\\DatabaseInformationService',

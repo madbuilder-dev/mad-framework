@@ -157,6 +157,7 @@ class MadServiceProvider extends ServiceProvider
         $this->bootTrace();
         $this->bootSchedulePause();
         $this->bootWebhooks();
+        $this->bootApiAuth();
         $this->bootRoutines();
         $this->bootVibePreview();
         self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));
@@ -377,6 +378,103 @@ class MadServiceProvider extends ServiceProvider
                 ->withoutOverlapping(10)
                 ->skip(static fn () => ! WebhookRegistry::hasDefinitions());
         });
+    }
+
+    /**
+     * Login pela API REST (fórum #169) — `/api/auth/*`
+     * ({@see \App\Http\Controllers\Api\MadAuthController}).
+     *
+     * No `booted`, como os webhooks: o `routes/api.php` do projeto pode ser
+     * substituído inteiro (Path override) e a rota sumiria junto. Regras:
+     *
+     *  - handshake: só registra com o controller do esqueleto E um
+     *    `MadApiTenantMiddleware` que conheça o token de login
+     *    (`LOGIN_TOKENS`) — um middleware antigo ou customizado trataria o
+     *    token de login como manual, sem conferir a sessão;
+     *  - `MAD_API_AUTH_ENABLED=0` (ou `mad.api.auth.enabled`) tira tudo do ar;
+     *  - rota do PROJETO no mesmo método + endereço vence (a coleção do Laravel
+     *    troca a anterior pela última com o mesmo endereço; por isso a
+     *    conferência antes de registrar);
+     *  - limitador nomeado `mad-api-auth`, por IP: `throttle_per_minute` (10)
+     *    para login, código do 2FA e reenvio; o triplo para refresh e logout.
+     *    O do app (`RateLimiter::for('mad-api-auth', …)`) vence;
+     *  - grupo `api` (sem sessão, cookie nem CSRF); `me` passa pelo `mad.api`.
+     *
+     * Toda chave de config com padrão em linha: o `config/mad.php` do app pode
+     * ser anterior ao recurso.
+     */
+    private function bootApiAuth(): void
+    {
+        $this->app->booted(static function (): void {
+            self::registerApiAuthRoutes();
+        });
+    }
+
+    /**
+     * Registra as rotas do login pela API; false = handshake ou chave
+     * desligada. Os dois nomes de classe só mudam no teste do handshake.
+     */
+    public static function registerApiAuthRoutes(
+        string $controller = 'App\\Http\\Controllers\\Api\\MadAuthController',
+        string $middleware = MadApiTenantMiddleware::class,
+    ): bool {
+        if (! class_exists($controller) || ! defined($middleware . '::LOGIN_TOKENS')) {
+            return false;
+        }
+
+        $enabled = config('mad.api.auth.enabled');
+        if ($enabled === null) {
+            $enabled = env('MAD_API_AUTH_ENABLED', true);
+        }
+        if (! (filter_var($enabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false)) {
+            return false;
+        }
+
+        if (RateLimiter::limiter('mad-api-auth') === null) {
+            RateLimiter::for('mad-api-auth', static function (Request $request) {
+                $perMinute = (int) config('mad.api.auth.throttle_per_minute', 10);
+                $perMinute = $perMinute > 0 ? $perMinute : 10;
+                $session = in_array((string) $request->route()?->getName(), [
+                    'mad.api.auth.refresh', 'mad.api.auth.logout', 'mad.api.auth.logout_all',
+                ], true);
+
+                return Limit::perMinute($session ? $perMinute * 3 : $perMinute)
+                    ->by('mad-api-auth|' . ($session ? 'session' : 'login') . '|' . $request->ip())
+                    ->response(static function (Request $request, array $headers) {
+                        $message = __('api_auth.too_many_attempts');
+
+                        return response()->json([
+                            'error' => 'too_many_attempts',
+                            'message' => $message !== 'api_auth.too_many_attempts'
+                                ? $message
+                                : 'Muitas tentativas. Aguarde um pouco e tente de novo.',
+                        ], 429, $headers + ['Cache-Control' => 'no-store']);
+                    });
+            });
+        }
+
+        $routes = [
+            ['POST', 'api/auth/login', 'login', 'mad.api.auth.login'],
+            ['POST', 'api/auth/login/mfa', 'loginMfa', 'mad.api.auth.login.mfa'],
+            ['POST', 'api/auth/login/mfa/resend', 'mfaResend', 'mad.api.auth.login.mfa.resend'],
+            ['POST', 'api/auth/refresh', 'refresh', 'mad.api.auth.refresh'],
+            ['POST', 'api/auth/logout', 'logout', 'mad.api.auth.logout'],
+            ['POST', 'api/auth/logout-all', 'logoutAll', 'mad.api.auth.logout_all'],
+            ['GET', 'api/auth/me', 'me', 'mad.api.auth.me'],
+        ];
+
+        $existing = Route::getRoutes();
+        foreach ($routes as [$method, $uri, $action, $name]) {
+            if (isset($existing->get($method)[$uri])) {
+                continue; // rota do projeto vence
+            }
+
+            Route::match([$method], $uri, [$controller, $action])
+                ->middleware($action === 'me' ? ['api', 'mad.api'] : ['api', 'throttle:mad-api-auth'])
+                ->name($name);
+        }
+
+        return true;
     }
 
     /**

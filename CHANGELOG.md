@@ -12,6 +12,26 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.216.0] — 2026-10-23
+
+### Novidades
+
+- **API REST:** login pela API com usuário e senha: `POST /api/auth/login` devolve um token de acesso (60 min) e um de renovação (30 dias), com verificação em duas etapas por e-mail ou aplicativo autenticador, renovação, saída e `GET /api/auth/me`. Nasce fechado: só funciona depois de liberar a API em pelo menos um grupo.
+- **Grupos:** aba API no cadastro do grupo para marcar quais rotas da API quem é do grupo alcança pelo login da API. Tirar a pessoa do grupo corta o acesso no pedido seguinte. A listagem de grupos mostra quantas permissões de API cada um dá.
+- **Tokens de API:** selo Login ou Manual em cada token, com o dispositivo e o endereço de quem entrou pelo login, e o total de sessões de login ativas. Revogar um token de login encerra a sessão inteira.
+
+### Melhorias
+
+- **Login:** usuário inexistente, inativo ou com senha errada recebe a mesma resposta, no mesmo tempo, e o aviso de redefinir a senha das contas antigas só aparece para quem acertou a senha.
+
+### Correções
+
+- **API REST:** com o licenciamento ligado, um token de API continuava valendo na unidade em que o vínculo do usuário tinha sido desativado. Agora é recusado.
+
+### Atenção
+
+- **API REST:** rota com `mad.api` sem permissão declarada só aceita o token do login pela API de quem tem "Todas as rotas da API" (`*`). Declare a permissão nas rotas que o app externo usa, como `mad.api:pedidos.read`. Os tokens manuais seguem como antes.
+
 ## [5.215.0] — 2026-10-23
 
 ### Novidades

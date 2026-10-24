@@ -251,6 +251,120 @@ protected function authorize(string $action, Request $request): void
   (`getConnectionName()`); os `save()` do Eloquent participam da mesma transação
   (mesma conexão).
 
+## Login pela API
+
+Além do token manual (tela **Tokens de API** / `mad:api-token`), o app externo
+(SPA, celular, outro sistema em nome de uma pessoa) entra com **usuário e
+senha** e recebe um par de tokens. As rotas são do framework — não declare
+`/api/auth/*` no `routes/api.php` (a rota do projeto no mesmo endereço vence e
+desliga a do framework).
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `POST /api/auth/login` | `{login, password, unit_id?, tenant_id?, device_name?, scope?}` | 200 com o token, ou erro |
+| `POST /api/auth/login/mfa` | `{mfa_token, code}` | 200 com o token |
+| `POST /api/auth/login/mfa/resend` | `{mfa_token}` | 202 (só 2FA por e-mail) |
+| `POST /api/auth/refresh` | `{refresh_token, unit_id?}` | 200 com um par **novo** |
+| `POST /api/auth/logout` | Bearer e/ou `{refresh_token}` | sempre 200 |
+| `POST /api/auth/logout-all` | Bearer do login | 200: derruba todas as sessões de login do usuário |
+| `GET /api/auth/me` | Bearer | usuário, unidade, empresa, unidades, scope e sessão |
+
+### Antes de tudo: liberar a API num grupo
+
+O login pela API nasce **fechado**. Enquanto nenhum grupo tiver permissão de
+API, `POST /api/auth/login` responde `403 api_login_disabled` sem nem olhar a
+senha. Marque o que o grupo alcança em **Administração › Grupos › aba API** (as
+permissões listadas são as que as rotas declaram em `mad.api:<ability>`), ou:
+
+```bash
+php artisan mad:api-abilities Standard --set=os.read,clientes.read
+php artisan mad:api-abilities Standard --set='*'      # todas as rotas da API
+php artisan mad:api-abilities Standard --clear        # sem acesso pela API
+```
+
+O token do login vale o que os **grupos de agora** dão: tirar a pessoa do grupo
+(ou desmarcar a permissão) corta o acesso no request seguinte. Uma permissão
+nova no grupo chega ao token na próxima renovação. Rota `mad.api` **sem**
+ability declarada só aceita o token do login com `*` — declare a ability nas
+rotas que o app externo usa. O token manual continua como sempre (abilities
+NULL = acesso total).
+
+### Fluxo completo
+
+```bash
+# 1. login
+curl -s -X POST https://app.exemplo.com/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"login":"maria","password":"…","device_name":"App do celular","scope":"os.read"}'
+# {"token_type":"Bearer","access_token":"mad_api_…","expires_in":3600,
+#  "refresh_token":"mad_rt_…","refresh_expires_in":2592000,"scope":"os.read",
+#  "session_id":"…","user":{…},"unit":{"id":1,"name":"Matriz"},"tenant":{…}}
+
+# 2. usar
+curl -s https://app.exemplo.com/api/os -H 'Authorization: Bearer mad_api_…'
+
+# 3. renovar (o refresh usado morre; guarde o par novo)
+curl -s -X POST https://app.exemplo.com/api/auth/refresh \
+  -H 'Content-Type: application/json' -d '{"refresh_token":"mad_rt_…"}'
+
+# 4. sair
+curl -s -X POST https://app.exemplo.com/api/auth/logout \
+  -H 'Authorization: Bearer mad_api_…' \
+  -H 'Content-Type: application/json' -d '{"refresh_token":"mad_rt_…"}'
+```
+
+Com verificação em duas etapas, o login responde `403 mfa_required` com
+`{mfa_token, mfa_type, expires_in}`; mande o código do aplicativo autenticador
+(ou do e-mail) para `/api/auth/login/mfa` com o `mfa_token` e receba o token.
+O `mfa_token` vale 5 minutos e 5 códigos.
+
+### Erros
+
+`{error, message}` — `error` é o código estável (para o app decidir),
+`message` vem traduzido.
+
+| Status | `error` |
+|---|---|
+| 400 | `invalid_request`, `invalid_unit`, `invalid_scope`, `invalid_grant` |
+| 401 | `invalid_credentials` (o mesmo corpo para usuário inexistente, inativo ou senha errada) |
+| 403 | `api_login_disabled`, `api_access_denied`, `password_reset_required`, `password_change_required` (+`reason`), `access_schedule_denied`, `unit_required`, `terms_acceptance_required`, `tenant_db_not_provisioned`, `mfa_required`, `invalid_mfa_code` |
+| 429 | `too_many_attempts`, `mfa_locked` (com `Retry-After`) |
+| 503 | `maintenance` |
+
+Nas rotas protegidas (`mad.api`), o 401 traz `WWW-Authenticate: Bearer
+error="invalid_token"` e a falta de permissão é `403` com
+`code: insufficient_scope`.
+
+### Guia do cliente
+
+- **Access token curto (60 min), refresh rotativo (30 dias), teto de 90 dias**
+  por sessão. Cada refresh é de **uso único**: reusar um refresh já usado
+  derruba a sessão inteira (sinal de token vazado). Renove em **voo único** —
+  um refresh por vez, os outros pedidos esperam o resultado; dois refresh
+  juntos com o mesmo token derrubam a sessão.
+- Guarde o refresh em armazenamento seguro (Keychain/Keystore no celular,
+  cookie `HttpOnly` do seu backend numa SPA) — nunca em `localStorage`.
+- Trocar a senha encerra todas as sessões de API da pessoa; o app recebe 401
+  e volta ao login.
+- `unit_id` no refresh troca a unidade da sessão (a pessoa precisa ter acesso
+  a ela).
+- `MAD_API_AUTH_ENABLED=0` desliga tudo: as rotas saem do ar e os tokens de
+  login já emitidos deixam de valer (os manuais seguem).
+
+### Configuração (`config/mad.php` › `api.auth`)
+
+| Chave | Padrão | Env |
+|---|---|---|
+| `enabled` | `true` | `MAD_API_AUTH_ENABLED` |
+| `access_ttl_minutes` | 60 | `MAD_API_AUTH_ACCESS_TTL_MINUTES` |
+| `refresh_ttl_days` | 30 | `MAD_API_AUTH_REFRESH_TTL_DAYS` |
+| `session_max_days` | 90 | `MAD_API_AUTH_SESSION_MAX_DAYS` |
+| `max_sessions_per_user` | 10 | `MAD_API_AUTH_MAX_SESSIONS` |
+| `refresh_reuse_grace_seconds` | 0 | `MAD_API_AUTH_REFRESH_GRACE_SECONDS` |
+| `mfa_ttl_seconds` | 300 | `MAD_API_AUTH_MFA_TTL_SECONDS` |
+| `undeclared_routes` | `deny` | `MAD_API_AUTH_UNDECLARED_ROUTES` |
+| `throttle_per_minute` | 10 (refresh/logout: o triplo) | `MAD_API_AUTH_THROTTLE_PER_MINUTE` |
+
 ## Ver também
 
 `Mad\Service\MadRecordService` (`src/mad/service/MadRecordService.php`) é a

@@ -55,6 +55,8 @@ final class ProtectedData
         'mad_iam_user'           => 'senha (hash) e segredo do 2FA dos usuários',
         'mad_mcp_token'          => 'tokens do Copilot IA, da Central de Comando e do MCP',
         'mad_api_token'          => 'tokens da API REST',
+        'mad_api_session'        => 'sessões do login pela API REST',
+        'mad_api_refresh_token'  => 'refresh tokens do login pela API REST',
         'mad_iam_tenant'         => 'credenciais do banco de cada empresa (db_config)',
         'mad_ged_shared_link'    => 'token e senha dos links públicos de documentos',
         // cobrança do SaaS
