@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.219.2] — 2026-10-24
+
+### Correções
+
+- **Site público:** a cor escolhida no editor de temas não chegava ao site — botões, destaques e o menu do site ficavam no vermelho padrão com qualquer tema. Agora o site usa a cor primária do tema padrão do projeto, e a tela de login dividida (modelo 6) também. Uma cor de marca definida na aba Login do tema continua valendo primeiro.
+
 ## [5.219.1] — 2026-10-24
 
 ### Correções
