@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.219.1] — 2026-10-24
+
+### Correções
+
+- **Listagem:** com outra tabela ligada no `onSearch` (um join, por exemplo para ordenar pelo nome do grupo), filtrar, buscar ou ordenar por uma coluna que existe nas duas tabelas dava "column reference is ambiguous". Se as duas tabelas tinham lixeira, a listagem nem abria. Agora vale a coluna da tabela da listagem.
+
 ## [5.219.0] — 2026-10-24
 
 ### Novidades

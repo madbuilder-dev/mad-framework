@@ -186,6 +186,7 @@ class QuerySource
             if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/', $field)) {
                 throw new \InvalidArgumentException("QuerySource: identificador de coluna inválido em filtro: {$field}");
             }
+            $field = self::qualify($query, $field);
             $op  = strtolower(trim((string) ($f[1] ?? '=')));
             $val = array_key_exists(2, $f) ? $f[2] : '';
 
@@ -232,6 +233,51 @@ class QuerySource
                 default:            $query->where($field, $op, $val); break;
             }
         }
+    }
+
+    /**
+     * Coluna simples com o nome da tabela do Model na frente (`nome` →
+     * `subgrupo.nome`), para o WHERE / ORDER BY que o componente monta sozinho.
+     *
+     * A tela pode ligar outra tabela no `onSearch` (`leftJoin('grupo', …)`), e
+     * coluna com o mesmo nome nas duas (`nome`, `deleted_at`) sem tabela é
+     * "column reference is ambiguous" (fórum #175). Sem join o SQL é o mesmo.
+     *
+     * Fica como veio: construtor de consultas (fonte por consulta, sem Model),
+     * campo que não é identificador simples (`tabela.col`, `rel->col`,
+     * expressão) e nome que não é coluna da tabela do Model — coluna que só
+     * existe no join, alias de select, schema que não dá para ler.
+     */
+    public static function qualify($query, string $col): string
+    {
+        if (! $query instanceof EloquentBuilder || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)) {
+            return $col;
+        }
+
+        return ModelAccessors::isColumn($query->getModel(), $col) === true ? self::qualifyOwn($query, $col) : $col;
+    }
+
+    /**
+     * Coluna que já se sabe ser da tabela do Model (lixeira, chave) com a
+     * tabela do FROM na frente: o nome dela ou o alias (`from('pedido as p')`
+     * → `p.col`). FROM que não é a tabela do Model (subconsulta, outra
+     * tabela): fica sem tabela, como sempre foi.
+     */
+    public static function qualifyOwn($query, string $col): string
+    {
+        if (! $query instanceof EloquentBuilder) {
+            return $col;
+        }
+        $table = $query->getModel()->getTable();
+        $from  = $query->getQuery()->from;
+        if ($from === $table) {
+            return $table . '.' . $col;
+        }
+        if (is_string($from) && preg_match('/^\s*(\S+)\s+as\s+(\S+)\s*$/i', $from, $m) && $m[1] === $table) {
+            return $m[2] . '.' . $col;
+        }
+
+        return $col;
     }
 
     /** Nome da conexão de um Builder (p/ o service rodar no banco certo). */

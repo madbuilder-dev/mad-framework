@@ -5487,7 +5487,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if ($meta !== null && ! $meta['same']) {
                 $ids = $this->_relMatchingIds($meta, $col, 'like', $term);
                 if (! empty($ids)) {
-                    $w->orWhereIn($meta['fk'], $ids);
+                    $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $meta['fk']), $ids);
                 }
                 return;
             }
@@ -5505,7 +5505,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 }
             }
 
-            $w->orWhereIn($rel . '_id', function ($sub) use ($rel, $col, $like) {
+            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($rel, $col, $like) {
                 $sub->select('id')->from($rel)->whereLike($col, $like);
             });
             return;
@@ -5521,7 +5521,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 return;
             }
             // Valor (input do usuário) vai PARAMETRIZADO via subquery builder.
-            $w->orWhereIn($table . '_id', function ($sub) use ($table, $col, $like) {
+            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $table . '_id'), function ($sub) use ($table, $col, $like) {
                 $sub->select('id')->from($table)->whereLike($col, $like);
             });
             return;
@@ -5535,7 +5535,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return;
         }
 
-        $w->orWhereLike($field, $like);
+        $w->orWhereLike(\Mad\Database\QuerySource::qualify($q, $field), $like);
     }
 
     /**
@@ -5674,7 +5674,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     );
                 }
             } else {
-                $orderExpr = static::_unbrace($sortField) . ' ' . $dir;
+                // Coluna da tabela do model sai com a tabela na frente (join no
+                // onSearch com coluna de mesmo nome = ORDER BY ambíguo).
+                $plainSort = static::_unbrace($sortField);
+                $qualified = \Mad\Database\QuerySource::qualify($q, $plainSort);
+                if ($qualified !== $plainSort) {
+                    $q->orderBy($qualified, $dir);
+                    $ordered = true;
+                } else {
+                    $orderExpr = $plainSort . ' ' . $dir;
+                }
             }
         }
         if (! $ordered && $orderExpr === '') {
@@ -5903,6 +5912,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                         . 'sem ORDER BY possível (relação não-belongsTo ou em outra conexão).'
                     );
                 }
+                continue;
+            }
+
+            // Coluna da tabela do model: com a tabela na frente, como o clique.
+            $qualified = $simple ? \Mad\Database\QuerySource::qualify($q, static::_unbrace($field)) : '';
+            if ($simple && $qualified !== static::_unbrace($field)) {
+                $q->orderBy($qualified, $dir === 'desc' ? 'desc' : 'asc');
                 continue;
             }
 
@@ -8193,7 +8209,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 if (empty($ids)) {
                     $q->whereRaw('1 = 0');
                 } else {
-                    $q->whereIn($meta['fk'], $ids);
+                    $q->whereIn(\Mad\Database\QuerySource::qualify($q, $meta['fk']), $ids);
                 }
                 return;
             }
@@ -8218,7 +8234,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
 
             // Fallback (Query Builder / relação ausente): convenção fk = tabela_id.
-            $q->whereIn($rel . '_id', function ($sub) use ($rel, $where) {
+            $q->whereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($rel, $where) {
                 $sub->select('id')->from($rel);
                 $where($sub);
             });
@@ -8263,7 +8279,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return;
         }
 
-        static::_whereOp($q, $field, $op, $value);
+        // Com a tabela na frente: o onSearch da tela pode ligar outra tabela
+        // com a mesma coluna, e sem tabela o WHERE fica ambíguo (fórum #175).
+        static::_whereOp($q, \Mad\Database\QuerySource::qualify($q, $field), $op, $value);
     }
 
     /**

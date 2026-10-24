@@ -28,10 +28,13 @@ trait HasMadSoftDeletes
 {
     public static function bootHasMadSoftDeletes(): void
     {
+        // Coluna com a tabela (ou o alias) do FROM na frente: com JOIN (onSearch
+        // da tela), uma tabela ligada que também tenha `deleted_at` deixava o
+        // WHERE ambíguo.
         static::addGlobalScope('madSoftDelete', function ($builder) {
             $col = $builder->getModel()->getDeletedAtColumn();
             if ($col) {
-                $builder->getQuery()->whereNull($col);
+                $builder->getQuery()->whereNull(\Mad\Database\QuerySource::qualifyOwn($builder, $col));
             }
         });
     }
@@ -109,9 +112,9 @@ trait HasMadSoftDeletes
     public static function onlyTrashed()
     {
         $query = static::query()->withoutGlobalScope('madSoftDelete');
-        $col = (new static)->getDeletedAtColumn();
+        $col = $query->getModel()->getDeletedAtColumn();
         if ($col) {
-            $query->whereNotNull($col);
+            $query->whereNotNull(\Mad\Database\QuerySource::qualifyOwn($query, $col));
         }
         return $query;
     }

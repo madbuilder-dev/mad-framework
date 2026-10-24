@@ -737,8 +737,8 @@ trait MadFiltersTrait
                 // tela, o mês/ano recorta por ela.
                 if (!$hasMes && !$hasAno) {
                     if ($df !== '' && $this->modelHasColumn($model, $df)) {
-                        if ($this->mes !== '') $q->whereMonth($df, '=', (int) $this->mes);
-                        if ($this->ano !== '') $q->whereYear($df, '=', (int) $this->ano);
+                        if ($this->mes !== '') $q->whereMonth(\Mad\Database\QuerySource::qualify($q, $df), '=', (int) $this->mes);
+                        if ($this->ano !== '') $q->whereYear(\Mad\Database\QuerySource::qualify($q, $df), '=', (int) $this->ano);
                     } else {
                         $this->periodFilterWarning('[MadFilters] filtro mês/ano ignorado em ' . ($model ?: 'consulta')
                             . ': a tabela não tem colunas mes/ano e a tela não define $dateField. Use o período por data'
@@ -747,10 +747,10 @@ trait MadFiltersTrait
                     break;
                 }
                 if ($this->mes !== '' && $hasMes) {
-                    $q->where($mesCol, '=', $this->mes);
+                    $q->where(\Mad\Database\QuerySource::qualify($q, $mesCol), '=', $this->mes);
                 }
                 if ($this->ano !== '' && $hasAno) {
-                    $q->where($anoCol, '=', $this->ano);
+                    $q->where(\Mad\Database\QuerySource::qualify($q, $anoCol), '=', $this->ano);
                 }
                 break;
 
@@ -759,10 +759,10 @@ trait MadFiltersTrait
                 $iniDb = self::_normalizeDateToDb($this->dtIni);
                 $fimDb = self::_normalizeDateToDb($this->dtFim);
                 if ($iniDb !== '') {
-                    $q->where($df, '>=', $iniDb);
+                    $q->where(\Mad\Database\QuerySource::qualify($q, $df), '>=', $iniDb);
                 }
                 if ($fimDb !== '') {
-                    $q->where($df, '<=', $fimDb . ' 23:59:59');
+                    $q->where(\Mad\Database\QuerySource::qualify($q, $df), '<=', $fimDb . ' 23:59:59');
                 }
                 break;
 
@@ -797,6 +797,7 @@ trait MadFiltersTrait
         if ($this->preset === '' || $df === '') {
             return;
         }
+        $df = \Mad\Database\QuerySource::qualify($q, $df);
         if ($this->preset === 'custom') {
             // Range custom escolhido no dropdown: aplica dtIni/dtFim como o
             // modo date-range — antes retornava sem filtro NENHUM.
@@ -830,7 +831,7 @@ trait MadFiltersTrait
             if ($override === null) return;
             $col = (string) $override;
         }
-        $q->where($col, '=', $unit);
+        $q->where(\Mad\Database\QuerySource::qualify($q, $col), '=', $unit);
     }
 
     /**
@@ -874,14 +875,16 @@ trait MadFiltersTrait
                     $val = array_values(array_filter($val, 'is_numeric'));
                 }
                 if ($val === []) continue;
-                $q->whereIn($name, $val);
+                $q->whereIn(\Mad\Database\QuerySource::qualify($q, $name), $val);
             } else {
                 $op = $this->autoFilterOpFor($name, $model);
                 // like/starts/ends é busca por TEXTO pedida de propósito
                 // (`filter-op=`): "ab" numa coluna de código achar nada é a
                 // resposta certa, não um filtro a pular.
                 if ($numeric && !is_numeric($val) && !in_array($op, ['like', 'starts', 'ends'], true)) continue;
-                $this->_applyAutoFilterWhere($q, $name, (string) $val, $op);
+                // Com a tabela na frente: o onSearch pode ligar outra tabela com a
+                // mesma coluna, e sem tabela o WHERE fica ambíguo (fórum #175).
+                $this->_applyAutoFilterWhere($q, \Mad\Database\QuerySource::qualify($q, $name), (string) $val, $op);
             }
         }
         // onSearch(Builder) é aplicado por _applyOnSearch (camada B); o antigo

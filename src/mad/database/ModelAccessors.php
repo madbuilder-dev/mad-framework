@@ -112,6 +112,40 @@ final class ModelAccessors
     }
 
     /**
+     * `$col` é coluna da tabela do Model? null = schema ilegível ("não sei").
+     * Sem chaves e sem caminho: só o nome simples da coluna.
+     *
+     * O que o próprio Model declara responde sem ir ao banco: chave,
+     * `$fillable` (o Model gerado lista ali as colunas), timestamps e a coluna
+     * da lixeira. Só o resto lê o schema — a listagem que ordena por `id` não
+     * ganha uma consulta a mais a cada carga.
+     */
+    public static function isColumn(Model $model, string $col): ?bool
+    {
+        $lower    = strtolower($col);
+        $declared = array_merge([$model->getKeyName()], $model->getFillable());
+        if ($model->usesTimestamps()) {
+            $declared[] = $model->getCreatedAtColumn();
+            $declared[] = $model->getUpdatedAtColumn();
+        }
+        if (method_exists($model, 'getDeletedAtColumn')) {
+            $declared[] = $model->getDeletedAtColumn();
+        }
+        foreach ($declared as $name) {
+            if (is_string($name) && strtolower($name) === $lower) {
+                return true;
+            }
+        }
+
+        $columns = self::columns($model);
+        if ($columns === null) {
+            return null;
+        }
+
+        return isset($columns[strtolower($col)]);
+    }
+
+    /**
      * Colunas de texto da tabela (varchar, char, text…), fora as escondidas
      * do Model (`$hidden`: senha, token). É onde a busca procura quando o texto
      * de exibição só tem campos calculados.
