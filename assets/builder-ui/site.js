@@ -144,6 +144,58 @@
     });
   }
 
+  /* ── Máscara de telefone ───────────────────────────────────────────────── */
+
+  // `data-site-mask="(99) 9999-9999|(99) 99999-9999"`: 9 = dígito; com várias,
+  // vale a mais curta em que os dígitos digitados cabem (fixo e celular no
+  // mesmo campo). Só arruma o que a pessoa digitou: quem valida é o servidor.
+  function digitosDa(mascara) {
+    return (mascara.match(/9/g) || []).length;
+  }
+
+  function mascarar(valor, mascaras) {
+    var digitos = String(valor || '').replace(/\D+/g, '');
+    if (!digitos) return '';
+
+    var escolhida = mascaras[mascaras.length - 1];
+    for (var i = 0; i < mascaras.length; i++) {
+      if (digitosDa(mascaras[i]) >= digitos.length) {
+        escolhida = mascaras[i];
+        break;
+      }
+    }
+
+    // Literal só ENTRE dígitos: "(11" e não "(11) " — senão o apagar trava
+    // no ") " que a máscara devolve.
+    var saida = '';
+    var d = 0;
+    for (var j = 0; j < escolhida.length && d < digitos.length; j++) {
+      var c = escolhida.charAt(j);
+      saida += c === '9' ? digitos.charAt(d++) : c;
+    }
+    return saida;
+  }
+
+  function ligarMascaras() {
+    document.querySelectorAll('input[data-site-mask]').forEach(function (campo) {
+      if (campo.dataset.siteMaskReady === '1') return;
+      campo.dataset.siteMaskReady = '1';
+
+      var mascaras = (campo.getAttribute('data-site-mask') || '')
+        .split('|')
+        .filter(function (m) { return digitosDa(m) > 0; })
+        .sort(function (a, b) { return digitosDa(a) - digitosDa(b); });
+      if (!mascaras.length) return;
+
+      var aplicar = function () {
+        var novo = mascarar(campo.value, mascaras);
+        if (novo !== campo.value) campo.value = novo;
+      };
+      campo.addEventListener('input', aplicar);
+      aplicar(); // valor que voltou do servidor (erro em outro campo)
+    });
+  }
+
   /* ── Link para uma seção da própria página ─────────────────────────────── */
 
   // O casco do site emite `<base href="raiz do app/">` (os assets relativos da
@@ -195,6 +247,7 @@
     ligarMenu();
     ligarCiclo();
     ligarPlanoDoCadastro();
+    ligarMascaras();
     ligarAncoras();
   }
 
@@ -206,4 +259,5 @@
 
   window.MadSite = window.MadSite || {};
   window.MadSite.refresh = iniciar;
+  window.MadSite.mask = mascarar;
 })();

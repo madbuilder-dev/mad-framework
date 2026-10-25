@@ -1029,6 +1029,7 @@ abstract class MadGanttComponent extends MadComponent
                 'taskColWidth'=> $config['taskColWidth'] ?? null,
                 'compactColumns' => array_key_exists('compactColumns', $config) ? $this->_truthy($config['compactColumns']) : null,
                 'fitBtn'         => array_key_exists('fitBtn',         $config) ? $this->_truthy($config['fitBtn'])         : null,
+                'initialLimit'   => isset($config['initialLimit']) && is_numeric($config['initialLimit']) ? (int) $config['initialLimit'] : null,
             ],
         ];
     }
@@ -1189,6 +1190,7 @@ abstract class MadGanttComponent extends MadComponent
         if (!empty($vt['taskColWidth'])) $gantt->taskColWidth((int) $vt['taskColWidth']);
         if (($vt['compactColumns'] ?? null) !== null) $gantt->compactColumns((bool) $vt['compactColumns']);
         if (($vt['fitBtn'] ?? null) !== null)         $gantt->fitButton((bool) $vt['fitBtn']);
+        if (($vt['initialLimit'] ?? null) !== null)   $gantt->initialLimit((int) $vt['initialLimit']);
 
         // Pass-through das props v2 set diretamente no subclass via prop
         if (!empty($this->phaseField ?? null) && method_exists($gantt, 'phaseField')) {

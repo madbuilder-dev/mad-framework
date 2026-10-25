@@ -14,6 +14,22 @@
      *
      * Download SEMPRE por `mad_download_url()` (rota assinada do framework);
      * excluir remove a linha E o arquivo do disco de uploads.
+     *
+     * Tabela de anexos de várias entidades (fw#455): `:filters` restringe a
+     * lista e `:defaults` preenche o item novo, como no `<mad-whiteboard>`:
+     *
+     *   <mad-attachments model="Anexo" foreign-key="registro_id"
+     *       :filters="[['entidade', '=', 'projeto']]"
+     *       :defaults="['entidade' => 'projeto']" />
+     *
+     * Campos por anexo (fw#457): os campos filhos vão no formulário de envio e
+     * são gravados na linha de cada arquivo (soltar 3 arquivos = 3 linhas com
+     * os mesmos valores). A linha da lista mostra o que foi gravado.
+     *
+     *   <mad-attachments model="FornecedorDocumento" foreign-key="fornecedor_id">
+     *       <mad-select-field name="tipo" label="Tipo" :items="$tipos" />
+     *       <mad-date-field name="validade" label="Validade" />
+     *   </mad-attachments>
      */
     $name        = $name        ?? 'anexos';
     $model       = $model       ?? '';
@@ -43,6 +59,8 @@
     $itemTemplate = $itemTemplate ?? '';
     $onAdd       = $onAdd    ?? '';
     $onRemove    = $onRemove ?? '';
+    $filters     = is_array($filters ?? null) ? $filters : [];
+    $defaults    = is_array($defaults ?? null) ? $defaults : [];
 
     // Campo de arquivo do form — o motor lê `$_FILES[fileField]` no blockAdd.
     $fileField = $name . '_file';
@@ -59,11 +77,51 @@
         'Excluir este anexo? O arquivo será removido do servidor.'
     );
 
+    // Campos por anexo (fw#457): o slot chega já desenhado, e cada campo
+    // deixou o tipo (data, número, escolha) e o rótulo no registro de campos
+    // ao ser desenhado. É de lá, pelo `name`, que sai o schema do form do
+    // bloco — o blockAdd converte a data digitada como o formulário da tela.
+    $__fieldsHtml = isset($slot) ? trim((string) $slot) : '';
+    $formSchema   = [];
+    if ($__fieldsHtml !== '') {
+        $__known = \Mad\Form\MadFormRegistry::getFields();
+        preg_match_all('/\bname="([A-Za-z_][A-Za-z0-9_]*)"/', $__fieldsHtml, $__names);
+        foreach (array_unique($__names[1]) as $__field) {
+            if (isset($__known[$__field]) && $__field !== $fileField) {
+                $formSchema[$__field] = $__known[$__field];
+            }
+        }
+    }
+
+    // campo => [rótulo, tipo, máscara de exibição, opções] — a linha mostra o
+    // valor. Escolha: o rótulo da opção, não a chave gravada.
+    $__rowFields = [];
+    $__attrs     = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';   // atributos, `>` dentro de aspas incluso
+    foreach ($formSchema as $__field => $__props) {
+        $__rowFields[$__field] = [
+            'label'   => (string) ($__props['label'] ?? ''),
+            'type'    => (string) ($__props['type'] ?? ''),
+            'mask'    => (string) ($__props['display_mask'] ?? ''),
+            'options' => [],
+        ];
+        if (($__props['type'] ?? '') !== 'select'
+            || !preg_match('/<select\b' . str_replace('*', '*?', $__attrs) . '\sname="' . preg_quote($__field, '/') . '(?:\[\])?"' . $__attrs . '>(.*?)<\/select>/s', $__fieldsHtml, $__sel)) {
+            continue;
+        }
+        preg_match_all('/<option\b' . str_replace('*', '*?', $__attrs) . '\svalue="([^"]*)"' . $__attrs . '>(.*?)<\/option>/s', $__sel[1], $__opts, PREG_SET_ORDER);
+        foreach (array_slice($__opts, 0, 500) as $__o) {
+            if ($__o[1] !== '') {
+                $__rowFields[$__field]['options'][html_entity_decode($__o[1], ENT_QUOTES)] = trim(html_entity_decode(strip_tags($__o[2]), ENT_QUOTES));
+            }
+        }
+    }
+
     $presetVars = [
         'path'          => $pathColumn,
         'nameCol'       => $nameColumn,
         'deletable'     => $deletable,
         'confirmRemove' => $confirmRemove,
+        'fields'        => $__rowFields,
     ];
 
     // Item: partial dedicada (heredoc não serve — o Blade compila o arquivo
@@ -72,7 +130,7 @@
         . ' accept="' . e($accept) . '" :max-files="' . $maxFiles . '" />';
 
     // Compila as tags <mad-*> do slot (o {!! !!} do motor imprime cru).
-    $formTpl = \Mad\View\MadBlade::renderString($formTpl);
+    $formTpl = $__fieldsHtml . \Mad\View\MadBlade::renderString($formTpl);
 @endphp
 
 <mad-db-blocks
@@ -83,9 +141,12 @@
     :database="$database"
     :foreign-key="$foreignKey"
     :record-id="$recordId"
+    :filters="$filters"
+    :defaults="$defaults"
     :row-view="$itemTemplate === '' ? 'components.partials.attachment-row' : ''"
     :row-slot="$itemTemplate"
     :form-slot="$formTpl"
+    :form-schema="$formSchema"
     :preset-vars="$presetVars"
     order-by="id"
     :order-dir="$orderDir"

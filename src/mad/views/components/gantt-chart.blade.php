@@ -138,6 +138,12 @@
         </div>
     </div>
 
+    {{-- Limite inicial (initial-limit, fw#423): só as primeiras tarefas são desenhadas. --}}
+    <div class="mad-gantt-limit" x-show="rowsHidden > 0" style="display:none">
+        <span class="mad-gantt-limit-text" x-text="limitText()"></span>
+        <button type="button" class="mad-gantt-btn mad-gantt-limit-btn" @click="showAllTasks()" x-text="showAllLabel()"></button>
+    </div>
+
     {{-- ══════════════════ WORKLOAD BAND (optional) ══════════════════ --}}
     <template x-if="showWorkload">
         <div class="mad-gantt-workload" x-ref="workload">

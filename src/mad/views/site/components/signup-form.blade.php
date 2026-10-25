@@ -18,6 +18,12 @@
 
     O aceite dos termos é um checkbox obrigatório de verdade (`required`), com
     links para as páginas quando elas existem.
+
+    **Celular / WhatsApp** (fw#523): `phone="optional"` ou `phone="required"`
+    põe o campo (sem a prop, o formulário fica como sempre foi). `phone-label`
+    troca o rótulo ("WhatsApp da clínica"); `phone-mask` troca a máscara
+    (9 = dígito, várias separadas por `|`; vazio = sem máscara). O número vai
+    para o contato do lead e para o `SiteSignupCompleted`.
 --}}
 @props([
     'id'          => '',
@@ -30,6 +36,9 @@
     'termsHref'   => '',
     'privacyHref' => '',
     'contactHref' => '',
+    'phone'       => '',
+    'phoneLabel'  => '',
+    'phoneMask'   => null,
     'tone'        => 'plain',
     'class'       => '',
 ])
@@ -197,6 +206,20 @@
         }
     }
 
+    // Celular (fw#523): '' = sem o campo; `true`/`1` valem como `optional`.
+    $__phoneMode = strtolower(trim((string) $phone));
+    if (in_array($__phoneMode, ['1', 'true', 'yes', 'on'], true)) { $__phoneMode = 'optional'; }
+    if (! in_array($__phoneMode, ['optional', 'required'], true)) { $__phoneMode = ''; }
+    $__phoneLabel = trim((string) $phoneLabel) !== '' ? trim((string) $phoneLabel) : mad_t('mad.site_field_phone');
+    // Máscara padrão só no português do Brasil (fixo e celular com DDD); nos
+    // outros idiomas o número vai como a pessoa digitar.
+    if ($phoneMask === null) {
+        $__locale    = str_replace('_', '-', strtolower((string) app()->getLocale()));
+        $__phoneMask = in_array($__locale, ['pt-br', 'pt'], true) ? '(99) 9999-9999|(99) 99999-9999' : '';
+    } else {
+        $__phoneMask = trim((string) $phoneMask);
+    }
+
     $__trapStyle = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;';
 @endphp
 
@@ -343,6 +366,23 @@
                         <p class="site-form__error">{{ $__error('email') }}</p>
                     @endif
                 </div>
+
+                @if($__phoneMode !== '')
+                    {{-- O servidor lê o `phone_required` para dizer "informe o
+                         celular" na volta; sem ele, o campo vale como opcional. --}}
+                    <input type="hidden" name="phone_required" value="{{ $__phoneMode === 'required' ? '1' : '0' }}">
+                    <div class="site-form__field">
+                        <label for="site-signup-phone">{{ $__phoneLabel }}@if($__phoneMode === 'optional') <small>({{ mad_t('mad.site_optional') }})</small>@endif</label>
+                        <input type="tel" id="site-signup-phone" name="phone" value="{{ $__old('phone') }}"
+                               @if($__phoneMask !== '') data-site-mask="{{ $__phoneMask }}" @endif
+                               @if($__error('phone') !== '') aria-invalid="true" @endif
+                               @if($__phoneMode === 'required') required @endif
+                               maxlength="30" inputmode="tel" autocomplete="tel">
+                        @if($__error('phone') !== '')
+                            <p class="site-form__error">{{ $__error('phone') }}</p>
+                        @endif
+                    </div>
+                @endif
 
                 <div class="site-form__field">
                     <label for="site-signup-password">{{ mad_t('mad.site_field_password') }}</label>

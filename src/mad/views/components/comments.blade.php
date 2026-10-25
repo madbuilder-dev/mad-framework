@@ -26,6 +26,11 @@
      * usuário logado nessa coluna, quando a tabela a tem. Vem da sessão, não
      * do formulário (fw#466).
      *
+     * Tabela de comentários de várias entidades (fw#455): `:filters` restringe
+     * o feed e `:defaults` preenche o comentário novo, como no
+     * `<mad-whiteboard>` — `:filters="[['entidade', '=', 'projeto']]"`
+     * `:defaults="['entidade' => 'projeto']"`.
+     *
      * Data (`date-field`, padrão `created_at`): no fuso do app e no formato do
      * idioma (pt-BR: 21/10/2026 13:28). `date-format="d/m/Y \à\s H:i"` (formato
      * PHP) troca o formato (fw#478). `date-relative` mostra o comentário
@@ -66,7 +71,11 @@
     // Escopo do bloco: a coluna do filtro também fica fora do que o formulário
     // grava (MadDbBlocks::scopeColumns), então o comentário de quem não vê
     // não nasce interno nem por requisição forjada.
-    $filters = $hideInternal ? [[$internalFlag, 'is not true', null]] : [];
+    $filters = array_merge(
+        is_array($filters ?? null) ? $filters : [],
+        $hideInternal ? [[$internalFlag, 'is not true', null]] : []
+    );
+    $defaults = is_array($defaults ?? null) ? $defaults : [];
     $orderDir        = $orderDir        ?? 'asc';
     $label           = $label           ?? '';
     $placeholder     = $placeholder     ?? 'Escreva um comentário...';
@@ -124,6 +133,7 @@
     :foreign-key="$foreignKey"
     :record-id="$recordId"
     :filters="$filters"
+    :defaults="$defaults"
     :row-view="$itemTemplate === '' ? 'components.partials.comment-row' : ''"
     :row-slot="$itemTemplate"
     :form-slot="$formTpl"

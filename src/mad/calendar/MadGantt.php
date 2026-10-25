@@ -91,6 +91,8 @@ class MadGantt
     protected ?bool   $compactColumns = null;
     /** Botão "Caber tudo": null = só no tema ERP; true/false fixa. */
     protected ?bool   $fitBtn         = null;
+    /** Limite inicial de tarefas desenhadas (0 = todas); o resto no "Mostrar todas". */
+    protected int     $initialLimit   = 0;
 
     // ── Ações mad-wire ───────────────────────────────────────────────────
     protected string $eventClickMethod  = '';
@@ -181,6 +183,7 @@ class MadGantt
         if (!empty($cfg['task_col_width'])) $g->taskColWidth((int) $cfg['task_col_width']);
         if (isset($cfg['compact_columns'])) $g->compactColumns((bool) $cfg['compact_columns']);
         if (isset($cfg['fit_btn']))         $g->fitButton((bool) $cfg['fit_btn']);
+        if (isset($cfg['initial_limit']))   $g->initialLimit((int) $cfg['initial_limit']);
 
         // Callbacks
         if (!empty($cfg['on_task_click']))         $g->onTaskClick($cfg['on_task_click']);
@@ -637,6 +640,14 @@ class MadGantt
 
     /** Botão "Caber tudo" (volta ao zoom em que o projeto inteiro cabe). Sem chamar: só no tema ERP. */
     public function fitButton(?bool $v = true): static     { $this->fitBtn = $v; return $this; }
+
+    /**
+     * Abre desenhando só as primeiras `$n` tarefas, com "Mostrar todas" no
+     * rodapé (0 = todas). Para cronograma grande: 1.500 tarefas levavam ~3 s
+     * para abrir. A busca procura em todas; dependências, caminho crítico e
+     * estatísticas contam todas.
+     */
+    public function initialLimit(int $n): static           { $this->initialLimit = max(0, $n); return $this; }
 
     // ── Rows ─────────────────────────────────────────────────────────────
 
@@ -1371,6 +1382,8 @@ class MadGantt
                 'fit'          => 'gantt.fit',
                 'showColumns'  => 'gantt.show_columns',
                 'hideColumns'  => 'gantt.hide_columns',
+                'showAll'      => 'gantt.show_all_tasks',
+                'limitInfo'    => 'gantt.limit_info',
                 // Selos da dica da barra — eram "CRITICAL"/"MILESTONE" fixos.
                 'criticalTag'  => 'gantt.critical_badge',
                 'milestoneTag' => 'gantt.milestone_badge',
@@ -1428,6 +1441,7 @@ class MadGantt
             'taskColWidth'      => $this->taskColWidth,
             'compactColumns'    => $this->compactColumns,
             'fitBtn'            => $this->fitBtn,
+            'initialLimit'      => $this->initialLimit,
         ];
 
         return ['components.gantt-chart', ['config' => $config]];

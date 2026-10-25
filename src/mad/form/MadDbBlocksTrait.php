@@ -122,6 +122,17 @@ trait MadDbBlocksTrait
                     }
                 }
 
+                // Valores fixos do item novo (fw#455): os `:defaults` da tag e,
+                // em coluna de filtro `=` sem default, o valor do filtro — sem
+                // isso o item gravado não aparecia na própria lista (a tabela
+                // de anexos de várias entidades gravava `entidade` vazia).
+                foreach (self::_blockDefaults($pivot, $cfg) as $col => $val) {
+                    try { $pivot->{$col} = $val; } catch (Throwable $e) {
+                        error_log('[MadDbBlocks::blockAdd] default "' . $col . '" de '
+                            . get_class($pivot) . ' descartado: ' . $e->getMessage());
+                    }
+                }
+
                 // Autor do item (`user-field`; o `author-field` do <mad-comments>):
                 // o usuário logado, nunca o formulário. Nada preenchia a coluna,
                 // e o comentário só gravava autor quando o Model ou a tela o
@@ -752,6 +763,11 @@ trait MadDbBlocksTrait
     private static function _blockFixedColumns(object $pivot, array $cfg): array
     {
         $fixed = MadDbBlocks::scopeColumns($cfg);
+        // `:defaults` (fw#455): o valor é da tag, nem o formulário nem o
+        // editar no lugar o trocam.
+        foreach (array_keys(is_array($cfg['defaults'] ?? null) ? $cfg['defaults'] : []) as $col) {
+            $fixed[] = (string) $col;
+        }
         if (method_exists($pivot, 'getKeyName')) {
             $fixed[] = (string) $pivot->getKeyName();
         }
@@ -762,6 +778,41 @@ trait MadDbBlocksTrait
         }
 
         return $fixed;
+    }
+
+    /**
+     * Colunas fixas do item novo: os `:defaults` da tag (valem como estão) e
+     * o valor de cada filtro `=` cuja coluna não tem default. O filtro só
+     * entra se a coluna existe na tabela do item — filtro numa coluna de outra
+     * tabela (`tabela.coluna`) ou de um Model sobre consulta não é gravável.
+     *
+     * @return array<string, mixed>
+     */
+    private static function _blockDefaults(object $pivot, array $cfg): array
+    {
+        $out = is_array($cfg['defaults'] ?? null) ? $cfg['defaults'] : [];
+
+        foreach ((array) ($cfg['filters'] ?? []) as $f) {
+            if (!is_array($f) || count($f) < 3 || trim((string) $f[1]) !== '=' || !is_scalar($f[2])) {
+                continue;
+            }
+            $col = (string) $f[0];
+            if ($col === '' || str_contains($col, '.') || array_key_exists($col, $out)) {
+                continue;
+            }
+            try {
+                $table = method_exists($pivot, 'getTable') ? (string) $pivot->getTable() : '';
+                if ($table === '' || !method_exists($pivot, 'getConnection')
+                    || !$pivot->getConnection()->getSchemaBuilder()->hasColumn($table, $col)) {
+                    continue;
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+            $out[$col] = $f[2];
+        }
+
+        return $out;
     }
 
     /**

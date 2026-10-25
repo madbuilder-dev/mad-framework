@@ -1033,3 +1033,17 @@ html.dark .mad-gantt-tooltip {
     .mad-gantt-header-scroll { overflow: visible !important; }
     .mad-gantt * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
+
+/* Limite inicial (initial-limit, fw#423): faixa "Mostrando N de M · Mostrar todas". */
+.mad-gantt-limit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--mg-surface-2);
+    border-top: 1px solid var(--mg-border-2);
+    font-size: 12.5px;
+    color: var(--mg-text-2);
+}
+.mad-gantt-limit-text { opacity: .85; }

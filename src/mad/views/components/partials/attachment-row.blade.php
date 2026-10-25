@@ -32,6 +32,25 @@
 
     $urlView = $path !== '' ? mad_download_url($path) : '#';
     $urlDl   = $path !== '' ? mad_download_url($path, $nome) : '#';
+
+    // Campos por anexo (fw#457): "Tipo: Contrato · Validade: 31/12/2026".
+    // Data no formato do campo; vazio não aparece.
+    $extras = [];
+    foreach ((array) ($vars['fields'] ?? []) as $field => $meta) {
+        $valor = $item->{$field} ?? null;
+        if ($valor === null || $valor === '') {
+            continue;
+        }
+        $valor = (string) $valor;
+        if (isset($meta['options'][$valor])) {
+            $valor = (string) $meta['options'][$valor];
+        } elseif (($meta['type'] ?? '') === 'date' && preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $valor, $d)) {
+            $mask  = (string) ($meta['mask'] ?? '') ?: 'dd/mm/yyyy';
+            $valor = strtr($mask, ['yyyy' => $d[1], 'mm' => $d[2], 'dd' => $d[3]]);
+        }
+        $rotulo   = trim((string) ($meta['label'] ?? ''));
+        $extras[] = ($rotulo !== '' ? $rotulo . ': ' : '') . $valor;
+    }
 @endphp
 <div id="block-row-{{ $name }}-{{ $id }}"
      style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #e9ecef;border-radius:8px;background:#fff;">
@@ -42,6 +61,9 @@
         <a href="{{ $urlView }}" target="_blank"
            style="font-weight:500;color:#1f2937;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $nome }}</a>
         <div style="font-size:12px;color:#6b7280;margin-top:2px;">{{ $tam }}{{ $tam !== '' && $criado !== '' ? ' · ' : '' }}{{ $criado }}</div>
+        @if($extras !== [])
+            <div style="font-size:12px;color:#374151;margin-top:2px;" data-attachment-fields>{{ implode(' · ', $extras) }}</div>
+        @endif
     </div>
     <a href="{{ $urlDl }}" class="mad-btn mad-btn-outline mad-btn-sm" style="text-decoration:none;">
         <i data-lucide="download" style="width:14px;height:14px;"></i> Baixar

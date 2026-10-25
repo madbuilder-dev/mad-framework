@@ -64,6 +64,9 @@
     $onAfterAdd    = $onAfterAdd    ?? '';
     $onAfterRemove = $onAfterRemove ?? '';
     $filters     = $filters ?? [];
+    // Valores fixos do item novo (fw#455): `:defaults="['entidade' => 'projeto']"`.
+    // Também entram no escopo do que o formulário não grava.
+    $defaults    = is_array($defaults ?? null) ? $defaults : [];
     $formSlot    = $formSlot ?? '';
     // Tipo de cada campo do form do bloco (capturado pelo compilador): vai no
     // state cifrado para o servidor converter data/número/escolha (fw#459).
@@ -110,6 +113,7 @@
         'mimeColumn'           => $mimeColumn,
         'diskColumn'           => $diskColumn,
         'filters'              => $filters,
+        'defaults'             => $defaults,
         'noList'               => $noList,
         'formSchema'           => $formSchema,
         'userField'            => $userField,

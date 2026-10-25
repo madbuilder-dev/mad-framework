@@ -684,11 +684,14 @@ class MadGridCompiler
         // `form-slot`/`row-slot` como prop existem pros PRESETS (mad-comments,
         // mad-attachments), que montam o slot em PHP em vez de usar as tags
         // filhas <mad-db-blocks-form>/<mad-db-blocks-row>.
+        // `form-schema`: o tipo dos campos que o preset pôs no form-slot (os
+        // campos por anexo do <mad-attachments>, fw#457).
         foreach ([
             'preset-vars' => 'presetVars',
             'edit-fields' => 'editFields',
             'form-slot'   => 'formSlot',
             'row-slot'    => 'rowSlot',
+            'form-schema' => 'formSchema',
         ] as $h => $b) {
             if (isset($parentAttrs[$h])) {
                 $parts[] = ':' . $b . '="' . static::emit($parentAttrs[$h]) . '"';
@@ -698,6 +701,10 @@ class MadGridCompiler
         // filters as PHP expression (array)
         if (isset($parentAttrs['filters'])) {
             $parts[] = ':filters="' . static::emit($parentAttrs['filters']) . '"';
+        }
+        // defaults (fw#455): colunas fixas do item novo, como no <mad-whiteboard>
+        if (isset($parentAttrs['defaults'])) {
+            $parts[] = ':defaults="' . static::emit($parentAttrs['defaults']) . '"';
         }
 
         $propsStr = !empty($parts) ? ' ' . implode(' ', $parts) : '';

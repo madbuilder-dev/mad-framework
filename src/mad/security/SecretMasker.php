@@ -225,6 +225,11 @@ final class SecretMasker
             );
         }
 
+        // Link da pessoa externa do workflow (fw#456): o token É a credencial.
+        if (str_contains($uri, 'wf/decide/')) {
+            $uri = (string) preg_replace('#(wf/decide/)[A-Za-z0-9]{8,128}(?=$|[/?\#])#', '$1' . self::MASK, $uri);
+        }
+
         $q = strpos($uri, '?');
         if ($q === false) {
             return $uri;

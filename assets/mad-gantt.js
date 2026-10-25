@@ -822,10 +822,40 @@
         return order;
     }
 
+    /**
+     * Limite inicial (`initial-limit`, fw#423): as primeiras `limit` tarefas
+     * da lista, na ordem da tela. Cabeçalho de fase entra se vem antes de
+     * alguma tarefa que entra. 1.500 tarefas = ~26 mil nós na página; o resto espera o
+     * "Mostrar todas".
+     *
+     * @returns {{ rows: Array, shown: number, total: number, hidden: number }}
+     */
+    function limitRows(rows, limit) {
+        const isTask = (r) => r.kind === 'task' || r.kind === 'summary';
+        const total = rows.reduce((n, r) => n + (isTask(r) ? 1 : 0), 0);
+        const max = Math.max(0, parseInt(limit, 10) || 0);
+        if (!max || total <= max) return { rows, shown: total, total, hidden: 0 };
+
+        // Fase recolhida antes do corte continua (o usuário a abre); a que
+        // só teria tarefa depois do corte sai.
+        const out = [];
+        let shown = 0;
+        let pending = [];
+        for (const r of rows) {
+            if (!isTask(r)) { pending.push(r); continue; }
+            if (shown >= max) break;
+            if (pending.length) { out.push(...pending); pending = []; }
+            out.push(r);
+            shown++;
+        }
+        return { rows: out, shown, total, hidden: total - shown };
+    }
+
     root.MadGantt = root.MadGantt || {};
     root.MadGantt.tree = {
         visibleRows,
         derivePhases,
+        limitRows,
     };
 
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -3698,6 +3728,12 @@
             // Botão "Caber tudo": true/false fixa, null = só no tema ERP.
             fitBtn:             (cfg.fitBtn === true || cfg.fitBtn === false) ? cfg.fitBtn : null,
             showMinimap:        cfg.showMinimap !== false,
+            // Limite inicial (fw#423): 0 = todas. A busca procura em todas.
+            initialLimit:       Math.max(0, parseInt(cfg.initialLimit, 10) || 0),
+            showAllRows:        false,
+            rowsShown:          0,
+            rowsTotal:          0,
+            rowsHidden:         0,
             showSearch:         cfg.showSearch !== false,
             showWeekends:       cfg.showWeekends !== false,
             showGrid:           cfg.showGrid !== false,
@@ -4148,6 +4184,24 @@
                 this._scheduleFlush();
             },
 
+            // ── Limite inicial (fw#423) ───────────────────────────────────
+            limitText() {
+                const L = cfg.labels || {};
+                const n = (v) => {
+                    try { return Number(v).toLocaleString(String(this.locale || '').replace('_', '-') || undefined); } catch (e) { return String(v); }
+                };
+                return String(L.limitInfo || 'Mostrando {shown} de {total} tarefas')
+                    .replace('{shown}', n(this.rowsShown)).replace('{total}', n(this.rowsTotal));
+            },
+            showAllLabel() {
+                return (cfg.labels && cfg.labels.showAll) || 'Mostrar todas';
+            },
+            showAllTasks() {
+                this.showAllRows = true;
+                this._markDirty('all');
+                this._scheduleFlush();
+            },
+
             togglePhase(phaseId) {
                 const key = String(phaseId);
                 this.collapsedPhases[key] = !this.collapsedPhases[key];
@@ -4421,6 +4475,12 @@
                     phaseFilter,
                     noPhaseLabel: (cfg.labels && cfg.labels.noPhase) || undefined,
                 });
+                const searching = String(this.filterText || '').trim() !== '';
+                const cut = tree.limitRows(this._rows, this.showAllRows || searching ? 0 : this.initialLimit);
+                this._rows = cut.rows;
+                if (this.rowsHidden !== cut.hidden) this.rowsHidden = cut.hidden;
+                if (this.rowsShown !== cut.shown) this.rowsShown = cut.shown;
+                if (this.rowsTotal !== cut.total) this.rowsTotal = cut.total;
                 const rowH = densityToRowH(this.density);
                 const pxPerDay = zoom.get(this.zoom).pxPerDay;
                 this._geom = coords.buildGeom(this._rows, this._range, pxPerDay, rowH);

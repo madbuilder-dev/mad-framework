@@ -90,6 +90,7 @@ class MadServiceProvider extends ServiceProvider
                 TraceInfraCommand::class,
                 GridPurgeExportsCommand::class,
                 RestDriverInstallCommand::class,
+                \Mad\Console\RequestLogPurgeCommand::class,
             ]);
         }
 
@@ -204,6 +205,8 @@ class MadServiceProvider extends ServiceProvider
         $this->bootTrace();
         $this->bootSchedulePause();
         $this->bootWebhooks();
+        $this->bootRequestLogRetention();
+        $this->bootWorkflowExternal();
         $this->bootApiAuth();
         $this->bootRoutines();
         $this->bootVibePreview();
@@ -425,6 +428,60 @@ class MadServiceProvider extends ServiceProvider
                 ->withoutOverlapping(10)
                 ->skip(static fn () => ! WebhookRegistry::hasDefinitions());
         });
+    }
+
+    /**
+     * Prazo do log de requisições (fw#419): todo dia às 03:15 apaga o que
+     * passou de `MAD_REQUEST_LOG_DAYS` (ou do prazo escolhido na tela Logs ›
+     * Requisições). Aqui e não no `routes/console.php`: vale também para o app
+     * que só atualizou o vendor. Pulado enquanto o app guarda tudo.
+     */
+    private function bootRequestLogRetention(): void
+    {
+        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
+            $schedule->command('mad:request-log:purge')
+                ->dailyAt('03:15')
+                ->withoutOverlapping(120)
+                ->skip(static fn () => \Mad\Service\RequestLogRetention::days() <= 0);
+        });
+    }
+
+    /**
+     * Decisão da pessoa externa do workflow (fw#456): `GET|POST
+     * /wf/decide/{token}`, fora do login, com limitador `mad-wf-decide` por
+     * IP (30/min; o do app vence). No `booted`, como os webhooks: o
+     * `routes/web.php` do projeto pode ser trocado inteiro. Só registra com o
+     * controller do esqueleto; rota do projeto no mesmo endereço vence.
+     */
+    private function bootWorkflowExternal(): void
+    {
+        $this->app->booted(static function (): void {
+            self::registerWorkflowExternalRoutes();
+        });
+    }
+
+    public static function registerWorkflowExternalRoutes(
+        string $controller = 'App\\Http\\Controllers\\Workflow\\WfExternalDecisionController',
+    ): bool {
+        if (! class_exists($controller)) {
+            return false;
+        }
+        if (RateLimiter::limiter('mad-wf-decide') === null) {
+            RateLimiter::for('mad-wf-decide', static fn (Request $request) => Limit::perMinute(30)->by('mad-wf-decide|' . $request->ip()));
+        }
+
+        $existing = Route::getRoutes();
+        foreach ([['GET', 'show', 'mad.wf.decide'], ['POST', 'decide', 'mad.wf.decide.post']] as [$method, $action, $name]) {
+            if (isset($existing->get($method)['wf/decide/{token}'])) {
+                continue;
+            }
+            Route::match([$method], 'wf/decide/{token}', [$controller, $action])
+                ->where('token', '[A-Za-z0-9]{20,128}')
+                ->middleware(['web', 'throttle:mad-wf-decide'])
+                ->name($name);
+        }
+
+        return true;
     }
 
     /**

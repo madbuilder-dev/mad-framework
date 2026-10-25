@@ -12,6 +12,37 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.223.0] — 2026-10-25
+
+### Novidades
+
+- **Preferências › Segurança:** o bloqueio por senha errada ficou ajustável: tentativas por usuário, tentativas por endereço e o tempo de bloqueio. Em branco continuam 5, 20 e 15 minutos.
+- **Preferências › Segurança:** a política de senha ficou ajustável: tamanho mínimo (de 8 a 128), quais tipos de caractere a Senha forte exige e "Recusar senhas fáceis", que barra senhas muito usadas, como `12345678` e `Senha@123`, e senhas com o nome, o login ou o e-mail da pessoa. Quem não mexer segue com a regra de antes.
+- **Copilot IA e Meus Dashboards:** viraram permissões da tela de Grupos. O grupo Administrador já vem com os dois; os outros grupos usam depois que você liberar.
+- **Planos e licenças:** novo campo "Limite de unidades". Em branco continua valendo uma unidade só, como antes; com 2 ou mais, o cliente abre as próprias filiais até esse número. Na licença, o limite vale por cima do plano.
+- **Unidades da empresa:** o administrador da unidade do cliente ganha a tela Unidades da empresa quando o contrato libera mais de uma unidade. Ele vê só as unidades da empresa dele, cria a filial nova, troca o nome e desativa a que não usa mais. A filial nova usa o plano, os módulos e a validade do contrato da empresa, e aparece na troca de unidade só para quem foi vinculado a ela.
+- **Site · Cadastro:** `<mad-site-signup-form phone="optional">` (ou `phone="required"`) pede o celular no cadastro, com `phone-label` para o rótulo, como "WhatsApp da clínica", e máscara de celular no português do Brasil. O número chega ao aviso de conta criada junto com os outros dados.
+- **Perfis da empresa:** o administrador da unidade do cliente ganha a tela Perfis da empresa. Ele parte de um perfil-modelo (os perfis que você marcou como atribuíveis pelo administrador da unidade) com "Criar a partir deste", ajusta os grupos e as telas e salva um perfil só da empresa dele. O perfil aparece no cadastro de usuários dele e vale só nas unidades daquele contrato. Os modelos continuam só com você.
+- **Anexos:** uma tabela de anexos pode servir várias telas. Em `<mad-attachments>`, `:filters` mostra só os anexos daquela tela e `:defaults` preenche o anexo novo, como no `<mad-whiteboard>`. Exemplo: `:filters="[['entidade', '=', 'projeto']]"`. O filtro de igualdade já vale de padrão, e quem envia não consegue trocar esses valores.
+- **Anexos:** campos por anexo. Coloque campos dentro do `<mad-attachments>` (tipo do documento, validade) e eles aparecem no envio e são gravados em cada arquivo. A lista mostra o que foi preenchido, como "Tipo: Contrato · Validade: 31/12/2026".
+- **Logs:** o log de requisições ganhou prazo. Em Logs › Requisições, escolha guardar 30, 90, 180 ou 365 dias, ou tudo. Todo dia às 03:15 sai o que passou do prazo, sem pesar no app. No servidor, o prazo padrão vem de `MAD_REQUEST_LOG_DAYS` no `.env`. Sem prazo, o log guarda tudo, como antes.
+- **Fluxos de aprovação:** um passo pode pedir a ciência de todas as pessoas de uma lista ligada ao registro, como os participantes de um projeto ou os presentes de uma reunião. Cada pessoa recebe a própria pendência, quem aparece duas vezes recebe uma só, e dá para filtrar a lista (por exemplo, só os responsáveis). "Todos", "qualquer um" e "quórum" valem sobre a lista.
+- **Fluxos de aprovação:** pessoa de fora do sistema (consultoria, empreiteiro) pode dar ciência ou aprovar sem login. Ela recebe por e-mail um link pessoal, que vale uma vez e expira no prazo do passo (ou em 30 dias), vê o resumo do pedido e decide. A decisão fica na trilha com o e-mail dela, o IP e o navegador. O link pode ser reenviado e, se o passo for escalado para um usuário, deixa de valer.
+- **Gantt:** cronograma grande abre rápido com `initial-limit`: `<mad-gantt initial-limit="200">` mostra as 200 primeiras tarefas e, no rodapé, "Mostrando 200 de 1.500 tarefas" com o botão "Mostrar todas". A busca continua procurando em todas, e o caminho crítico, as dependências e os números do rodapé contam todas. Sem o atributo, nada muda.
+
+### Melhorias
+
+- **Senha:** a lista de requisitos que aparece ao digitar a senha nova mostra só o que o sistema cobra, e o aviso de senha recusada sai no idioma do app.
+- **Perfis:** a sua lista de Perfis mostra só os perfis da plataforma. Os perfis que cada cliente cria ficam com ele.
+- **Comentários:** `<mad-comments>` também aceita `:defaults`, para uma tabela de comentários de várias telas.
+
+### Atenção
+
+- **Copilot IA e Meus Dashboards:** quem não é do grupo Administrador deixa de ver o Copilot e Meus Dashboards até você liberar em Grupos.
+- **Unidades da empresa:** quando o cliente abre a primeira filial, o contrato dele passa a ser da empresa, e é assim que as filiais herdam o plano. A mesma pessoa em duas filiais conta como um usuário só. Conta que divide a empresa com outros clientes não abre filial sozinha: a tela avisa para falar com o atendimento.
+- **Perfis da empresa:** o perfil do cliente nunca passa do que os perfis-modelo têm nem do que o plano dele inclui. Um grupo que você tirar de todos os modelos sai também dos perfis criados a partir deles. Perfil em uso não se exclui: a tela diz quantas pessoas ainda o usam.
+- **Fluxos de aprovação:** o link da pessoa externa abre a única página do sistema sem login além do site. Ela mostra só os campos que o passo deixa ver.
+
 ## [5.222.14] — 2026-10-25
 
 ### Correções

@@ -472,7 +472,8 @@ class PermissionGate
             "NewChatForm" => true,
             "NewChatGroupForm" => true,
             "SettingsForm" => true,
-            "MyDashboards" => true, // tela "Meus Dashboards" (micro-BI, iframe React)
+            // "MyDashboards" saiu daqui (fw#424): Meus Dashboards é programa do
+            // IAM, liberado por grupo (App\Service\Iam\AiPrograms).
             // Serviços de sistema (não-controls).
             "SystemSupportForm" => true,
             "SearchInputBox" => true,
