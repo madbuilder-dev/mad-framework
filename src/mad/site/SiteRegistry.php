@@ -204,7 +204,7 @@ class SiteRegistry
         if (! is_array($cfg) || $cfg === []) {
             $cfg = [
                 'app', 'public', 'billing', 'api', 'storage', 'install', 'embed',
-                'agent-console', 'lib', 'images', 'fonts', 'sitemap.xml', 'robots.txt', 'docs',
+                'agent-console', 'lib', 'images', 'fonts', 'sitemap.xml', 'robots.txt', 'docs', 'wf',
             ];
         }
 

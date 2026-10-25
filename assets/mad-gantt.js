@@ -851,11 +851,42 @@
         return { rows: out, shown, total, hidden: total - shown };
     }
 
+    /**
+     * Faixa de linhas desenhada (fw#423, etapa 2): só as que cabem na tela,
+     * mais `overscan` linhas de cada lado. A lista e o gráfico desenham
+     * rows[from..to); o resto vira espaço vazio da mesma altura, e a rolagem
+     * troca a faixa. Até `threshold` linhas (ou threshold Infinity) desenha
+     * tudo, como antes.
+     */
+    function rowWindow(total, scrollTop, viewH, rowH, opts = {}) {
+        const threshold = opts.threshold != null ? opts.threshold : 300;
+        const overscan = Math.max(0, opts.overscan != null ? opts.overscan : 20);
+        const n = Math.max(0, total | 0);
+        if (n === 0 || !(rowH > 0) || !(n > threshold)) return { from: 0, to: n, virtual: false };
+        const h = viewH > 0 ? viewH : rowH * 30;
+        const first = Math.min(n - 1, Math.max(0, Math.floor(Math.max(0, scrollTop || 0) / rowH)));
+        const count = Math.ceil(h / rowH) + 1;
+        return {
+            from: Math.max(0, first - overscan),
+            to: Math.min(n, first + count + overscan),
+            virtual: true,
+        };
+    }
+
+    /** A faixa desenhada `win` ainda cobre a que a tela precisa (`need`)? */
+    function windowCovers(win, need) {
+        if (!win || !need) return false;
+        if (!need.virtual) return !win.virtual && win.to === need.to;
+        return win.virtual && need.from >= win.from && need.to <= win.to;
+    }
+
     root.MadGantt = root.MadGantt || {};
     root.MadGantt.tree = {
         visibleRows,
         derivePhases,
         limitRows,
+        rowWindow,
+        windowCovers,
     };
 
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1645,8 +1676,15 @@
         const dark = opts.theme === 'dark';
         const cols = resolveColumns(opts);
 
+        // Faixa (fw#423): só rows[from..to), com espaço vazio da altura das
+        // linhas de fora — a rolagem e a sincronia com o gráfico não mudam.
+        const win = opts.window || null;
+        const from = win ? Math.max(0, win.from) : 0;
+        const to = win ? Math.min(rows.length, win.to) : rows.length;
+
         const html = [];
-        for (let i = 0; i < rows.length; i++) {
+        if (from > 0) html.push(`<div class="mad-gantt-vspace" aria-hidden="true" style="height:${from * rowH}px"></div>`);
+        for (let i = from; i < to; i++) {
             const row = rows[i];
             if (row.kind === 'phase') {
                 html.push(renderPhaseRow(row, rowH, collapsedPhases, dark));
@@ -1654,6 +1692,7 @@
                 html.push(renderTaskRow(row, rowH, expanded, showAvatars, people, opts, cols));
             }
         }
+        if (to < rows.length) html.push(`<div class="mad-gantt-vspace" aria-hidden="true" style="height:${(rows.length - to) * rowH}px"></div>`);
         rootEl.innerHTML = html.join('');
     }
 
@@ -2098,11 +2137,14 @@
         const rowH = ctx.rowH;
         const criticalSet = ctx.criticalSet || new Set();
         const criticalMode = !!ctx.criticalMode;
+        const win = ctx.window && ctx.window.virtual ? ctx.window : null;
 
         for (const dep of (dependencies || [])) {
             const from = geom.byId[dep.from];
             const to   = geom.byId[dep.to];
             if (!from || !to) continue;
+            // Faixa (fw#423): a seta que não passa pelas linhas desenhadas espera.
+            if (win && (Math.max(from.rowIdx, to.rowIdx) < win.from || Math.min(from.rowIdx, to.rowIdx) >= win.to)) continue;
             const isCrit = criticalSet.has(String(dep.from)) && criticalSet.has(String(dep.to));
             const isDim  = criticalMode && !isCrit;
             const arrow = buildArrow(from, to, dep.type || 'FS', style, rowH);
@@ -2292,6 +2334,12 @@
             clear(layers['mg-layer-grid']);
         }
 
+        renderRowLayers(layers, rows, geom, ctx, chartW);
+        renderToday(layers['mg-layer-today'], ctx.range, pxPerDay, chartH, ctx.today);
+    }
+
+    /** Fundo das linhas, setas e barras — o que muda quando a faixa (fw#423) anda. */
+    function renderRowLayers(layers, rows, geom, ctx, chartW) {
         renderRowBackgrounds(layers['mg-layer-rowbg'], rows, chartW, ctx.rowH, ctx);
 
         dependencies.render(layers['mg-layer-deps'], ctx.dependencies, geom, {
@@ -2299,10 +2347,28 @@
             rowH: ctx.rowH,
             criticalSet: ctx.criticalSet,
             criticalMode: ctx.criticalMode,
+            window: ctx.window,
         });
 
         renderBars(layers['mg-layer-bars'], rows, geom, ctx);
-        renderToday(layers['mg-layer-today'], ctx.range, pxPerDay, chartH, ctx.today);
+    }
+
+    /**
+     * Rolagem com faixa (fw#423): redesenha só as linhas; grade, fins de
+     * semana, defs e "hoje" ficam como estão.
+     */
+    function renderRows(svgEl, rows, geom, ctx) {
+        if (!svgEl) return;
+        const { layers } = ensureLayers(svgEl);
+        const chartW = ctx.range.totalDays * zoom.get(ctx.zoom).pxPerDay;
+        defs.setScope(ctx.uid || svgEl.closest('.mad-gantt')?.id || '');
+        renderRowLayers(layers, rows, geom, ctx, chartW);
+    }
+
+    /** rows[from..to) da faixa; sem faixa, todas. */
+    function windowBounds(rows, ctx) {
+        const win = ctx && ctx.window;
+        return win ? [Math.max(0, win.from), Math.min(rows.length, win.to)] : [0, rows.length];
     }
 
     function renderWeekends(g, range, pxPerDay, chartH, ctx) {
@@ -2396,8 +2462,9 @@
         clear(g);
         const dark = ctx.theme === 'dark';
         const { colors } = root.MadGantt;
-        let y = 0;
-        for (let i = 0; i < rows.length; i++) {
+        const [from, to] = windowBounds(rows, ctx);
+        let y = from * rowH;
+        for (let i = from; i < to; i++) {
             const row = rows[i];
             if (row.kind === 'phase') {
                 const c = colors.phaseColors(row.phase.hue, dark);
@@ -2435,7 +2502,8 @@
             },
         };
 
-        for (let i = 0; i < rows.length; i++) {
+        const [from, to] = windowBounds(rows, ctx);
+        for (let i = from; i < to; i++) {
             const row = rows[i];
             if (row.kind === 'phase') continue;
             const t = row.task;
@@ -2543,6 +2611,7 @@
     root.MadGantt = root.MadGantt || {};
     root.MadGantt.chartSvg = {
         render,
+        renderRows,
         patchBar,
         ensureLayers,
     };
@@ -3731,6 +3800,11 @@
             // Limite inicial (fw#423): 0 = todas. A busca procura em todas.
             initialLimit:       Math.max(0, parseInt(cfg.initialLimit, 10) || 0),
             showAllRows:        false,
+            // Faixa de linhas (fw#423, etapa 2): acima deste nº de linhas a
+            // lista e o gráfico desenham só o que está na tela. 0/false = nunca.
+            virtualThreshold:   (cfg.virtualRows === false || cfg.virtualRows === 0 || cfg.virtualRows === '0' || cfg.virtualRows === 'false')
+                ? Infinity
+                : (parseInt(cfg.virtualRows, 10) > 0 ? parseInt(cfg.virtualRows, 10) : 300),
             rowsShown:          0,
             rowsTotal:          0,
             rowsHidden:         0,
@@ -3894,6 +3968,19 @@
                 }
 
                 if (chartScroll) {
+                    // Faixa de linhas (fw#423). O gantt cresce com o conteúdo, então
+                    // quem rola costuma ser a página ou o shell, não o gráfico:
+                    // ouve a rolagem de qualquer contêiner (captura no document).
+                    let rafRows = 0;
+                    const onRowsScroll = () => {
+                        if (rafRows || !this._win || !this._win.virtual) return;
+                        rafRows = requestAnimationFrame(() => { rafRows = 0; this._onRowsScroll(); });
+                    };
+                    document.addEventListener('scroll', onRowsScroll, { capture: true, passive: true });
+                    this._bindings.push({ detach: () => {
+                        document.removeEventListener('scroll', onRowsScroll, { capture: true });
+                        if (rafRows) cancelAnimationFrame(rafRows);
+                    } });
                     this._bindings.push(scrollSync.attach({
                         chartScroll, headerScroll, tasklist,
                         getWorkloadScroll: () => this.$refs.workloadScroll
@@ -4042,7 +4129,7 @@
                 return changed;
             },
             _observeSize() {
-                this._onWinResize = () => this._fillHeight();
+                this._onWinResize = () => { this._fillHeight(); this._onRowsScroll(); };
                 root.addEventListener('resize', this._onWinResize);
                 if (!root.ResizeObserver) return;
                 this._lastW = this._root.clientWidth;
@@ -4445,6 +4532,9 @@
                 if (d.all) {
                     this._fullRecompute();
                     this._renderLayers({ all: true });
+                    // A faixa nasce com a altura de antes do desenho: se a
+                    // área visível mudou, a próxima passada completa a faixa.
+                    this._onRowsScroll();
                     return;
                 }
                 // Só as camadas marcadas — scroll (minimap) não pode custar um
@@ -4484,7 +4574,30 @@
                 const rowH = densityToRowH(this.density);
                 const pxPerDay = zoom.get(this.zoom).pxPerDay;
                 this._geom = coords.buildGeom(this._rows, this._range, pxPerDay, rowH);
+                this._win = this._calcWindow();
                 if (this.criticalPath) this._recomputeCritical();
+            },
+
+            /** Faixa de linhas para a rolagem atual (fw#423). */
+            _calcWindow(overscan) {
+                const el = this.$refs.chartScroll;
+                const span = el ? visibleSpan(el) : { top: 0, height: 0 };
+                return tree.rowWindow(
+                    (this._rows || []).length,
+                    span.top,
+                    span.height,
+                    densityToRowH(this.density),
+                    { threshold: this.virtualThreshold, overscan },
+                );
+            },
+
+            /** Rolou para fora da faixa desenhada: troca a faixa e redesenha só as linhas. */
+            _onRowsScroll() {
+                if (!this._win || !this._win.virtual) return;
+                if (tree.windowCovers(this._win, this._calcWindow(0))) return;
+                this._win = this._calcWindow();
+                this._markDirty('rows');
+                this._scheduleFlush();
             },
 
             _renderAll() {
@@ -4514,6 +4627,7 @@
                     showGrid: this.showGrid,
                     workingDays: this.workingDays,
                     holidays: this.holidays,
+                    window: this._win && this._win.virtual ? this._win : null,
                 };
 
                 // Header
@@ -4523,9 +4637,9 @@
                     });
                 }
 
-                // Sidebar (head + body)
-                if (all || d.sidebar) {
-                    if (this.$refs.tasklistHead) {
+                // Sidebar (head + body; a troca de faixa refaz só o body)
+                if (all || d.sidebar || d.rows) {
+                    if ((all || d.sidebar) && this.$refs.tasklistHead) {
                         const L = cfg.labels || {};
                         sidebar.renderHead(this.$refs.tasklistHead, {
                             showAvatars: this.showAvatars,
@@ -4538,6 +4652,7 @@
                     }
                     if (this.$refs.tasklist) {
                         sidebar.render(this.$refs.tasklist, this._rows, {
+                            window: ctx.window,
                             rowH,
                             collapsedPhases: this.collapsedPhases,
                             expanded: this.expanded,
@@ -4556,6 +4671,8 @@
                 // Chart SVG (barras + setas — o render cobre os dois)
                 if ((all || d.chart || d.deps) && this.$refs.chartSvg) {
                     chartSvg.render(this.$refs.chartSvg, this._rows, this._geom, ctx);
+                } else if (d.rows && this.$refs.chartSvg) {
+                    chartSvg.renderRows(this.$refs.chartSvg, this._rows, this._geom, ctx);
                 }
 
                 // Minimap
@@ -4619,6 +4736,24 @@
     // ── Module-private helpers ────────────────────────────────────────────
 
     /** Ancestral mais próximo que rola na vertical (null = o documento). */
+    /**
+     * Parte de `el` que aparece na tela, em px a partir do topo do conteúdo dele.
+     * Rolando por dentro (altura fixa), é a rolagem dele; crescendo com o
+     * conteúdo, é o recorte da janela (ou do contêiner que rola) sobre ele.
+     */
+    function visibleSpan(el) {
+        if (el.scrollHeight > el.clientHeight + 1) return { top: el.scrollTop, height: el.clientHeight };
+        const r = el.getBoundingClientRect();
+        if (!r.height) return { top: 0, height: 0 };
+        const sc = scrollParent(el);
+        const box = sc ? sc.getBoundingClientRect() : null;
+        const vTop = Math.max(0, box ? box.top : 0);
+        const vBottom = Math.min(root.innerHeight, box ? box.bottom : root.innerHeight);
+        const top = Math.min(r.height, Math.max(0, vTop - r.top));
+        const bottom = Math.max(top, Math.min(r.height, vBottom - r.top));
+        return { top, height: bottom - top };
+    }
+
     function scrollParent(el) {
         for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
             const oy = getComputedStyle(p).overflowY;

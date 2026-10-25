@@ -1030,6 +1030,7 @@ abstract class MadGanttComponent extends MadComponent
                 'compactColumns' => array_key_exists('compactColumns', $config) ? $this->_truthy($config['compactColumns']) : null,
                 'fitBtn'         => array_key_exists('fitBtn',         $config) ? $this->_truthy($config['fitBtn'])         : null,
                 'initialLimit'   => isset($config['initialLimit']) && is_numeric($config['initialLimit']) ? (int) $config['initialLimit'] : null,
+                'virtualRows'    => self::virtualRowsValue($config['virtualRows'] ?? null),
             ],
         ];
     }
@@ -1078,6 +1079,19 @@ abstract class MadGanttComponent extends MadComponent
     {
         if (is_string($val) && strtolower(trim($val)) === 'null') return null;
         return $val;
+    }
+
+    /** `virtual-rows`: true/false (também em texto) ou o nº de linhas; o resto é ignorado. */
+    private static function virtualRowsValue(mixed $v): ?string
+    {
+        if (is_bool($v)) {
+            return $v ? 'true' : 'false';
+        }
+        if (is_numeric($v) || in_array($v, ['true', 'false'], true)) {
+            return (string) $v;
+        }
+
+        return null;
     }
 
     /**
@@ -1191,6 +1205,7 @@ abstract class MadGanttComponent extends MadComponent
         if (($vt['compactColumns'] ?? null) !== null) $gantt->compactColumns((bool) $vt['compactColumns']);
         if (($vt['fitBtn'] ?? null) !== null)         $gantt->fitButton((bool) $vt['fitBtn']);
         if (($vt['initialLimit'] ?? null) !== null)   $gantt->initialLimit((int) $vt['initialLimit']);
+        if (($vt['virtualRows'] ?? null) !== null)    $gantt->virtualRows((string) $vt['virtualRows']);
 
         // Pass-through das props v2 set diretamente no subclass via prop
         if (!empty($this->phaseField ?? null) && method_exists($gantt, 'phaseField')) {

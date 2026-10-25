@@ -440,6 +440,8 @@ html.dark .mad-gantt {
     background: var(--mg-surface);
 }
 .mad-gantt-tasklist::-webkit-scrollbar { display: none; }
+/* Faixa de linhas (fw#423): espaço das linhas fora da tela. */
+.mad-gantt-vspace { pointer-events: none; }
 
 .mad-gantt-phase-row {
     display: flex; align-items: center; gap: 8px;

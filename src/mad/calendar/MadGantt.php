@@ -93,6 +93,8 @@ class MadGantt
     protected ?bool   $fitBtn         = null;
     /** Limite inicial de tarefas desenhadas (0 = todas); o resto no "Mostrar todas". */
     protected int     $initialLimit   = 0;
+    /** Faixa de linhas: acima deste nº de linhas só a parte na tela é desenhada (0 = nunca). */
+    protected int     $virtualRows    = 300;
 
     // ── Ações mad-wire ───────────────────────────────────────────────────
     protected string $eventClickMethod  = '';
@@ -184,6 +186,7 @@ class MadGantt
         if (isset($cfg['compact_columns'])) $g->compactColumns((bool) $cfg['compact_columns']);
         if (isset($cfg['fit_btn']))         $g->fitButton((bool) $cfg['fit_btn']);
         if (isset($cfg['initial_limit']))   $g->initialLimit((int) $cfg['initial_limit']);
+        if (isset($cfg['virtual_rows']))    $g->virtualRows($cfg['virtual_rows']);
 
         // Callbacks
         if (!empty($cfg['on_task_click']))         $g->onTaskClick($cfg['on_task_click']);
@@ -648,6 +651,23 @@ class MadGantt
      * estatísticas contam todas.
      */
     public function initialLimit(int $n): static           { $this->initialLimit = max(0, $n); return $this; }
+
+    /**
+     * Cronograma grande desenha só as linhas que estão na tela (mais uma
+     * margem) e troca a faixa ao rolar: abre e rola rápido com milhares de
+     * tarefas. Liga sozinho acima de 300 linhas; `false` desliga, um número
+     * troca o limite.
+     */
+    public function virtualRows(bool|int|string $v = true): static
+    {
+        $this->virtualRows = match (true) {
+            $v === true, $v === 'true', $v === '' => 300,
+            $v === false, $v === 'false' => 0,
+            default => max(0, (int) $v),
+        };
+
+        return $this;
+    }
 
     // ── Rows ─────────────────────────────────────────────────────────────
 
@@ -1442,6 +1462,7 @@ class MadGantt
             'compactColumns'    => $this->compactColumns,
             'fitBtn'            => $this->fitBtn,
             'initialLimit'      => $this->initialLimit,
+            'virtualRows'       => $this->virtualRows,
         ];
 
         return ['components.gantt-chart', ['config' => $config]];

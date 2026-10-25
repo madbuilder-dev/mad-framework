@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.225.0] — 2026-10-25
+
+### Melhorias
+
+- **Gantt:** cronograma grande abre e rola rápido. Acima de 300 linhas, a lista e o gráfico desenham só o que está na tela e trocam as linhas ao rolar. Com 1.500 tarefas, a tela abre com 2 mil elementos no lugar de 28 mil. Para desenhar tudo de uma vez, use `virtual-rows="false"`; para mudar o limite, `virtual-rows="500"`.
+
+### Correções
+
+- **Site:** dava para criar uma página do site no endereço `/wf`, que é o do link de decisão da pessoa externa no workflow. Agora o editor recusa esse endereço, como já fazia com `/app` e `/api`.
+- **Fluxo de aprovação:** em sistema com banco separado por empresa, o link enviado à pessoa externa abria "Link inválido". Agora o link leva a empresa e abre o pedido no banco dela. Quem está logado no sistema em outra empresa também consegue abrir o link.
+
 ## [5.224.0] — 2026-10-25
 
 ### Correções

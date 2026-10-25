@@ -29,7 +29,9 @@ namespace Mad\Calendar;
  * │                            striped-rows, critical-path, auto-schedule,       │
  * │                            show-workload, workload-mode,                     │
  * │                            initial-limit (só as N primeiras tarefas + botão  │
- * │                            "Mostrar todas"; a busca procura em todas)        │
+ * │                            "Mostrar todas"; a busca procura em todas),       │
+ * │                            virtual-rows (acima de N linhas desenha só a      │
+ * │                            parte na tela; padrão 300, "false" desliga)       │
  * │                                                                              │
  * │    Atributos toolbar:     inline-edit,                                       │
  * │                            multi-select, view-mode-btn, zoom-btn,            │
@@ -309,6 +311,7 @@ class MadGanttCompiler
             'density'                  => 'density',
             'task-col-width'           => 'taskColWidth',
             'initial-limit'            => 'initialLimit',
+            'virtual-rows'             => 'virtualRows',
             // v2 collections (use :phases="$arr" / :people="$arr" para passar PHP)
             'phases'                   => 'phases',
             'people'                   => 'people',
