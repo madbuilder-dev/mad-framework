@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.222.14] — 2026-10-25
+
+### Correções
+
+- **Usuários:** quem cadastra usuários sem ser administrador via, no campo "Página Inicial", todas as telas do sistema, inclusive as de administração (PHP Info, Grupos, Perfis, logs). Agora a lista mostra só as telas dos perfis que essa pessoa pode dar, mais a que o cadastro já tem, e outra escolha é recusada ao salvar.
+- **Usuários:** no cadastro de quem tem acesso que só o administrador dá, "Página Inicial" e "Idioma" continuavam editáveis, e uma troca de senha enviada por fora da tela era ignorada com "Usuário salvo". Agora os dois campos ficam só leitura, e a mudança, inclusive de senha, é recusada com o aviso de que só um administrador pode alterar a conta.
+
 ## [5.222.13] — 2026-10-25
 
 ### Novidades
