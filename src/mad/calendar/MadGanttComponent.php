@@ -329,8 +329,25 @@ abstract class MadGanttComponent extends MadComponent
         if ($this->tooltipField)   $m['tooltip']   = $this->tooltipField;
         if ($this->badgeField)     $m['badge']     = $this->badgeField;
         if ($this->classField)     $m['class']     = $this->classField;
+        // <mad-gantt-column> de campo próprio (fw#398): `field="cliente"
+        // source="cliente_nome"` não é papel da tarefa e era descartado — a
+        // lateral desenhava a coluna vazia. Vai em 'extra' (campo => coluna).
+        $extra = [];
+        foreach ((array) $this->columns as $c) {
+            $field = is_array($c) ? (string) ($c['field'] ?? '') : '';
+            if ($field === '' || $field === 'duration' || isset(self::TASK_ROLES[$field])) continue;
+            $extra[$field] = (string) (($c['source'] ?? '') !== '' ? $c['source'] : $field);
+        }
+        if ($extra) $m['extra'] = $extra;
         return $m;
     }
+
+    /** Papéis da tarefa que o mapeamento já cobre (os campos fixos da barra). */
+    private const TASK_ROLES = [
+        'id' => 1, 'name' => 1, 'start' => 1, 'end' => 1, 'parentId' => 1, 'parent' => 1,
+        'progress' => 1, 'owner' => 1, 'code' => 1, 'milestone' => 1, 'phase' => 1,
+        'color' => 1, 'type' => 1, 'tooltip' => 1, 'badge' => 1, 'class' => 1,
+    ];
 
     // ── Builder ──────────────────────────────────────────────────────────
 

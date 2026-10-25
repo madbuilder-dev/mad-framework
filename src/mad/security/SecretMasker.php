@@ -42,7 +42,7 @@ final class SecretMasker
     ];
 
     /** Partes do nome (separadas por _ - . espaço) que marcam segredo sozinhas. */
-    private const PARTS = ['pass', 'pwd', 'pin', 'cvv', 'cvv2', 'cvc', 'otp', 'totp', '2fa', 'cert'];
+    private const PARTS = ['pass', 'pwd', 'pin', 'cvv', 'cvv2', 'cvc', 'otp', 'totp', '2fa', 'cert', 'chave'];
 
     /** Começos de nome de dado de cartão. */
     private const PREFIXES = ['card_'];
@@ -52,6 +52,8 @@ final class SecretMasker
         'google_code', 'email_code', 'sms_code', 'auth_code', 'otp_code', 'verification_code',
         'recovery_code', 'recovery_codes', 'backup_code', 'backup_codes',
         'billing_inter_key', 'db_config', 'numero_cartao',
+        // chave da tela pública (`?chave=`, `?key=`) e assinaturas na URL (fw#428)
+        'key', 'sig', 'hash',
     ];
 
     /** Ação do MadWire cujos argumentos POSICIONAIS carregam segredo (token do cartão, senha). */
@@ -165,7 +167,7 @@ final class SecretMasker
             if (in_array($n, ['cookie', 'set-cookie', 'authorization', 'proxy-authorization', 'x-csrf-token', 'x-xsrf-token'], true)
                 || str_contains($n, 'auth') || self::isSecretKey($n)) {
                 $headers[$name] = is_array($value) ? array_fill(0, count($value), self::MASK) : self::MASK;
-            } elseif (in_array($n, ['referer', 'referrer', 'origin'], true)) {
+            } elseif (in_array($n, ['referer', 'referrer', 'origin', 'x-original-url', 'x-rewrite-url'], true)) {
                 // O Referer é a URL da página anterior: o token dela (query ou
                 // caminho de página site) vai junto (mad-framework#349).
                 $headers[$name] = is_array($value)
@@ -245,6 +247,11 @@ final class SecretMasker
      */
     public static function maskSitePath(string $uri): string
     {
+        // Memória no fim (relatório de um estouro, fw#438): os padrões das
+        // páginas do site percorrem as rotas — caro demais para esse momento.
+        if (\Mad\Support\MadOutOfMemory::tight()) {
+            return $uri;
+        }
         if ($uri === '' || ! preg_match('#^((?:[a-z][a-z0-9+.\-]*:)?//[^/?\#]*)?([^?\#]*)(.*)$#is', $uri, $m)) {
             return $uri;
         }

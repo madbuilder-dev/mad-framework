@@ -367,6 +367,15 @@ class MadForm
      */
     private array $_refused = [];
 
+    /**
+     * Imagem nova recusada nesta requisição (campo => motivo): o Salvar a
+     * devolve como erro no campo, em vez de gravar o resto e dizer "salvo"
+     * com a imagem antiga no lugar. Não serializado.
+     *
+     * @var array<string,string>
+     */
+    private array $_imageRefused = [];
+
     /** @var array<string,true> campos que o CÓDIGO atribuiu nesta requisição (`set()`, extras do `fill()`) */
     private array $_assignedNow = [];
 
@@ -1853,8 +1862,9 @@ class MadForm
      * @param array<string,array<string,mixed>> $colMeta force-case / strip-mask das colunas
      * @param array<string,string>       $labels  coluna => rótulo (mensagens do Salvar)
      * @param string                     $label   rótulo da lista (mensagens do Salvar)
+     * @param array<string,string>       $fileColumns colunas de arquivo => 'f' (um) | 'm' (vários)
      */
-    public function declareNestedList(string $detail, string $name, string $model, string $foreignKey, array $columns, array $colMeta = [], array $labels = [], string $label = ''): void
+    public function declareNestedList(string $detail, string $name, string $model, string $foreignKey, array $columns, array $colMeta = [], array $labels = [], string $label = '', array $fileColumns = []): void
     {
         if ($detail === '' || $name === '' || $model === '' || $foreignKey === '' || $this->_openedBefore) {
             return;
@@ -1875,6 +1885,15 @@ class MadForm
         }
         if ($label !== '') {
             $entry['l'] = $label;
+        }
+        $files = [];
+        foreach ($fileColumns as $column => $kind) {
+            if (is_string($column) && isset($shown[$column])) {
+                $files[$column] = $kind === 'm' ? 'm' : 'f';
+            }
+        }
+        if ($files) {
+            $entry['fc'] = $files;
         }
         $this->_nestedLists[$detail][$name] = $entry;
     }
@@ -2020,6 +2039,9 @@ class MadForm
             if (!empty($meta['x'])) {
                 $clean = MadFormRegistry::transformRowsWith((array) $meta['x'], $clean);
             }
+            if (!empty($meta['fc'])) {
+                $clean = $this->_withoutForeignNestedPaths($meta, $clean, $childKey, $detailName . '>' . $name);
+            }
 
             $this->_saveDetailRows(
                 (string) $meta['m'],
@@ -2030,6 +2052,75 @@ class MadForm
                 self::_nestedKnownName($detailName, (string) $name, $childKey)
             );
         }
+    }
+
+    /**
+     * Itens da Lista de itens da linha sem caminho de arquivo que não é deles
+     * (fw#536): a célula de arquivo só fica com o caminho que algum item desta
+     * mesma linha já guardava no banco; outro caminho chega vazio. O nome do
+     * arquivo recém-escolhido (sem pasta) passa, como na lista de primeiro nível.
+     *
+     * @param  array<string,mixed>       $meta  o que a tela declarou (estado)
+     * @param  list<array<string,mixed>> $items
+     * @return list<array<string,mixed>>
+     */
+    private function _withoutForeignNestedPaths(array $meta, array $items, mixed $childKey, string $label): array
+    {
+        $saved = [];   // coluna => caminho => 1
+        try {
+            $cls = \Mad\Form\ModelOptionsLoader::resolveModelClass((string) $meta['m']);
+            foreach ($cls::query()->where((string) $meta['f'], '=', $childKey)->get() as $row) {
+                foreach (array_keys((array) $meta['fc']) as $column) {
+                    foreach (self::_cellPaths($row->getAttribute($column)) as $path) {
+                        $saved[$column][$path] = 1;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            $saved = [];   // sem leitura, nenhum caminho do navegador é confiável
+        }
+
+        $refused = [];
+        foreach ($items as $i => $item) {
+            foreach ((array) $meta['fc'] as $column => $kind) {
+                if (!array_key_exists($column, $item) || !is_string($item[$column]) || trim($item[$column]) === '') {
+                    continue;
+                }
+                $kept = [];
+                $drop = false;
+                foreach (self::_cellPaths($item[$column]) as $path) {
+                    if (!self::_pathLike($path) || isset($saved[$column][$path])) {
+                        $kept[] = $path;
+                    } else {
+                        $drop = true;
+                    }
+                }
+                if ($drop) {
+                    $items[$i][$column] = $kind === 'm' ? implode(',', $kept) : '';
+                    $refused[$column]   = true;
+                }
+            }
+        }
+        if ($refused) {
+            ksort($refused);
+            $this->_refused['[' . $label . ']'] = 'algum item chegou com um caminho de arquivo que não é dele ('
+                . implode(', ', array_keys($refused)) . '); a coluna foi esvaziada nesses itens';
+        }
+
+        return $items;
+    }
+
+    /** Caminhos de uma célula de arquivo: um só, ou a lista por vírgula (vários arquivos). @return list<string> */
+    private static function _cellPaths(mixed $value): array
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+        if (str_starts_with(trim($value), 'data:')) {
+            return [trim($value)];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', $value)), static fn (string $p): bool => $p !== ''));
     }
 
     /**
@@ -2722,13 +2813,29 @@ class MadForm
             return 'o campo de arquivo recebeu um valor que não é texto; ficou o arquivo que ele já tinha';
         }
         $value = (string) $value;
-        if (trim($value) === '' || ($kind === 'i' && MadUploadRules::isDataUrl($value))) {
-            return null;   // a imagem nova é o conteúdo, não um caminho
+        if (trim($value) === '') {
+            return null;
         }
 
         $held = $this->_fileValuesHeld($field);
         if (isset($held[$value])) {
             return null;
+        }
+        // A imagem nova é o conteúdo, não um caminho — mas só imagem de verdade
+        // (fw#538): `data:text/html`, `data:` vazio ou base64 quebrado não entram.
+        // Imagem de verdade entra; o tipo e o tamanho que a tela declara são
+        // conferidos no Salvar, como sempre. O que não é imagem fica de fora e
+        // o Salvar diz por quê, com o motivo da tela quando ela tem um.
+        if ($kind === 'i' && MadUploadRules::isDataUrl($value)) {
+            $problem = MadUploadRules::inlineImageDataProblem($value);
+            if ($problem === null) {
+                return null;
+            }
+            $limits = $this->_known[self::DECLARED]['i'][$field] ?? null;
+            $problem = (is_array($limits) ? MadUploadRules::inlineImageProblem($value, $limits) : null) ?? $problem;
+            $this->_imageRefused[$field] = $problem;
+
+            return $problem . ' Ficou a imagem que o campo já tinha.';
         }
         if (MadUploadRules::isDataUrl($value)) {
             return 'o campo de arquivo recebeu um conteúdo (data:) no lugar do caminho do arquivo; ficou o arquivo que ele já tinha';
@@ -6067,6 +6174,8 @@ class MadForm
             throw $this->_uniqueViolation($e, $record);
         } catch (\Mad\Database\UnitScopeViolation) {
             throw $this->_unitViolation();
+        } catch (\Mad\Database\TenantScopeViolation) {
+            throw $this->_tenantViolation();
         } catch (\Mad\Database\ReferenceScopeViolation $e) {
             throw $this->_referenceViolation($e);
         } catch (\Illuminate\Database\QueryException $e) {
@@ -6092,6 +6201,30 @@ class MadForm
      * por último (`save()`), lida do estado da tela — nunca do navegador. Null
      * em cadastro novo ainda não salvo.
      */
+    /**
+     * Registro dono do arquivo `$path` do campo `$field`, para a URL de
+     * download assinada com dono (fw#537): o registro que esta requisição
+     * abriu com fill(), quando a coluna dele ainda guarda esse caminho. Fora
+     * disso (valor posto pelo código, redesenho depois de uma ação), null — o
+     * link sai como sempre.
+     *
+     * @internal usado pelas views dos campos de arquivo
+     */
+    public function fileOwnerFor(string $field, mixed $path): ?object
+    {
+        $record = $this->_sourceRecord ?? null;
+        if (!$record instanceof \Illuminate\Database\Eloquent\Model || !$record->exists
+            || !is_string($path) || $path === '' || $field === '') {
+            return null;
+        }
+        $stored = $record->getAttribute($field);
+        if (!is_string($stored) || $stored === '') {
+            return null;
+        }
+
+        return $stored === $path || in_array($path, array_map('trim', explode(',', $stored)), true) ? $record : null;
+    }
+
     public function loadedRecordKey(): ?string
     {
         foreach ([self::SAVED, self::LOADED] as $name) {
@@ -6103,6 +6236,26 @@ class MadForm
         }
 
         return null;
+    }
+
+    /** tenant_id de outra empresa (fw#535) → erro no campo `tenant_id` (toast sem o campo). */
+    private function _tenantViolation(): MadValidationException
+    {
+        try {
+            $message = mad_t('mad.error.tenant_not_allowed');
+        } catch (\Throwable) {
+            $message = '';
+        }
+        if ($message === '' || $message === 'mad.error.tenant_not_allowed') {
+            $message = 'O registro não pode ser gravado em outra empresa.';
+        }
+
+        return new MadValidationException(
+            ['tenant_id' => $message],
+            ['tenant_id'],
+            '',
+            $this->_knownFieldNames($this->fields),
+        );
     }
 
     /**
@@ -6539,6 +6692,14 @@ class MadForm
         }
 
         $errors = MadUploadRules::check($drawn, $values);
+        // Imagem recusada (fw#538) é erro do campo que guarda na coluna. No
+        // campo com `storage` o `data:` é só a prévia: quem grava é o arquivo
+        // que vem junto.
+        foreach ($this->_imageRefused as $fieldName => $why) {
+            if ((string) ($drawn[$fieldName]['storage'] ?? '') === '' && empty($_FILES[$fieldName])) {
+                $errors[$fieldName] ??= $why;
+            }
+        }
         if ($errors !== []) {
             throw new MadValidationException($errors, array_keys($errors), '', $this->_knownFieldNames($this->fields));
         }
@@ -7503,6 +7664,8 @@ class MadForm
 
         $attrs = $this->_fieldLabels($attrs);
 
+        $this->_fitMasksToRules($parsedRules);
+
         // A regra `date`/`after:` lê com strtotime: "21/10/2026" é recusada e
         // "05/11/2026" vira 11 de maio. Valida o que o save() grava (fw#463).
         [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withDbDates($this->_withoutMask($this->fields)), $parsedRules);
@@ -7521,6 +7684,12 @@ class MadForm
         }
 
         $errors = MadValidator::validate($data, $parsedRules, $messages, $attrs);
+
+        // `:min`/`:max` do campo numérico (fw#528): o <form> é `novalidate` e o
+        // atributo do HTML não recusava nada — "% de repasse" com max 100
+        // gravava 150, e qualquer requisição forjada passava.
+        $range = $this->_declaredRangeErrors($data, $parsedRules, $attrs, $errors);
+        $errors += $range;
 
         // Escolha do navegador fora da lista do campo (fw#531): a tela que
         // valida e grava por conta própria também não segue com ela.
@@ -7547,13 +7716,104 @@ class MadForm
         if ($errors) {
             throw new MadValidationException(
                 $errors,
-                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused)), ...array_map('strval', array_keys($choices))])),
+                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused)), ...array_map('strval', array_keys($choices)), ...array_map('strval', array_keys($range))])),
                 '',
                 $this->_knownFieldNames($data),
             );
         }
 
         return $this;
+    }
+
+    /**
+     * Campo com máscara sem `strip-mask` escrito (CNPJ, CEP, `mask=`): quando o
+     * valor mascarado não cabe no `max:N` da regra e os dígitos cabem, o campo
+     * passa a guardar os dígitos — é o que a coluna do tamanho deles espera.
+     * Sem isto o CNPJ "11.222.333/0001-81" (18) recusava no `max:14` gerado da
+     * coluna `varchar(14)` e o cadastro nunca salvava (fw#540). Coluna larga
+     * (`max:18`) continua recebendo a máscara, como sempre.
+     *
+     * @param  array<string, mixed>  $rules
+     */
+    private function _fitMasksToRules(array $rules): void
+    {
+        foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
+            $name  = (string) $name;
+            $value = $this->fields[$name] ?? null;
+            if (!is_array($props) || empty($props['maskFit']) || ($props['mask'] ?? '') === ''
+                || !is_string($value) || $value === '' || !isset($rules[$name])) {
+                continue;
+            }
+            $rule = is_array($rules[$name]) ? implode('|', array_filter($rules[$name], 'is_string')) : (string) $rules[$name];
+            if (!preg_match('/(?:^|\|)\s*max:(\d+)/', $rule, $m)) {
+                continue;
+            }
+            $max    = (int) $m[1];
+            $digits = \Mad\Support\MadMask::strip($value);
+            if (mb_strlen($value) > $max && mb_strlen($digits) <= $max) {
+                $this->fields[$name] = $digits;
+            }
+        }
+    }
+
+    /**
+     * Valor fora do `:min`/`:max` que o campo numérico (number, numeric,
+     * money) declarou na tela. Regra de faixa escrita pelo código (`min:`,
+     * `max:`, `between:`, `gt:`, `lt:`…) vence: o campo fica com ela. Vazio
+     * passa (quem exige é o `required`).
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $rules
+     * @param  array<string, string> $attrs
+     * @param  array<string, mixed>  $errors  já recusados por outra regra
+     * @return array<string, string>
+     */
+    private function _declaredRangeErrors(array $data, array $rules, array $attrs, array $errors): array
+    {
+        $out = [];
+        foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
+            $name = (string) $name;
+            if (!is_array($props) || !in_array($props['type'] ?? '', ['number', 'numeric', 'money'], true)
+                || isset($errors[$name]) || !array_key_exists($name, $data)) {
+                continue;
+            }
+            $rule = $rules[$name] ?? '';
+            $rule = is_array($rule) ? implode('|', array_filter($rule, 'is_string')) : (string) $rule;
+            if (preg_match('/(^|\|)\s*(min|max|between|gt|gte|lt|lte|size|digits_between):/', $rule)) {
+                continue;
+            }
+            $value = self::_rangeNumber($data[$name]);
+            if ($value === null) {
+                continue;
+            }
+            $label = $attrs[$name] ?? (string) ($props['label'] ?? $name);
+            $min   = self::_rangeNumber($props['min'] ?? '');
+            $max   = self::_rangeNumber($props['max'] ?? '');
+            if ($min !== null && $value < $min) {
+                $out[$name] = (string) __('validation.min.numeric', ['attribute' => $label, 'min' => (string) $props['min']]);
+            } elseif ($max !== null && $value > $max) {
+                $out[$name] = (string) __('validation.max.numeric', ['attribute' => $label, 'max' => (string) $props['max']]);
+            }
+        }
+
+        return $out;
+    }
+
+    /** "150", "150.5", "1.500,25" → número; vazio ou texto → null. */
+    private static function _rangeNumber(mixed $v): ?float
+    {
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        $v = trim((string) (is_scalar($v) ? $v : ''));
+        if ($v === '') {
+            return null;
+        }
+        if (!is_numeric($v) && str_contains($v, ',')) {
+            $v = str_replace(['.', ','], ['', '.'], $v);
+        }
+
+        return is_numeric($v) ? (float) $v : null;
     }
 
     /**
@@ -7884,10 +8144,15 @@ class MadForm
      */
     public function setRows(string $name, array $rows): void
     {
+        $rows = FieldListColumn::normalizeRows($rows);
+        // O valor do campo também: no `mount()` não há resposta do MadWire para
+        // levar a op, e a lista abria com 0 linhas (fw#547). Lista não vira op
+        // `val` no diff do estado, então numa ação só a op abaixo redesenha.
+        $this->set($name, $rows);
         $this->_pendingFlOps[] = [
             'op'     => 'fl_rows',
             'target' => $name,
-            'rows'   => FieldListColumn::normalizeRows($rows),
+            'rows'   => $rows,
         ];
     }
 

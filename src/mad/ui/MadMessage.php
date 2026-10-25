@@ -118,6 +118,13 @@ class MadMessage
 
     private static function _show(string $type, string $title, string $content, string $icon): MadResponse
     {
+        // Mensagem crua do banco (`SQLSTATE[…]`, o SQL e, no SQLite, o caminho
+        // do arquivo) montada pela tela com `$e->getMessage()`: o usuário lê a
+        // frase genérica e o detalhe vai só para o log, sem segredo (fw#403).
+        if (str_contains($content, 'SQLSTATE[')) {
+            MadUserError::report(new \RuntimeException($content), 'MadMessage::' . $type . ' "' . $title . '"');
+            $content = MadUserError::friendly();
+        }
         $opts = ['type' => $type, 'title' => $title, 'message' => $content];
         if ($icon) {
             $opts['icon'] = $icon;

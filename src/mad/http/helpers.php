@@ -9,10 +9,16 @@ if (!function_exists('mad_download_url')) {
     /**
      * URL para servir um arquivo de upload via rota mad.download.
      *
+     * Com `$owner` (o registro de quem é o arquivo — fw#537), a assinatura leva
+     * o model e a chave dele: a rota só serve o arquivo se quem baixa enxerga
+     * esse registro (escopos de empresa e unidade ativos) e se o caminho ainda
+     * está numa coluna dele. Sem `$owner`, como sempre (compatível).
+     *
      * @param string      $path     Path relativo persistido pelo MadForm (ex: "uploads/abc_foto.jpg")
      * @param string|null $basename Nome de exibição — presença força download (attachment)
+     * @param object|null $owner    Registro (Eloquent) dono do arquivo
      */
-    function mad_download_url(string $path, ?string $basename = null): string
+    function mad_download_url(string $path, ?string $basename = null, ?object $owner = null): string
     {
         // Arquivo de campo com `public` (#244): o endereço público, fixo e sem
         // login — o mesmo que o site usa. Só imagem/PDF (o que a rota serve).
@@ -25,6 +31,10 @@ if (!function_exists('mad_download_url')) {
         $params = ['file' => $path];
         if ($basename !== null && $basename !== '') {
             $params['basename'] = $basename;
+        }
+        if ($owner instanceof \Illuminate\Database\Eloquent\Model && $owner->exists
+            && is_scalar($key = $owner->getKey()) && (string) $key !== '') {
+            $params['own'] = rtrim(strtr(base64_encode(json_encode([get_class($owner), (string) $key])), '+/', '-_'), '=');
         }
 
         try {

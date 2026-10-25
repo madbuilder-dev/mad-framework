@@ -59,6 +59,9 @@
     $error       = $error       ?? '';
     $required    = !empty($required);
     $disabled    = !empty($disabled);
+    // `strip-mask` não escrito: a máscara sai só quando não cabe no `max:` da
+    // regra do campo (fw#540, MadForm::validate).
+    $_maskFit    = !isset($stripMask);
     $stripMask   = !empty($stripMask);
     $attrs       = $attrs       ?? '';
     $fillMode    = ($fillMode ?? 'overwrite') === 'empty' ? 'empty' : 'overwrite';
@@ -95,6 +98,7 @@
         'required'  => $required,
         'mask'      => 'cnpj',
         'stripMask' => $stripMask,
+        'maskFit'   => $_maskFit,
     ]);
 
     // Config de resolucao automatica (so vai no token quando ha model declarado).

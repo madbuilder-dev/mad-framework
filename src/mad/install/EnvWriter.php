@@ -22,6 +22,12 @@ final class EnvWriter
     public static function upsert(array $pairs, ?string $path = null): void
     {
         $path ??= base_path('.env');
+        // Deploy com releases (`releases/<n>/.env` → `shared/.env`, fw#444): o
+        // rename sobre o LINK trocava o link por um arquivo comum dentro do
+        // release, e o `shared/.env` nunca recebia a mudança — sumia no próximo
+        // deploy. Grava no alvo do link; o temp + rename continua atômico, no
+        // diretório do arquivo de verdade.
+        $path = self::target($path);
 
         if (is_file($path)) {
             $contents = (string) file_get_contents($path);
@@ -56,6 +62,20 @@ final class EnvWriter
         file_put_contents($tmp, $contents, LOCK_EX);
         @chmod($tmp, $mode);
         rename($tmp, $path);
+    }
+
+    /** Alvo final do `.env` quando ele é link simbólico (mesmo link quebrado). */
+    private static function target(string $path): string
+    {
+        for ($hops = 0; $hops < 10 && is_link($path); $hops++) {
+            $to = (string) readlink($path);
+            if ($to === '') {
+                break;
+            }
+            $path = str_starts_with($to, '/') ? $to : dirname($path) . '/' . $to;
+        }
+
+        return $path;
     }
 
     private static function quote(string $value): string

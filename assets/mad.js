@@ -1842,6 +1842,43 @@ const Mad = {
      */
     async applyOps(ops, scope = null) {
         if (typeof this._flashBeforeLeaving === 'function') this._flashBeforeLeaving(ops);
+        // Calculado ANTES do loop: fechar a camada tira o `scope` do DOM.
+        const gridsBehind = this._gridsBehindToRefresh(ops, scope);
+        try {
+            await this._applyOpsLoop(ops, scope);
+        } finally {
+            if (gridsBehind.length && typeof MadWire !== 'undefined' && MadWire && typeof MadWire.refresh === 'function') {
+                gridsBehind.forEach((el) => {
+                    if (el.isConnected === false) return;
+                    try { MadWire.refresh(el); } catch (e) { console.error('[Mad] grade atrás da camada:', e); }
+                });
+            }
+        }
+    },
+
+    /**
+     * Cortina/modal que gravou e fechou (`toast` de sucesso + `closeDrawer()`)
+     * sem dizer à tela de trás o que mudou (`manageRow`, `removeRow`,
+     * `refreshScreen`, redirect): as telas com listagem POR TRÁS da camada
+     * relêem, como o `<mad-calendar>` já fazia (fw#519). Fechar sem gravar
+     * (Cancelar, sem aviso de sucesso) não relê nada.
+     */
+    _gridsBehindToRefresh(ops, scope) {
+        if (!Array.isArray(ops) || !scope || !scope.closest) return [];
+        const names = ops.map((o) => (o && o.op) || '');
+        if (!names.includes('close_overlay')) return [];
+        if (!ops.some((o) => o && o.op === 'toast' && o.type === 'success')) return [];
+        if (names.some((n) => ['manage_row', 'remove_row', 'manage_card', 'remove_card', 'refresh_screen', 'redirect', 'reload'].includes(n))) return [];
+        const own = scope.matches && scope.matches('[mad-component]') ? scope : scope.closest('[mad-component]');
+        const layer = own ? own.closest('[data-mad-overlay]') : null;
+        if (!layer) return [];
+        let found = [...document.querySelectorAll('[mad-component]')].filter((el) =>
+            el !== own && !layer.contains(el) && !el.closest('[data-mad-overlay]') && el.querySelector('.mad-dg-wrap'));
+        found = found.filter((el) => !found.some((other) => other !== el && other.contains(el)));
+        return found;
+    },
+
+    async _applyOpsLoop(ops, scope = null) {
         for (const op of ops) {
             const el = op.target ? this._opTarget(op.target, scope) : null;
 

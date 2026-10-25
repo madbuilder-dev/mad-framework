@@ -30,6 +30,7 @@ use Mad\View\MadBlade;
  * │  require-filter-fields="a,b"  Só estes campos liberam a consulta            │
  * │  no-load-button           Oculta o botão "Carregar registros" (vazio)       │
  * │  load-hint="..."          Texto da listagem vazia (no-auto-load/require)    │
+ * │  empty-text="..."         Texto da listagem sem nenhum registro              │
  * │  action-side="left"       Coluna de ações à esquerda (default: right)       │
  * │  group-by="ano"           Campo(s) para agrupamento                         │
  * │  :group-mask="'{ano}'"    Template de exibição do grupo                     │
@@ -1841,6 +1842,9 @@ class MadGridCompiler
         }
         if (static::has($a, 'no-load-button'))     $c[] = "'loadButton' => false";
         if (isset($a['load-hint']))               $c[] = static::kv('loadHint', static::emit($a['load-hint']));
+        // fw#518 — texto da listagem vazia; `no-results-message` é o nome antigo.
+        if (isset($a['empty-text']))              $c[] = static::kv('emptyText', static::emit($a['empty-text']));
+        elseif (isset($a['no-results-message']))  $c[] = static::kv('emptyText', static::emit($a['no-results-message']));
 
         // Card view. card-below="576": abre em Cards em tela mais estreita que
         // 576px (aceita "576px"), sem passar por cima da escolha do usuário; liga
@@ -3156,7 +3160,8 @@ class MadGridCompiler
         // Flags booleanas: nu ou verdadeiro liga; "false"/"0" desliga;
         // :flag="expr" vale o que a expressão der. Antes bastava a PRESENÇA —
         // `:removable="false"` mostrava o "×" de remover (fw#317).
-        foreach (['addable', 'removable', 'sortable'] as $flag) {
+        // `disabled`/`readonly` travam a lista inteira (fw#415).
+        foreach (['addable', 'removable', 'sortable', 'disabled', 'readonly'] as $flag) {
             if (!isset($attrs[$flag])) {
                 continue;
             }
@@ -3314,6 +3319,7 @@ class MadGridCompiler
             'count'           => 'count',
             'strip-mask'      => 'stripMask',
             'toggle-password' => 'togglePassword',
+            'allow-negative'  => 'allowNegative',
         ];
         foreach ($boolFlags as $flag => $method) {
             if (!isset($attrs[$flag])) {

@@ -235,6 +235,7 @@ body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 
 .site-pricing__toggle {
   display: inline-flex;
+  align-items: center;
   gap: 4px;
   margin-bottom: 36px;
   padding: 4px;
@@ -253,6 +254,21 @@ body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
   cursor: pointer;
 }
 .site-pricing__toggle button[aria-pressed="true"] { background: var(--site-bg); color: var(--site-fg); }
+/* Selo "Economize até X% no plano anual" (fw#532). */
+.site-pricing__save {
+  margin-left: 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--site-brand) 10%, var(--site-bg));
+  color: var(--site-fg);
+  font-size: .8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .site-pricing__toggle { flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+  .site-pricing__save { flex-basis: 100%; margin: 2px 0 0; text-align: center; white-space: normal; }
+}
 
 .site-plan {
   display: flex;

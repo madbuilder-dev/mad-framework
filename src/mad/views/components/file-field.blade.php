@@ -101,7 +101,7 @@
     }
 
     if ($existingPath) {
-        $existingUrl = mad_download_url($existingPath, $existingName ?: null);
+        $existingUrl = mad_download_url($existingPath, $existingName ?: null, \Mad\Component\MadRenderContext::getForm()?->fileOwnerFor((string) $name, $existingPath));
     }
     $fileCfg = json_encode([
         'existingName'    => $existingName,

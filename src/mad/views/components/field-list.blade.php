@@ -7,6 +7,24 @@
     $addable   = !empty($addable);
     $removable = !empty($removable);
     $sortable  = !empty($sortable);
+    // Lista inteira só leitura (fw#415): `disabled` / `readonly` da tag, ou o
+    // `$this->form->disable('itens')` / `readonly('itens')` da tela. As linhas
+    // seguiam editáveis, com adicionar e remover, num formulário travado.
+    $_flLocked = !empty($disabled ?? false) || !empty($readonly ?? false)
+        || (($name ?? '') !== '' && (\Mad\Component\MadRenderContext::isDisabled((string) $name)
+            || \Mad\Component\MadRenderContext::isReadonly((string) $name)));
+    if ($_flLocked) {
+        $addable = $removable = $sortable = false;
+        $columns = array_map(static function ($c) {
+            if (!$c instanceof \Mad\Form\FieldListColumn) {
+                return $c;
+            }
+            $c = clone $c;
+            $c->disabled = true;
+
+            return $c;
+        }, $columns);
+    }
     $maxRows   = (int)($maxRows  ?? 0);
     $label     = $label     ?? '';
     $hint      = $hint      ?? '';
@@ -138,11 +156,20 @@
         foreach ($columns as $_lc) {
             $_flLabels[(string) $_lc->field] = trim(strip_tags((string) $_lc->label));
         }
+        // Colunas de arquivo da lista da linha: o Salvar só aceita o caminho
+        // que o item já guardava (fw#536, a sobra da #533).
+        $_flNestedFiles = [];
+        foreach ($columns as $_lc) {
+            if (in_array($_lc->type, ['file', 'multifile'], true)) {
+                $_flNestedFiles[(string) $_lc->field] = $_lc->type === 'multifile' ? 'm' : 'f';
+            }
+        }
         \Mad\Component\MadRenderContext::getForm()?->declareNestedList(
             $_flNested, $name, $_flNestedModel, $_flNestedFk,
-            array_map(fn($c) => (string) $c->field, $columns), $_flColMeta, $_flLabels, trim(strip_tags((string) $label))
+            array_map(fn($c) => (string) $c->field, $columns), $_flColMeta, $_flLabels, trim(strip_tags((string) $label)),
+            $_flNestedFiles
         );
-        unset($_flLabels, $_lc);
+        unset($_flLabels, $_lc, $_flNestedFiles);
     } else {
         \Mad\Form\MadFormRegistry::registerFieldList($name, array_map(fn($c) => $c->field, $columns), $model, $foreignKey, $database, $_flColMeta);
     }
@@ -700,7 +727,7 @@
                             $mMax      = $col->max;
                         @endphp
                             <div class="mad-fl-money"
-                                 x-data="madMoneyCell({ decimals: {{ $mDecimals }}, min: {{ $mMin !== null ? $mMin : 'null' }}, max: {{ $mMax !== null ? $mMax : 'null' }}, fillDirection: 'left', field: '{{ $fld }}', row: row })">
+                                 x-data="madMoneyCell({ decimals: {{ $mDecimals }}, min: {{ $mMin !== null ? $mMin : 'null' }}, max: {{ $mMax !== null ? $mMax : 'null' }}, fillDirection: 'left', allowNegative: {{ $col->allowNegative ? 'true' : 'false' }}, field: '{{ $fld }}', row: row })">
                                 @if($mPrefix)
                                     <span class="mad-fl-money-prefix">{{ $mPrefix }}</span>
                                 @endif
@@ -734,7 +761,7 @@
                             $nMin      = $col->min;
                             $nMax      = $col->max;
                         @endphp
-                            <div x-data="madNumericCell({ decimals: {{ $nDecimals }}, min: {{ $nMin !== null ? $nMin : 'null' }}, max: {{ $nMax !== null ? $nMax : 'null' }}, field: '{{ $fld }}', row: row })">
+                            <div x-data="madNumericCell({ decimals: {{ $nDecimals }}, min: {{ $nMin !== null ? $nMin : 'null' }}, max: {{ $nMax !== null ? $nMax : 'null' }}, allowNegative: {{ $col->allowNegative ? 'true' : 'false' }}, field: '{{ $fld }}', row: row })">
                                 <input type="text"
                                        inputmode="decimal"
                                        class="mad-input mad-input-sm"

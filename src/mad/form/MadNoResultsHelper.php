@@ -116,10 +116,33 @@ class MadNoResultsHelper
                 'token'    => $token,
                 'placeholder' => (string)($cfg['quickPlaceholder'] ?? ($message ?: 'Digite o nome...')),
                 'fields'   => $resolved,  // [] = modo simples (so term)
+                // Campo que recebe o termo digitado no combo: a coluna do
+                // `display`. Ia sempre para o 1º campo — com o celular antes
+                // do nome, "Gil" caía no Celular (fw#506).
+                'termField' => self::termField($display, $resolved),
             ];
         }
 
         return base64_encode(json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * O campo do quick-form que recebe o termo digitado: o da coluna do
+     * `display` (`{nome}`, `nome` ou o 1º `{campo}` de uma máscara) quando ele
+     * está entre os campos do mini-form; senão '' (o 1º campo de texto).
+     *
+     * @param  array<int, array<string, mixed>>  $fields
+     */
+    public static function termField(string $display, array $fields): string
+    {
+        $col = preg_match('/\{\s*([A-Za-z_]\w*)\s*\}/', $display, $m) ? $m[1] : trim($display);
+        foreach ($fields as $f) {
+            if (($f['name'] ?? '') === $col) {
+                return $col;
+            }
+        }
+
+        return '';
     }
 
     /**

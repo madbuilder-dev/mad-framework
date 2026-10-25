@@ -35,9 +35,12 @@ class BladeDirectives
             return '<?php echo method_field(' . $expr . '); ?>';
         });
 
-        // @error('campo') ... @enderror — usa $errors injetado pelo ViewResponse
+        // @error('campo') ... @enderror — usa $errors injetado pelo ViewResponse,
+        // ou o ViewErrorBag da sessão que o MadBlade entrega (withErrors() no
+        // redirect da página do site, fw#546).
         MadBlade::directive('error', function (string $expr): string {
-            return '<?php if (isset($errors) && $errors instanceof \Mad\Web\ErrorBag && $errors->has(' . $expr . ')): $message = $errors->first(' . $expr . '); ?>';
+            return '<?php if (isset($errors) && ($errors instanceof \Mad\Web\ErrorBag || $errors instanceof \Illuminate\Support\ViewErrorBag'
+                . ' || $errors instanceof \Illuminate\Contracts\Support\MessageBag) && $errors->has(' . $expr . ')): $message = $errors->first(' . $expr . '); ?>';
         });
 
         MadBlade::directive('enderror', function (string $expr): string {

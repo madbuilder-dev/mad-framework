@@ -255,6 +255,11 @@
         'message'      => $noResultsMessage,
     ]);
 
+    // `:readonly` da tag e `$this->form->readonly()` travam a busca, como no
+    // combo (fw#315); o select saía sem trava nenhuma (fw#539).
+    $_isReadonly = !empty($readonly ?? false)
+        || ($name && \Mad\Component\MadRenderContext::isReadonly($name));
+
     // "+" ao lado da busca (`create`): cadastra e volta selecionado.
     $_createBtn = \Mad\Form\MadNoResultsHelper::createButton([
         'createAction' => is_string($create ?? null) ? $create : '',
@@ -266,7 +271,7 @@
         'database'     => $database,
         'key'          => $keyField,
         'display'      => $display,
-    ], $disabled);
+    ], $disabled || $_isReadonly);
 
     // Pre-carregar label do valor selecionado (para onEdit)
     $preloadOptions = [];
@@ -291,7 +296,13 @@
     $__outside = \Mad\Form\OutsideOption::applies($selected, $preloadOptions);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
-<div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
+{{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle.
+     A busca continuava com seta e lista, parecendo editável (fw#539). --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $selected, 'text' => \Mad\Form\ReadMode::optionText(is_array($preloadOptions) ? $preloadOptions : [], $selected), 'hidden' => false, 'style' => $_dimStyle]) !!}
+@else
+<div class="mad-field{{ $_isReadonly ? ' mad-readonly' : '' }}" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
     @endif
@@ -299,7 +310,7 @@
     <select
         id="{{ $id }}"
         name="{{ $name }}"
-        class="{{ $hasError ? 'mad-input-error' : '' }}"
+        class="{{ $hasError ? 'mad-input-error' : '' }}{{ $_isReadonly ? ' mad-readonly-select' : '' }}"
         data-mad-dbsearch
         data-mad-search-token="{{ $searchToken }}"
         data-min-length="{{ $minLength }}"
@@ -329,3 +340,4 @@
     @include('components.partials.options-error', ['optionsError' => $__optError])
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

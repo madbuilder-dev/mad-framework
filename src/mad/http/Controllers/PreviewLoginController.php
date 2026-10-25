@@ -126,6 +126,12 @@ class PreviewLoginController
             || preg_match('/[\x00-\x1F\x7F]/', $to)) {
             return '/';
         }
+        // `/app` é diretório: o servidor web responde 301 para `/app/`, e um
+        // 301 velho para http:// no cache do navegador barrava o iframe https
+        // (fw#527). Vai direto para `/app/`.
+        if (preg_match('#^/app(?=$|[?\#])#', $to)) {
+            $to = '/app/' . substr($to, 4);
+        }
         return $to;
     }
 

@@ -683,6 +683,61 @@ final class MadUploadRules
         return self::dataUrlProblem($value, $max, $accept);
     }
 
+    /** Tipos de imagem que o campo de imagem guarda na coluna como data URI (fw#538). */
+    public const INLINE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp', 'image/avif'];
+
+    /**
+     * Imagem NOVA de um campo de imagem (imagem, avatar, assinatura) guardada
+     * na própria coluna como data URI: o motivo da recusa, ou null (fw#538).
+     * Vale mesmo sem `accept`/`max-size` no campo — o servidor gravava cru o
+     * que viesse com `data:` (`data:text/html,<script>…`, `data:` vazio,
+     * base64 quebrado).
+     *
+     * Passa só imagem de verdade: tipo declarado PNG, JPEG, WebP, GIF, BMP ou AVIF, base64
+     * que decodifica e conteúdo que é desse tipo (`getimagesizefromstring`).
+     * SVG só com `mad.uploads.image_svg` ligado; teto de tamanho em
+     * `mad.uploads.image_max_kb` (padrão 10 MB).
+     */
+    public static function inlineImageDataProblem(string $value): ?string
+    {
+        $invalid = self::text('form.upload_image_invalid', [], 'O conteúdo enviado não é uma imagem.');
+        if (!preg_match('#^[\x00-\x20]*data:([a-z0-9.+/-]+)((?:;[^,]*)?),#i', $value, $m)) {
+            return $invalid;
+        }
+        $type    = strtolower($m[1]);
+        $payload = substr($value, strlen($m[0]));
+        $base64  = preg_match('/;\s*base64\s*$/i', $m[2]) === 1;
+
+        if ($type === 'image/svg+xml') {
+            if (!config('mad.uploads.image_svg', false)) {
+                return $invalid;
+            }
+            $bytes = $base64 ? base64_decode((string) preg_replace('/\s+/', '', $payload), true) : rawurldecode($payload);
+            if (!is_string($bytes) || stripos($bytes, '<svg') === false) {
+                return $invalid;
+            }
+        } else {
+            if (!$base64 || !in_array($type, self::INLINE_IMAGE_TYPES, true)) {
+                return $invalid;
+            }
+            $bytes = base64_decode((string) preg_replace('/\s+/', '', $payload), true);
+            if (!is_string($bytes) || $bytes === '') {
+                return $invalid;
+            }
+            $info = @getimagesizefromstring($bytes);
+            if (!is_array($info) || strtolower((string) ($info['mime'] ?? '')) !== $type) {
+                return $invalid;
+            }
+        }
+
+        $max = max(1, (int) config('mad.uploads.image_max_kb', 10240)) * 1024;
+        if (strlen($bytes) > $max) {
+            return self::text('form.upload_image_too_big', ['size' => self::human(strlen($bytes), true), 'max' => self::human($max)], 'A imagem tem :size; o limite deste campo é :max.');
+        }
+
+        return null;
+    }
+
     private static function dataUrlProblem(string $value, int $max, string $accept): ?string
     {
         if (preg_match('#^[\x00-\x20]*data:([a-z0-9.+/-]+)?((?:;[^,]*)?),#i', $value, $m)) {

@@ -12,6 +12,103 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.222.13] — 2026-10-25
+
+### Novidades
+
+- **Lista de itens:** `allow-negative` na coluna de número ou dinheiro aceita valor negativo, como no campo de dinheiro. Sem ele, digitar "-" mostra um aviso, em vez de gravar o número sem o sinal calado.
+- **Lista de itens:** `disabled` na própria lista (ou travar o campo da lista pelo código da tela) deixa a lista inteira só leitura: some adicionar, remover e ordenar, e todas as colunas ficam travadas.
+- **Calendário:** `tooltip-field` na `<mad-calendar>` (campo ou modelo como `{paciente->nome} · {observacao}`) mostra a dica ao passar o mouse no evento. O bloco estreito da Semana corta o texto, e a dica mostra o texto inteiro.
+
+### Correções
+
+- **Empresas (dados separados por empresa):** um registro não é mais gravado em outra empresa quando o `tenant_id` chega preenchido com uma empresa diferente da ativa. O formulário mostra o erro no campo, e a API responde 422.
+- **Cadastro pelo site:** com os dados separados por empresa, cada conta criada pelo site nasce numa empresa própria. Antes, a unidade nascia sem empresa e o cliente novo via os registros de todas as empresas.
+- **Cadastro pelo site:** se o código do app que roda depois do cadastro falha (criar a licença, os cadastros iniciais), a conta é desfeita e o formulário volta com a mensagem de erro. Antes sobrava um login sem empresa ou sem licença, sem aviso nenhum.
+- **Empresas:** um usuário logado numa unidade sem empresa vê só os registros sem empresa, e não mais os de todas.
+- **Telas de detalhe:** a propriedade de id do registro aberto (`public int $notaId`) não pode mais ser trocada pelo navegador para agir sobre um registro de outra empresa.
+- **Lista de itens dentro de um Detail Form:** a coluna de arquivo não aceita mais o caminho de um arquivo que não é do item, e fica vazia.
+- **Download de arquivo:** quando a tela informa o registro dono do arquivo, o link de download confere que quem baixa enxerga esse registro e que o arquivo ainda é dele.
+- **Imagem, avatar e assinatura na própria coluna:** só uma imagem de verdade (PNG, JPEG, WebP ou GIF) é gravada. Conteúdo que não é imagem fica de fora e o campo mantém a imagem que já tinha. O SVG só é gravado com a opção ligada.
+- **Log de requisições:** a chave das telas públicas (`?chave=`, `?key=`) e as assinaturas na URL não aparecem mais inteiras no log, nem no Referer da tela seguinte.
+- **Acesso MCP:** os tokens que o Copilot e a Central de Comando criam a cada login agora vencem junto com a sessão. A lista "Meus tokens ativos" não cresce mais a cada entrada.
+- **Acesso MCP:** com o MCP desligado, a aba Acesso MCP não aparece e não dá para gerar token que aponta para um endereço que não existe.
+- **Mensagens de erro:** o diálogo e o aviso que a tela monta com a mensagem do banco mostram uma frase simples, sem o comando SQL nem o caminho do arquivo do banco.
+- **Modo Dedicado:** o Copilot e Meus Dashboards leem o banco da empresa de quem está logado. Empresa sem banco preparado é recusada.
+- **Estouro de memória:** quando uma tela tenta carregar dados demais, a causa fica registrada no log do servidor, e a tela mostra "A tela tentou carregar dados demais de uma vez" no lugar do erro genérico.
+- **Auditoria:** as datas de criação e alteração seguem o relógio de teste do app.
+- **Método estático pela URL (`?static=1`):** só vira endereço o método `public static` que recebe o pedido. Os auxiliares que o gerador cria no Gantt e no Calendário, os métodos protegidos e os de outra assinatura respondem 404 sem executar. Um pedido que não serve ao método responde 400, e não mais erro 500 com o arquivo e a linha.
+- **Método estático pela URL:** o tipo de conteúdo, o código e o redirecionamento que o método define agora chegam ao navegador. Dá para servir CSS, texto ou CSV e redirecionar para o WhatsApp. O método também pode devolver a resposta pronta ou uma lista, que vira JSON.
+- **Método estático pela URL:** sem permissão na tela, a resposta é JSON com o motivo, e não mais a página HTML de acesso negado.
+- **Senha:** a senha agora tem no mínimo 8 caracteres mesmo com a política forte desligada, também quando o administrador define a senha de alguém no cadastro de usuários.
+- **Login por e-mail:** com o login pelo e-mail ligado, o convite e o link de definir senha mostram o e-mail com que a pessoa entra, e o campo Login do cadastro avisa que a pessoa entra pelo e-mail.
+- **Convite e redefinição de senha:** depois de definir a senha, a pessoa vai direto para a tela de login com o aviso "Sua senha foi definida" e o login dela já preenchido. Antes caía num formulário de "Redefinir senha" e parecia que nada tinha sido gravado.
+- **Meu perfil:** a tela de conta (`/app/conta/configuracoes`) e o assistente da verificação em duas etapas seguem o idioma do app. Sem nenhum método ligado, a tela diz onde o administrador liga. As abas "em breve" que não faziam nada saíram.
+- **Sessão única e troca de senha:** com "uma sessão por usuário" ligada, entrar de novo derruba a sessão do outro navegador. Trocar a senha em Meu perfil derruba as outras sessões abertas da conta, e redefinir pelo link derruba todas.
+- **Menu lateral:** o item "Logout" aparece traduzido ("Sair" em português, "Salir" em espanhol).
+- **Tela sem acesso:** quem abre uma tela sem permissão vê "Sem acesso" no topo, e não mais "Logout".
+- **Log de alterações:** o título e as operações (criado, alterado, excluído) aparecem no idioma do app.
+- **Grupos:** a lista de programas mostra só o nome da tela, sem o nome técnico da classe, e a busca casa só pelo nome da tela.
+- **Grupos:** marcar uma ação de uma tela que ainda não estava no grupo agora inclui a tela junto. Antes a marcação sumia calada ao salvar.
+- **Unidades e usuários pelo "+" do combo:** a unidade ou o usuário criado pelo botão "+" de um combo volta selecionado nele.
+- **Formulários do site:** o envio recusado (termos sem marcar, envio rápido demais, senha curta, e-mail em uso) volta para a página com a mensagem do erro. Antes o formulário voltava preenchido e sem dizer por quê.
+- **Assinatura:** o contrato gerenciado pelo administrador do sistema mostra o plano, a validade, os módulos e os usuários usados da licença, em vez de "Sem plano R$ 0,00". A tela abre só para leitura também com a cobrança desligada, desde que o licenciamento esteja ligado.
+- **Assinatura:** Editar uma assinatura gravada abre o quadro com ela desenhada, para ajustar sem refazer. Limpar começa de novo.
+- **Planos:** preço mensal e anual, dias de teste, vitrine e destaque aparecem e são gravados também com a cobrança desligada, porque a vitrine do site usa esses dados. Só os extras do plano continuam dependendo da cobrança.
+- **Planos:** com a cobrança desligada, o plano novo já abre com "Aparece na vitrine" desligado, igual ao que o Salvar grava.
+- **Vitrine de planos do site:** o selo "Economize até X% no plano anual" aparece alinhado aos botões Mensal e Anual, com fundo próprio, e no celular quebra para a linha de baixo sem estourar a largura.
+- **Listagem com fonte própria:** editar uma célula, abrir, editar ou excluir uma linha de listagem montada sobre uma consulta própria volta a funcionar. Sem model ligado, a edição na célula avisa que não gravou, em vez de sumir sem aviso.
+- **Listagem:** a ordenação padrão escrita como `CASE WHEN ...` deixou de ser descartada e a lista abre na ordem pedida.
+- **Listagem:** a função de transformar valor recebe as relações da linha como objeto, então `$row->cliente->nome` funciona como no resto da tela.
+- **Listagem:** nova prop `empty-text` (também `no-results-message`) para trocar o "Nenhum registro encontrado" da lista vazia.
+- **Listagem no celular:** os campos de `card-columns` são achados escritos com ou sem chaves (`{nome}` ou `nome`). Se nenhum casar, o cartão mostra todas as colunas em vez de ficar vazio.
+- **Listagem atrás da cortina:** ao salvar num formulário aberto em cortina lateral ou janela, a listagem que ficou atrás é relida e mostra o registro novo ou alterado.
+- **Filtros:** o chip do filtro de seleção mostra o rótulo também quando as opções vêm de constante, prop ou método da tela (`:items="Pedido::SITUACOES"`), e não mais o valor cru.
+- **Busca da listagem:** a busca geral de `<mad-grid self searchable>` sem `:search-columns` volta a filtrar, procurando nas colunas declaradas.
+- **Checklist:** `:items` em mapa id => rótulo, como no campo de seleção, mostra as linhas. Antes a lista vinha vazia e o contador dizia "0 de 2 selecionados".
+- **Cadastro rápido do combo:** o termo digitado vai para o campo da coluna exibida no combo (o nome), não mais para o primeiro campo do cadastro.
+- **Editor de texto rico:** o texto posto pela tela numa ação (botão "Montar texto", por exemplo) aparece no editor, e o envio grava o texto novo.
+- **Campos de número e dinheiro:** o mínimo e o máximo do campo valem também ao salvar. Antes eram só um atributo da página, e "% de repasse" com máximo 100 gravava 150.
+- **Campos de data:** o valor que chega ao método de mudança do campo, e à propriedade da tela com o mesmo nome do campo, vem sempre no formato do banco (aaaa-mm-dd). Antes podia vir dd/mm/aaaa e ser lido com dia e mês trocados.
+- **Modo leitura do formulário:** o campo de busca de registro também vira rótulo e valor, e `:readonly` nele trava a busca de verdade.
+- **CNPJ, CEP e campos com máscara:** sem `strip-mask` escrito, a máscara sai ao salvar quando não cabe no tamanho da coluna. Uma clínica nova não conseguia salvar os dados da clínica por causa do limite de 14 caracteres do CNPJ.
+- **Lista de itens:** preencher as linhas na abertura da tela já mostra as linhas. Antes a lista abria vazia.
+- **Lista de itens:** `disabled` ou `readonly` escrito na própria tag `<mad-field-list>` também trava a lista inteira (sem adicionar, remover ou editar linha).
+- **Pastas e tags de Documentos:** depois de criar uma pasta ou uma tag, o quadro de criação volta vazio. O nome digitado num não vai mais parar no outro.
+- **Tela aberta por um tempo:** com a sessão de segurança vencida (aba esquecida aberta), o primeiro clique recarrega a página uma vez e o próximo funciona. Antes todo botão falhava em silêncio até um recarregamento manual.
+- **Pré-visualização do Studio:** entrar pelo botão de pré-visualização abre o app direto, sem o desvio de endereço que derrubava o login.
+- **Botão que navega:** `:params` escrito como objeto (`{id: item.id}`) chega à tela de destino. E a tela que recebe o registro por um nome diferente de `id` (`show($paciente_id)`, por exemplo) recebe o valor.
+- **Atualização parcial da tela:** propriedade usada num `@if`, `@foreach` ou `@isset` do Blade que muda numa ação redesenha a tela. Antes o bloco condicional ficava como estava até recarregar.
+- **Ícones:** redesenhar um ícone (abrir cortina, trocar de aba, carregar lista) não refaz mais todos os ícones da página. Telas grandes ficam leves em toda interação.
+- **Ícones:** `icon="whatsapp"` desenha o ícone do WhatsApp. Antes não aparecia nada.
+- **Cortina ou janela aberta pelo endereço:** ao trocar de tela pelo menu, pela navegação ou pelas abas, a cortina aberta pelo link (`/app/grupos/novo`) fecha, em vez de ficar por cima da tela seguinte.
+- **Abas:** um link direto para uma tela abre essa tela, mesmo com abas salvas no navegador. Antes abria a última aba salva. Entrar pela raiz do app continua trazendo a aba salva.
+- **Abas:** abrir uma tela pelo link enquanto uma aba salva ainda carregava podia levar o menu lateral e o caminho do topo para a aba de trás. Agora eles ficam com a tela que está na frente.
+- **Menu:** voltar pelo navegador para uma tela fora do menu não deixa marcado o item da tela de onde se veio, igual à abertura direta do endereço.
+- **Trilha do topo:** tela fora do menu, de um módulo que não aparece no menu lateral, mostra o próprio módulo na trilha. Antes mostrava o módulo que estivesse aberto, diferente para cada perfil.
+- **Atualização do app:** todos os arquivos de estilo e script do casco levam a versão do framework. Depois de atualizar, o navegador não fica mais com a cópia antiga de fontes, tema, gráficos, editor de texto e alertas.
+- **Calendário:** `popover-title` e `popover-content` aparecem ao passar o mouse no evento. Antes eram aceitos e não faziam nada. Sem dica nenhuma, passar o mouse mostra o título inteiro do evento.
+- **Calendário:** evento com início só de data (sem hora) aparece na faixa de dia inteiro das visões Semana e Dia. Antes aparecia só no Mês.
+- **Calendário com `end-field`:** evento com a data de fim vazia aparece no dia do início, e evento de vários dias que começa antes do período visível aparece também (o recesso de 22/12 a 05/01 olhado em janeiro, por exemplo).
+- **Gantt:** coluna da lateral com `source` própria (`<mad-gantt-column field="cliente" source="cliente_nome">`) mostra o valor. Antes ficava vazia.
+- **Gantt com agendamento automático:** ao arrastar uma tarefa, a barra do sucessor empurrado muda de lugar na hora. Antes só mudava depois de recarregar a página.
+- **Tema ERP:** tema com cor própria pinta o trilho do menu, o item ativo e os botões com a cor do tema, e a fonte escolhida no tema vale no layout ERP. Antes o trilho saía vermelho e a fonte ficava sempre IBM Plex Sans.
+- **Login, variante 2:** o painel da marca segue a cor da marca do tema, ou a cor de painel própria do login. O azul-marinho continua como padrão.
+- **Tema escuro:** sem logo próprio para o modo escuro, o logo do cabeçalho aparece em versão clara e fica legível sobre o fundo escuro.
+- **Instalação e Preferências:** em servidor publicado com pastas de versão (o `.env` de cada versão aponta para um `.env` compartilhado), o que o instalador e as Preferências gravam vai para o arquivo compartilhado e continua valendo depois do próximo deploy.
+- **PDF:** desenho SVG embutido numa imagem sai no tamanho da caixa da imagem. Antes podia sair maior, transbordar e ficar por baixo do texto seguinte.
+- **Chat IA:** a tabela da resposta mostra rótulos legíveis ("Data agendada" em vez de DATA_AGENDADA) e não repete a coluna do número da chave estrangeira quando o nome já está ao lado.
+- **Imagem, avatar e assinatura:** um conteúdo que não é imagem enviado num desses campos agora recusa o Salvar com o aviso no próprio campo. Antes a tela dizia "salvo" e a imagem antiga ficava no lugar. Imagens BMP e AVIF continuam aceitas.
+- **Site:** o aviso de cada campo (`@error`) nas páginas do site volta a aparecer quando o envio do formulário é recusado.
+- **Banco de dados (Postgres):** o banco que a instalação cria para o app, e o de cada empresa no modo multiempresa, passa a ler data escrita como `dd/mm/aaaa` na ordem dia/mês. Antes, `05/03/2026` numa consulta virava 3 de maio, sem erro.
+- **Meus Dashboards:** um widget salvo cuja consulta deixou de funcionar continua mostrando o aviso no próprio cartão, mas não deixa mais um erro na aba Rede do navegador a cada abertura do painel.
+
+### Atenção
+
+- **Telas escritas à mão:** a propriedade pública de tipo inteiro terminada em `Id` (`public ?int $clienteId`) não é mais preenchida pelo navegador. Se a tela liga uma delas a um campo de filtro, declare o nome em `_bindableStateProps()`.
+- **Método estático pela URL:** o método `public static` chamado pela URL tem de aceitar o pedido no 1º parâmetro (sem tipo, `array` ou `mixed`), e os demais parâmetros têm de ser opcionais. Fora disso, a URL responde 404.
+- **Campos de data:** o método de mudança do campo de data e a propriedade da tela com o mesmo nome agora recebem a data no formato do banco (aaaa-mm-dd), também quando a propriedade nasce vazia. Código que lia esse valor como dd/mm/aaaa precisa ler no formato do banco.
+
 ## [5.221.0] — 2026-10-24
 
 ### Novidades

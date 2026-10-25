@@ -482,32 +482,33 @@ trait MadDbBlocksTrait
     }
 
     /**
-     * Fecha o overlay do adder OU, no modo `inline` (form fixo na tela),
-     * LIMPA o formulário — sem isso o texto recém-enviado continua no
-     * campo e o usuário reenvia achando que não salvou (incidente real do
-     * comentário duplicado, 24/jul/2026).
+     * LIMPA o formulário do adder e fecha o overlay (popover, modal, drawer).
+     * Sem a limpeza o texto recém-enviado continuava no campo: no `inline` o
+     * usuário reenviava achando que não salvou (incidente real do comentário
+     * duplicado, 24/jul/2026); no popover o "Nova pasta" reabria com a pasta
+     * anterior escrita e ia gravada de novo no próximo item (fw#411).
      */
     private static function _blockCloseOverlay(MadResponse $resp, array $cfg): void
     {
         $mode = $cfg['addMode'] ?? 'popover';
         $name = $cfg['name'];
+        // Volta cada campo do adder ao valor com que foi desenhado (o
+        // container tem data-mad-block-form com o nome do bloco). É um
+        // <div>, não um <form> (fw#466): sem reset() nativo, o laço faz o
+        // que ele fazia. Os `__mad_*` (state do bloco) ficam. Alpine/
+        // mad:model acompanham via input/change disparados aqui.
+        $resp->script(
+            "(function(){var f=document.querySelector('[data-mad-block-form=\"{$name}\"]');"
+            . "if(!f)return;f.querySelectorAll('input,textarea,select').forEach(function(el){"
+            . "if((el.name||'').indexOf('__mad_')===0)return;"
+            . "if(el.type==='checkbox'||el.type==='radio'){el.checked=el.defaultChecked;}"
+            . "else if(el.tagName==='SELECT'){Array.prototype.forEach.call(el.options,function(o){o.selected=o.defaultSelected;});}"
+            . "else if(el.type==='file'){el.value='';}"
+            . "else{el.value=el.defaultValue;}"
+            . "el.dispatchEvent(new Event('input',{bubbles:true}));"
+            . "el.dispatchEvent(new Event('change',{bubbles:true}));});})()"
+        );
         if ($mode === 'inline') {
-            // Volta cada campo do adder ao valor com que foi desenhado (o
-            // container tem data-mad-block-form com o nome do bloco). É um
-            // <div>, não um <form> (fw#466): sem reset() nativo, o laço faz o
-            // que ele fazia. Os `__mad_*` (state do bloco) ficam. Alpine/
-            // mad:model acompanham via input/change disparados aqui.
-            $resp->script(
-                "(function(){var f=document.querySelector('[data-mad-block-form=\"{$name}\"]');"
-                . "if(!f)return;f.querySelectorAll('input,textarea,select').forEach(function(el){"
-                . "if((el.name||'').indexOf('__mad_')===0)return;"
-                . "if(el.type==='checkbox'||el.type==='radio'){el.checked=el.defaultChecked;}"
-                . "else if(el.tagName==='SELECT'){Array.prototype.forEach.call(el.options,function(o){o.selected=o.defaultSelected;});}"
-                . "else if(el.type==='file'){el.value='';}"
-                . "else{el.value=el.defaultValue;}"
-                . "el.dispatchEvent(new Event('input',{bubbles:true}));"
-                . "el.dispatchEvent(new Event('change',{bubbles:true}));});})()"
-            );
             return;
         }
         if ($mode === 'modal') {

@@ -49,7 +49,7 @@
         if (str_starts_with($value, 'data:') || str_starts_with($value, 'http')) {
             $previewUrl = $value;
         } elseif (mad_upload_is_file($value)) {
-            $previewUrl = mad_download_url($value);
+            $previewUrl = mad_download_url($value, null, \Mad\Component\MadRenderContext::getForm()?->fileOwnerFor((string) $name, $value));
         } elseif ($value) {
             $previewUrl = $value;
         }

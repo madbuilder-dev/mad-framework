@@ -175,6 +175,7 @@ final class BlockValidator
                 if (! $columns) {
                     return null;
                 }
+                $columns = self::tableColumnsForPeople($columns);
                 $rows = [];
                 foreach (self::arr($input['rows'] ?? null) as $r) {
                     if (self::isObj($r)) {
@@ -689,6 +690,60 @@ final class BlockValidator
      *
      * @return array{entity: string, id: string}|null
      */
+    /**
+     * Colunas da tabela do chat para quem usa o sistema (fw#436): o modelo
+     * copiava o nome cru da coluna do banco como rótulo (DATA_AGENDADA,
+     * TECNICO_ID) e mandava a chave estrangeira junto da coluna com o nome.
+     *   - rótulo que é nome de coluna (MAIÚSCULAS_COM_SUBLINHADO, snake_case ou a
+     *     própria key) vira texto ("Data agendada"; "tecnico_id" → "Tecnico");
+     *   - coluna `x_id` sai quando a tabela já tem a coluna `x` (o nome);
+     *   - coluna `id` sai quando há número/código do registro.
+     *
+     * @param  list<array<string, mixed>> $columns
+     * @return list<array<string, mixed>>
+     */
+    private static function tableColumnsForPeople(array $columns): array
+    {
+        $keys = array_map(static fn ($c) => strtolower((string) $c['key']), $columns);
+        $hasCode = (bool) array_filter($keys, static fn ($k) => in_array($k, ['numero', 'número', 'codigo', 'código', 'code', 'number', 'num', 'protocolo'], true));
+
+        $out = [];
+        foreach ($columns as $c) {
+            $k = strtolower((string) $c['key']);
+            if (preg_match('/^(.+?)_id$/', $k, $fk) && in_array($fk[1], $keys, true)) {
+                continue;
+            }
+            if ($k === 'id' && $hasCode && count($columns) > 1) {
+                continue;
+            }
+            $label = (string) $c['label'];
+            $raw = preg_match('/^[A-Z0-9]+(?:_[A-Z0-9]+)+$|^[a-z0-9]+(?:_[a-z0-9]+)+$/', $label)
+                || ($label === (string) $c['key'] && preg_match('/^[A-Za-z0-9]+$/', $label));
+            if ($raw && ! in_array(strtolower($label), self::ACRONYMS, true)) {
+                $c['label'] = self::humanLabel($label);
+            }
+            $out[] = $c;
+        }
+
+        return $out !== [] ? $out : $columns;
+    }
+
+    /** Siglas que ficam como vieram no rótulo (CPF, UF…). */
+    private const ACRONYMS = ['id', 'cpf', 'cnpj', 'uf', 'cep', 'rg', 'sku', 'ncm', 'cfop', 'pis', 'ie', 'url', 'ip', 'nf', 'nfe', 'os'];
+
+    /** "DATA_AGENDADA" → "Data agendada"; "tecnico_id" → "Tecnico"; "ID" fica "ID". */
+    private static function humanLabel(string $raw): string
+    {
+        if (strcasecmp($raw, 'id') === 0) {
+            return 'ID';
+        }
+        $t = strtolower(str_replace(['_', '-'], ' ', $raw));
+        $t = (string) preg_replace('/\s+id$/', '', trim($t));
+        $t = (string) preg_replace('/\s+/', ' ', $t);
+
+        return $t === '' ? $raw : mb_strtoupper(mb_substr($t, 0, 1)) . mb_substr($t, 1);
+    }
+
     public static function recordLink(mixed $x): ?array
     {
         if (! self::isObj($x)) {

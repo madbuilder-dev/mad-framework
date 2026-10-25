@@ -659,6 +659,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         ];
     }
 
+    /** Texto da listagem vazia (`empty-text`); '' = "Nenhum registro encontrado". */
+    protected function _emptyText(): string
+    {
+        return trim((string)($this->_bladeGridConfig()['emptyText'] ?? ''));
+    }
+
     /** Texto personalizado da listagem vazia (load-hint); '' = texto traduzido padrão. */
     protected function _loadHint(): string
     {
@@ -828,9 +834,67 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!$source instanceof \Illuminate\Database\Query\Builder) {
             throw new \LogicException(static::class . '::sourceQuery() precisa devolver uma consulta (Builder).');
         }
+        // O model sai da consulta, mas continua sendo onde a linha é gravada
+        // (editar na célula, excluir, manageRow) — fw#511.
+        if ($this->model !== '') {
+            $this->_sourceModel = $this->model;
+        }
         $this->model = '';
 
         return $source->getConnection()->query()->fromSub($source, 'mad_src');
+    }
+
+    /** Model da tela antes do `sourceQuery()` tirá-lo da consulta. */
+    private string $_sourceModel = '';
+
+    /**
+     * Model onde a linha é lida e gravada: o `$model` da tela, mesmo quando a
+     * listagem lê de `sourceQuery()` (que o tira da consulta).
+     */
+    protected function _recordModel(): string
+    {
+        if ($this->model !== '') {
+            return $this->model;
+        }
+        if ($this->_sourceModel !== '') {
+            return $this->_sourceModel;
+        }
+        try {
+            return (string) (new \ReflectionProperty($this, 'model'))->getDefaultValue();
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * A linha `$id` da consulta de `sourceQuery()` (com as colunas extras dela),
+     * ou null quando a listagem não a mostra.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function _sourceRow(int|string $id): ?array
+    {
+        $model = $this->_recordModel();
+        if (! $this->_usesSource() || $model === '' || ! is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
+            return null;
+        }
+        $pk = (new $model())->getKeyName();
+        $find = function () use ($id, $pk): ?array {
+            try {
+                $q = $this->_buildQuery();
+                $q->where('mad_src.' . $pk, $id);
+                if ($this->searchQuery) {
+                    ($this->searchQuery)($q);
+                }
+                $row = $q->first();
+            } catch (\Throwable $e) {
+                return null;
+            }
+
+            return $row === null ? null : (array) $row;
+        };
+
+        return $find() ?? $this->_withoutUserFilters($find);
     }
 
     /** @var array<string, list<string>> colunas da fonte, por SQL (só nesta requisição) */
@@ -2127,11 +2191,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _visibleRecord(int|string $id): ?object
     {
-        if (empty($this->model) || !is_subclass_of($this->model, \Illuminate\Database\Eloquent\Model::class)) {
+        $model = $this->_recordModel();
+        if ($model === '' || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
             return null;
         }
         if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class) {
-            return $this->model::find($id);
+            return $model::find($id);
+        }
+        // Listagem por `sourceQuery()`: a linha tem de estar na consulta dela;
+        // gravar/excluir é no model (fw#511).
+        if ($this->_usesSource()) {
+            return $this->_sourceRow($id) !== null ? $model::find($id) : null;
         }
 
         return $this->_queryRecord($id)
@@ -2701,7 +2771,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function onInlineSave(int|string $id, string $field, mixed $value): \Mad\Http\MadResponse
     {
         $resp = new \Mad\Http\MadResponse();
-        if (empty($this->model)) return $resp;
+        if ($this->_recordModel() === '') {
+            // Nada a gravar: avisa em vez de deixar o valor novo na célula
+            // como se tivesse sido gravado (fw#511).
+            return $resp->toast(mad_t('mad.error.cell_not_saved'), 'warning');
+        }
 
         // Só as ops voltam (a linha e o aviso): _skipFullRender faz o handler
         // devolver `partial`, sem o html completo da grade.
@@ -4235,6 +4309,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
             'loadButton'   => $this->_showLoadButton(),
             'loadHint'     => $this->_loadHint(),
+            'emptyText'    => $this->_emptyText(),
             'sticky'       => $this->sticky,
             'rowClick'     => $this->rowClick,
             'actionSide'   => $this->actionSide,
@@ -4495,6 +4570,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
             'loadButton'    => $this->_showLoadButton(),
             'loadHint'      => $this->_loadHint(),
+            'emptyText'     => $this->_emptyText(),
             'columnChooser' => $this->_inlineConfig['columnChooser'] ?? true,
             'sticky'        => $this->sticky,
             'rowClick'      => $this->rowClick,
@@ -5268,8 +5344,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * Retorna os campos usados na busca global.
      * Se $searchColumns foi definido, usa diretamente.
      * Senão, pega as colunas que não são computadas (evaluate) e não são monetárias.
-     * Se as colunas não estiverem disponíveis (AJAX sem _inlineConfig), usa os
-     * atributos do model como fallback.
+     * No AJAX de `<mad-grid self>` o Blade não roda de novo: valem as colunas
+     * que o último render deixou no estado (exportColConfigs). Sem elas, as
+     * colunas de texto da tabela do model.
      */
     protected function _searchableFields(): array
     {
@@ -5278,6 +5355,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         $cols = $this->_effectiveColumns();
+        // fw#430: sem isto a busca geral de `<mad-grid self searchable>` sem
+        // `:search-columns` não achava campo nenhum no AJAX e não filtrava.
+        if (empty($cols) && !empty($this->exportColConfigs)) {
+            $cols = array_map(fn ($c) => static::_colFromConfig($c), $this->exportColConfigs);
+        }
         if (!empty($cols)) {
             $fields = [];
             foreach ($cols as $col) {
@@ -5291,14 +5373,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return $fields;
         }
 
-        // Fallback: atributos do model (exclui campos típicos não-texto)
+        // Reserva: colunas de texto da tabela do model. Um model novo não tem
+        // atributo nenhum, então `getAttributes()` devolvia [] e a busca
+        // seguia sem campo.
         if (!empty($this->model) && class_exists($this->model)) {
-            $skip = ['id', 'created_at', 'updated_at', 'deleted_at'];
             try {
-                $obj = new ($this->model)();
-                $attrs = $obj->getAttributes() ?: [];
-                return array_values(array_filter($attrs, fn($a) =>
-                    !in_array($a, $skip) && !str_ends_with($a, '_id')
+                $skip = ['id', 'created_at', 'updated_at', 'deleted_at'];
+
+                return array_values(array_filter(
+                    \Mad\Database\ModelAccessors::textColumns(new ($this->model)()),
+                    fn ($a) => !in_array($a, $skip, true) && !str_ends_with($a, '_id')
                 ));
             } catch (\Throwable $e) {}
         }
@@ -5693,7 +5777,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             // abertura da tela, sem clique nenhum.
             $declared = $this->baseOrder !== '' ? $this->baseOrder : $this->defaultSort;
             if ($declared !== '') {
-                $ordered = $this->_applyDeclaredOrder($q, $declared) || $ordered;
+                // `defaultSort` é código da tela (como o sourceQuery()), nunca
+                // vem do navegador: expressão (`CASE … END`) vale (fw#512).
+                $trusted = $this->baseOrder === '';
+                $ordered = $this->_applyDeclaredOrder($q, $declared, $trusted) || $ordered;
             }
         } elseif ($orderExpr !== '') {
             \Mad\Database\OrderGuard::validate($orderExpr, 'ORDER BY');
@@ -5876,9 +5963,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *
      * @return bool algum termo foi aplicado por subquery de relação
      */
-    protected function _applyDeclaredOrder($q, string $expr): bool
+    protected function _applyDeclaredOrder($q, string $expr, bool $trusted = false): bool
     {
         $usedChain = false;
+
+        // Expressão da própria tela (`defaultSort = "CASE grupo WHEN 'a' THEN 1
+        // ELSE 2 END, codigo"`): o OrderGuard é para o que vem do navegador; o
+        // termo-a-termo partiria o CASE nas vírgulas. Vai inteira.
+        if ($trusted && ! \Mad\Database\OrderGuard::isSafeOrderBy($expr) && preg_match('/\bCASE\b/i', $expr)) {
+            $q->orderByRaw($expr);
+
+            return false;
+        }
 
         foreach (explode(',', $expr) as $term) {
             $term = trim($term);
@@ -8394,7 +8490,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         // Carrega o registro
-        $modelClass = $grid->model;
+        $modelClass = $grid->_recordModel();
         // Eloquent: construtor recebe array de atributos — carrega por id via find().
         // Objeto sem Eloquent: mantém o idioma `new $modelClass($id)`.
         $record = is_subclass_of($modelClass, \Illuminate\Database\Eloquent\Model::class)
@@ -8426,6 +8522,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         $row = $record->toArray();
+        // Listagem por `sourceQuery()`: as colunas extras da consulta (join,
+        // calculadas) entram na linha, como no carregamento (fw#511).
+        if (($sourceRow = $grid->_sourceRow($id)) !== null) {
+            $row = $sourceRow + $row;
+        }
         if (is_array($decorated)) {
             $row = $decorated + $row;
         }

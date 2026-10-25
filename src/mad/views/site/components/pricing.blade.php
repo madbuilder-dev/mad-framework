@@ -133,7 +133,7 @@
                     <button type="button" data-site-cycle="yearly"
                             aria-pressed="{{ $__cycle === 'yearly' ? 'true' : 'false' }}">{{ mad_t('mad.site_yearly') }}</button>
                     @if($__bestSaving !== null)
-                        <span>{{ mad_t('mad.site_yearly_saving', ['percent' => (string) $__bestSaving]) }}</span>
+                        <span class="site-pricing__save">{{ mad_t('mad.site_yearly_saving', ['percent' => (string) $__bestSaving]) }}</span>
                     @endif
                 </div>
             @endif

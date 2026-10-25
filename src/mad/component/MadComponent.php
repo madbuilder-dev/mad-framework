@@ -1829,6 +1829,68 @@ abstract class MadComponent
     }
 
     /**
+     * Prop de id do registro aberto que a TELA ligou de propósito a um campo
+     * (filtro numérico `public ?int $clienteId` num `<mad-dbcombo-field
+     * name="clienteId">`): sai da trava automática de `_isAutoLockedId()`.
+     *
+     *     protected function _bindableStateProps(): array
+     *     {
+     *         return ['clienteId'];
+     *     }
+     *
+     * @return string[]
+     */
+    protected function _bindableStateProps(): array
+    {
+        return [];
+    }
+
+    /** @var array<string, array<string, bool>> classe => prop => trancada */
+    private static array $_autoLockedIdMemo = [];
+
+    /**
+     * Id de registro guardado em prop própria da tela (`public int $notaId`,
+     * `public ?int $contaId`): só o servidor escreve, como o `recordId` (fw#524).
+     * O navegador mandava `mad_model[notaId]=<id de outra empresa>` e a ação
+     * agia sobre ele — num serviço que carrega sem escopo, em outra empresa.
+     *
+     * Regra: nome camelCase terminado em `Id` E tipo declarado que aceita
+     * `int`. Filtro de listagem em texto (`public string $sessionId = ''`) e
+     * coluna em snake (`cliente_id`) seguem ligáveis; o opt-out explícito é
+     * `_bindableStateProps()`.
+     */
+    private function _isAutoLockedId(string $prop): bool
+    {
+        if (!preg_match('/^[a-z][A-Za-z0-9]*Id$/', $prop)) {
+            return false;
+        }
+        $class = static::class;
+        if (!isset(self::$_autoLockedIdMemo[$class][$prop])) {
+            $locked = false;
+            try {
+                $type = (new \ReflectionProperty($this, $prop))->getType();
+                $names = [];
+                if ($type instanceof \ReflectionNamedType) {
+                    $names = [$type->getName()];
+                } elseif ($type instanceof \ReflectionUnionType) {
+                    foreach ($type->getTypes() as $t) {
+                        if ($t instanceof \ReflectionNamedType) {
+                            $names[] = $t->getName();
+                        }
+                    }
+                }
+                $locked = in_array('int', $names, true);
+            } catch (\ReflectionException) {
+                $locked = false;
+            }
+            self::$_autoLockedIdMemo[$class][$prop] = $locked;
+        }
+
+        return self::$_autoLockedIdMemo[$class][$prop]
+            && !in_array($prop, $this->_bindableStateProps(), true);
+    }
+
+    /**
      * Decide se uma chave de mad_model pode ser aplicada ao componente.
      *
      * Camadas de defesa (override em subclasse para customizar):
@@ -1890,7 +1952,8 @@ abstract class MadComponent
             // da tela (ex.: as props `pending*` do login) sem redeclarar este
             // método nome a nome.
             if (in_array($prop, self::_MODEL_STATE_LOCKED, true)
-                || in_array($prop, $this->_lockedStateProps(), true)) {
+                || in_array($prop, $this->_lockedStateProps(), true)
+                || $this->_isAutoLockedId($prop)) {
                 return false;
             }
             if ($this->_isInitialized($prop) && is_object($this->$prop)) {
@@ -1984,19 +2047,19 @@ abstract class MadComponent
      * a propriedade trocava de formato sozinha e a consulta do render seguinte
      * não achava mais nada, sem erro.
      *
-     * A propriedade que a tela entregou no formato do banco continua nele: o
-     * texto do campo de data passa pela mesma conversão do `$form->get()`.
-     * Propriedade que nunca teve data do banco (nasce vazia e só o usuário a
-     * preenche) segue recebendo o texto da tela, como sempre recebeu; campo
-     * que não é de data não é tocado.
+     * A propriedade recebe a data no formato do banco: o texto do campo de
+     * data passa pela mesma conversão do `$form->get()`. Vale também para a
+     * propriedade que nasce vazia e só o usuário preenche (fw#529): ela recebia
+     * "05/03/2015", e um `Carbon::parse()` lia 3 de maio sem erro. Campo que
+     * não é de data não é tocado.
      *
      * @param  array<string,mixed> $values já filtrados por _applyModelValues()
      * @return array<string,mixed>
      */
     private function _keepDbDates(array $values): array
     {
-        foreach ($this->_dbDateProps as $prop => $_) {
-            $value = $values[$prop] ?? null;
+        foreach ($values as $prop => $value) {
+            $prop = (string) $prop;
             if (!is_string($value) || !\Mad\Form\MadFormRegistry::isDisplayDate($value)) {
                 continue;
             }
@@ -2088,7 +2151,8 @@ abstract class MadComponent
     private function _warnLockedStateWrite(string $prop, mixed $value): void
     {
         $locked = in_array($prop, self::_MODEL_STATE_LOCKED, true)
-            || in_array($prop, $this->_lockedStateProps(), true);
+            || in_array($prop, $this->_lockedStateProps(), true)
+            || ($this->_isPublicProp($prop) && $this->_isAutoLockedId($prop));
         if (!$locked || !$this->_isPublicProp($prop)) {
             return;
         }
@@ -2615,6 +2679,18 @@ abstract class MadComponent
             }
         }
 
+        // `navigate="Tela::onBaixa(row.chave)"` manda o argumento como `id`
+        // (fw#548): o 1º parâmetro do método o recebe, seja qual for o nome
+        // dele — `onBaixa($chave)` recebia o pedido inteiro e dava 500. Só
+        // quando nenhum parâmetro se chama `id`, o nome dele não veio e ele
+        // espera um valor: tipo escalar, ou sem tipo com nome que não é o do
+        // pedido inteiro (`onEdit($param)` segue lendo `$param['id']`).
+        $names = array_map(static fn ($p) => $p->getName(), $params);
+        if (array_key_exists('id', $data) && !in_array('id', $names, true)
+            && !array_key_exists($names[0], $data) && self::_takesScalar($params[0])) {
+            $data[$names[0]] = $data['id'];
+        }
+
         // Resolve cada parâmetro individualmente por nome
         $args = [];
         foreach ($params as $param) {
@@ -2654,6 +2730,58 @@ abstract class MadComponent
         }
 
         return $this->$method(...$args);
+    }
+
+    /** @var array<string, array<string, bool>> classe → prop → lida numa diretiva de controle */
+    private static array $_controlReads = [];
+
+    /**
+     * A view desta tela lê a propriedade numa diretiva de controle (`@if`,
+     * `@elseif`, `@unless`, `@isset`, `@empty`, `@switch`, `@foreach`,
+     * `@forelse`, `@for`, `@while`)? Aí trocar o valor muda o que a tela
+     * mostra, e só o redesenho completo mostra — o op `bind` não alcança o
+     * `@if` (fw#508).
+     */
+    public function _readsInControl(string $prop): bool
+    {
+        $cls = static::class;
+        if (isset(self::$_controlReads[$cls][$prop])) {
+            return self::$_controlReads[$cls][$prop];
+        }
+        $src = null;
+        try {
+            $view = $this->view();
+            $name = is_array($view) ? ($view[0] ?? '') : $view;
+            if (is_string($name) && $name !== '' && preg_match('/^[\w.\-:\/]+$/', $name)) {
+                $src = \Mad\View\MadBlade::viewSource($name);
+            }
+        } catch (\Throwable $e) {
+            $src = null;
+        }
+        $q   = preg_quote($prop, '/');
+        $hit = is_string($src) && preg_match(
+            '/@(?:if|elseif|unless|isset|empty|switch|foreach|forelse|for|while)\s*\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\$(?:that->|this->)?' . $q . '\b/',
+            $src
+        ) === 1;
+
+        return self::$_controlReads[$cls][$prop] = $hit;
+    }
+
+    /** O parâmetro espera um valor (o id), não o pedido inteiro? */
+    private static function _takesScalar(\ReflectionParameter $p): bool
+    {
+        $type = $p->getType();
+        if ($type === null) {
+            return !in_array(strtolower($p->getName()), ['param', 'params', 'data', 'dados', 'request', 'args', 'input', 'payload'], true);
+        }
+        $types = $type instanceof \ReflectionUnionType ? $type->getTypes() : [$type];
+        foreach ($types as $t) {
+            if (!$t instanceof \ReflectionNamedType || !in_array($t->getName(), ['int', 'string', 'float', 'null'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -4326,6 +4326,10 @@
                     t.end = c.end;
                     chain = chain.then(() => (refused ? null : wire.fireTaskUpdate(this.$el, method, c.id, c.start, c.end, 'auto')));
                 }
+                // Sucessor empurrado: a barra dele muda de lugar já (fw#399). Só a
+                // camada do gráfico redesenhava com a geometria antiga, e a barra
+                // ficava onde estava até o F5 — a data nova já estava gravada.
+                if (before.length) this._markDirty('all');
                 return chain.then(() => { if (refused) this._restoreTasks(before); });
             },
 

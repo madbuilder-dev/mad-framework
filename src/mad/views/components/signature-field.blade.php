@@ -53,7 +53,7 @@
     // With storage: value is a file path, convert to accessible URL for preview
     // (mad_upload_is_file covers local AND the configured upload disk — S3 etc)
     if ($storage && $value && !str_starts_with($value, 'data:') && mad_upload_is_file($value)) {
-        $value = mad_download_url($value);
+        $value = mad_download_url($value, null, \Mad\Component\MadRenderContext::getForm()?->fileOwnerFor((string) $name, $value));
     }
 
     $hasError = !empty($error);

@@ -126,6 +126,12 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
     protected string $popoverTitle   = '';
     protected string $popoverContent = '';
     protected string $popoverTrigger = 'hover';
+    /**
+     * Dica do bloco do evento (fw#525): campo ou template (`{paciente->nome} · {obs}`)
+     * mostrado ao passar o mouse. Sem ela vale o popover-title/-content e, sem
+     * eles, o título do evento — o bloco estreito da Semana corta o texto.
+     */
+    protected string $tooltipField   = '';
 
     // ── Resource timeline ────────────────────────────────────────────────
 
@@ -185,7 +191,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         'editable', 'noDragging', 'noResizing', 'autoUpdate', 'confirmUpdate',
         'clickTarget', 'clickTargetMode', 'dayClickTarget', 'slotClickTarget', 'eventForm',
         'eventUpdateMethod', 'dayClickMethod', 'eventClickMethod', 'slotClickMethod',
-        'popoverTitle', 'popoverContent', 'popoverTrigger',
+        'popoverTitle', 'popoverContent', 'popoverTrigger', 'tooltipField',
         'resourceModel', 'resourceDatabase', 'resourceIdField', 'resourceTitleField',
         'resourceColorField', 'resourceLabel', 'resourceOrderBy',
         'periodType', 'dateField', 'periodFields', 'rememberFilters',
@@ -277,14 +283,33 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         // 2. Viewport (start/end do FullCalendar) — normalizado pro formato naive.
         $start = self::_viewportStamp((string) ($_GET['start'] ?? ''), ' 00:00:00');
         $end   = self::_viewportStamp((string) ($_GET['end']   ?? ''), ' 23:59:59');
-        if ($start !== '' && $this->startField !== '') {
-            $q->where($this->startField, '>=', $start);
-        }
         $endCol = $this->_endColumn();
-        if ($end !== '' && $endCol !== '') {
-            $q->where($endCol, '<=', $end);
-        } elseif ($end !== '' && $this->startField !== '') {
-            $q->where($this->startField, '<=', $end);
+        if ($endCol !== '' && $this->startField !== '') {
+            // Com coluna de fim: o evento que SOBREPÕE a janela (fw#414). Antes
+            // era início >= janela e fim <= janela — o recesso de 22/12 a 05/01
+            // sumia em janeiro, e o fim vazio (marco de um dia) sumia sempre.
+            // Fim vazio = evento de um dia, pelo início. O fim compara pelo dia
+            // (coluna `date` contra '… 00:00:00' falha como texto no SQLite).
+            $sf = $this->startField;
+            if ($end !== '') {
+                $q->where($sf, '<=', $end);
+            }
+            if ($start !== '') {
+                $day = substr($start, 0, 10);
+                $q->where(function ($w) use ($endCol, $sf, $start, $day) {
+                    $w->where($endCol, '>=', $day)
+                      ->orWhere(function ($n) use ($endCol, $sf, $start) {
+                          $n->whereNull($endCol)->where($sf, '>=', $start);
+                      });
+                });
+            }
+        } elseif ($this->startField !== '') {
+            if ($start !== '') {
+                $q->where($this->startField, '>=', $start);
+            }
+            if ($end !== '') {
+                $q->where($this->startField, '<=', $end);
+            }
         }
 
         // 3. onSearch hook (builder-native ou bridge legado) + a closure
@@ -372,11 +397,35 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             'title' => (string) $this->_resolveFieldOrTemplate($r, $this->titleField),
             'start' => $this->_normalizeDateTime((string) ($this->_resolvePath($r, $this->startField) ?? '')),
         ];
+        // Início só com data (coluna `date`, texto AAAA-MM-DD) sem all-day-field
+        // (fw#408): saía como horário 00:00 e sumia na Semana/Dia (fora do
+        // horário visível). Vira evento de dia inteiro, na faixa do topo.
+        $dateOnly = $this->allDayField === '' && $this->_isDateOnly($r, $this->startField, $event['start']);
+        if ($dateOnly) {
+            $event['start']  = substr($event['start'], 0, 10);
+            $event['allDay'] = true;
+        }
         if (($endCol = $this->_endColumn()) !== '') {
             $endVal = $this->_resolvePath($r, $endCol);
             if ($endVal !== null && $endVal !== '') {
                 $event['end'] = $this->_normalizeDateTime((string) $endVal);
+                if ($dateOnly) {
+                    $event['end'] = substr($event['end'], 0, 10);
+                }
             }
+        }
+
+        // Dica do bloco (fw#505 / fw#525): resolvida por registro aqui — o
+        // navegador não tem os campos do registro para montar o template.
+        if ($this->tooltipField !== '') {
+            $tip = trim((string) $this->_resolveFieldOrTemplate($r, $this->tooltipField));
+            if ($tip !== '') $event['tooltip'] = $tip;
+        }
+        if ($this->popoverTitle !== '') {
+            $event['popoverTitle'] = (string) $this->_resolveFieldOrTemplate($r, $this->popoverTitle);
+        }
+        if ($this->popoverContent !== '') {
+            $event['popoverContent'] = (string) $this->_resolveFieldOrTemplate($r, $this->popoverContent);
         }
 
         // Cor: colorField > colorMap > fallback $color
@@ -851,7 +900,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             'confirmUpdate', 'clickTarget', 'clickTargetMode',
             'dayClickTarget', 'slotClickTarget', 'eventForm',
             'eventUpdateMethod', 'dayClickMethod', 'eventClickMethod', 'slotClickMethod',
-            'popoverTitle', 'popoverContent', 'popoverTrigger',
+            'popoverTitle', 'popoverContent', 'popoverTrigger', 'tooltipField',
             'resourceModel', 'resourceDatabase', 'resourceIdField', 'resourceTitleField',
             'resourceColorField', 'resourceLabel', 'resourceOrderBy',
             'periodType', 'dateField', 'unitField',
@@ -1276,6 +1325,27 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
      *
      * Inputs validos (HH:MM:SS ou HH:MM) passam intactos.
      */
+    /**
+     * O valor do início não tem hora? Texto AAAA-MM-DD, ou coluna `date` do
+     * model (o cast entrega Carbon com 00:00, o valor cru no banco não tem hora).
+     */
+    protected function _isDateOnly(object $r, string $path, string $value): bool
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value))) {
+            return true;
+        }
+        if ($path === '' || str_contains($path, '.') || str_contains($path, '->')
+            || !$r instanceof \Illuminate\Database\Eloquent\Model) {
+            return false;
+        }
+        $raw = $r->getAttributes()[$path] ?? null;
+        if (is_string($raw) && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($raw))) {
+            return true;
+        }
+
+        return $r->hasCast($path, ['date', 'immutable_date']);
+    }
+
     protected function _normalizeDateTime(string $v): string
     {
         if ($v === '') return '';

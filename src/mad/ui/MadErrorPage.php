@@ -124,6 +124,24 @@ class MadErrorPage
      */
     public static function forbidden(?array $reason = null): string
     {
+        return self::forbiddenShortTitle() . self::forbiddenCard($reason);
+    }
+
+    /**
+     * Título curto da tela de bloqueio para o casco (breadcrumb, rótulo da
+     * aba): sem ele o topo herdava o rótulo de um item do menu, e a tela
+     * negada aparecia como "Logout" (fw#502). Fica fora da vista: o cartão
+     * já tem o título longo.
+     */
+    private static function forbiddenShortTitle(): string
+    {
+        $short = self::esc(self::t('mad.forbidden_short', 'Sem acesso'));
+
+        return '<span class="mad-page-title" data-mad-tab-label style="display:none">' . $short . '</span>';
+    }
+
+    private static function forbiddenCard(?array $reason): string
+    {
         $home = self::esc(self::t('mad.forbidden_home', 'Ir para o início'));
         $url  = self::esc(self::homeUrl());
 

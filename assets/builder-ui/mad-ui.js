@@ -1861,7 +1861,13 @@ function _madShowQuickFormPopover(cfg, ts) {
     // (funciona tanto para [data-mad-noresults-quick-field] quanto para single-input)
     // Só em <input>: num <select> o term nao casa com nenhum <option> e o
     // assignment ZERA o valor (e, se enhançado, dessincroniza o MAD Select).
-    var firstField = pop.querySelector('[data-mad-noresults-quick-field], [data-mad-noresults-quick-input]');
+    // O termo vai para o campo da coluna do `display` (fw#506); sem ele, para
+    // o 1º campo de texto.
+    var termName = cfg.quick.termField || '';
+    var firstField = (termName && pop.querySelector('input[data-mad-noresults-quick-field="' + termName + '"]'))
+        || [].filter.call(pop.querySelectorAll('[data-mad-noresults-quick-field], [data-mad-noresults-quick-input]'),
+            function (el) { return el.tagName === 'INPUT' && !/^(hidden|checkbox|radio)$/i.test(el.type || ''); })[0]
+        || null;
     var term = ts && ts.control_input ? ts.control_input.value.trim() : '';
     if (firstField && term && firstField.tagName === 'INPUT') {
         firstField.value = term;
@@ -1886,7 +1892,10 @@ function _madShowQuickFormPopover(cfg, ts) {
             function (el) { return el.tagName === 'INPUT' && !el.closest('.mad-sel'); }
         );
         var prefilled = !!(firstField && term && firstField.tagName === 'INPUT');
-        var target = (prefilled && focusables.length > 1) ? focusables[1] : focusables[0];
+        // Já preenchido: foca o próximo campo vazio, não o que recebeu o termo.
+        var target = prefilled
+            ? (focusables.filter(function (el) { return el !== firstField; })[0] || firstField)
+            : focusables[0];
         if (target) {
             target.focus();
             target.select && target.select();
@@ -3989,8 +3998,85 @@ document.addEventListener('change', function (e) {
  */
 function _madLucide(nodes) {
     if (typeof lucide === 'undefined') return;
+    _madScopeLucide();
     nodes ? lucide.createIcons({ nodes }) : lucide.createIcons();
 }
+
+/*
+ * Ícones só onde mudou (fw#422). O Lucide 1.49 não tem a opção `nodes` (era
+ * ignorada) e varre `[data-lucide]` da raiz — o <svg> já desenhado guarda o
+ * atributo e era trocado de novo: cada `$lucide($el)` refazia TODOS os ícones
+ * da página. Envolve `lucide.createIcons` uma vez:
+ *   - `nodes` vira raiz: o nó em si (o `<i>`/`<svg>` passado é redesenhado,
+ *     como quem troca o nome do ícone espera) e os `<i>` pendentes dentro dele;
+ *   - sem `nodes`, a raiz pedida (ou o documento), só com os `<i>` pendentes;
+ *   - nada pendente: não chama o Lucide.
+ * Os alvos ganham uma marca própria e o Lucide procura só por ela.
+ */
+var _MAD_LC_MARK = 'data-mad-lc';
+function _madScopeLucide() {
+    if (typeof lucide === 'undefined' || !lucide.createIcons || lucide.createIcons.__madScoped) return;
+    var orig = lucide.createIcons;
+    var scoped = function (opts) {
+        opts = opts || {};
+        var nameAttr = opts.nameAttr || 'data-lucide';
+        if (nameAttr !== 'data-lucide' || opts.inTemplates) return orig.call(lucide, opts);
+        var rest = {};
+        for (var k in opts) { if (k !== 'nodes' && k !== 'root') rest[k] = opts[k]; }
+        rest.nameAttr = _MAD_LC_MARK;
+
+        var targets = [];
+        var mark = function (el) {
+            var name = el.getAttribute('data-lucide');
+            if (!name || el.hasAttribute(_MAD_LC_MARK)) return;
+            el.setAttribute(_MAD_LC_MARK, name);
+            targets.push(el);
+        };
+        var pending = function (root) {
+            if (!root || !root.querySelectorAll) return;
+            var list = root.querySelectorAll('i[data-lucide]');
+            for (var i = 0; i < list.length; i++) mark(list[i]);
+        };
+        if (opts.nodes) {
+            [].concat(opts.nodes).forEach(function (n) {
+                if (!n || n.nodeType !== 1) return;
+                if (n.hasAttribute('data-lucide')) mark(n);
+                pending(n);
+            });
+        } else {
+            pending(opts.root || document);
+        }
+        if (!targets.length) return;
+
+        // Uma chamada por pai (o Lucide troca o nó dentro da raiz); a marca sai
+        // logo depois, para um pai de fora não redesenhar o mesmo ícone.
+        var unmark = function (root) {
+            var left = root.querySelectorAll('[' + _MAD_LC_MARK + ']');
+            for (var j = 0; j < left.length; j++) left[j].removeAttribute(_MAD_LC_MARK);
+        };
+        var roots = [];
+        targets.forEach(function (el) {
+            var r = el.parentNode;
+            if (r && roots.indexOf(r) === -1) roots.push(r);
+        });
+        try {
+            roots.forEach(function (r) {
+                var o = {};
+                for (var k2 in rest) o[k2] = rest[k2];
+                o.root = r;
+                orig.call(lucide, o);
+                unmark(r);
+            });
+        } finally {
+            roots.forEach(unmark);
+            targets.forEach(function (el) { el.removeAttribute(_MAD_LC_MARK); });
+        }
+    };
+    scoped.__madScoped = true;
+    lucide.createIcons = scoped;
+}
+_madScopeLucide();
+document.addEventListener('DOMContentLoaded', _madScopeLucide);
 
 /* Monta o Sonner toaster para a posição dada (idempotente) */
 function _madToastMount(position = 'bottom-right') {
@@ -5600,12 +5686,28 @@ document.addEventListener('alpine:init', () => {
                         if (cfg.initVal) ed.setContent(cfg.initVal);
                         textarea.value = ed.getContent();
                     });
+                    let syncing = false;
                     const sync = function () {
-                        textarea.value = ed.getContent();
-                        textarea.dispatchEvent(new Event('input',  { bubbles: true }));
-                        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                        syncing = true;
+                        try {
+                            textarea.value = ed.getContent();
+                            textarea.dispatchEvent(new Event('input',  { bubbles: true }));
+                            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                        } finally {
+                            syncing = false;
+                        }
                     };
                     ed.on('change keyup undo redo SetContent blur ExecCommand', sync);
+                    // Valor posto pelo servidor (`form->set()` numa ação vira o
+                    // op `val`, que escreve no textarea e dispara input/change):
+                    // o editor passa a mostrar o novo. Sem isto ele seguia com o
+                    // texto antigo e o envio gravava o antigo (fw#514).
+                    const pull = function () {
+                        if (syncing || !ed.initialized) return;
+                        if (textarea.value !== ed.getContent()) ed.setContent(textarea.value || '');
+                    };
+                    textarea.addEventListener('input', pull);
+                    textarea.addEventListener('change', pull);
                 },
             };
 
@@ -9791,6 +9893,20 @@ document.addEventListener('alpine:init', () => {
     //   Digita "12345" → exibe "123,45" (2 decimais)
     //   Digita "1234567" → exibe "12.345,67"
     //
+    // Coluna money/numeric da Lista de itens sem `allow-negative`: o "-" sai,
+    // mas com aviso — antes "-5" virava 5 calado e a devolução entrava como
+    // compra (fw#549). Um aviso por vez em que a pessoa entra no campo.
+    function _madNoNegativeWarn(input) {
+        if (!input || input._madNegWarned) return;
+        input._madNegWarned = true;
+        input.addEventListener('blur', function () { input._madNegWarned = false; }, { once: true });
+        var lang = String(document.documentElement.lang || '').toLowerCase();
+        var msg = lang.indexOf('es') === 0 ? 'Este campo no acepta valores negativos.'
+            : lang.indexOf('en') === 0 ? 'This field does not accept negative values.'
+            : 'Este campo não aceita valor negativo.';
+        if (typeof window.madToast === 'function') window.madToast({ message: msg, type: 'warning' });
+    }
+
     Alpine.data('madMoneyCell', (cfg = {}) => {
         const decimals    = cfg.decimals ?? 2;
         const min         = cfg.min ?? null;
@@ -9874,6 +9990,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             _onInput(e) {
+                if (!allowNeg && String(e.target.value).indexOf('-') !== -1) _madNoNegativeWarn(e.target);
                 if (fillDir === 'left') {
                     // Digitação normal com separador decimal (port do madMoneyField)
                     var val = e.target.value;
@@ -10170,6 +10287,7 @@ document.addEventListener('alpine:init', () => {
         const step   = (cfg.step != null && isFinite(cfg.step) && cfg.step > 0) ? cfg.step : null;
         const field  = cfg.field || '';
         const rowRef = cfg.row || null;
+        const allowNeg = !!cfg.allowNegative;
 
         function clamp(v) {
             if (min !== null && v < min) return min;
@@ -10219,7 +10337,9 @@ document.addEventListener('alpine:init', () => {
 
             _onInput(e) {
                 var val = e.target.value;
-                // Só permite dígitos e uma vírgula
+                // Só permite dígitos e uma vírgula (e o "-" do começo, com allow-negative)
+                var neg = allowNeg && val.trim().charAt(0) === '-';
+                if (!allowNeg && val.indexOf('-') !== -1) _madNoNegativeWarn(e.target);
                 val = val.replace(/[^\d,]/g, '');
                 var idx = val.indexOf(',');
                 if (idx !== -1) {
@@ -10229,6 +10349,7 @@ document.addEventListener('alpine:init', () => {
                 if (idx !== -1 && val.length - idx - 1 > maxDec) {
                     val = val.slice(0, idx + 1 + maxDec);
                 }
+                if (neg) val = '-' + val;
                 e.target.value = val;
                 var floatVal = madNumParse(val);
                 if (rowRef) rowRef[field] = floatVal;
@@ -11871,6 +11992,22 @@ document.addEventListener('alpine:init', () => {
                 if (cfg.extraOptions && typeof cfg.extraOptions === 'object') {
                     Object.assign(opts, cfg.extraOptions);
                 }
+
+                // ── Dica do bloco (fw#505 / fw#525) ────────────────
+                // O bloco estreito da Semana corta o texto: passar o mouse
+                // mostra a dica do evento (tooltip-field, ou popover-title e
+                // popover-content, resolvidos por registro no servidor) e, sem
+                // elas, o título inteiro. eventDidMount próprio da tela continua.
+                const _ownDidMount = opts.eventDidMount;
+                opts.eventDidMount = (info) => {
+                    const ev = info && info.event;
+                    const xp = (ev && ev.extendedProps) || {};
+                    const tip = xp.tooltip
+                        || [xp.popoverTitle, xp.popoverContent].filter((t) => t && String(t).trim()).join('\n')
+                        || (ev && ev.title) || '';
+                    if (tip && info.el && !info.el.hasAttribute('title')) info.el.setAttribute('title', String(tip));
+                    if (typeof _ownDidMount === 'function') return _ownDidMount(info);
+                };
 
                 // ── Cria calendário ────────────────────────────────
                 _calendar = new FullCalendar.Calendar(calEl, opts);
@@ -14418,6 +14555,7 @@ document.addEventListener('alpine:init', () => {
                 this.$nextTick(function() {
                     if (newMode === 'draw') {
                         self._initPad();
+                        self._loadBackground(self.signatureData);
                         if (_isPhone()) {
                             self.enterFullscreen();
                         }
@@ -14455,8 +14593,47 @@ document.addEventListener('alpine:init', () => {
                 this.$nextTick(function() {
                     if (self.mode === 'draw') {
                         self._initPad();
+                        self._loadBackground(self.signatureData);
                     }
                 });
+            },
+
+            // Editar uma assinatura gravada: o traço salvo vira o fundo do
+            // quadro e o que se desenha completa ele. O quadro abria em branco e
+            // quem só queria ajustar desenhava tudo de novo (fw#396). Só imagem
+            // da própria origem (data: ou mesmo domínio): a de outro domínio
+            // "suja" o canvas e o export falharia.
+            _loadBackground: function(src) {
+                this._bgImage = null;
+                if (!src || !this._pad) return;
+                var same = /^data:image\//.test(src);
+                if (!same) {
+                    try { same = new URL(src, window.location.href).origin === window.location.origin; } catch (e) { same = false; }
+                }
+                if (!same) return;
+                var self = this;
+                var img = new Image();
+                img.onload = function() {
+                    if (!self._pad) return;
+                    self._bgImage = img;
+                    var data = self._pad.toData();
+                    self._pad.clear();
+                    self._paintBackground(self.$refs.canvas);
+                    if (data.length) self._pad.fromData(data, { clear: false });
+                };
+                img.src = src;
+            },
+
+            // Desenha o fundo (a assinatura gravada) no quadro normal, no meio e
+            // na proporção dela. Desfazer e redimensionar repintam por aqui.
+            _paintBackground: function(canvas) {
+                var img = this._bgImage;
+                if (!img || !canvas || !img.width || !img.height) return;
+                var w = canvas.offsetWidth || canvas.width;
+                var h = canvas.offsetHeight || canvas.height;
+                var r = Math.min(w / img.width, h / img.height);
+                var dw = img.width * r, dh = img.height * r;
+                canvas.getContext('2d').drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
             },
 
             // ── Draw mode ──
@@ -14523,7 +14700,8 @@ document.addEventListener('alpine:init', () => {
                 canvas.getContext('2d').scale(ratio, ratio);
                 if (pad) {
                     pad.clear();
-                    if (data) pad.fromData(data);
+                    if (pad === this._pad) this._paintBackground(canvas);
+                    if (data) pad.fromData(data, { clear: pad !== this._pad || !this._bgImage });
                 }
             },
 
@@ -14556,6 +14734,7 @@ document.addEventListener('alpine:init', () => {
                     this._pad.off();
                     this._pad = null;
                 }
+                this._bgImage = null;
                 this._undoData = [];
             },
 
@@ -14583,7 +14762,14 @@ document.addEventListener('alpine:init', () => {
                 var data = pad.toData();
                 if (data.length > 0) {
                     data.pop();
-                    pad.fromData(data);
+                    if (pad === this._pad && this._bgImage) {
+                        // Desfazer tira o último traço, não o fundo gravado.
+                        pad.clear();
+                        this._paintBackground(this.$refs.canvas);
+                        pad.fromData(data, { clear: false });
+                    } else {
+                        pad.fromData(data);
+                    }
                     this._undoData = data.slice();
                     this._syncPending(pad);
                 }
@@ -14593,6 +14779,8 @@ document.addEventListener('alpine:init', () => {
                 var pad = this.isFullscreen ? this._fsPad : this._pad;
                 if (pad) {
                     pad.clear();
+                    // Limpar é começar de novo: o fundo gravado sai junto.
+                    if (pad === this._pad) this._bgImage = null;
                     this._undoData = [];
                     this._syncPending(pad);
                 }
@@ -14600,6 +14788,13 @@ document.addEventListener('alpine:init', () => {
 
             confirmDraw: function() {
                 var pad = this._pad;
+                // Editar e confirmar sem traço novo: fica a assinatura gravada.
+                if (pad && pad.isEmpty() && this._bgImage && this.signatureData) {
+                    this.hasSignature = true;
+                    this.editing = false;
+                    this._destroyPad();
+                    return;
+                }
                 if (!pad || pad.isEmpty()) {
                     if (typeof madToast === 'function') madToast('Desenhe sua assinatura primeiro', 'warning');
                     return;

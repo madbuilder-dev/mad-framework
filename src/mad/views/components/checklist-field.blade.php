@@ -52,6 +52,20 @@
     // ('["5","4"]'): com explode() o redesenho da tela perdia todas as marcas.
     $selected = \Mad\Form\MadForm::selectionKeys($selected, ',');
 
+    // `:items="['10' => 'Resina · Dente 16']"`, como no mad-select-field: cada
+    // par vira uma linha com uma coluna implícita. A lista saía vazia, sem
+    // erro, e o contador dizia "0 de 2 selecionados" (fw#503).
+    if (is_array($items) && $items !== [] && !array_filter($items, fn ($v) => is_array($v) || is_object($v))) {
+        $_pairs = [];
+        foreach ($items as $_k => $_v) {
+            $_pairs[] = [$idCol => (string) $_k, 'label' => (string) $_v];
+        }
+        $items = $_pairs;
+        if ($columns === []) {
+            $columns = [['key' => 'label', 'label' => '']];
+        }
+    }
+
     $normalizedItems = [];
     foreach ($items as $item) {
         if (is_object($item) && method_exists($item, 'toArray')) {

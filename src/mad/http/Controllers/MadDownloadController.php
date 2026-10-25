@@ -63,6 +63,7 @@ class MadDownloadController
         $file = (string) $request->query('file', '');
 
         $relative = $this->validatedRelativePath($file);
+        $this->assertOwnerSees($relative, (string) $request->query('own', ''));
 
         // Nome de exibição: param basename (sanitizado) ou o nome real.
         // Calculado do path RELATIVO — idêntico ao basename do absoluto legado.
@@ -97,6 +98,61 @@ class MadDownloadController
         $streamed->setPrivate();
 
         return $streamed;
+    }
+
+    /**
+     * URL assinada com o dono do arquivo (`own`, fw#537): quem baixa tem de
+     * enxergar o registro — a consulta roda com os escopos de empresa e unidade
+     * ativos — e o caminho tem de estar numa coluna dele (um caminho trocado no
+     * banco para o arquivo de outro registro não serve mais pelo link antigo).
+     * O parâmetro é coberto pela assinatura: o navegador não o troca.
+     */
+    private function assertOwnerSees(string $relative, string $own): void
+    {
+        if ($own === '') {
+            return;
+        }
+        $decoded = json_decode((string) base64_decode(strtr($own, '-_', '+/'), true), true);
+        if (!is_array($decoded) || count($decoded) !== 2 || !is_string($decoded[0]) || !is_scalar($decoded[1])) {
+            abort(403);
+        }
+        [$class, $key] = $decoded;
+        if (!class_exists($class) || !is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+            abort(403);
+        }
+        try {
+            $record = $class::query()->whereKey($key)->first();
+        } catch (\Throwable) {
+            $record = null;
+        }
+        if ($record === null) {
+            abort(403);
+        }
+        foreach ($record->getAttributes() as $value) {
+            if (!is_string($value) || $value === '') {
+                continue;
+            }
+            if ($value === $relative || in_array($relative, array_map('trim', explode(',', $value)), true)) {
+                return;
+            }
+            $list = str_starts_with(ltrim($value), '[') ? json_decode($value, true) : null;
+            if (is_array($list) && self::listHasPath($list, $relative)) {
+                return;
+            }
+        }
+        abort(403);
+    }
+
+    /** Lista JSON de arquivos (`["a.pdf"]` ou `[{"path": "a.pdf"}]`) traz o caminho? */
+    private static function listHasPath(array $list, string $relative): bool
+    {
+        foreach ($list as $item) {
+            if ($item === $relative || (is_array($item) && in_array($relative, $item, true))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Valida a forma do path relativo; aborta 400/403 se inválido. */

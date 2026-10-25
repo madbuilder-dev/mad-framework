@@ -134,6 +134,12 @@ class MadForbidden
     {
         $request = $request ?? (function_exists('request') ? request() : null);
 
+        // Chamada que espera JSON (fetch com Accept: application/json) e não é
+        // a navegação da tela (X-Mad-Partial): a recusa em JSON (fw#413).
+        if ($request instanceof Request && $request->expectsJson() && !$request->headers->has('X-Mad-Partial')) {
+            return self::json();
+        }
+
         if (self::wantsShell($request)) {
             $shell = self::shell();
             if ($shell instanceof Response) {
@@ -145,6 +151,21 @@ class MadForbidden
         return new Response(MadErrorPage::forbidden(self::reason($screen)), 403, [
             'Content-Type' => 'text/html; charset=utf-8',
         ]);
+    }
+
+    /**
+     * Recusa em JSON para a rota de método estático (`?static=1`) e para quem
+     * pede JSON: `{"ok": false, "erro": "<motivo>"}` — o JavaScript da tela
+     * mostra o motivo em vez de "Não foi possível concluir" (fw#413).
+     */
+    public static function json(): \Illuminate\Http\JsonResponse
+    {
+        return new \Illuminate\Http\JsonResponse(
+            ['ok' => false, 'erro' => self::message()],
+            403,
+            ['Cache-Control' => 'no-store, private'],
+            JSON_UNESCAPED_UNICODE
+        );
     }
 
     /** Mensagem curta e traduzida para o canal JSON (wire). */

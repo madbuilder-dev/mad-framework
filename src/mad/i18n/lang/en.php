@@ -273,6 +273,8 @@ return [
             'load_failed'   => 'Could not load the data. Try again or contact the administrator.',
             'duplicate'     => 'A record with this data already exists.',
             'unit_not_allowed' => 'You do not have access to the selected unit.',
+            'tenant_not_allowed' => 'The record cannot be saved in another company.',
+            'out_of_memory' => 'The screen tried to load too much data at once. Filter the list or ask for fewer rows per page.',
             // Listing: refused in-cell edit and delete (MadDataGrid::onInlineSave, MadGrid::onMadGridDelete).
             'row_gone'       => 'This record is no longer in the list: it may have been deleted or changed by someone else. Refresh the page.',
             'delete_gone'    => 'Nothing was deleted: the record is no longer in the list. It may have been deleted by someone else.',

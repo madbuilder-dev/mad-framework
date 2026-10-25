@@ -24,6 +24,7 @@ namespace Mad\Calendar;
  * │               event-update-method,                                           │
  * │               day-click-method, event-click-method, slot-click-method,       │
  * │               popover-title, popover-content, popover-trigger,               │
+ * │               tooltip-field,                                                 │
  * │               period-type, date-field, period-fields, remember-filters,      │
  * │               default-current-period, use-presets, apply-unit-filter,        │
  * │               unit-field, unit-fields                                        │
@@ -198,6 +199,7 @@ class MadCalendarCompiler
             'popover-title'          => 'popoverTitle',
             'popover-content'        => 'popoverContent',
             'popover-trigger'        => 'popoverTrigger',
+            'tooltip-field'          => 'tooltipField',
             'period-type'            => 'periodType',
             'date-field'             => 'dateField',
             'period-fields'          => 'periodFields',

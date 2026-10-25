@@ -266,6 +266,8 @@ return [
             'load_failed'   => 'Não foi possível carregar os dados. Tente de novo ou avise o administrador.',
             'duplicate'     => 'Já existe um registro com estes dados.',
             'unit_not_allowed' => 'Você não tem acesso à unidade escolhida.',
+            'tenant_not_allowed' => 'O registro não pode ser gravado em outra empresa.',
+            'out_of_memory' => 'A tela tentou carregar dados demais de uma vez. Filtre a lista ou peça menos linhas por página.',
             // Listagem: edição na célula e exclusão recusadas (MadDataGrid::onInlineSave, MadGrid::onMadGridDelete).
             'row_gone'       => 'Este registro não está mais na listagem: pode ter sido excluído ou alterado por outra pessoa. Atualize a tela.',
             'delete_gone'    => 'Nada foi excluído: o registro não está mais na listagem. Ele pode ter sido excluído por outra pessoa.',

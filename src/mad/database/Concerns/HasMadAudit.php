@@ -67,7 +67,9 @@ trait HasMadAudit
     /** Data/hora do carimbo, no formato que o trait grava (usado pelo MadAuditBuilder). */
     public function madAuditTimestamp(): string
     {
-        return date($this->madAuditDateMask());
+        // Relógio do Laravel (e não date()): respeita Carbon::setTestNow() e o
+        // relógio de teste do app (fw#526).
+        return \Illuminate\Support\Carbon::now()->format($this->madAuditDateMask());
     }
 
     public function getCreatedAtColumn()       { return $this->madAuditColumn('CREATEDAT', 'created_at', 'createdAtColumn'); }
@@ -101,7 +103,7 @@ trait HasMadAudit
 
     protected function madStampAudit(bool $creating): void
     {
-        $now = date($this->madAuditDateMask());
+        $now = $this->madAuditTimestamp();
 
         if ($creating) {
             if ($c = $this->getCreatedAtColumn())       { $this->setAttribute($c, $now); }

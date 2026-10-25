@@ -802,7 +802,7 @@ class MadBladeCompiler extends BladeCompiler
                      || preg_match("/(?:^|\s):params\s*=\s*'([^'\\\\]*+(?:\\\\.[^'\\\\]*+)*+)'/s", $params, $np)) {
                         // :params="expr" → expr é PHP que retorna string JSON ou array
                         // Converte para array se necessário
-                        $navParamsExpr = '(function($v){return is_array($v)?$v:(is_string($v)?json_decode($v,true)?:[]:[]);})((' . $np[1] . '))';
+                        $navParamsExpr = '\\Mad\\View\\MadBlade::navParams((' . $np[1] . '))';
                     } elseif (preg_match('/\bparams\s*=\s*["\']([^"\']+)["\']/', $params, $np)) {
                         // params="{key: val}" → valor JS literal, parsear como JSON relaxado
                         $literal = $np[1];
@@ -1060,13 +1060,40 @@ class MadBlade
      * Render a Blade view file to an HTML string.
      * View files live in app/resources/views/ and use .blade.php extension.
      */
+    /**
+     * `$errors` da sessão, como numa view do Laravel: este Blade tem fábrica
+     * própria e não recebe o que o `ShareErrorsFromSession` compartilha. Sem
+     * isto o `@error()` da página do site e o recado do formulário recusado
+     * (`withErrors()` no redirect) não apareciam (fw#546).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private static function withErrors(array $data): array
+    {
+        if (array_key_exists('errors', $data)) {
+            return $data;
+        }
+        $bag = null;
+        try {
+            if (function_exists('app') && app()->bound('session')) {
+                $bag = app('session')->get('errors');
+            }
+        } catch (\Throwable $e) {
+            $bag = null;
+        }
+        $data['errors'] = $bag instanceof \Illuminate\Support\ViewErrorBag ? $bag : new \Illuminate\Support\ViewErrorBag();
+
+        return $data;
+    }
+
     public static function render(string $view, array $data = []): string
     {
         $factory = self::factory();
         $obLevel = ob_get_level();
 
         try {
-            return $factory->make($view, array_merge(self::$shared, $data))->render();
+            return $factory->make($view, self::withErrors(array_merge(self::$shared, $data)))->render();
         } catch (\Throwable $e) {
             // Limpa buffers abertos pelo render parcial e o estado de
             // componentes/sections do Factory antes de propagar.
@@ -1105,7 +1132,7 @@ class MadBlade
 
         $obLevel = ob_get_level();
         try {
-            return $factory->file($path, array_merge(self::$shared, $data))->render();
+            return $factory->file($path, self::withErrors(array_merge(self::$shared, $data)))->render();
         } catch (\Throwable $e) {
             while (ob_get_level() > $obLevel) {
                 ob_end_clean();
@@ -1676,5 +1703,48 @@ HTML;
         $blade->directive('endCanAccess', function (string $exp): string {
             return "<?php endif; ?>";
         });
+    }
+
+    /**
+     * `:params` do `navigate`: array, JSON ou o objeto no jeito do JS que a
+     * documentação mostra (`'{id: 42}'`, `"{id: 42, aba: 'x'}"`). Só o JSON
+     * estrito era lido: o objeto do JS virava [] e o método de destino recebia
+     * o pedido inteiro no 1º argumento — TypeError "int, array given" (fw#516).
+     *
+     * @return array<string, mixed>
+     */
+    public static function navParams(mixed $v): array
+    {
+        if (is_array($v)) {
+            return $v;
+        }
+        if (!is_string($v) || trim($v) === '') {
+            return [];
+        }
+        $json = json_decode($v, true);
+        if (is_array($json)) {
+            return $json;
+        }
+        $relaxed = preg_replace("/'([^'\\\\]*)'/", '"$1"', $v);
+        $relaxed = preg_replace('/([{,]\\s*)([A-Za-z_]\\w*)\\s*:/', '$1"$2":', (string) $relaxed);
+        $json = json_decode((string) $relaxed, true);
+
+        return is_array($json) ? $json : [];
+    }
+
+    /**
+     * O texto Blade de uma view pelo nome (`pages.x`), ou null. Para quem
+     * precisa saber o que a tela lê sem desenhá-la de novo.
+     */
+    public static function viewSource(string $view): ?string
+    {
+        try {
+            $path = self::factory()->getFinder()->find($view);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $src = @file_get_contents($path);
+
+        return is_string($src) ? $src : null;
     }
 }

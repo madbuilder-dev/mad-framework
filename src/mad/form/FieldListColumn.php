@@ -96,6 +96,7 @@ class FieldListColumn
     // brigaria com eles.
     public string $mask           = '';   // alias ('cpf','cnpj','cep'...) ou pattern (999.999-99)
     public bool   $stripMask      = false; // salva só dígitos/letras (aplicado no getFieldList)
+    public bool   $allowNegative  = false; // money/numeric: aceita o sinal de menos (fw#549)
     public string $forceCase      = '';   // upper | lower | title
     public string $icon           = '';   // lucide icon name
     public string $iconColor      = '';   // cor CSS do ícone
@@ -178,6 +179,7 @@ class FieldListColumn
     public function groupKey(string $v): self      { $this->groupKey = $v;                     return $this; }
     public function mask(string $v): self          { $this->mask = $v;                         return $this; }
     public function stripMask(bool $on = true): self { $this->stripMask = $on;               return $this; }
+    public function allowNegative(bool $on = true): self { $this->allowNegative = $on;       return $this; }
     public function forceCase(string $v): self     { $this->forceCase = $v;                    return $this; }
     public function icon(string $v): self          { $this->icon = $v;                         return $this; }
     public function iconColor(string $v): self     { $this->iconColor = $v;                    return $this; }
@@ -461,6 +463,7 @@ class FieldListColumn
             'max'         => $this->max,
             'step'        => $this->step,
             'decimals'    => $this->decimals,
+            'allowNegative' => $this->allowNegative,
             'prefix'      => $this->prefix,
             'typeField'   => $this->typeField,
             'accept'      => $this->accept,

@@ -142,9 +142,56 @@ class MadServiceProvider extends ServiceProvider
         });
     }
 
+    /**
+     * Estouro de memória deixa rastro (fw#438). O shutdown do Laravel libera só
+     * 32 KB para reportar o fatal, e o caminho do relatório (contexto da
+     * requisição, máscara de segredos, MadTrace) estourava de novo: nenhum log
+     * saía, nem no stderr do container. Aqui:
+     *   - a reserva sobe para 1 MB;
+     *   - no relatório do fatal de memória, o limite sobe +64 MB e uma linha
+     *     com a causa (mensagem, arquivo:linha, rota, pico) vai direto ao stderr;
+     *   - a chamada da tela (JSON/MadWire) recebe uma mensagem legível no lugar
+     *     do 500 genérico.
+     */
+    private function bootOutOfMemoryTrail(): void
+    {
+        if (class_exists(\Illuminate\Foundation\Bootstrap\HandleExceptions::class)
+            && is_string(\Illuminate\Foundation\Bootstrap\HandleExceptions::$reservedMemory)
+            && strlen(\Illuminate\Foundation\Bootstrap\HandleExceptions::$reservedMemory) < 1048576) {
+            \Illuminate\Foundation\Bootstrap\HandleExceptions::$reservedMemory = str_repeat('x', 1048576);
+        }
+        try {
+            $handler = $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class);
+        } catch (\Throwable) {
+            return;
+        }
+        if (method_exists($handler, 'reportable')) {
+            $handler->reportable(function (\Symfony\Component\ErrorHandler\Error\FatalError $e) {
+                if (\Mad\Support\MadOutOfMemory::is($e)) {
+                    \Mad\Support\MadOutOfMemory::trail($e);
+                }
+            });
+        }
+        if (method_exists($handler, 'renderable')) {
+            $handler->renderable(function (\Symfony\Component\ErrorHandler\Error\FatalError $e, $request) {
+                if (!\Mad\Support\MadOutOfMemory::is($e) || (!$request->ajax() && !$request->expectsJson())) {
+                    return null;
+                }
+
+                return new \Illuminate\Http\JsonResponse(
+                    ['message' => \Mad\Support\MadOutOfMemory::userMessage()],
+                    500,
+                    ['Cache-Control' => 'no-store, private'],
+                    \Illuminate\Http\JsonResponse::DEFAULT_ENCODING_OPTIONS | JSON_UNESCAPED_UNICODE
+                );
+            });
+        }
+    }
+
     public function boot(): void
     {
         $this->bootOversizedPostNotice();
+        $this->bootOutOfMemoryTrail();
         $this->bootPaths();
         $this->bootBlade();
         $this->bootDatabase();

@@ -485,6 +485,14 @@ class GridBuilder
         return $this;
     }
 
+    /** Equivalente ao `empty-text`: o que a listagem sem nenhum registro diz. */
+    public function emptyText(string $text): static
+    {
+        $this->_flush();
+        $this->options['emptyText'] = $text;
+        return $this;
+    }
+
     /** Equivalente ao `load-hint`: texto da listagem vazia. */
     public function loadHint(string $text): static
     {

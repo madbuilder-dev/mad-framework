@@ -24,8 +24,12 @@ class MadAppController
     /** POST /app/_mad-wire — ciclo reativo (mesma lógica do MadAppWireController). */
     public function wire(Request $request): JsonResponse
     {
+        // Token velho (a sessão foi trocada por outra aba ou pelo login por
+        // link): 419, e o MadWire recarrega a página uma vez para pegar o token
+        // novo. Com 403 a tela de login dizia "Sem permissão" e o Entrar nunca
+        // entrava — só recarregando na mão (fw#527).
         if (!MadCsrf::validateWire()) {
-            return new JsonResponse(['error' => 'CSRF token mismatch'], 403);
+            return new JsonResponse(['error' => 'CSRF token mismatch', 'csrf_expired' => true], 419);
         }
 
         // Envio acima do `post_max_size`: o PHP entrega a requisição sem corpo
@@ -171,6 +175,12 @@ class MadAppController
                 return redirect(\Mad\Routing\MadRoutes::loginUrl());
             }
 
+            // Método estático pela rota JSON: a recusa em JSON (fw#413).
+            if ($method !== null && (string) $request->input('static') === '1'
+                && method_exists($class, $method) && (new \ReflectionMethod($class, $method))->isStatic()) {
+                return MadForbidden::json();
+            }
+
             return MadForbidden::response($request, $class);
         }
 
@@ -183,6 +193,14 @@ class MadAppController
         if ($method !== null && (string) $request->input('static') === '1'
             && method_exists($class, $method)
             && (new \ReflectionMethod($class, $method))->isStatic()) {
+
+            // Só é endpoint o método `public static` que recebe o pedido (1º
+            // parâmetro sem tipo ou que aceita array, nenhum outro obrigatório).
+            // Auxiliar estático (`shownTask($task)`, `taskScope()` tipado) e
+            // método protegido não viram URL: 404 sem executar (fw#429).
+            if (!self::isStaticEndpoint(new \ReflectionMethod($class, $method))) {
+                abort(404);
+            }
 
             // CSRF em profundidade no dispatch estático. `static=1` roda fora do
             // gate de wire(); a rota aceita GET+POST e o SameSite=lax deixa passar
@@ -215,15 +233,28 @@ class MadAppController
 
             ob_start();
             try {
-                $class::$method($_REQUEST);
-            } finally {
-                $out = ob_get_clean();
+                $result = $class::$method($_REQUEST);
+            } catch (\TypeError|\ArgumentCountError $e) {
+                // Pedido que não serve ao método: 400, nunca 500 com arquivo e linha.
+                ob_end_clean();
+                \Mad\Ui\MadUserError::report($e, "{$class}::{$method}?static=1");
+
+                return new Response('400 — invalid request for this action', 400, [
+                    'Content-Type'  => 'text/plain; charset=utf-8',
+                    'Cache-Control' => 'no-store, private',
+                ]);
+            }
+            $out = (string) ob_get_clean();
+
+            // O método devolveu a resposta pronta (redirect, CSS, arquivo): vale ela (fw#407, fw#507).
+            if ($result instanceof \Symfony\Component\HttpFoundation\Response) {
+                return $result;
+            }
+            if ($out === '' && is_array($result)) {
+                $out = (string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             }
 
-            return new Response($out, 200, [
-                'Content-Type'  => 'application/json; charset=utf-8',
-                'Cache-Control' => 'no-store, private',
-            ]);
+            return new Response($out, ...self::staticStatusAndHeaders());
         }
 
         if ($this->isDirectNavigation($request)) {
@@ -334,5 +365,75 @@ class MadAppController
         }
 
         return 'login';
+    }
+
+    /**
+     * O método estático é um endpoint da rota `?static=1`? `public`, e o 1º
+     * parâmetro (se houver) sem tipo ou aceitando array; os demais opcionais.
+     */
+    private static function isStaticEndpoint(\ReflectionMethod $ref): bool
+    {
+        if (!$ref->isPublic() || !$ref->isStatic()) {
+            return false;
+        }
+        foreach ($ref->getParameters() as $i => $param) {
+            if ($i > 0) {
+                if (!$param->isOptional()) {
+                    return false;
+                }
+                continue;
+            }
+            $type = $param->getType();
+            if ($type === null) {
+                continue;
+            }
+            $names = $type instanceof \ReflectionUnionType
+                ? array_map(static fn ($t) => $t instanceof \ReflectionNamedType ? $t->getName() : '', $type->getTypes())
+                : [$type instanceof \ReflectionNamedType ? $type->getName() : ''];
+            if (!array_intersect($names, ['array', 'mixed', 'iterable'])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Status e cabeçalhos da resposta de um método estático: o `Content-Type`,
+     * o `Location` e o código que o método definiu com header() /
+     * http_response_code() valem (fw#407: CSS, texto, CSV; fw#507: redirect).
+     * Sem nada definido, JSON 200 como sempre.
+     *
+     * @return array{0:int, 1:array<string,string>}
+     */
+    private static function staticStatusAndHeaders(): array
+    {
+        $headers = [
+            'Content-Type'  => 'application/json; charset=utf-8',
+            'Cache-Control' => 'no-store, private',
+        ];
+        foreach (headers_list() as $line) {
+            [$name, $value] = array_pad(explode(':', $line, 2), 2, '');
+            $lower = strtolower(trim($name));
+            if ($lower === 'content-type') {
+                $headers['Content-Type'] = trim($value);
+            } elseif ($lower === 'location') {
+                $headers['Location'] = trim($value);
+            } elseif ($lower === 'content-disposition') {
+                $headers['Content-Disposition'] = trim($value);
+            }
+        }
+        $code   = http_response_code();
+        $status = is_int($code) && $code >= 100 && $code < 600 ? $code : 200;
+        if ($status !== 200) {
+            // Processo que atende vários pedidos (Octane, testes): o código não
+            // pode sobrar para o próximo — a resposta abaixo já o leva.
+            @http_response_code(200);
+        }
+        if (isset($headers['Location']) && $status < 300) {
+            $status = 302;
+        }
+
+        return [$status, $headers];
     }
 }

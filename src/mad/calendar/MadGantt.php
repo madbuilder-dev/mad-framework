@@ -944,6 +944,16 @@ class MadGantt
         }
         $task['type'] = $type;
 
+        // Colunas de campo próprio da lateral (fw#398): campo => coluna do
+        // registro (aceita relação com ponto ou seta: cliente.nome, cliente->nome).
+        foreach ((array) ($map['extra'] ?? []) as $field => $source) {
+            $field = (string) $field;
+            if ($field === '' || array_key_exists($field, $task) || !is_string($source) || $source === '') continue;
+            $path = str_replace('->', '.', $source);
+            $v = str_contains($path, '.') ? data_get($record, $path) : ($record->{$path} ?? null);
+            $task[$field] = is_scalar($v) || $v === null ? $v : (string) (is_object($v) && method_exists($v, '__toString') ? $v : json_encode($v));
+        }
+
         return $task;
     }
 

@@ -596,6 +596,7 @@ class MadComponentHandler
                     $params = $decoded_params;
                 }
             }
+            $params = self::isoChangedDate($params, (string) ($data['mad_change_field'] ?? ''));
 
             // ── 5a. File change callback: staging do arquivo no scratch ──────
             // Detecta quando o primeiro param é o nome de um campo em $_FILES
@@ -909,6 +910,14 @@ class MadComponentHandler
                 continue;
             }
 
+            // Escalar lido num `@if`/`@foreach` da view: o op `bind` só troca
+            // os spans @madBind, e a parte que o `@if` mostra ou esconde não
+            // aparecia sem `forceFullRender()` (fw#508).
+            if ($varType !== 'val' && $component->_readsInControl((string) $prop)) {
+                $precisaRender = true;
+                break;
+            }
+
             // Escalar → bind op (para spans @madBind)
             $bindOps[] = [
                 'op'      => 'bind',
@@ -1142,5 +1151,32 @@ class MadComponentHandler
         }
 
         return isset($acoes[$method]);
+    }
+
+    /**
+     * O `$value` do `mad:change` de um campo de data chega no formato do banco
+     * (fw#529), como o `$form->get()`: o JS manda o texto da tela
+     * ("05/03/2026"), que `Carbon::parse()` e o Postgres em MDY liam como 3 de
+     * maio sem erro. O valor é sempre o último parâmetro da chamada.
+     *
+     * @param  array<int|string, mixed> $params
+     * @return array<int|string, mixed>
+     */
+    public static function isoChangedDate(array $params, string $field): array
+    {
+        if ($field === '' || $params === [] || !array_is_list($params)) {
+            return $params;
+        }
+        $last  = array_key_last($params);
+        $value = $params[$last];
+        if (!is_string($value) || !\Mad\Form\MadFormRegistry::isDisplayDate($value)) {
+            return $params;
+        }
+        $props = \Mad\Form\MadFormRegistry::requestFieldProps($field);
+        if (in_array($props['type'] ?? null, ['date', 'datetime'], true)) {
+            $params[$last] = \Mad\Form\MadFormRegistry::transformField($value, $props);
+        }
+
+        return $params;
     }
 }

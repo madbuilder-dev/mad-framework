@@ -394,6 +394,7 @@ final class RenderToolRegistry
             'show_table' => [
                 'blockType'   => 'table',
                 'description' => 'Show a tabular dataset of records. Use a "badge"-type column for status. Add `note` when the MCP masked PII. '
+                    . 'Coluna = o que a pergunta pede (poucas, sem id nem coluna técnica); label = rótulo legível do campo, como nas telas (nunca o nome cru da coluna do banco); chave estrangeira = o NOME do registro relacionado, não o número. '
                     . 'Para tabela AGRUPADA com quebras/subtotais/Total: groupBy = key da coluna que agrupa (vira banda) e totals = keys somadas — células dessas colunas em NUMBER CRU (o renderer soma e formata pt-BR; não emita linhas de subtotal).',
                 'schema'      => [
                     'type'       => 'object',

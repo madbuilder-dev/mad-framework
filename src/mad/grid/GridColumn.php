@@ -1073,12 +1073,22 @@ class GridColumn
         $cols = array_values(array_filter($columns, fn ($c) => $c instanceof self));
         foreach ($cols as $c) $c->cardSlot = '';
         if ($cardColumns !== []) {
+            // `nome` e `{nome}` são o mesmo campo dos dois lados: a coluna
+            // `field="{nome}"` com `card-columns="nome"` (o exemplo da prop)
+            // não casava nada e o cartão saía em branco (fw#513).
+            $key = fn ($v): string => trim(trim((string) $v), '{} ');
             $byName = [];
-            foreach ($cols as $c) { $byName[$c->field] = $c; $byName[$c->fieldKey] = $c; }
-            $cols = [];
+            foreach ($cols as $c) { $byName[$key($c->field)] = $c; $byName[$key($c->fieldKey)] = $c; }
+            $picked = [];
             foreach ($cardColumns as $f) {
-                $c = $byName[trim((string) $f)] ?? null;
-                if ($c !== null && !in_array($c, $cols, true)) $cols[] = $c;
+                $c = $byName[$key($f)] ?? null;
+                if ($c !== null && !in_array($c, $picked, true)) $picked[] = $c;
+            }
+            if ($picked === []) {
+                // Nenhum item casou: o cartão mostra todas, nunca vazio.
+                error_log('[mad-grid] card-columns não casa com nenhuma coluna: ' . implode(',', $cardColumns));
+            } else {
+                $cols = $picked;
             }
         }
         $cols = array_values(array_filter($cols, fn ($c) => $c->mediaFormat === '' && $c->cardRole !== 'image'));
@@ -1168,6 +1178,31 @@ class GridColumn
      * @param array|null $lastRow Linha anterior (para comparações entre linhas)
      * @return string             HTML renderizado
      */
+    /**
+     * A linha como objeto para o transform: relação carregada no registro vai
+     * como OBJETO (`$row->fornecedor->nome_fantasia`), não como o array do
+     * `toArray()`. A linha redesenhada pelo `manageRow` entregava o array e o
+     * transform quebrava com "Attempt to read property on array" (fw#517).
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function rowObject(array $row): object
+    {
+        $obj    = (object) $row;
+        $record = $row['__record'] ?? null;
+        if ($record instanceof \Illuminate\Database\Eloquent\Model) {
+            foreach ($record->getRelations() as $name => $related) {
+                $obj->{$name} = $related;
+                $snake = \Illuminate\Support\Str::snake((string) $name);
+                if ($snake !== $name && property_exists($obj, $snake)) {
+                    $obj->{$snake} = $related;
+                }
+            }
+        }
+
+        return $obj;
+    }
+
     public function renderValue(mixed $value, array $row, ?array $lastRow = null): string
     {
         // Transform configurado que NÃO é chamável: typo no nome da classe/método,
@@ -1184,10 +1219,10 @@ class GridColumn
             $out = call_user_func(
                 $this->transform,
                 $value,
-                (object) $row,
+                self::rowObject($row),
                 $row,
                 $this,
-                $lastRow ? (object) $lastRow : null
+                $lastRow ? self::rowObject($lastRow) : null
             );
             return $this->isHtml ? (string)$out : htmlspecialchars((string)$out, ENT_QUOTES);
         }

@@ -55,6 +55,41 @@ class MadUploadPath
         return rtrim(ltrim($folder, './'), '/');
     }
 
+    /**
+     * Caminho de arquivo que veio do navegador numa lista gravada à mão (o
+     * código monta as linhas e grava, sem `<mad-field-list>`): só passa o que o
+     * registro já guardava (fw#536). O formulário não conhece as colunas de
+     * arquivo dessa lista; quem grava chama antes de atribuir:
+     *
+     *     $linha->anexo = MadUploadPath::trusted($item['anexo'] ?? '', $linha->getOriginal('anexo'));
+     *
+     * Devolve `$value` quando é vazio, o nome de um arquivo recém-escolhido
+     * (sem pasta) ou um caminho que `$original` já tinha (na lista por vírgula
+     * de vários arquivos, cada um); senão devolve `$original` — um caminho
+     * trocado não sai do lugar.
+     */
+    public static function trusted(mixed $value, mixed $original): string
+    {
+        $original = is_scalar($original) ? (string) $original : '';
+        if (!is_scalar($value) || trim((string) $value) === '') {
+            return is_scalar($value) ? (string) $value : $original;
+        }
+        $value = (string) $value;
+        if ($value === $original) {
+            return $value;
+        }
+        $known = array_fill_keys(array_map('trim', explode(',', $original)), 1);
+        foreach (explode(',', $value) as $path) {
+            $path = trim($path);
+            $pathLike = strpbrk($path, "/\\:\0") !== false || str_starts_with($path, '.');
+            if ($path !== '' && $pathLike && !isset($known[$path])) {
+                return $original;
+            }
+        }
+
+        return $value;
+    }
+
     /** Núcleo das regras; lança MadUploadPathException com mensagem dev-friendly. */
     private static function assertSafe(string $folder, string $context): void
     {

@@ -1632,6 +1632,13 @@ trait MadFiltersTrait
                     }
                 }
             }
+            // `:items="Classe::MESES"`, `self::MESES`, `$that->meses` ou
+            // `$that->meses()`: o mapa valor => rótulo só existe avaliado, e o
+            // chip mostrava "Mês: 10" no lugar de "Mês: Outubro" (fw#520).
+            $label = self::_itemLabel($this->_evaluatedItems($items), $value);
+            if ($label !== '') {
+                return $label;
+            }
             return (string) $value;
         }
         if ($type === 'date' || $type === 'daterange') {
@@ -1644,6 +1651,74 @@ trait MadFiltersTrait
             return (string) $value;
         }
         return (string) $value;
+    }
+
+    /**
+     * Os itens de um `:items` que é constante de classe, prop ou método
+     * público sem argumentos desta tela. Nada de `eval`: qualquer outra
+     * expressão devolve [].
+     *
+     * @return array<mixed>
+     */
+    private function _evaluatedItems(string $expr): array
+    {
+        $expr = trim($expr);
+        if ($expr === '') {
+            return [];
+        }
+        try {
+            if (preg_match('/^\$(?:this|that)->([A-Za-z_]\w*)(\(\s*\))?$/', $expr, $m)) {
+                if (isset($m[2])) {
+                    $ok = method_exists($this, $m[1]) && (new \ReflectionMethod($this, $m[1]))->isPublic()
+                        && (new \ReflectionMethod($this, $m[1]))->getNumberOfRequiredParameters() === 0;
+                    $items = $ok ? $this->{$m[1]}() : [];
+                } else {
+                    $items = property_exists($this, $m[1]) ? $this->{$m[1]} : [];
+                }
+
+                return is_array($items) ? $items : [];
+            }
+            if (preg_match('/^(\\\\?[A-Za-z_][\w\\\\]*)::([A-Za-z_]\w*)$/', $expr, $m)) {
+                $class = ltrim($m[1], '\\');
+                if (in_array(strtolower($class), ['self', 'static'], true)) {
+                    $class = static::class;
+                } elseif (! class_exists($class)) {
+                    $ns    = (new \ReflectionClass($this))->getNamespaceName();
+                    $class = $ns !== '' && class_exists($ns . '\\' . $class) ? $ns . '\\' . $class : $class;
+                }
+                $const = $class . '::' . $m[2];
+                $items = defined($const) ? constant($const) : [];
+
+                return is_array($items) ? $items : [];
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return [];
+    }
+
+    /** Rótulo de `$value` num mapa `valor => rótulo` ou numa lista de `['value'|'id', 'label'|'name']`. */
+    private static function _itemLabel(array $items, mixed $value): string
+    {
+        if ($items === [] || is_array($value)) {
+            return '';
+        }
+        foreach ($items as $key => $item) {
+            if (is_array($item)) {
+                $v = $item['value'] ?? $item['id'] ?? null;
+                $l = $item['label'] ?? $item['name'] ?? $item['nome'] ?? null;
+                if ($v !== null && (string) $v === (string) $value && is_scalar($l) && trim((string) $l) !== '') {
+                    return trim((string) $l);
+                }
+                continue;
+            }
+            if ((string) $key === (string) $value && is_scalar($item) && trim((string) $item) !== '') {
+                return trim((string) $item);
+            }
+        }
+
+        return '';
     }
 
     /** Check if a filter has an active (non-empty) value. */

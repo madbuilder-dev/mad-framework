@@ -16,7 +16,8 @@ use Mad\Database\TenantScopeViolation;
  * Ligado pela flag mad.tenant.row_scope_enabled (default OFF = comportamento de
  * hoje, sem filtro). Quando ON e há tenant corrente (TenantContext::id()):
  *   - leitura: global scope adiciona WHERE tenant_id = <atual>;
- *   - escrita: preenche tenant_id vazio no save, preservando o escopo original no update.
+ *   - escrita: preenche tenant_id vazio no save, preservando o escopo original no update;
+ *     tenant_id explícito diferente da empresa ativa é recusado (TenantScopeViolation, fw#535).
  *
  * Visão do administrador do dono (mad.tenant.admin_scope = 'all',
  * {@see AdminScope}): a LEITURA dele não filtra ({@see TenantContext::readId()});
@@ -61,7 +62,14 @@ trait BelongsToTenant
             }
             $tid = TenantContext::readId();
             if ($tid === null) {
-                return; // sem tenant corrente (ou visão do administrador) => sem filtro
+                // Usuário logado sem empresa (unidade sem tenant): só as linhas
+                // sem empresa, nunca as de todas (fw#501). Sem login, contexto
+                // fixado por código ou visão do administrador => sem filtro.
+                if (TenantContext::loggedWithoutTenant()) {
+                    $builder->whereNull($builder->getModel()->getTable() . '.tenant_id');
+                }
+
+                return;
             }
             $builder->where($builder->getModel()->getTable() . '.tenant_id', $tid);
         });
@@ -83,13 +91,31 @@ trait BelongsToTenant
                 return;
             }
 
+            // Olha só o valor que MUDA: editar outro campo de uma linha não trava.
+            if ($model->exists && ! $model->isDirty('tenant_id')) {
+                return;
+            }
+            $shown = is_int($value) ? $value : (string) $value;
+
             // Visão do administrador: ele edita registros de outras empresas,
             // mas não os muda de empresa — só a leitura amplia.
-            if ($model->exists && $model->isDirty('tenant_id') && AdminScope::readsAll()) {
+            if ($model->exists && AdminScope::readsAll()) {
                 $original = $model->getRawOriginal('tenant_id');
                 if ($original !== null && $original !== '' && (int) $original !== (int) TenantContext::id()) {
-                    throw new TenantScopeViolation(is_int($value) ? $value : (string) $value);
+                    throw new TenantScopeViolation($shown);
                 }
+            }
+
+            // tenant_id explícito (form, API, código que atribui do getData()):
+            // só a empresa ativa (fw#535). Sem empresa ativa não há o que
+            // conferir; contexto fixado por código (comando, fila, seed) grava
+            // onde o código mandou; com token (API REST, webhook), só a do token.
+            $active = TenantContext::id();
+            if ($active === null || (TenantContext::overridden() && ! TenantContext::fromToken())) {
+                return;
+            }
+            if (! is_numeric($value) || (int) $value !== $active) {
+                throw TenantScopeViolation::foreign($shown);
             }
         });
 

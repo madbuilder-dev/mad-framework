@@ -93,8 +93,16 @@ final class EmbedWidgetController
         }
 
         $built = WidgetBlockBuilder::build($widget['spec'], self::db(), $filterValues);
+        // Widget salvo cuja consulta falha agora (tabela renomeada, coluna que
+        // saiu): o painel mostra o cartão de erro. O pedido em si deu certo —
+        // 422 a cada carga do painel era só ruído na aba Rede (fw#400).
         if (! $built['ok']) {
-            return response()->json(['error' => 'render_failed', 'message' => $built['error'] ?? ''], 422);
+            return response()->json([
+                'id'      => $widget['id'],
+                'title'   => $widget['title'],
+                'error'   => 'render_failed',
+                'message' => $built['error'] ?? '',
+            ]);
         }
 
         // Override de exibição do dono (tipo/formato) — determinístico, 0 IA.

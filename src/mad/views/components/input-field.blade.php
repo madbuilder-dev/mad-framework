@@ -1,8 +1,11 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => false, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
     $readonly  = !empty($readonly);
+    // `strip-mask` não escrito: a máscara sai só quando não cabe no `max:` da
+    // regra do campo (fw#540, MadForm::validate).
+    $_maskFit  = !isset($stripMask);
     $stripMask = !empty($stripMask);
     $togglePassword = !empty($togglePassword);
     // Estado runtime do MadForm (hide/show/readonly) aplicado no primeiro render
@@ -82,6 +85,7 @@
         'max'       => $max,
         'mask'      => $mask,
         'stripMask' => $stripMask,
+        'maskFit'   => $_maskFit,
     ]);
 @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}

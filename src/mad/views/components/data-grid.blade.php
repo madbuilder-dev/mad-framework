@@ -94,6 +94,9 @@
     $_exportDeny   = $permExport === 'disable' ? \Mad\Security\ActionVocab::denyTitle('export') : '';
     $loadButton    = $loadButton ?? true;
     $loadHint      = (string) ($loadHint ?? '');
+    // `empty-text` (alias `no-results-message`): o que a listagem vazia diz,
+    // no lugar de "Nenhum registro encontrado" (fw#518).
+    $emptyText     = trim((string) ($emptyText ?? ''));
     $storageKey = $storageKey ?? '';
     $gridClass  = $gridClass  ?? '';
     $_rowPrefix = $gridClass ? $gridClass . '_' : '';
@@ -1084,7 +1087,7 @@
                             <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>
                             @else
                             <i data-lucide="inbox" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
-                            <span>{{ __('grid.no_records') }}</span>
+                            <span>{{ $emptyText !== '' ? $emptyText : __('grid.no_records') }}</span>
                             @endif
                         </div>
                     </td>
@@ -1389,7 +1392,7 @@
                 <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>
                 @else
                 <i data-lucide="inbox" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
-                <span>{{ __('grid.no_records') }}</span>
+                <span>{{ $emptyText !== '' ? $emptyText : __('grid.no_records') }}</span>
                 @endif
             </div>
         </div>

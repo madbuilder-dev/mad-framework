@@ -578,6 +578,11 @@ class MadResponse
      */
     public function toast(string $message, string $type = 'info', string $title = '', string $position = 'top-right'): static
     {
+        // Erro cru do banco no toast (`$e->getMessage()`): frase genérica, detalhe no log (fw#403).
+        if (str_contains($message, 'SQLSTATE[')) {
+            \Mad\Ui\MadUserError::report(new \RuntimeException($message), 'MadResponse::toast');
+            $message = \Mad\Ui\MadUserError::friendly();
+        }
         $this->ops[] = [
             'op'       => 'toast',
             'message'  => $message,

@@ -1417,6 +1417,17 @@ const MadWire = (() => {
         return _seqLast;
     }
 
+    // Recarga por token CSRF velho: no máximo uma a cada 30 s nesta aba.
+    function _csrfReloadOnce() {
+        const KEY = 'mad_csrf_reload_at';
+        let last = 0;
+        try { last = Number(sessionStorage.getItem(KEY) || 0); } catch (e) { /* sem storage */ }
+        if (Date.now() - last < 30000) return false;
+        try { sessionStorage.setItem(KEY, String(Date.now())); } catch (e) { return false; }
+        window.location.reload();
+        return true;
+    }
+
     function _request(wrapper, action = '', params = [], extraModels = {}, sourceForm = null, opts = {}) {
         const madId = wrapper.getAttribute('mad-id');
         wrapper.setAttribute('data-mad-busy', '1');
@@ -1479,6 +1490,7 @@ const MadWire = (() => {
             ? params.length > 0
             : (params && typeof params === 'object' && Object.keys(params).length > 0);
         if (_hasParams) body.append('mad_params', JSON.stringify(params));
+        if (opts.changeField) body.append('mad_change_field', String(opts.changeField));
         if (opts.seqStamp != null) {
             body.append('mad_seq_key', String(opts.key));
             body.append('mad_seq',     String(opts.seqStamp));
@@ -1690,6 +1702,14 @@ const MadWire = (() => {
             // Envia dados de debug para o console (se ativo)
             if (data._debug && typeof System !== 'undefined' && System.addDebug) {
                 data._debug.forEach(d => System.addDebug(d));
+            }
+
+            // Token do formulário velho (a sessão foi trocada por outra aba ou
+            // pelo login por link): recarrega a página uma vez para pegar o
+            // token novo. A guarda evita laço se o token novo também falhar
+            // (fw#527).
+            if (res.status === 419 && data.csrf_expired && _csrfReloadOnce()) {
+                return { ok: false, reason: 'csrf' };
             }
 
             if (data.error) {
@@ -2396,6 +2416,9 @@ const MadWire = (() => {
         await _request(wrapper, action, params, {}, null, {
             dfScope: _dfEditScope(el),
             key: fieldKey ? 'change:' + action + ':' + fieldKey : null,
+            // O servidor converte o valor do campo de data para o formato do
+            // banco antes de entregá-lo ao método (fw#529).
+            changeField: el.name || '',
         });
     });
 

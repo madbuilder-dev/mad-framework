@@ -355,6 +355,9 @@ window.madTabBar = function (opts) {
             const isEmpty = !pane || !pane.innerHTML || pane.innerHTML.trim() === '';
             if (t.dirty || isEmpty) {
                 await this._loadPane(t);
+                // Outra aba ativou enquanto esta carregava (o boot da URL abriu
+                // a tela do link): a barra e o menu ficam com ela.
+                if (this.activeId !== id) return;
             }
             this._syncUrl(t, false);
             this.persist();
@@ -485,6 +488,18 @@ window.madTabBar = function (opts) {
             // Re-persiste imediatamente para descartar duplicatas/auth do storage
             this.persist();
 
+            // Link direto (/app/grupos/novo, F5): a tela do link ganha da aba
+            // salva (fw#394). O boot do casco abre a aba da URL; aqui só não a
+            // atropela — a aba salva que já é a do link fica ativa, e a raiz do
+            // app (/app/) continua devolvendo a aba salva.
+            const here = this._pathOf(window.location.pathname);
+            if (here && here !== '/' && !this._isAuthUrl(window.location.pathname)) {
+                const hereId = 'mtab-' + here;
+                if (this.tabs.some(t => t.id === hereId)) await this.activate(hereId);
+                this.$nextTick(() => this._lucide());
+                return;
+            }
+
             const toActivate = (activeId && this.tabs.find(t => t.id === activeId))
                 ? activeId
                 : this.tabs[0].id;
@@ -571,7 +586,9 @@ window.madTabBar = function (opts) {
                         this.persist();
                     }
                 }
-                this._emit('mad:tab-activated', tab);
+                // Só a aba que está na frente leva o menu e o breadcrumb: a que
+                // terminou de carregar atrás de outra (fw#394) fica quieta.
+                if (this.activeId === tab.id) this._emit('mad:tab-activated', tab);
             } catch (e) {
                 console.error('[MadTabs] load failed for ' + tab.cls, e);
             } finally {

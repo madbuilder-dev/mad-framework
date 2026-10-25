@@ -77,6 +77,23 @@ class TenantContext
         return AdminScope::readsAll() ? null : self::id();
     }
 
+    /**
+     * Sessão logada sem empresa, fora da visão do administrador e sem contexto
+     * fixado por código — o caso em que o row-scope filtra só as linhas sem
+     * empresa em vez de liberar todas (fw#501, fail-closed).
+     */
+    public static function loggedWithoutTenant(): bool
+    {
+        if (self::$hasOverride || self::id() !== null || AdminScope::readsAll()) {
+            return false;
+        }
+        try {
+            return function_exists('session') && (bool) session('logged');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /** Contexto fixado por set() (job, console, API REST, teste)? */
     public static function overridden(): bool
     {

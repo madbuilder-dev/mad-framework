@@ -32,6 +32,8 @@ class MadDocPdf
 
     public static function fromHtml(string $html, array $opts = []): string
     {
+        // SVG embutido no tamanho da caixa da imagem (fw#509).
+        $html = PdfSvgFit::fitHtml($html);
         // Two-pass: 1ª render conta as páginas, o span vira literal e o
         // documento re-renderiza (mesma estratégia do exporter de grid).
         if (str_contains($html, self::PAGES_SPAN)) {
