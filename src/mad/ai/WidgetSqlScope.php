@@ -29,7 +29,16 @@ use Mad\Security\ProtectedData;
  * MySQL 8), então qualquer forma de citá-la — maiúscula, "aspas", 'literal',
  * subconsulta, UNION, CTE do próprio modelo — lê a versão filtrada. O único
  * caminho que pularia a CTE é o nome QUALIFICADO (`main.x`, `public.x`,
- * `outrobanco.x`), e esse é recusado.
+ * `outrobanco.x`): o de uma relação conhecida é trocado pelo nome da CTE dela
+ * antes de tudo (`bi.grupo` → `bi__grupo`, `public.grupo` → `grupo`), e o que
+ * sobrar qualificado depois disso é recusado.
+ *
+ * Tabela em outro schema (PostgreSQL): o modelo escreve `bi.grupo`, como o
+ * db_schema lista, ou o nome puro. O nome puro é o do schema padrão (o
+ * search_path, como no Postgres); sem ele, vale a única tabela com esse nome;
+ * em mais de um schema, sem a do padrão, a consulta é recusada pedindo o nome
+ * com o schema. A permissão e as colunas são as da chave do manifest
+ * (`bi.grupo`; `grupo` no schema padrão).
  *
  *  - Relação SEM concessão logo depois de FROM/JOIN → recusa amigável
  *    ("Você não tem acesso a cliente."), que o modelo repassa.
@@ -50,8 +59,10 @@ use Mad\Security\ProtectedData;
 final class WidgetSqlScope
 {
     /**
-     * @return array{ok: bool, error?: string, with?: string}
+     * @return array{ok: bool, error?: string, with?: string, sql?: string}
      *         with = prefixo "WITH … " (vazio quando a SQL não cita relação)
+     *         sql  = a SQL do modelo a executar, com `schema.nome` trocado
+     *                pelo nome da CTE
      */
     public static function plan(string $db, string $sql, ?McpAccess $access = null): array
     {
@@ -62,40 +73,48 @@ final class WidgetSqlScope
             return ['ok' => false, 'error' => 'Não foi possível conferir as tabelas da consulta contra as permissões do seu perfil.'];
         }
 
+        // `bi.grupo` / `public.grupo` → nome da CTE da relação; o que continuar
+        // qualificado não é relação conhecida e pularia a CTE.
+        $grammar = DB::connection($db)->getQueryGrammar();
+        $sql     = self::unqualify($sql, $rel, static fn (string $alias): string => $grammar->wrap($alias));
         if (($q = self::qualifiedReference($db, $sql)) !== null) {
-            return ['ok' => false, 'error' => "Escreva o nome da tabela sem o banco/esquema na frente (\"{$q}\"): nome qualificado não é permitido na consulta do assistente."];
+            return ['ok' => false, 'error' => "A consulta cita \"{$q}\", que não é uma tabela que o assistente possa ler. Escreva o nome da tabela como o db_schema mostra."];
         }
 
         $mentioned = [];
+        $ambiguous = [];
         // Diretório de usuários (id, nome): relação virtual, só quando o banco
         // não tem uma tabela de verdade com esse nome — ver UserDirectory.
         $users = false;
         foreach (ProtectedData::mentionedNames($sql) as $tok) {
-            if (isset($rel[$tok])) {
-                $mentioned[$tok] = $rel[$tok];
+            if (isset($rel['alias'][$tok])) {
+                $mentioned[$tok] = $rel['alias'][$tok];
+            } elseif (isset($rel['ambiguous'][$tok])) {
+                $ambiguous[$tok] = $rel['ambiguous'][$tok];
             } elseif ($tok === UserDirectory::TABLE) {
                 $users = true;
             }
         }
 
         foreach (self::fromJoinTargets($sql) as $target) {
-            if (isset($rel[$target]) && ! $access->canRead($target)) {
-                return ['ok' => false, 'error' => self::deniedMessage($rel[$target]['name'])];
+            if (isset($rel['alias'][$target]) && ! $access->canRead($rel['alias'][$target]['key'])) {
+                return ['ok' => false, 'error' => self::deniedMessage($rel['alias'][$target]['key'])];
+            }
+            if (isset($rel['ambiguous'][$target])) {
+                return ['ok' => false, 'error' => self::ambiguousMessage($rel['ambiguous'][$target])];
             }
         }
 
-        if ($mentioned === [] && ! $users) {
-            return ['ok' => true, 'with' => ''];
+        if ($mentioned === [] && $ambiguous === [] && ! $users) {
+            return ['ok' => true, 'with' => '', 'sql' => $sql];
         }
 
-        $grammar = DB::connection($db)->getQueryGrammar();
-        $ctes    = $users ? [UserDirectory::cte($db)] : [];
+        $ctes = $users ? [UserDirectory::cte($db)] : [];
         foreach ($mentioned as $info) {
-            $name      = $info['name'];
-            $qualified = $grammar->wrap(($info['schema'] !== '' ? $info['schema'] . '.' : '') . $name);
-            $alias     = $grammar->wrap($name);
+            $qualified = $grammar->wrap(self::reference($info));
+            $alias     = $grammar->wrap($info['alias']);
 
-            if (! $access->canRead($name)) {
+            if (! $access->canRead($info['key'])) {
                 $ctes[] = "{$alias} AS (SELECT * FROM {$qualified} WHERE 1=0)";
                 continue;
             }
@@ -106,8 +125,67 @@ final class WidgetSqlScope
             }
             $ctes[] = "{$alias} AS ({$body['sql']})";
         }
+        // Nome puro de mais de um schema citado fora de FROM/JOIN: CTE vazia
+        // (o SQLite resolveria o nome puro num banco anexado).
+        foreach ($ambiguous as $candidates) {
+            $ctes[] = $grammar->wrap($candidates[0]['name']) . ' AS (SELECT * FROM '
+                . $grammar->wrap(self::reference($candidates[0])) . ' WHERE 1=0)';
+        }
 
-        return ['ok' => true, 'with' => 'WITH ' . implode(', ', $ctes) . ' '];
+        return ['ok' => true, 'with' => 'WITH ' . implode(', ', $ctes) . ' ', 'sql' => $sql];
+    }
+
+    /**
+     * Nome puro que existe em mais de um schema, nenhum deles o padrão.
+     *
+     * @param list<array{name: string, schema: string}> $candidates
+     */
+    private static function ambiguousMessage(array $candidates): string
+    {
+        $name    = $candidates[0]['name'];
+        $schemas = array_map(static fn (array $c): string => $c['schema'], $candidates);
+
+        return "A tabela {$name} existe em mais de um schema (" . implode(', ', $schemas) . '): escreva o nome com o schema, como '
+            . $schemas[0] . '.' . $name . '.';
+    }
+
+    /** `schema.nome` da relação (só o nome quando o banco não informa schema). */
+    private static function reference(array $info): string
+    {
+        return ($info['schema'] !== '' ? $info['schema'] . '.' : '') . $info['name'];
+    }
+
+    /**
+     * Troca `schema.nome` de relação conhecida (com ou sem "aspas", `crase`,
+     * [colchetes]) pelo nome da CTE dela. Literal entre aspas simples fica
+     * intacto: um `'bi.grupo'` dentro dele continua qualificado e é recusado.
+     *
+     * @param array{alias: array<string, array<string, mixed>>, qualified: array<string, string>} $rel
+     * @param \Closure(string): string $wrap aspas do banco no nome da CTE
+     */
+    private static function unqualify(string $sql, array $rel, \Closure $wrap): string
+    {
+        if ($rel['qualified'] === []) {
+            return $sql;
+        }
+
+        $seg   = '(?:"([A-Za-z_][\w$]*)"|`([A-Za-z_][\w$]*)`|\[([A-Za-z_][\w$]*)\]|([A-Za-z_][\w$]*))';
+        $re    = '/(?<![\w$."`\]])' . $seg . '\s*\.\s*' . $seg . '/';
+        $parts = preg_split("/('(?:[^'\\\\]|\\\\.|'')*')/", $sql, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$sql];
+        foreach ($parts as $i => $part) {
+            if ($i % 2 === 1) {
+                continue; // literal
+            }
+            $parts[$i] = (string) preg_replace_callback($re, static function (array $m) use ($rel, $wrap): string {
+                $schema = ($m[1] ?? '') . ($m[2] ?? '') . ($m[3] ?? '') . ($m[4] ?? '');
+                $name   = ($m[5] ?? '') . ($m[6] ?? '') . ($m[7] ?? '') . ($m[8] ?? '');
+                $alias  = $rel['qualified'][strtolower($schema . '.' . $name)] ?? null;
+
+                return $alias !== null ? $wrap($alias) : $m[0];
+            }, $part);
+        }
+
+        return implode('', $parts);
     }
 
     /**
@@ -124,14 +202,14 @@ final class WidgetSqlScope
      * SELECT da CTE de uma relação concedida: colunas expostas (PII mascarada)
      * + filtros de linha.
      *
-     * @param  array{name: string, schema: string, view: bool} $info
+     * @param  array{name: string, schema: string, view: bool, key: string, alias: string} $info
      * @return array{ok: bool, sql?: string, error?: string}
      */
     private static function grantedBody(string $db, McpAccess $access, array $info, string $qualified): array
     {
-        $name    = $info['name'];
+        $name    = $info['key'];
         $grammar = DB::connection($db)->getQueryGrammar();
-        $real    = self::columnsOf($db, $name);
+        $real    = self::columnsOf($db, self::reference($info));
         if ($real === null) {
             return ['ok' => false, 'error' => "Não foi possível conferir as colunas de {$name}."];
         }
@@ -277,30 +355,97 @@ final class WidgetSqlScope
     }
 
     /**
-     * Tabelas e views da conexão, por nome em minúsculas (memo por request).
+     * Tabelas e views da conexão (memo por request):
+     *   - alias:     nome da CTE em minúsculas → relação. O nome puro fica com a
+     *                do schema padrão (ou com a única que tem esse nome); as
+     *                outras ganham `schema__nome`.
+     *   - qualified: `schema.nome` em minúsculas → nome da CTE (o que o
+     *                {@see unqualify()} escreve no lugar).
+     *   - ambiguous: nome puro sem dono → as relações dos schemas que o têm.
+     * `key` é a chave da relação no manifest/permissão: `bi.grupo`, ou só
+     * `grupo` no schema padrão.
      *
-     * @return array<string, array{name: string, schema: string, view: bool}>|null
+     * @return array{alias: array<string, array{name: string, schema: string, view: bool, key: string, alias: string}>, qualified: array<string, string>, ambiguous: array<string, list<array{name: string, schema: string, view: bool}>>}|null
      */
     private static function relations(string $db): ?array
     {
         return DataScope::memo('widget_sql.scope_relations', $db, static function () use ($db): ?array {
             try {
-                $schema = DB::connection($db)->getSchemaBuilder();
-                $out    = [];
+                $conn   = DB::connection($db);
+                $schema = $conn->getSchemaBuilder();
+                $all    = [];
                 foreach ($schema->getTables() as $t) {
-                    $out[strtolower((string) $t['name'])] = ['name' => (string) $t['name'], 'schema' => (string) ($t['schema'] ?? ''), 'view' => false];
+                    $all[] = ['name' => (string) $t['name'], 'schema' => (string) ($t['schema'] ?? ''), 'view' => false];
                 }
                 foreach ($schema->getViews() as $v) {
-                    $out[strtolower((string) $v['name'])] = ['name' => (string) $v['name'], 'schema' => (string) ($v['schema'] ?? ''), 'view' => true];
+                    $all[] = ['name' => (string) $v['name'], 'schema' => (string) ($v['schema'] ?? ''), 'view' => true];
                 }
 
-                return $out;
+                $defaults = array_map('strtolower', (array) ($schema->getCurrentSchemaListing() ?? []));
+                if ($conn->getDriverName() === 'pgsql' && ! in_array('public', $defaults, true)) {
+                    $defaults[] = 'public';
+                }
+
+                return self::indexRelations($all, $defaults);
             } catch (\Throwable $e) {
                 error_log('[WidgetSqlScope] introspecção de ' . $db . ' falhou: ' . $e->getMessage());
 
                 return null;
             }
         });
+    }
+
+    /**
+     * @param list<array{name: string, schema: string, view: bool}> $all
+     * @param list<string> $defaults schemas do search_path, em ordem (minúsculas)
+     */
+    private static function indexRelations(array $all, array $defaults): array
+    {
+        $byName = [];
+        foreach ($all as $r) {
+            $byName[strtolower($r['name'])][] = $r;
+        }
+
+        $out = ['alias' => [], 'qualified' => [], 'ambiguous' => []];
+        $own = []; // relações que ficam com o nome puro
+        foreach ($byName as $lname => $list) {
+            $rank = static function (array $r) use ($defaults): int {
+                $i = array_search(strtolower($r['schema']), $defaults, true);
+
+                return $r['schema'] === '' ? -1 : ($i === false ? PHP_INT_MAX : (int) $i);
+            };
+            usort($list, static fn (array $a, array $b): int => $rank($a) <=> $rank($b));
+            if (count($list) === 1 || $rank($list[0]) !== PHP_INT_MAX) {
+                $own[$lname] = $list[0];
+            } else {
+                $out['ambiguous'][$lname] = $list;
+            }
+        }
+
+        foreach ($all as $r) {
+            $lname   = strtolower($r['name']);
+            $mine    = $own[$lname] ?? null;
+            $isOwn   = $mine !== null && $mine['schema'] === $r['schema'] && $mine['view'] === $r['view'];
+            $default = $r['schema'] === '' || in_array(strtolower($r['schema']), $defaults, true);
+            // a chave do manifest: só o nome no schema padrão (como a plataforma publica)
+            $r['key'] = $isOwn && $default ? $r['name'] : $r['schema'] . '.' . $r['name'];
+            if ($isOwn) {
+                $r['alias'] = $r['name'];
+            } else {
+                $r['alias'] = $r['schema'] . '__' . $r['name'];
+                // `schema__nome` que já é o nome de outra relação: sem apelido —
+                // citada com o schema, continua qualificada e é recusada.
+                if (isset($byName[strtolower($r['alias'])])) {
+                    continue;
+                }
+            }
+            $out['alias'][strtolower($r['alias'])] = $r;
+            if ($r['schema'] !== '') {
+                $out['qualified'][strtolower($r['schema'] . '.' . $r['name'])] = $r['alias'];
+            }
+        }
+
+        return $out;
     }
 
     /** @return list<string>|null colunas reais (minúsculas) — null = não deu pra ler */

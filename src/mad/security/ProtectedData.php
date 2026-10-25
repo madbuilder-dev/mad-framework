@@ -152,6 +152,17 @@ final class ProtectedData
     {
         $name = strtolower(trim($name));
 
+        // `schema.tabela`: protegida se a tabela for (em qualquer schema) ou se
+        // o schema for um catálogo (`pg_catalog.pg_authid`, `mysql.user`).
+        if (str_contains($name, '.')) {
+            $schema = substr($name, 0, (int) strrpos($name, '.'));
+            $bare   = substr($name, (int) strrpos($name, '.') + 1);
+            if (in_array($schema, self::CATALOGS, true) || in_array($schema, self::QUALIFIED_CATALOGS, true)
+                || self::isProtectedTable($bare)) {
+                return true;
+            }
+        }
+
         return isset(self::TABLES[$name]) || in_array($name, self::CATALOGS, true)
             || self::privatePrefix($name) !== null;
     }
@@ -264,8 +275,9 @@ final class ProtectedData
                 'message' => 'Identificador protegido: nome escrito com escape unicode (U&) não é permitido. Escreva o nome da tabela normalmente.'];
         }
 
+        // comentário entre o schema e o ponto é espaço para o banco (`mysql/**/.user`)
         foreach (self::QUALIFIED_CATALOGS as $schema) {
-            if (preg_match('/(?<![\w$])[`"\[]?' . preg_quote($schema, '/') . '[`"\]]?\s*\./i', $sql)) {
+            if (preg_match('/(?<![\w$])[`"\[]?' . preg_quote($schema, '/') . '[`"\]]?(?:\s|\/\*.*?\*\/|--[^\n]*|#[^\n]*)*\./is', $sql)) {
                 return ['kind' => 'catalog', 'name' => $schema, 'message' => self::catalogMessage($schema)];
             }
         }

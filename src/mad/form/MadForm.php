@@ -6766,7 +6766,8 @@ class MadForm
      * (pessoa → pessoa_id). Usada no save (_processPivotTable) e no
      * auto-load do render (MadRenderContext::loadPivotSelected) — os dois
      * lados TÊM que derivar igual, senão o edit mostra vazio e o save grava.
-     * Devolve '' quando o record não expõe tabela (não-Eloquent).
+     * Tabela em outro schema (`bi.grupo`) deriva do nome sem o schema
+     * (grupo_id). Devolve '' quando o record não expõe tabela (não-Eloquent).
      */
     public static function derivePivotForeignKey(?object $record): string
     {
@@ -6777,7 +6778,7 @@ class MadForm
         if ($table === '') {
             return '';
         }
-        return \Illuminate\Support\Str::singular($table) . '_id';
+        return \Illuminate\Support\Str::singular(\Illuminate\Support\Str::afterLast($table, '.')) . '_id';
     }
 
     /**

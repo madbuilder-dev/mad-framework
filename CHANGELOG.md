@@ -12,6 +12,15 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.224.0] — 2026-10-25
+
+### Correções
+
+- **Banco de dados:** model com tabela em outro schema do PostgreSQL (`bi.grupo`) funciona na multisseleção gravada em outra tabela (`mode="table"` sem `foreign-key`), no MCP do app e nas consultas do Copilot IA. Antes a multisseleção não gravava as marcas e abria vazia na edição, e o Copilot recusava a tabela.
+- **Copilot IA:** a consulta pode citar a tabela com o schema (`bi.grupo`) ou só pelo nome (o do schema padrão). Nome que existe em mais de um schema, sem o do padrão, pede o nome com o schema. As permissões do perfil valem igual nos dois jeitos.
+- **Validação:** `unique` e `exists` sobre tabela de outro schema não aplicam mais o filtro de unidade da tabela de mesmo nome do schema padrão.
+- **Assistente de IA:** consultas do assistente passam a respeitar sempre o acesso por perfil e por unidade, mesmo escritas de formas incomuns. Comentário no fim da consulta (`-- …`) não quebra mais a execução.
+
 ## [5.223.0] — 2026-10-25
 
 ### Novidades

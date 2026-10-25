@@ -42,6 +42,9 @@ final class ScopedModels
     /** @var array<string, true> chaves já procuradas no ModelRegistry */
     private static array $probed = [];
 
+    /** @var array<string, list<string>> conexão => schemas padrão (minúsculas) */
+    private static array $defaultSchemas = [];
+
     /** Chamado pelo boot de BelongsToUnit/BelongsToTenant. */
     public static function register(string $class): void
     {
@@ -55,7 +58,8 @@ final class ScopedModels
 
     /**
      * Model escopado dono da tabela, ou null. `$connection` null = conexão
-     * padrão. Tabela com schema (`public.cliente`) casa pelo nome simples.
+     * padrão. Tabela no schema padrão (`public.cliente`) casa pelo nome
+     * simples; em outro schema (`bi.cliente`) é outra tabela.
      *
      * @return class-string<Model>|null
      */
@@ -83,6 +87,7 @@ final class ScopedModels
         self::$classKeys = [];
         self::$byTable   = [];
         self::$probed    = [];
+        self::$defaultSchemas = [];
     }
 
     private static function scan(string $key): ?string
@@ -121,8 +126,13 @@ final class ScopedModels
         if (! DataScope::active()) {
             return;
         }
-        $base = self::baseName($table);
-        foreach (array_unique([Str::studly($base), Str::studly(Str::singular($base))]) as $name) {
+        // `bi.grupo` → BiGrupo (o nome que o gerador dá) antes de Grupo
+        $names = [];
+        foreach (array_unique([str_replace('.', '_', $table), self::baseName($table)]) as $base) {
+            $names[] = Str::studly($base);
+            $names[] = Str::studly(Str::singular($base));
+        }
+        foreach (array_unique($names) as $name) {
             try {
                 $fqcn = ModelRegistry::lookup($name);
                 if ($fqcn !== null && class_exists($fqcn) && is_subclass_of($fqcn, Model::class)) {
@@ -138,7 +148,31 @@ final class ScopedModels
     {
         $conn = ($connection === null || $connection === '') ? self::defaultConnection() : $connection;
 
-        return strtolower((string) $conn) . '|' . strtolower(self::baseName($table));
+        $table = strtolower(trim($table));
+        $pos   = strrpos($table, '.');
+        if ($pos !== false && in_array(substr($table, 0, $pos), self::defaultSchemas((string) $conn), true)) {
+            $table = substr($table, $pos + 1);
+        }
+
+        return strtolower((string) $conn) . '|' . $table;
+    }
+
+    /** Schemas em que o nome simples resolve (search_path / banco atual). */
+    private static function defaultSchemas(string $connection): array
+    {
+        if (isset(self::$defaultSchemas[$connection])) {
+            return self::$defaultSchemas[$connection];
+        }
+        $out = ['public', 'main'];
+        try {
+            $listing = \Illuminate\Support\Facades\DB::connection($connection !== '' ? $connection : null)
+                ->getSchemaBuilder()->getCurrentSchemaListing();
+            $out = array_merge($out, array_map('strtolower', (array) ($listing ?? [])));
+        } catch (\Throwable) {
+            // sem conexão: os nomes padrão do Postgres e do SQLite
+        }
+
+        return self::$defaultSchemas[$connection] = array_values(array_unique($out));
     }
 
     private static function baseName(string $table): string

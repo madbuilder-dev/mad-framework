@@ -79,10 +79,14 @@ final class DbSchemaTool implements Tool
             // entra na lista — anunciar tabela fantasma faz o modelo gerar
             // SQL quebrada e, no limite, fabricar dados.
             try {
-                if ($sb !== null && ! $sb->hasTable($table) && ! in_array(strtolower($table), array_map(
-                    static fn ($v) => strtolower((string) ($v['name'] ?? '')),
-                    $sb->getViews()
-                ), true)) {
+                // `bi.grupo` (outro schema): o hasTable entende; a view casa
+                // pelo nome ou por `schema.nome`.
+                $views = [];
+                foreach ($sb?->getViews() ?? [] as $v) {
+                    $views[] = strtolower((string) ($v['name'] ?? ''));
+                    $views[] = strtolower((string) ($v['schema'] ?? '') . '.' . (string) ($v['name'] ?? ''));
+                }
+                if ($sb !== null && ! $sb->hasTable($table) && ! in_array(strtolower($table), $views, true)) {
                     continue;
                 }
             } catch (\Throwable) {

@@ -32,6 +32,12 @@ class ModelNaming
         if ($table === '') {
             return null;
         }
+        // Tabela em outro schema do Postgres (`bi.grupo`): o schema entra no
+        // nome (BiGrupo), como o gerador da plataforma; o padrão (`public.`) não.
+        if (str_starts_with(strtolower($table), 'public.')) {
+            $table = substr($table, 7);
+        }
+        $table = str_replace('.', '_', $table);
 
         if (preg_match('/^mad_([a-z0-9]+)_(.+)$/', $table, $m)) {
             $domain = self::pascal($m[1]);   // Iam

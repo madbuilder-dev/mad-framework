@@ -1309,8 +1309,10 @@ class MadTrace
 
     private static function sqlTable(string $sql): ?string
     {
-        if (preg_match('/\b(?:from|into|update|join)\s+[`"\[]?([a-z0-9_\.]+)/i', $sql, $m)) {
-            return $m[1];
+        // `"bi"."grupo"` (tabela em outro schema, como o Illuminate cita) → bi.grupo
+        $id = '[`"\[]?[a-z0-9_]+[`"\]]?';
+        if (preg_match('/\b(?:from|into|update|join)\s+(' . $id . '(?:\s*\.\s*' . $id . ')*)/i', $sql, $m)) {
+            return (string) preg_replace('/[`"\[\]\s]/', '', $m[1]);
         }
         return null;
     }

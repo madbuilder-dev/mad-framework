@@ -95,10 +95,18 @@ class McpTableGateway
         return ProtectedData::stripSecretColumns($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
     }
 
-    /** Identificador de tabela validado + recusa de tabela protegida. */
+    /**
+     * Identificador de tabela validado + recusa de tabela protegida. Aceita a
+     * tabela de outro schema (`bi.grupo`, como o manifest a nomeia): cada parte
+     * validada, no máximo um ponto.
+     */
     private static function protectedIdent(string $table): string
     {
-        $table = self::ident($table);
+        $parts = explode('.', $table);
+        if (count($parts) > 2) {
+            throw new \InvalidArgumentException("Identificador invalido: {$table}");
+        }
+        $table = implode('.', array_map([self::class, 'ident'], $parts));
         ProtectedData::assertTable($table);
 
         return $table;
