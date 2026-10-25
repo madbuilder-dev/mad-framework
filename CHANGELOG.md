@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.227.0] — 2026-10-25
+
+### Melhorias
+
+- **Driver REST:** o Database Manager do MadBuilder passa a ver e editar as tabelas de todos os schemas do PostgreSQL do sistema, como `bi.grupo`, e não só as do schema padrão, com a chave primária visível também para usuário do banco só com leitura. Tabelas de sistema continuam fora.
+
+### Correções
+
+- **Multiempresa:** no Provisionar banco, a tabela compartilhada que está em outro schema do PostgreSQL, como `bi.grupo`, é copiada para o banco da empresa; a de mesmo nome no schema padrão continua separada por empresa.
+- **Listagem:** em tabela de outro schema do PostgreSQL, como `bi.item`, a coluna de um campo de outra tabela (`{grupo->nome}`) num Model sem a relação declarada mostrava, buscava e filtrava pela tabela de mesmo nome do schema padrão, com outros registros. Agora usa a tabela certa, `bi.grupo` ou a que a chave estrangeira aponta; quando não dá para saber qual é, a célula fica vazia e o campo fica fora da busca e do filtro, em vez de mostrar dado de outra tabela. Na busca, `:search-columns` passa a aceitar o schema na frente (`bi.grupo.nome`).
+
 ## [5.226.0] — 2026-10-25
 
 ### Novidades

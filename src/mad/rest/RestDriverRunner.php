@@ -104,6 +104,9 @@ class RestDriverRunner
     /**
      * Edição inline (UPDATE por PK, transação). Mesma validação anti-injeção do
      * builder (colunas contra o schema da tabela). Bloqueado se read_only.
+     * PostgreSQL: o nome é resolvido no catálogo — `bi.grupo` do schema bi ou a
+     * `"bi.grupo"` do schema padrão; as duas existindo, recusa por ambiguidade —
+     * e entra com aspas por parte; tabela de sistema é recusada.
      *
      * @param  array<int,array{pk:array<string,mixed>,set:array<string,mixed>}>  $edits
      */
@@ -119,6 +122,7 @@ class RestDriverRunner
         $driver = $this->driver($pdo);
         $struct = $this->introspector->tableStructure($pdo, $table);
         $validCols = array_flip(array_map(fn ($c) => $c['name'], $struct['columns']));
+        $target = $this->introspector->quoteTable($pdo, $table);
 
         $updated = 0;
         $pdo->beginTransaction();
@@ -147,7 +151,7 @@ class RestDriverRunner
                     $params[] = $val;
                 }
 
-                $sql = 'UPDATE ' . $this->quoteIdent($table, $driver) . ' SET ' . implode(', ', $setParts) . ' WHERE ' . implode(' AND ', $whereParts);
+                $sql = 'UPDATE ' . $target . ' SET ' . implode(', ', $setParts) . ' WHERE ' . implode(' AND ', $whereParts);
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $updated += $stmt->rowCount();

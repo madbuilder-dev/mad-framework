@@ -5589,24 +5589,48 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 }
             }
 
-            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($rel, $col, $like) {
-                $sub->select('id')->from($rel)->whereLike($col, $like);
+            $from = static::_fallbackRelTable($q, $rel);
+            if ($from === null) {
+                static::_warnFallbackRel('busca', $field, $rel);
+                return;
+            }
+            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($from, $col, $like) {
+                $sub->select('id')->from($from)->whereLike($col, $like);
             });
             return;
         }
 
         // Notação ponto legada ('familia_produto.nome') → subselect na tabela.
+        // Com o schema na frente ('bi.grupo.nome') o subselect vai a ela.
         if (str_contains($field, '.')) {
-            [$table, $col] = explode('.', $field, 2);
+            $parts = explode('.', $field);
             // Identificadores vêm da config de colunas; só plain idents
             // entram no SQL (defesa contra tabela/coluna maliciosa).
-            if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table)
-                || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)) {
+            if (count($parts) > 3) {
+                return;
+            }
+            foreach ($parts as $part) {
+                if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $part)) {
+                    return;
+                }
+            }
+            $col    = array_pop($parts);
+            $table  = array_pop($parts);
+            $schema = $parts[0] ?? null;
+            // Era ignorado: só passa a valer quando a listagem tem a coluna da
+            // convenção, para não virar erro de SQL numa tela que funcionava.
+            if ($schema !== null && ($model = static::_gridModel($q)) !== null
+                && \Mad\Database\ModelAccessors::isColumn($model, $table . '_id') === false) {
+                return;
+            }
+            $from = static::_fallbackRelTable($q, $table, $schema);
+            if ($from === null) {
+                static::_warnFallbackRel('busca', $field, $table);
                 return;
             }
             // Valor (input do usuário) vai PARAMETRIZADO via subquery builder.
-            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $table . '_id'), function ($sub) use ($table, $col, $like) {
-                $sub->select('id')->from($table)->whereLike($col, $like);
+            $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $table . '_id'), function ($sub) use ($from, $col, $like) {
+                $sub->select('id')->from($from)->whereLike($col, $like);
             });
             return;
         }
@@ -8189,6 +8213,57 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return implode('.', $names);
     }
 
+    /**
+     * Tabela do relacionado `$rel` no fallback por convenção (fk = `{rel}_id`,
+     * chave `id`): Model sem a relação Eloquent, Query Builder puro e a notação
+     * ponto legada da busca (`grupo.nome`, `bi.grupo.nome`). A regra (FK do
+     * catálogo → schema do Model → nome puro só sem schema) mora em
+     * {@see GridRenderHelpers::fallbackRelTable()}, a mesma da célula.
+     *
+     * @param mixed       $q      builder da listagem
+     * @param string|null $schema schema escrito no campo (`bi.grupo.nome`)
+     * @return string|null `grupo` | `bi.grupo` | null = não filtra por esse campo
+     */
+    protected static function _fallbackRelTable($q, string $rel, ?string $schema = null): ?string
+    {
+        try {
+            $conn = $q->getConnection();
+        } catch (\Throwable $e) {
+            $conn = null;
+        }
+
+        return GridRenderHelpers::fallbackRelTable($conn, static::_fallbackOwnerTable($q), $rel, $schema);
+    }
+
+    /**
+     * Tabela de onde a listagem lê: a do Model ou o FROM de texto do Query
+     * Builder, sem o alias (`bi.item as i` → `bi.item`). null = FROM que não é
+     * tabela (consulta da `sourceQuery()`, subconsulta).
+     */
+    protected static function _fallbackOwnerTable($q): ?string
+    {
+        if (($model = static::_gridModel($q)) !== null) {
+            return $model->getTable();
+        }
+        if ($q instanceof \Illuminate\Database\Query\Builder && is_string($q->from) && trim($q->from) !== '') {
+            return preg_replace('/\s+as\s+\S+$/i', '', trim($q->from));
+        }
+
+        return null;
+    }
+
+    /** Aviso (uma vez por campo) de que o fallback não achou a tabela de `$rel`. */
+    private static function _warnFallbackRel(string $what, string $field, string $rel): void
+    {
+        static::_warnOnce(
+            'fallback-rel:' . $what . ':' . $field,
+            ($what === 'busca' ? 'busca por "' . $field . '" ignorada' : 'filtro por "' . $field . '" ignorado')
+            . ': a tabela "' . $rel . '" não foi achada no '
+            . 'schema da listagem nem na FK de "' . $rel . '_id" (ou a FK aponta para mais de um '
+            . 'schema). Declare a relação no Model.'
+        );
+    }
+
     /** @var array<string, array|null> cache do _relMetaOn ("Fqcn::segmento"). */
     private static array $_relMetaOnCache = [];
 
@@ -8329,9 +8404,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 }
             }
 
-            // Fallback (Query Builder / relação ausente): convenção fk = tabela_id.
-            $q->whereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($rel, $where) {
-                $sub->select('id')->from($rel);
+            // Fallback (Query Builder / relação ausente): convenção fk = tabela_id,
+            // com a tabela no schema certo (_fallbackRelTable).
+            $from = static::_fallbackRelTable($q, $rel);
+            if ($from === null) {
+                static::_warnFallbackRel('filtro', $field, $rel);
+                return;
+            }
+            $q->whereIn(\Mad\Database\QuerySource::qualify($q, $rel . '_id'), function ($sub) use ($from, $where) {
+                $sub->select('id')->from($from);
                 $where($sub);
             });
             return;

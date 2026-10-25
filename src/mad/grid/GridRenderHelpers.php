@@ -746,6 +746,9 @@ class GridRenderHelpers
     /** Bucket do memo por request (DataScope) dos lookups por FK: "FQCN#id" => Model|null. */
     private const FK_LOOKUP_MEMO = 'grid.fk_lookup';
 
+    /** Bucket do memo por request (DataScope) da tabela do fallback: "conexão|dona|rel|fk|schema" => tabela|null. */
+    private const FALLBACK_REL_MEMO = 'grid.fallback_rel';
+
     /**
      * Resolve um segmento de chain que NÃO bateu em prop/relação do model.
      *
@@ -760,7 +763,9 @@ class GridRenderHelpers
      * (2) convenção de FK — `<segmento>_id` (ou `id_<segmento>`) preenchido +
      * model `<Segmento>` no ModelRegistry → `find()` na conexão do PRÓPRIO model
      * alvo (escopos globais/tenant valem). Cache por request: a mesma categoria
-     * em 50 linhas é 1 query.
+     * em 50 linhas é 1 query. Linha de tabela em outro schema (`bi.item`): o
+     * model da tabela relacionada daquele schema (fallbackRelClass), nunca o
+     * homônimo de outra tabela.
      *
      * O cache é POR REQUEST e por unidade/tenant (DataScope::memo). Era um
      * `static`: num worker persistente o rótulo que a query escopada achou para
@@ -790,15 +795,10 @@ class GridRenderHelpers
             $id = $attrs[$fk] ?? null;
             if ($id === null || $id === '' || is_array($id)) continue;
 
-            $studly = \Illuminate\Support\Str::studly($part);
-            $cls    = \Mad\Database\ModelRegistry::resolve($studly);
+            $cls = self::fallbackRelClass($model, $part, $fk);
             if ($cls === null) {
-                $candidate = 'App\\Models\\' . $studly;
-                $cls = class_exists($candidate) ? $candidate : null;
-            }
-            if ($cls === null || !is_subclass_of($cls, \Illuminate\Database\Eloquent\Model::class)) {
                 error_log('[GridRenderHelpers] chain "' . $part . '": FK ' . $fk . '=' . $id
-                    . ' mas nenhum model "' . $studly . '" no registry (' . get_class($model) . ').');
+                    . ' mas nenhum model "' . \Illuminate\Support\Str::studly($part) . '" no registry (' . get_class($model) . ').');
                 return null;
             }
 
@@ -816,10 +816,191 @@ class GridRenderHelpers
         return null;
     }
 
+    /**
+     * Tabela do relacionado `$rel` no fallback por convenção de FK (`$fk`,
+     * padrão `{rel}_id`; chave `id`), quando o Model não declara a relação:
+     * subselect da busca e do filtro da listagem e o model da célula.
+     *
+     * O nome puro deixava o banco achar `grupo` no schema padrão: numa
+     * listagem de `bi.item` a busca, o filtro e a célula iam para a
+     * `public.grupo`, outra tabela (fórum #179). A tabela sai, nesta ordem:
+     *  1. da FK real do catálogo na coluna `$fk` apontando para `{rel}` (no
+     *     PostgreSQL ela traz o schema da tabela apontada, que pode ser outro
+     *     que o do Model);
+     *  2. sem FK, da mesma tabela no schema do próprio Model (`bi.grupo`);
+     *  3. do nome puro, como sempre, só quando o Model não tem schema.
+     * Sem schema e com a FK no schema padrão da conexão, o nome também sai
+     * puro (a regra do SchemaIntrospector::qualify): o SQL de sempre.
+     *
+     * null = não se sabe qual é a tabela, e quem chama não usa o fallback em
+     * vez de usar a tabela errada: FK para `{rel}` em mais de um schema, FK
+     * que desmente o schema escrito no campo, tabela que não existe no schema
+     * do Model ou na FK.
+     *
+     * @param \Illuminate\Database\Connection|null $conn  conexão da listagem
+     * @param string|null $owner  tabela de onde a listagem lê (null = FROM que não é tabela)
+     * @param string|null $schema schema escrito no campo (`bi.grupo.nome`)
+     * @return string|null `grupo` | `bi.grupo` | null
+     */
+    public static function fallbackRelTable($conn, ?string $owner, string $rel, ?string $schema = null, ?string $fk = null): ?string
+    {
+        $parts = $owner !== null ? explode('.', $owner) : [];
+        if (count($parts) > 2) {
+            return null;
+        }
+        $ownSchema = count($parts) === 2 ? $parts[0] : null;
+
+        try {
+            $builder = $conn->getSchemaBuilder();
+        } catch (\Throwable $e) {
+            return $schema === null && $ownSchema === null ? $rel : null;
+        }
+        $fk ??= $rel . '_id';
+
+        $key = $conn->getName() . '|' . ($owner ?? '') . '|' . $rel . '|' . $fk . '|' . ($schema ?? '');
+
+        return \Mad\Database\DataScope::memo(self::FALLBACK_REL_MEMO, $key, static function () use ($conn, $builder, $owner, $ownSchema, $rel, $schema, $fk) {
+            $exists = static function (string $table) use ($builder): bool {
+                try {
+                    return (bool) $builder->hasTable($table);
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            };
+
+            // 1. FK do catálogo. Ilegível (driver, permissão) = sem FK.
+            $targets = [];
+            if ($owner !== null) {
+                try {
+                    $fks = $builder->getForeignKeys($owner);
+                } catch (\Throwable $e) {
+                    $fks = [];
+                }
+                $prefix = (string) $conn->getTablePrefix();
+                foreach ($fks as $def) {
+                    $table    = (string) ($def['foreign_table'] ?? '');
+                    $fkSchema = (string) ($def['foreign_schema'] ?? '');
+                    if ($prefix !== '' && str_starts_with($table, $prefix)) {
+                        $table = substr($table, strlen($prefix));
+                    }
+                    // Sem o schema da tabela apontada a FK não diz qual é: não conta.
+                    if ($fkSchema !== ''
+                        && array_values((array) ($def['columns'] ?? [])) === [$fk]
+                        && strtolower($table) === strtolower($rel)) {
+                        $targets[$fkSchema] = $table;
+                    }
+                }
+            }
+            if (count($targets) > 1) {
+                return null;
+            }
+            if ($targets !== []) {
+                $fkSchema = (string) array_key_first($targets);
+                if ($schema !== null && $fkSchema !== $schema) {
+                    return null;
+                }
+                if ($schema === null && $ownSchema === null && $fkSchema === self::defaultSchema($builder)) {
+                    return $rel;
+                }
+                $qualified = $fkSchema . '.' . $targets[$fkSchema];
+
+                return $exists($qualified) ? $qualified : null;
+            }
+
+            // 2. Schema escrito no campo ou o do Model.
+            $in = $schema ?? $ownSchema;
+            if ($in === null) {
+                return $rel;   // 3. sem schema: o nome puro de sempre
+            }
+            $qualified = $in . '.' . $rel;
+
+            return $exists($qualified) ? $qualified : null;
+        });
+    }
+
+    /**
+     * Model do outro lado da convenção de FK (`$fk` preenchido na linha) para
+     * o segmento `$part`. Sem schema, o homônimo de sempre (`grupo` → `Grupo`).
+     * Com a tabela relacionada em outro schema (`bi.grupo`, ver
+     * fallbackRelTable), o model gerado para ela (`BiGrupo`) ou o homônimo só
+     * se a tabela dele for MESMO essa: o `Grupo` da `public.grupo` mostraria o
+     * registro de outra tabela. null = nenhum.
+     */
+    private static function fallbackRelClass(\Illuminate\Database\Eloquent\Model $model, string $part, string $fk): ?string
+    {
+        $studly = \Illuminate\Support\Str::studly($part);
+        try {
+            $conn = $model->getConnection();
+        } catch (\Throwable $e) {
+            $conn = null;
+        }
+
+        $table = self::fallbackRelTable($conn, $model->getTable(), $part, null, $fk);
+        if ($table === $part) {
+            return self::conventionModel($studly);
+        }
+        if ($table === null) {
+            return null;
+        }
+        $generated = \Mad\Database\ModelNaming::forTable($table)['class'] ?? $studly;
+        foreach (array_unique([$generated, $studly]) as $name) {
+            $cls = self::conventionModel($name);
+            if ($cls !== null && self::modelOwnsTable($cls, $table, $conn)) {
+                return $cls;
+            }
+        }
+
+        return null;
+    }
+
+    /** `Grupo` → FQCN pelo ModelRegistry ou `App\Models\Grupo`; null sem Model. */
+    private static function conventionModel(string $studly): ?string
+    {
+        $cls = \Mad\Database\ModelRegistry::resolve($studly);
+        if ($cls === null) {
+            $candidate = 'App\\Models\\' . $studly;
+            $cls = class_exists($candidate) ? $candidate : null;
+        }
+
+        return $cls !== null && is_subclass_of($cls, \Illuminate\Database\Eloquent\Model::class) ? $cls : null;
+    }
+
+    /** O Model `$cls` lê a tabela `$table` (`bi.grupo`; sem schema = o padrão) da conexão `$conn`? */
+    private static function modelOwnsTable(string $cls, string $table, $conn): bool
+    {
+        try {
+            $probe = new $cls();
+            if ($conn !== null && $probe->getConnection()->getName() !== $conn->getName()) {
+                return false;
+            }
+            $mine  = explode('.', $probe->getTable());
+            $their = explode('.', $table);
+            if (count($mine) > 2 || strtolower((string) end($mine)) !== strtolower((string) end($their))) {
+                return false;
+            }
+            $default = $conn !== null ? self::defaultSchema($conn->getSchemaBuilder()) : null;
+
+            return (count($mine) === 2 ? $mine[0] : $default) === (count($their) === 2 ? $their[0] : $default);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Schema onde o nome sem prefixo cai (`public`, `main`, o banco no MySQL); null = não sei. */
+    private static function defaultSchema($builder): ?string
+    {
+        try {
+            return $builder->getCurrentSchemaName();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     /** Limpa o cache de lookups por FK (testes / long-running workers). */
     public static function flushFkLookupCache(): void
     {
         \Mad\Database\DataScope::flushMemo(self::FK_LOOKUP_MEMO);
+        \Mad\Database\DataScope::flushMemo(self::FALLBACK_REL_MEMO);
         self::$relationNameCache = [];
     }
 
@@ -953,6 +1134,18 @@ class GridRenderHelpers
         $segment = trim(explode('->', $path)[0]);
         if (self::relationOn($modelClass, $segment) !== null) {
             return true;
+        }
+
+        // Tabela em outro schema (`bi.item`): o model da tabela relacionada
+        // daquele schema, a mesma escolha da célula (fallbackRelClass).
+        try {
+            $probe = new $modelClass();
+            $conn  = $probe->getConnection();
+            if (self::fallbackRelTable($conn, $probe->getTable(), $segment) !== $segment) {
+                return self::fallbackRelClass($probe, $segment, $segment . '_id') !== null;
+            }
+        } catch (\Throwable $e) {
+            // sem conexão: a convenção de sempre
         }
 
         // Convencao de FK: `<segmento>_id` + model `<Segmento>` conhecido.

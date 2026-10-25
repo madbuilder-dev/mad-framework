@@ -11,12 +11,23 @@ use RuntimeException;
  * Manager) consome — paridade entre os transportes direto/SSH/REST:
  *   [
  *     'engine' => 'sqlite'|'mysql'|'pgsql',
+ *     'defaultSchema' => ?string,            // só pgsql
  *     'tables' => [[
- *        'name','type'=>'table'|'view','rowCount'=>?int,'rowCountApprox'=>bool,
+ *        'name','type'=>'table'|'view',
+ *        'schema' => string,                 // só pgsql
+ *        'rowCount'=>?int,'rowCountApprox'=>bool,
  *        'columns'=>[['name','type','isPrimary','isForeign','allowNull','references'=>?['table','column']]],
  *        'indexes'=>[['name','columns'=>[],'unique']],
  *     ]],
  *   ]
+ *
+ * PostgreSQL: lista as tabelas de TODOS os schemas do usuário (fora
+ * `information_schema` e `pg_*`: pg_catalog, pg_toast, pg_temp_N). A do schema
+ * padrão da conexão (`current_schema()`) sai com o nome puro, como sempre; a de
+ * outro schema sai qualificada (`bi.grupo`) — inclusive em `references.table`.
+ * O nome qualificado é a chave da tabela em todo o resto (estrutura, edição
+ * inline). App com driver anterior manda só o schema padrão, sem `schema`: o
+ * front mostra como antes.
  *
  * ⚠️ CUSTO: em banco grande (centenas de tabelas, tabelas de 10^8 linhas) a
  * introspecção NÃO pode fazer `COUNT(*)` por tabela nem uma query por tabela:
@@ -36,16 +47,47 @@ use RuntimeException;
  */
 class SchemaIntrospector
 {
+    /**
+     * FKs do PostgreSQL pelo catálogo (`pg_constraint`), coluna a coluna, com o
+     * schema dos dois lados. O `information_schema` não serve: casa restrição
+     * por nome (duas tabelas podem ter uma `fk_grupo` cada), perde a FK que
+     * aponta para outro schema e esconde a de tabela que o usuário não é dono.
+     * O chamador completa com o WHERE (`ns.nspname`, `c.relname`).
+     */
+    private const PG_FOREIGN_KEYS_SQL = "SELECT ns.nspname AS sch, c.relname AS tbl, a.attname AS col,
+               rns.nspname AS ref_sch, rc.relname AS ref_table, ra.attname AS ref_col
+        FROM (SELECT conrelid, confrelid, conkey, confkey, generate_subscripts(conkey, 1) AS i
+              FROM pg_constraint WHERE contype = 'f') con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace ns ON ns.oid = c.relnamespace
+        JOIN pg_class rc ON rc.oid = con.confrelid
+        JOIN pg_namespace rns ON rns.oid = rc.relnamespace
+        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[con.i]
+        JOIN pg_attribute ra ON ra.attrelid = con.confrelid AND ra.attnum = con.confkey[con.i]";
+
+    /**
+     * PKs do PostgreSQL pelo mesmo catálogo da FK: o `table_constraints` do
+     * `information_schema` esconde a PK de quem só tem SELECT na tabela, e a
+     * edição inline depende dela. O chamador completa com o WHERE.
+     */
+    private const PG_PRIMARY_KEYS_SQL = "SELECT ns.nspname AS sch, c.relname AS tbl, a.attname AS col
+        FROM (SELECT conrelid, conkey, generate_subscripts(conkey, 1) AS i
+              FROM pg_constraint WHERE contype = 'p') con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace ns ON ns.oid = c.relnamespace
+        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[con.i]";
+
     /** @return array<string,mixed> */
     public function introspect(PDO $pdo, bool $withCounts = true): array
     {
         $driver = $this->driver($pdo);
+        $default = $driver === 'pgsql' ? $this->pgDefaultSchema($pdo) : null;
         $list = $this->listTables($pdo);
 
         // Pré-carga em LOTE: null = não disponível nesse engine / query falhou
         // → cada tabela cai no caminho por-tabela.
         $bulkCols = $this->bulkColumnRows($pdo, $driver);
-        $bulkFks = $this->bulkForeignKeys($pdo, $driver);
+        $bulkFks = $this->bulkForeignKeys($pdo, $driver, $default);
         $bulkIdx = $this->bulkIndexes($pdo, $driver);
         $bulkPks = $driver === 'pgsql' ? $this->bulkPgPrimaryKeys($pdo) : null;
         $counts = $withCounts ? $this->rowCounts($pdo, $driver, $list) : [];
@@ -55,17 +97,25 @@ class SchemaIntrospector
         foreach ($list as $t) {
             $name = $t['name'];
             $type = $t['type'];
+            // PostgreSQL: lotes indexados por (schema, tabela) — `bi.grupo` e uma
+            // `"bi.grupo"` do schema padrão não se misturam — e o caminho por
+            // tabela já recebe o alvo resolvido. MySQL/SQLite: pelo nome.
+            $key = $t['key'] ?? $name;
+            $target = $t['target'] ?? null;
+            // Só o PostgreSQL tem schema: MySQL/SQLite saem exatamente como antes.
+            $schemaField = isset($t['schema']) ? ['schema' => $t['schema']] : [];
             try {
-                $fks = $bulkFks !== null ? ($bulkFks[$name] ?? []) : $this->foreignKeys($pdo, $name);
+                $fks = $bulkFks !== null ? ($bulkFks[$key] ?? []) : $this->foreignKeys($pdo, $name, $target);
                 $columns = $bulkCols !== null
-                    ? $this->mapColumnRows($bulkCols[$name] ?? [], $driver, $fks, $bulkPks[$name] ?? [])
-                    : $this->columns($pdo, $name);
-                $indexes = $bulkIdx !== null ? ($bulkIdx[$name] ?? []) : $this->indexes($pdo, $name);
-                $count = $type === 'table' ? ($counts[$name] ?? null) : null;
+                    ? $this->mapColumnRows($bulkCols[$key] ?? [], $driver, $fks, $bulkPks[$key] ?? [])
+                    : $this->columns($pdo, $name, $target);
+                $indexes = $bulkIdx !== null ? ($bulkIdx[$key] ?? []) : $this->indexes($pdo, $name, $target);
+                $count = $type === 'table' ? ($counts[$key] ?? null) : null;
 
                 $tables[] = [
                     'name' => $name,
                     'type' => $type,
+                ] + $schemaField + [
                     'rowCount' => $count['value'] ?? null,
                     'rowCountApprox' => (bool) ($count['approx'] ?? false),
                     'columns' => $columns,
@@ -73,20 +123,27 @@ class SchemaIntrospector
                 ];
             } catch (\Throwable $e) {
                 // Tabela problemática não derruba a introspecção inteira.
-                $tables[] = ['name' => $name, 'type' => $type, 'rowCount' => null, 'rowCountApprox' => false, 'columns' => [], 'indexes' => [], 'error' => $e->getMessage()];
+                $tables[] = ['name' => $name, 'type' => $type] + $schemaField + ['rowCount' => null, 'rowCountApprox' => false, 'columns' => [], 'indexes' => [], 'error' => $e->getMessage()];
             }
         }
 
-        return ['engine' => $driver, 'tables' => $tables];
+        return $driver === 'pgsql'
+            ? ['engine' => $driver, 'defaultSchema' => $default, 'tables' => $tables]
+            : ['engine' => $driver, 'tables' => $tables];
     }
 
-    /** Estrutura de UMA tabela (colunas + índices). */
+    /**
+     * Estrutura de UMA tabela (colunas + índices). No PostgreSQL `$table` é o
+     * nome da listagem: `bi.grupo` ou, no schema padrão, só `grupo`.
+     */
     public function tableStructure(PDO $pdo, string $table): array
     {
+        $target = $this->driver($pdo) === 'pgsql' ? $this->pgTarget($pdo, $table) : null;
+
         return [
             'name' => $table,
-            'columns' => $this->columns($pdo, $table),
-            'indexes' => $this->indexes($pdo, $table),
+            'columns' => $this->columns($pdo, $table, $target),
+            'indexes' => $this->indexes($pdo, $table, $target),
         ];
     }
 
@@ -95,8 +152,94 @@ class SchemaIntrospector
         return strtolower((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
     }
 
+    /**
+     * Nome da tabela pronto para entrar no SQL (edição inline). PostgreSQL:
+     * schema e tabela resolvidos no catálogo (ver pgTarget) + aspas por parte
+     * (`"bi"."grupo"`, `"public"."grupo"`, `"public"."a.b"`). MySQL/SQLite: o
+     * nome inteiro entre aspas, como sempre.
+     */
+    public function quoteTable(PDO $pdo, string $table): string
+    {
+        $driver = $this->driver($pdo);
+        if ($driver !== 'pgsql') {
+            return $this->quoteIdent($table, $driver);
+        }
+
+        [$schema, $name] = $this->pgTarget($pdo, $table);
+
+        return $this->quoteIdent($schema, $driver) . '.' . $this->quoteIdent($name, $driver);
+    }
+
+    // ── Schemas (PostgreSQL) ──────────────────────────────────────────────
+
+    /** Schema padrão da conexão (onde cai o nome sem prefixo); null sem search_path válido. */
+    private function pgDefaultSchema(PDO $pdo): ?string
+    {
+        $schema = $pdo->query('SELECT current_schema()')->fetchColumn();
+
+        return is_string($schema) && $schema !== '' ? $schema : null;
+    }
+
+    /**
+     * Filtro SQL dos schemas do usuário: fora `information_schema` e tudo que
+     * começa com `pg_` (pg_catalog, pg_toast, pg_temp_N, pg_toast_temp_N — o
+     * PostgreSQL reserva o prefixo). `$col` é a coluna com o nome do schema.
+     */
+    private function pgUserSchemaSql(string $col): string
+    {
+        return "(lower({$col}) <> 'information_schema' AND substr(lower({$col}), 1, 3) <> 'pg_')";
+    }
+
+    /** `bi.grupo`, ou só `grupo` no schema padrão da conexão. */
+    private function qualify(string $schema, string $table, ?string $default): string
+    {
+        return $schema === $default ? $table : "{$schema}.{$table}";
+    }
+
+    /** Chave interna dos lotes do PostgreSQL: (schema, tabela) sem ambiguidade. */
+    private function pgKey(string $schema, string $table): string
+    {
+        return $schema . "\0" . $table;
+    }
+
+    /**
+     * Nome da listagem → [schema, tabela], resolvido no CATÁLOGO, não pelo
+     * ponto: `bi.grupo` é a tabela `grupo` do schema `bi`, ou a tabela `"bi.grupo"`
+     * do schema padrão (nome com ponto). Uma só casa → essa; as duas → recusa
+     * por ambiguidade; nenhuma → recusa. `public.grupo` explícito também vale.
+     * O nome passa antes pela allowlist de sempre; schema de sistema nunca casa
+     * (nem como padrão da conexão).
+     *
+     * @return array{0:string,1:string}
+     */
+    private function pgTarget(PDO $pdo, string $table): array
+    {
+        if (! preg_match('/^[A-Za-z0-9_$.]+$/', $table)) {
+            throw new RuntimeException("Tabela inválida: {$table}");
+        }
+
+        $stmt = $pdo->prepare("SELECT n.nspname AS sch, c.relname AS tbl
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r','p','v','m','f') AND " . $this->pgUserSchemaSql('n.nspname') . "
+              AND (n.nspname || '.' || c.relname = :ref OR (n.nspname = current_schema() AND c.relname = :bare))
+            ORDER BY n.nspname, c.relname");
+        $stmt->execute([':ref' => $table, ':bare' => $table]);
+        $hits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($hits) > 1) {
+            $options = array_map(fn ($r) => '"' . $r['sch'] . '"."' . $r['tbl'] . '"', $hits);
+            throw new RuntimeException("Tabela ambígua: {$table} pode ser " . implode(' ou ', $options));
+        }
+        if ($hits === []) {
+            throw new RuntimeException("Tabela inválida: {$table}");
+        }
+
+        return [(string) $hits[0]['sch'], (string) $hits[0]['tbl']];
+    }
+
     // ── Tabelas + views ───────────────────────────────────────────────────
-    /** @return array<int,array{name:string,type:string}> */
+    /** @return array<int,array{name:string,type:string,schema?:string,key?:string,target?:array{0:string,1:string}}> */
     private function listTables(PDO $pdo): array
     {
         $driver = $this->driver($pdo);
@@ -107,8 +250,19 @@ class SchemaIntrospector
         }
 
         if ($driver === 'pgsql') {
-            $sql = "SELECT table_name AS name, table_type AS type FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name";
-            return array_map(fn ($r) => ['name' => (string) $r['name'], 'type' => stripos((string) $r['type'], 'view') !== false ? 'view' : 'table'], $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC));
+            // Schema padrão primeiro (nome puro), depois os outros por schema.
+            $default = $this->pgDefaultSchema($pdo);
+            $sql = "SELECT table_schema AS sch, table_name AS name, table_type AS type FROM information_schema.tables
+                    WHERE " . $this->pgUserSchemaSql('table_schema') . "
+                    ORDER BY table_schema <> current_schema(), table_schema, table_name";
+            return array_map(fn ($r) => [
+                'name' => $this->qualify((string) $r['sch'], (string) $r['name'], $default),
+                'type' => stripos((string) $r['type'], 'view') !== false ? 'view' : 'table',
+                'schema' => (string) $r['sch'],
+                // internos (não saem na resposta): chave dos lotes e alvo do caminho por tabela
+                'key' => $this->pgKey((string) $r['sch'], (string) $r['name']),
+                'target' => [(string) $r['sch'], (string) $r['name']],
+            ], $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC));
         }
 
         // mysql / fallback
@@ -117,21 +271,26 @@ class SchemaIntrospector
     }
 
     // ── Colunas (com PK + FK) ─────────────────────────────────────────────
-    /** @return array<int,array<string,mixed>> */
-    private function columns(PDO $pdo, string $table): array
+    /**
+     * @param  array{0:string,1:string}|null  $target  [schema, tabela] já resolvidos (pgsql)
+     * @return array<int,array<string,mixed>>
+     */
+    private function columns(PDO $pdo, string $table, ?array $target = null): array
     {
         $driver = $this->driver($pdo);
+
+        if ($driver === 'pgsql') {
+            [$schema, $name] = $target ??= $this->pgTarget($pdo, $table);
+            $stmt = $pdo->prepare("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = :t AND table_schema = :s ORDER BY ordinal_position");
+            $stmt->execute([':t' => $name, ':s' => $schema]);
+            return $this->mapColumnRows($stmt->fetchAll(PDO::FETCH_ASSOC), $driver, $this->foreignKeys($pdo, $table, $target), $this->pgPrimaryKeys($pdo, $table, $target));
+        }
+
         $fks = $this->foreignKeys($pdo, $table); // column => ['table','column']
 
         if ($driver === 'sqlite') {
             $rows = $pdo->query('PRAGMA table_info(' . $this->quoteIdent($table, $driver) . ')')->fetchAll(PDO::FETCH_ASSOC);
             return $this->mapColumnRows($rows, $driver, $fks);
-        }
-
-        if ($driver === 'pgsql') {
-            $stmt = $pdo->prepare("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = :t AND table_schema = current_schema() ORDER BY ordinal_position");
-            $stmt->execute([':t' => $table]);
-            return $this->mapColumnRows($stmt->fetchAll(PDO::FETCH_ASSOC), $driver, $fks, $this->pgPrimaryKeys($pdo, $table));
         }
 
         // mysql / fallback
@@ -189,8 +348,11 @@ class SchemaIntrospector
     }
 
     // ── Foreign keys: column => ['table'=>, 'column'=>] ───────────────────
-    /** @return array<string,array{table:string,column:string}> */
-    private function foreignKeys(PDO $pdo, string $table): array
+    /**
+     * @param  array{0:string,1:string}|null  $target  [schema, tabela] já resolvidos (pgsql)
+     * @return array<string,array{table:string,column:string}>
+     */
+    private function foreignKeys(PDO $pdo, string $table, ?array $target = null): array
     {
         $driver = $this->driver($pdo);
         $out = [];
@@ -205,17 +367,12 @@ class SchemaIntrospector
             }
 
             if ($driver === 'pgsql') {
-                $sql = "SELECT kcu.column_name AS col, ccu.table_name AS ref_table, ccu.column_name AS ref_col
-                        FROM information_schema.table_constraints tc
-                        JOIN information_schema.key_column_usage kcu
-                          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-                        JOIN information_schema.constraint_column_usage ccu
-                          ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-                        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = :t AND tc.table_schema = current_schema()";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([':t' => $table]);
+                [$schema, $name] = $target ?? $this->pgTarget($pdo, $table);
+                $default = $this->pgDefaultSchema($pdo);
+                $stmt = $pdo->prepare(self::PG_FOREIGN_KEYS_SQL . ' WHERE ns.nspname = :s AND c.relname = :t');
+                $stmt->execute([':s' => $schema, ':t' => $name]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                    $out[$r['col']] = ['table' => $r['ref_table'], 'column' => $r['ref_col']];
+                    $out[$r['col']] = ['table' => $this->qualify((string) $r['ref_sch'], (string) $r['ref_table'], $default), 'column' => $r['ref_col']];
                 }
                 return $out;
             }
@@ -237,17 +394,16 @@ class SchemaIntrospector
         return $out;
     }
 
-    /** @return string[] PKs (pgsql) */
-    private function pgPrimaryKeys(PDO $pdo, string $table): array
+    /**
+     * @param  array{0:string,1:string}|null  $target  [schema, tabela] já resolvidos
+     * @return string[] PKs (pgsql)
+     */
+    private function pgPrimaryKeys(PDO $pdo, string $table, ?array $target = null): array
     {
         try {
-            $sql = "SELECT kcu.column_name AS col
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-                    WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = :t AND tc.table_schema = current_schema()";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([':t' => $table]);
+            [$schema, $name] = $target ?? $this->pgTarget($pdo, $table);
+            $stmt = $pdo->prepare(self::PG_PRIMARY_KEYS_SQL . ' WHERE ns.nspname = :s AND c.relname = :t');
+            $stmt->execute([':t' => $name, ':s' => $schema]);
             return array_map(fn ($r) => (string) $r['col'], $stmt->fetchAll(PDO::FETCH_ASSOC));
         } catch (\Throwable $e) {
             return [];
@@ -255,8 +411,11 @@ class SchemaIntrospector
     }
 
     // ── Índices ───────────────────────────────────────────────────────────
-    /** @return array<int,array<string,mixed>> */
-    private function indexes(PDO $pdo, string $table): array
+    /**
+     * @param  array{0:string,1:string}|null  $target  [schema, tabela] já resolvidos (pgsql)
+     * @return array<int,array<string,mixed>>
+     */
+    private function indexes(PDO $pdo, string $table, ?array $target = null): array
     {
         $driver = $this->driver($pdo);
 
@@ -276,10 +435,12 @@ class SchemaIntrospector
                         JOIN pg_index ix ON t.oid = ix.indrelid
                         JOIN pg_class i ON i.oid = ix.indexrelid
                         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-                        WHERE t.relname = :t AND t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())
+                        JOIN pg_namespace ns ON ns.oid = t.relnamespace
+                        WHERE t.relname = :t AND ns.nspname = :s
                         ORDER BY i.relname";
+                [$schema, $name] = $target ?? $this->pgTarget($pdo, $table);
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([':t' => $table]);
+                $stmt->execute([':t' => $name, ':s' => $schema]);
                 $byName = [];
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $byName[$r['name']] ??= ['name' => $r['name'], 'columns' => [], 'unique' => (bool) $r['uniq']];
@@ -309,7 +470,7 @@ class SchemaIntrospector
      * Colunas de TODAS as tabelas. null = engine sem catálogo em lote (sqlite)
      * ou query falhou → caller cai no caminho por-tabela.
      *
-     * @return array<string,array<int,array<string,mixed>>>|null table => rows
+     * @return array<string,array<int,array<string,mixed>>>|null tabela (pgsql: schema+tabela, ver pgKey) => rows
      */
     private function bulkColumnRows(PDO $pdo, string $driver): ?array
     {
@@ -318,10 +479,10 @@ class SchemaIntrospector
         }
 
         $sql = $driver === 'pgsql'
-            ? "SELECT table_name, column_name, data_type, is_nullable
+            ? "SELECT table_schema, table_name, column_name, data_type, is_nullable
                FROM information_schema.columns
-               WHERE table_schema = current_schema()
-               ORDER BY table_name, ordinal_position"
+               WHERE " . $this->pgUserSchemaSql('table_schema') . "
+               ORDER BY table_schema, table_name, ordinal_position"
             : "SELECT table_name, column_name, column_type, is_nullable, column_key
                FROM information_schema.columns
                WHERE table_schema = DATABASE()
@@ -331,7 +492,10 @@ class SchemaIntrospector
             $out = [];
             foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $r = array_change_key_case($r, CASE_LOWER);
-                $out[(string) $r['table_name']][] = $r;
+                $tbl = $driver === 'pgsql'
+                    ? $this->pgKey((string) $r['table_schema'], (string) $r['table_name'])
+                    : (string) $r['table_name'];
+                $out[$tbl][] = $r;
             }
             return $out;
         } catch (\Throwable $e) {
@@ -342,22 +506,16 @@ class SchemaIntrospector
     /**
      * FKs de TODAS as tabelas.
      *
-     * @return array<string,array<string,array{table:string,column:string}>>|null table => col => ref
+     * @return array<string,array<string,array{table:string,column:string}>>|null tabela (pgsql: schema+tabela) => col => ref
      */
-    private function bulkForeignKeys(PDO $pdo, string $driver): ?array
+    private function bulkForeignKeys(PDO $pdo, string $driver, ?string $default = null): ?array
     {
         if ($driver === 'sqlite') {
             return null;
         }
 
         $sql = $driver === 'pgsql'
-            ? "SELECT tc.table_name AS tbl, kcu.column_name AS col, ccu.table_name AS ref_table, ccu.column_name AS ref_col
-               FROM information_schema.table_constraints tc
-               JOIN information_schema.key_column_usage kcu
-                 ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-               JOIN information_schema.constraint_column_usage ccu
-                 ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-               WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema()"
+            ? self::PG_FOREIGN_KEYS_SQL . ' WHERE ' . $this->pgUserSchemaSql('ns.nspname')
             : "SELECT table_name AS tbl, column_name AS col, referenced_table_name AS ref_table, referenced_column_name AS ref_col
                FROM information_schema.key_column_usage
                WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL";
@@ -366,8 +524,11 @@ class SchemaIntrospector
             $out = [];
             foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $r = array_change_key_case($r, CASE_LOWER);
-                $out[(string) $r['tbl']][(string) $r['col']] = [
-                    'table' => (string) $r['ref_table'],
+                [$tbl, $refTable] = $driver === 'pgsql'
+                    ? [$this->pgKey((string) $r['sch'], (string) $r['tbl']), $this->qualify((string) $r['ref_sch'], (string) $r['ref_table'], $default)]
+                    : [(string) $r['tbl'], (string) $r['ref_table']];
+                $out[$tbl][(string) $r['col']] = [
+                    'table' => $refTable,
                     'column' => (string) ($r['ref_col'] ?: 'id'),
                 ];
             }
@@ -377,19 +538,15 @@ class SchemaIntrospector
         }
     }
 
-    /** @return array<string,string[]>|null table => PKs (pgsql) */
+    /** @return array<string,string[]>|null (schema, tabela) => PKs (pgsql) */
     private function bulkPgPrimaryKeys(PDO $pdo): ?array
     {
-        $sql = "SELECT tc.table_name AS tbl, kcu.column_name AS col
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = current_schema()";
+        $sql = self::PG_PRIMARY_KEYS_SQL . ' WHERE ' . $this->pgUserSchemaSql('ns.nspname');
 
         try {
             $out = [];
             foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $out[(string) $r['tbl']][] = (string) $r['col'];
+                $out[$this->pgKey((string) $r['sch'], (string) $r['tbl'])][] = (string) $r['col'];
             }
             return $out;
         } catch (\Throwable $e) {
@@ -401,7 +558,7 @@ class SchemaIntrospector
      * Índices de TODAS as tabelas. No MySQL usa `information_schema.statistics`
      * (ordenado por `seq_in_index`) em vez de um `SHOW INDEX` por tabela.
      *
-     * @return array<string,array<int,array<string,mixed>>>|null table => indexes
+     * @return array<string,array<int,array<string,mixed>>>|null tabela (pgsql: schema+tabela) => indexes
      */
     private function bulkIndexes(PDO $pdo, string $driver): ?array
     {
@@ -410,13 +567,14 @@ class SchemaIntrospector
         }
 
         $sql = $driver === 'pgsql'
-            ? "SELECT t.relname AS tbl, i.relname AS name, ix.indisunique AS uniq, a.attname AS col
+            ? "SELECT ns.nspname AS sch, t.relname AS tbl, i.relname AS name, ix.indisunique AS uniq, a.attname AS col
                FROM pg_class t
                JOIN pg_index ix ON t.oid = ix.indrelid
                JOIN pg_class i ON i.oid = ix.indexrelid
                JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-               WHERE t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())
-               ORDER BY t.relname, i.relname"
+               JOIN pg_namespace ns ON ns.oid = t.relnamespace
+               WHERE " . $this->pgUserSchemaSql('ns.nspname') . "
+               ORDER BY ns.nspname, t.relname, i.relname"
             : "SELECT table_name AS tbl, index_name AS name, non_unique AS non_uniq, column_name AS col
                FROM information_schema.statistics
                WHERE table_schema = DATABASE()
@@ -426,7 +584,9 @@ class SchemaIntrospector
             $byTable = [];
             foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $r = array_change_key_case($r, CASE_LOWER);
-                $tbl = (string) $r['tbl'];
+                $tbl = $driver === 'pgsql'
+                    ? $this->pgKey((string) $r['sch'], (string) $r['tbl'])
+                    : (string) $r['tbl'];
                 $name = (string) $r['name'];
                 $unique = $driver === 'pgsql'
                     ? filter_var($r['uniq'], FILTER_VALIDATE_BOOLEAN)
@@ -456,10 +616,10 @@ class SchemaIntrospector
         }
 
         $sql = $driver === 'pgsql'
-            ? "SELECT c.relname AS tbl, c.reltuples::bigint AS n
+            ? "SELECT ns.nspname AS sch, c.relname AS tbl, c.reltuples::bigint AS n
                FROM pg_class c
                JOIN pg_namespace ns ON ns.oid = c.relnamespace
-               WHERE ns.nspname = current_schema() AND c.relkind IN ('r','p')"
+               WHERE " . $this->pgUserSchemaSql('ns.nspname') . " AND c.relkind IN ('r','p')"
             : "SELECT table_name AS tbl, table_rows AS n
                FROM information_schema.tables
                WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'";
@@ -471,7 +631,10 @@ class SchemaIntrospector
                 // PG devolve -1 em tabela que nunca passou por ANALYZE; MySQL
                 // devolve NULL em engine sem estatística. Nos dois casos: sem número.
                 $n = $r['n'] === null ? null : (int) $r['n'];
-                $out[(string) $r['tbl']] = ['value' => $n !== null && $n >= 0 ? $n : null, 'approx' => true];
+                $tbl = $driver === 'pgsql'
+                    ? $this->pgKey((string) $r['sch'], (string) $r['tbl'])
+                    : (string) $r['tbl'];
+                $out[$tbl] = ['value' => $n !== null && $n >= 0 ? $n : null, 'approx' => true];
             }
             return $out;
         } catch (\Throwable $e) {
