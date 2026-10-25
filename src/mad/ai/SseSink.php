@@ -67,17 +67,21 @@ final class SseSink
 
     /** Card "executando…" no tool-inspector — emitido ANTES da tool rodar
      *  (o tool_use_end com o resultado substitui o card no front). */
-    public function toolUseStart(string $tool, array $params): void
+    public function toolUseStart(string $tool, array $params, ?string $label = null): void
     {
-        $this->emit('tool_use_start', [
+        $this->emit('tool_use_start', array_filter([
             'tool'    => $tool,
+            'label'   => $label,
             'params'  => $params,
             'running' => true,
-        ]);
+        ], static fn ($v) => $v !== null));
     }
 
-    /** UM card no tool-inspector por chamada MCP. */
-    public function toolUseEnd(string $tool, array $params, int $ms, mixed $result, bool $ok = true): void
+    /**
+     * UM card no tool-inspector por chamada MCP. `$label` = nome legível da
+     * tool do manifest (cartão "Consultando setores · 3 registros").
+     */
+    public function toolUseEnd(string $tool, array $params, int $ms, mixed $result, bool $ok = true, ?string $label = null): void
     {
         $this->flushText();
         // Resultado NAO vai pro transcript (rows inteiras inflariam a conversa)
@@ -85,17 +89,18 @@ final class SseSink
         $total = is_array($result) && isset($result['total']) && is_numeric($result['total'])
             ? (int) $result['total'] : null;
         $this->transcript[] = array_filter(
-            ['k' => 'tool', 'tool' => $tool, 'params' => $params, 'ms' => $ms, 'ok' => $ok, 'total' => $total],
+            ['k' => 'tool', 'tool' => $tool, 'label' => $label, 'params' => $params, 'ms' => $ms, 'ok' => $ok, 'total' => $total],
             static fn ($v) => $v !== null
         );
 
-        $this->emit('tool_use_end', [
+        $this->emit('tool_use_end', array_filter([
             'tool'   => $tool,
+            'label'  => $label,
             'params' => $params,
             'ms'     => $ms,
             'result' => $result,
             'ok'     => $ok,
-        ]);
+        ], static fn ($v) => $v !== null));
     }
 
     /** $block JA contem seu proprio campo 'type' (kpis/bar/...). */

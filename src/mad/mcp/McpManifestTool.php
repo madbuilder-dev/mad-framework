@@ -35,6 +35,24 @@ abstract class McpManifestTool extends Tool
     }
 
     /**
+     * Nome para quem usa o app ("Consultando setores", "Cadastrando cargo"):
+     * o `title` que a plataforma grava no manifest. Null em manifest antigo —
+     * aí quem mostra decide o fallback (builder#522).
+     */
+    public function label(): ?string
+    {
+        $title = trim((string) ($this->spec['title'] ?? ''));
+
+        return $title !== '' ? $title : null;
+    }
+
+    /** `title` do tools/list do MCP: o rótulo do manifest; sem ele, o id em palavras (era "Mcp Crud Tool" em toda tool). */
+    public function title(): string
+    {
+        return $this->label() ?? \Illuminate\Support\Str::headline(str_replace('.', ' ', $this->name()));
+    }
+
+    /**
      * Filtro por requisicao: piso de permissao legado + matriz do manifest (Contrato 6).
      * Chamado por Primitive::eligibleForRegistration() em tools/list e tools/call.
      */

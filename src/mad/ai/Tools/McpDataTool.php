@@ -116,14 +116,16 @@ final class McpDataTool implements Tool
 
         $this->confirms->stash($id, $this->toolName, $args, $editable);
 
-        $this->sink->block([
+        $label = $this->mcpTool->label();
+        $this->sink->block(array_filter([
             'type'   => 'confirm',
             'id'     => $id,
             'tool'   => $this->toolName,
-            'title'  => 'Confirmar ação: ' . $this->toolName,
+            'label'  => $label,
+            'title'  => 'Confirmar ação: ' . ($label ?? $this->toolName),
             'danger' => $this->isDestructive,
             'fields' => $fields,
-        ]);
+        ], static fn ($v) => $v !== null));
 
         return 'Esta acao de escrita requer confirmacao do usuario. Um cartao de confirmacao foi exibido; aguarde a resposta antes de prosseguir.';
     }

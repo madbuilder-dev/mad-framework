@@ -235,10 +235,13 @@ class MadRoutes
         // que vem em base64url ou `Str::random`: maiúscula e `_` entram
         // (mad-framework#353). Sem a restrição, `/blog/QUALQUER%20COISA` casava
         // e a página respondia 404 só lá dentro — espaço, `%`, `.` e `/` seguem
-        // fora.
-        if (str_contains($path, '{slug}')) {
-            $route->where('slug', '[A-Za-z0-9_-]+');
-            $post->where('slug', '[A-Za-z0-9_-]+');
+        // fora. Vale para TODA parte variável do endereço
+        // (`loja/{slug}/pedido/{codigo}`, builder#354): cada uma chega ao
+        // mount() pelo próprio nome.
+        preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $path, $params);
+        foreach (array_unique($params[1]) as $param) {
+            $route->where($param, '[A-Za-z0-9_-]+');
+            $post->where($param, '[A-Za-z0-9_-]+');
         }
 
         SiteRegistry::register($path, $fqcn, $opts + ['name' => $name]);

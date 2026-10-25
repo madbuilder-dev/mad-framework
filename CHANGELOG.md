@@ -12,6 +12,24 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.226.0] — 2026-10-25
+
+### Novidades
+
+- **Unidades:** o cadastro de Unidades ganhou "Logo (modo claro)" e "Logo (modo escuro)" na seção Aparência. O logo enviado aparece no topo do sistema para quem está na unidade e no login, no lugar do logo do tema, sem precisar criar um tema para cada cliente. Só o logo claro vale nos dois modos; unidade sem logo continua com o do tema.
+- **Páginas:** `<mad-page-container frameless>` abre a tela sem o topo e sem o menu do sistema, ocupando a janela inteira: bom para painel de cozinha, chamada de senha ou TV. Um botão "Menu" no canto mostra o menu de novo sem sair da tela; ao trocar de tela, o sistema volta ao normal.
+
+### Melhorias
+
+- **Site:** o perfil que o cliente novo recebe ao se cadastrar pelo site pode ser indicado pelo código do perfil, que é o mesmo em todo ambiente. Antes valia só o número do perfil, que muda de um ambiente para outro, e o cliente podia entrar com o perfil errado.
+- **Chat IA:** o cartão da consulta mostrava o nome técnico da ferramenta ("List cad setor"). Agora mostra o que está acontecendo, como "Consultando setores · 3 registros" e "Cadastrando setor", também na confirmação de escrita e no histórico da conversa. Vale depois de publicar a configuração do MCP de novo.
+
+### Correções
+
+- **Data de criação e de alteração:** no código da tela, `$registro->created_at` e `updated_at` chegavam como texto, e `->format('H:i')` ou `->diffForHumans()` não funcionavam. Agora são datas. Listas, formulários e a API continuam mostrando o mesmo valor de antes.
+- **Site:** numa página com mais de uma parte variável no endereço, como `loja/{slug}/pedido/{codigo}`, as partes além do `{slug}` aceitavam espaço e ponto e a página abria sem achar o registro. Agora todas seguem o formato do `{slug}` (letras, números, hífen e sublinhado) e chegam à página pelo próprio nome.
+- **Teste Online:** com várias pessoas salvando o mesmo projeto, uma publicação emendava na outra e o clique no app desistia com "Sistema em atualização — a ação não foi concluída". Agora a ação espera a publicação terminar (até 3 minutos, com a faixa "Atualizando o sistema" na tela) e segue sozinha.
+
 ## [5.225.0] — 2026-10-25
 
 ### Melhorias

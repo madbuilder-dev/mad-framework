@@ -1974,6 +1974,12 @@ const MadWire = (() => {
     };
     // Segundos entre as tentativas do 503 (cerca de 1 minuto no total).
     const _UPDATING_WAITS = [2, 3, 5, 5, 10, 15, 20];
+    // Publicação (o portão do Teste Online diz "durante a publicação", ou manda
+    // X-Mad-Publishing): com várias pessoas salvando, uma publicação emenda na
+    // outra e passa de 1 minuto — a ação desistia com "Sistema em atualização"
+    // no meio de um fluxo (builder#549). Depois do minuto, só ela segue tentando,
+    // no ritmo do Retry-After, até 3 minutos no total.
+    const _PUBLISHING_MAX_S = 180;
 
     function _downText() {
         const lang = String((document.documentElement && document.documentElement.lang) || '').slice(0, 2).toLowerCase();
@@ -2069,6 +2075,15 @@ const MadWire = (() => {
         return !/^\s*[{[]/.test(text);
     }
 
+    /** 503 do portão de publicação: segundos até a próxima tentativa (Retry-After, 15 sem ele); 0 = não é publicação. */
+    async function _publishingWait(res) {
+        let text = '';
+        try { text = await res.clone().text(); } catch (_) {}
+        if (res.headers.get('X-Mad-Publishing') !== '1' && !/durante a publica/i.test(text)) return 0;
+        const after = parseInt(res.headers.get('Retry-After') || '', 10);
+        return after > 0 ? Math.min(after, 30) : 15;
+    }
+
     /**
      * Repete o pedido enquanto o app responde 503; devolve a última resposta.
      * `superseded()` verdadeiro (saiu pedido mais novo da mesma chave) abandona
@@ -2077,11 +2092,19 @@ const MadWire = (() => {
     async function _retryWhileUpdating(first, send, superseded = null) {
         let res = first;
         let shown = false;
-        for (const wait of _UPDATING_WAITS) {
+        let waited = 0;
+        for (let i = 0; ; i++) {
             if (!(await _isUpdating(res))) break;
+            let wait = _UPDATING_WAITS[i];
+            if (wait === undefined) {
+                const next = await _publishingWait(res);
+                if (!next || waited + next > _PUBLISHING_MAX_S) break;
+                wait = next;
+            }
             if (superseded && superseded()) { res = null; break; }
             shown = true;
             await _downBar.wait(wait);
+            waited += wait;
             if (superseded && superseded()) { res = null; break; }
             // Rede oscilando no meio da publicação: segue tentando.
             try { res = await send(); } catch (_) {}

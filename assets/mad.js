@@ -4428,6 +4428,43 @@ window.madCopy = function (text) {
     return Promise.resolve(legacy());
 };
 
+// ── Página sem moldura (builder#396) ─────────────────────────────────────────
+// `<mad-page-container frameless>` — tela de parede (cozinha, painel de senhas,
+// TV): enquanto ESSA tela é a visível, o casco esconde topo, menu e abas
+// (`body.mad-frameless`, regras no notch-base.css). O botão "Menu" do casco
+// mostra a moldura de novo sem sair da tela (`mad-frameless-peek`); trocar de
+// tela ou de aba devolve a moldura.
+
+Mad._syncFrameless = function (scope) {
+    const body = document.body;
+    if (!body) return;
+    let box = scope && scope.querySelector ? scope : null;
+    if (!box) {
+        const tabs = window.MadTabs;
+        box = (tabs && tabs.enabled && typeof tabs.activePane === 'function' && tabs.activePane())
+            || document.getElementById('mad_content');
+    }
+    const on = !!(box && box.querySelector && box.querySelector('[data-mad-frameless]'));
+    body.classList.toggle('mad-frameless', on);
+    if (!on) body.classList.remove('mad-frameless-peek');
+    const btn = document.querySelector('[data-mad-frameless-toggle]');
+    if (btn) btn.setAttribute('aria-pressed', body.classList.contains('mad-frameless-peek') ? 'true' : 'false');
+};
+
+window.addEventListener('mad:navigated', (e) => Mad._syncFrameless(e.detail && e.detail.el));
+window.addEventListener('mad:tab-activated', (e) => Mad._syncFrameless(e.detail && e.detail.pane));
+
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('[data-mad-frameless-toggle]');
+    if (!btn) return;
+    e.preventDefault();
+    const peek = document.body.classList.toggle('mad-frameless-peek');
+    btn.setAttribute('aria-pressed', peek ? 'true' : 'false');
+});
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => Mad._syncFrameless());
+else Mad._syncFrameless();
+
 // ── Navegação via popstate (browser back/forward) ─────────────────────────────
 
 window.addEventListener('popstate', (e) => {

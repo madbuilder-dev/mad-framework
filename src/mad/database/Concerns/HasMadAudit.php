@@ -49,6 +49,18 @@ trait HasMadAudit
     public function initializeHasMadAudit(): void
     {
         $this->timestamps = false;
+
+        // Sem os timestamps, o Eloquent deixava de ler created_at/updated_at
+        // como data (builder#554). Cast declarado pelo model vence.
+        $casts = [];
+        foreach ([$this->getCreatedAtColumn(), $this->getUpdatedAtColumn()] as $column) {
+            if ($column && ! $this->hasCast($column)) {
+                $casts[$column] = \Mad\Database\Casts\MadAuditDate::class;
+            }
+        }
+        if ($casts !== []) {
+            $this->mergeCasts($casts);
+        }
     }
 
     /**
@@ -117,6 +129,12 @@ trait HasMadAudit
             if ($c = $this->getUpdatedByColumn())       { $this->setAttribute($c, $this->madAuditSessionValue('login')); }
             if ($c = $this->getUpdatedByUserIdColumn()) { $this->setAttribute($c, $this->madAuditSessionValue('userid')); }
         }
+    }
+
+    /** Data no formato que o trait grava (usado pelo cast MadAuditDate). */
+    public function madAuditFormatDate(\DateTimeInterface $at): string
+    {
+        return $at->format($this->madAuditDateMask());
     }
 
     /** Mesma chave usada no login (session nativa do Laravel, sem prefixo). */

@@ -47,11 +47,17 @@ final class EmbedToolsController
                 $inputSchema['required']   = $schemaArray['required'] ?? [];
             }
 
-            $tools[] = [
+            $row = [
                 'name'         => $publicName,
                 'description'  => (string) $tool->description(),
                 'input_schema' => $inputSchema,
             ];
+            // Nome legível do manifest: o cartão da consulta mostra "Consultando
+            // setores", não o slug da tool (builder#522).
+            if ($tool instanceof \Mad\Mcp\McpManifestTool && ($label = $tool->label()) !== null) {
+                $row['title'] = $label;
+            }
+            $tools[] = $row;
         }
 
         return response()->json(['tools' => $tools]);

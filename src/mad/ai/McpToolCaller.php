@@ -140,7 +140,8 @@ final class McpToolCaller
 
         // Feedback imediato: o card da tool aparece "executando…" no instante
         // em que a consulta comeca (o end substitui com resultado/latencia).
-        $sink?->toolUseStart($name, $args);
+        $label = $tool->label();
+        $sink?->toolUseStart($name, $args, $label);
 
         try {
             $resp = $tool->handle(new McpRequest($args));
@@ -151,7 +152,7 @@ final class McpToolCaller
         }
 
         $ms = (int) round((microtime(true) - $t0) * 1000);
-        $sink?->toolUseEnd($name, $args, $ms, $result, $ok);
+        $sink?->toolUseEnd($name, $args, $ms, $result, $ok, $label);
 
         return ['result' => $result, 'ok' => $ok, 'ms' => $ms];
     }
