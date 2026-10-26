@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.228.1] — 2026-10-26
+
+### Correções
+
+- **Empresas (banco por empresa):** a empresa com o campo Conexão preenchido à mão aparecia como "Provisionado" sem ter banco, o login entrava e toda página dava erro, sem conseguir nem sair. Agora ela fica "Não provisionado", com o Provisionar banco à vista, e o login recusa (ou oferece "Criar o banco e entrar" para quem pode provisionar).
+- **Empresas (banco por empresa):** o Provisionar banco passa a usar o nome digitado em Conexão e cria o banco com esse nome. Quando o nome não pode ser usado (fora das conexões permitidas, conexão do próprio sistema ou já usada por outra empresa), o motivo aparece antes de confirmar, com as conexões permitidas.
+- **Login:** sessão aberta numa empresa cujo banco deixou de responder volta para a tela de login com o aviso do motivo, em vez de erro em todas as páginas.
+
 ## [5.228.0] — 2026-10-26
 
 ### Correções
