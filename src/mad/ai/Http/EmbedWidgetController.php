@@ -4,12 +4,12 @@ namespace Mad\Ai\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\DashboardStore;
 use Mad\Ai\WidgetBlockBuilder;
 use Mad\Ai\WidgetDisplay;
 use Mad\Ai\WidgetStore;
 use Mad\Mcp\McpCurrentUser;
-use Mad\Mcp\McpManifestLoader;
 
 /**
  * EmbedWidgetController — widgets de BI salvos (micro-BI do embed).
@@ -285,22 +285,20 @@ final class EmbedWidgetController
             : response()->json(['error' => 'not_found'], 404);
     }
 
+    /** Banco de negócio: onde a SQL do widget roda. */
     private static function db(): string
     {
-        try {
-            return McpManifestLoader::load()->database();
-        } catch (\Throwable) {
-            return (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
-        }
+        return ChatStorage::business();
     }
 
+    /** Widgets e dashboards salvos moram com o estado do chat ({@see ChatStorage}). */
     private static function widgets(): WidgetStore
     {
-        return new WidgetStore(self::db());
+        return new WidgetStore(ChatStorage::connection(self::db()));
     }
 
     private static function dashboards(): DashboardStore
     {
-        return new DashboardStore(self::db());
+        return new DashboardStore(ChatStorage::connection(self::db()));
     }
 }

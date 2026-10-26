@@ -5,6 +5,7 @@ namespace Mad\Ai\Http;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Mad\Ai\Console\ToolAuditStore;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\ConversationStore;
 use Mad\Mcp\McpCurrentUser;
 
@@ -159,8 +160,9 @@ final class AgentConsoleConversationController
         return new ConversationStore(self::db());
     }
 
+    /** Mesma conexão do AgentConsoleController e do embed ({@see ChatStorage}). */
     private static function db(): string
     {
-        return (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
+        return ChatStorage::connection();
     }
 }

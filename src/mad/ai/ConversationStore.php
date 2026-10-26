@@ -16,7 +16,10 @@ use PDO;
  *
  * Port do antigo trocando a transação legada por PDO da conexão nativa (DB facade).
  * Schema self-contained via EmbedSchema (padrão do repo — migrator legado
- * morto). Tudo fail-safe: erro nunca quebra o chat.
+ * morto). Conexão = {@see ChatStorage::connection()}. Tudo fail-safe: erro
+ * nunca quebra o chat — mas quem chama fica sabendo (`error` no load, false no
+ * save): uma pendência de confirmação que não gravou não pode virar cartão
+ * morto "expirado" no turno seguinte (fw#564).
  */
 final class ConversationStore
 {
@@ -37,11 +40,13 @@ final class ConversationStore
     }
 
     /**
-     * @return array{messages: list<array{role: string, content: string}>, pending: array<string, mixed>, transcript: list<array<string, mixed>>, dashboards: array<string, mixed>, found: bool, title: string}
+     * `error` = o armazenamento falhou (não dá para saber se a conversa existe).
+     *
+     * @return array{messages: list<array{role: string, content: string}>, pending: array<string, mixed>, transcript: list<array<string, mixed>>, dashboards: array<string, mixed>, found: bool, title: string, error: bool}
      */
     public function load(string $conversationId, int $userId): array
     {
-        $out = ['messages' => [], 'pending' => [], 'transcript' => [], 'dashboards' => [], 'found' => false, 'title' => ''];
+        $out = ['messages' => [], 'pending' => [], 'transcript' => [], 'dashboards' => [], 'found' => false, 'title' => '', 'error' => false];
 
         try {
             // Escopo de TENANT: além do user, a leitura filtra pelo tenant atual
@@ -66,7 +71,8 @@ final class ConversationStore
                 $out['found']      = true;
             }
         } catch (\Throwable $e) {
-            error_log('[embed-store] load: ' . $e->getMessage());
+            error_log('[embed-store] load (conexão ' . $this->db . '): ' . $e->getMessage());
+            $out['error'] = true;
         }
 
         return $out;
@@ -74,14 +80,14 @@ final class ConversationStore
 
     /**
      * Upsert da conversa. No insert deriva o título da 1ª mensagem do usuário;
-     * no update preserva (salvo $title explícito).
+     * no update preserva (salvo $title explícito). false = não gravou.
      *
      * @param list<array{role: string, content: string}> $messages
      * @param array<string, mixed>                       $pending
      * @param list<array<string, mixed>>|null            $transcript null = não toca na coluna
      * @param array<string, mixed>|null                  $dashboards registro dos dashboards do chat ({@see ChatDashboards}); null = não toca
      */
-    public function save(string $conversationId, int $userId, array $messages, array $pending, ?string $title = null, ?array $transcript = null, ?array $dashboards = null): void
+    public function save(string $conversationId, int $userId, array $messages, array $pending, ?string $title = null, ?array $transcript = null, ?array $dashboards = null): bool
     {
         if (count($messages) > self::MAX_MESSAGES) {
             $messages = array_slice($messages, -self::MAX_MESSAGES);
@@ -148,8 +154,12 @@ final class ConversationStore
                     'INSERT INTO mad_ai_conversation (id, user_id, title, messages_json, pending_json, dashboards_json, transcript_json, created_at, updated_at, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 )->execute([$conversationId, $userId, $resolvedTitle, $mj, $pj, $dj ?? '{}', $tj ?? '[]', $now, $now, $tid]);
             }
+
+            return true;
         } catch (\Throwable $e) {
-            error_log('[embed-store] save: ' . $e->getMessage());
+            error_log('[embed-store] save (conexão ' . $this->db . '): ' . $e->getMessage());
+
+            return false;
         }
     }
 

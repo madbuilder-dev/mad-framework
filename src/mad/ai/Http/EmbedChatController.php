@@ -7,6 +7,7 @@ use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Mad\Ai\AgentRunner;
 use Mad\Ai\ChatDashboards;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\CodingPlanAgentRunner;
 use Mad\Ai\ConfirmCoordinator;
 use Mad\Ai\ConversationStore;
@@ -39,7 +40,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * (text_delta/tool_use_start|end/block/message_end/error/usage + [DONE]).
  *
  * O loop do agente NUNCA escreve: writes viram pendência (self-gate da
- * McpDataTool) → aprovação do usuário → execução aqui.
+ * McpDataTool) → aprovação do usuário → execução aqui. O desfecho da
+ * aprovação sai num evento `confirm_result {id, ok, message?}` antes do
+ * message_end/error (fw#564).
+ *
+ * Dois bancos: o de NEGÓCIO (manifest) roda as tools do MCP e as SQL dos
+ * widgets; o estado do chat (conversa, pendências, widgets/dashboards salvos)
+ * fica na conexão do {@see ChatStorage}.
  *
  * F4: além das tools de dados (McpDataTool), o agente recebe as 15 render tools
  * (RenderToolRegistry: show_* + confirm_action) que emitem blocos visuais no SSE.
@@ -55,6 +62,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class EmbedChatController
 {
+    /** A pendência do cartão deste turno não foi guardada (CHAT_STORAGE_UNAVAILABLE). */
+    private const STORAGE_SAVE_FAILED = 'Não consegui guardar este pedido de confirmação, então ele não pode ser confirmado. Nada foi alterado. Peça de novo em instantes; se o erro continuar, avise o administrador do sistema.';
+
+    /** A conversa não pôde ser lida no turno da aprovação (CHAT_STORAGE_UNAVAILABLE). */
+    private const STORAGE_READ_FAILED = 'Não consegui ler o pedido de confirmação guardado nesta conversa. Nada foi alterado. Peça de novo em instantes; se o erro continuar, avise o administrador do sistema.';
+
     public function __invoke(Request $request): StreamedResponse
     {
         // --- entradas (ANTES do stream — request já parseado) ---
@@ -106,12 +119,13 @@ final class EmbedChatController
                 $manifest = self::manifest();
                 $db       = $manifest?->database()
                     ?? (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
+                $chatDb   = ChatStorage::connection($db);
 
                 // Tools MCP in-process (já filtradas por permissão via
                 // shouldRegister sob o McpCurrentUser corrente).
                 $caller = $manifest !== null ? new McpToolCaller($manifest) : null;
 
-                $store    = new ConversationStore($db);
+                $store    = new ConversationStore($chatDb);
                 $confirms = new ConfirmCoordinator();
                 $userId   = $usageUserId !== null ? (int) $usageUserId : 0;
 
@@ -124,7 +138,7 @@ final class EmbedChatController
                 // Aprovação/cancelamento de escrita pendente: determinístico,
                 // SEM chamar o modelo.
                 if ($confirm !== null) {
-                    self::resolveConfirm($confirm, $confirms, $caller, $sink, $store, $conversationId, $userId, $messages, $transcript);
+                    self::resolveConfirm($confirm, $confirms, $caller, $sink, $store, $conversationId, $userId, $messages, $transcript, $state['error']);
 
                     return;
                 }
@@ -200,7 +214,7 @@ final class EmbedChatController
                 $trace    = new ProvenanceTracker(enforce: true);
                 // "Abrir no sistema": tabelas com tela de cadastro no manifesto
                 $linkable = array_keys($manifest?->forms() ?? []);
-                $tools    = self::buildTools($caller, $sink, $confirms, $manifest, $db, $trace, $linkable);
+                $tools    = self::buildTools($caller, $sink, $confirms, $manifest, $db, $trace, $linkable, $chatDb);
                 $system   = SystemPromptAssembler::assemble(
                     $manifest,
                     $caller?->allowedTools() ?? [],
@@ -263,7 +277,7 @@ final class EmbedChatController
                     $turnTrans[] = ['role' => 'agent', 'items' => $items];
                 }
 
-                $store->save(
+                $saved = $store->save(
                     $conversationId,
                     $userId,
                     array_merge($messages, $turnMsgs),
@@ -272,6 +286,16 @@ final class EmbedChatController
                     array_merge($transcript, $turnTrans),
                     ChatDashboards::merge($dashboards, $trace->dashboards()),
                 );
+
+                // Cartão de confirmação deste turno que não foi guardado não
+                // pode ficar na tela como se valesse: o Confirmar ia voltar
+                // "expirada". Diz já o que houve (fw#564).
+                if (! $saved && array_diff_key($confirms->all(), $state['pending']) !== []) {
+                    $sink->error(self::STORAGE_SAVE_FAILED, 'CHAT_STORAGE_UNAVAILABLE');
+                    $sink->done();
+
+                    return;
+                }
 
                 $sink->messageEnd();
                 $sink->done();
@@ -292,8 +316,10 @@ final class EmbedChatController
     /**
      * @return array<int, \Laravel\Ai\Contracts\Tool>
      */
-    private static function buildTools(?McpToolCaller $caller, SseSink $sink, ConfirmCoordinator $confirms, ?McpManifest $manifest, string $db, ?ProvenanceTracker $trace = null, array $linkable = []): array
+    private static function buildTools(?McpToolCaller $caller, SseSink $sink, ConfirmCoordinator $confirms, ?McpManifest $manifest, string $db, ?ProvenanceTracker $trace = null, array $linkable = [], ?string $chatDb = null): array
     {
+        $chatDb ??= ChatStorage::connection($db);
+
         // enforce: bloco com dados só com dado consultado NESTE turno (anti-invenção)
         $trace ??= new ProvenanceTracker(enforce: true);
 
@@ -341,7 +367,7 @@ final class EmbedChatController
         // modelo a AMOSTRA das linhas reais (PII do manifest mascarada) e as
         // registram no $trace como prova de origem do turno.
         if ((bool) config('mad.ai.widgets_enabled', true)) {
-            $widgetStore = new WidgetStore($db);
+            $widgetStore = new WidgetStore($chatDb);
             $pii         = self::piiColumns($manifest);
             $tools[] = new DbSchemaTool($db, $manifest, $sink);
             // query_db: conferir/explorar SEM virar bloco na conversa
@@ -352,7 +378,7 @@ final class EmbedChatController
             // save_dashboard: monta o dashboard persistente da tela "Meus
             // Dashboards" a partir dos widgets salvos — o usuário ajusta
             // visualmente depois (editor de grid).
-            $tools[] = new \Mad\Ai\Tools\SaveDashboardTool($sink, $widgetStore, new \Mad\Ai\DashboardStore($db));
+            $tools[] = new \Mad\Ai\Tools\SaveDashboardTool($sink, $widgetStore, new \Mad\Ai\DashboardStore($chatDb));
         }
 
         return $tools;
@@ -383,7 +409,11 @@ final class EmbedChatController
     /**
      * Resolve uma confirmação: executa (aprovado) ou cancela. Determinístico,
      * sem chamar o modelo. RE-VALIDA a permissão no piso/matriz antes de
-     * escrever — nunca confiar só no approved do front.
+     * escrever — nunca confiar só no approved do front. Aprovada, o desfecho
+     * sai em `confirm_result` antes do message_end/error.
+     *
+     * $storageFailed = a conversa não pôde ser lida: pendência ausente aí não
+     * é "expirada", é armazenamento fora do ar (CHAT_STORAGE_UNAVAILABLE).
      *
      * @param array<string, mixed>                       $confirm
      * @param list<array{role: string, content: string}> $messages
@@ -399,6 +429,7 @@ final class EmbedChatController
         int $userId,
         array $messages,
         array $transcript,
+        bool $storageFailed = false,
     ): void {
         $saveAll = static function () use (&$messages, &$transcript, $store, $confirms, $conversationId, $userId, $sink): void {
             $items = $sink->transcript();
@@ -425,7 +456,11 @@ final class EmbedChatController
         }
 
         if ($pending === null || $caller === null) {
-            $sink->error('Confirmacao expirada ou invalida. Refaca a solicitacao.');
+            [$text, $code] = $pending === null && $storageFailed
+                ? [self::STORAGE_READ_FAILED, 'CHAT_STORAGE_UNAVAILABLE']
+                : ['Confirmacao expirada ou invalida. Refaca a solicitacao.', 'CONFIRM_EXPIRED'];
+            $sink->confirmResult($id, false, $text);
+            $sink->error($text, $code);
             $saveAll();
             $sink->done();
 
@@ -440,6 +475,7 @@ final class EmbedChatController
         // Re-gate: revalida no piso/matriz sob o McpCurrentUser DESTE request.
         $spec = $caller->spec($tool);
         if ($spec === null || ! (new McpPermissionResolver())->canUseTool($caller->manifest(), $spec)) {
+            $sink->confirmResult($id, false, 'Voce nao tem permissao para executar esta acao.');
             $sink->error('Voce nao tem permissao para executar esta acao.');
             $saveAll();
             $sink->done();
@@ -450,12 +486,14 @@ final class EmbedChatController
         $r = $caller->invoke($tool, $args, $sink);
 
         if ($r['ok']) {
+            $sink->confirmResult($id, true);
             $sink->textDelta('Acao "' . $tool . '" executada com sucesso.');
             $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' executada com sucesso.'];
         } else {
             $msg = is_array($r['result'])
                 ? (string) ($r['result']['message'] ?? $r['result']['error'] ?? 'Falha desconhecida.')
                 : 'Falha desconhecida.';
+            $sink->confirmResult($id, false, 'Nao foi possivel executar a acao: ' . $msg);
             $sink->textDelta('Nao foi possivel executar a acao: ' . $msg);
             $messages[] = ['role' => 'assistant', 'content' => 'Falha ao executar ' . $tool . ': ' . $msg];
         }

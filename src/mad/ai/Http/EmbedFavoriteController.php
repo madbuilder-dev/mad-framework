@@ -5,9 +5,9 @@ namespace Mad\Ai\Http;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\EmbedSchema;
 use Mad\Mcp\McpCurrentUser;
-use Mad\Mcp\McpManifestLoader;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -148,13 +148,9 @@ final class EmbedFavoriteController
         return $q;
     }
 
-    /** Mesma resolução de conexão do EmbedChatController (manifest > config). */
+    /** Mesma conexão do estado do chat ({@see ChatStorage}). */
     private function db(): string
     {
-        try {
-            return McpManifestLoader::load()->database();
-        } catch (\Throwable) {
-            return (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
-        }
+        return ChatStorage::connection();
     }
 }

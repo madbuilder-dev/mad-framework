@@ -22,7 +22,7 @@ final class UsageLog
     public static function record(?TextUsage $usage, array $ctx, string $db = self::DB): void
     {
         try {
-            EmbedSchema::ensure(self::DB);
+            EmbedSchema::ensure(self::DB, ['mad_ai_token_usage']);
             $pdo = DB::connection(self::DB)->getPdo();
 
             // laravel/ai 1.0: `inputTokens` inclui o cache em todo provider (no

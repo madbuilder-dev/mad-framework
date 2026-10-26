@@ -10,7 +10,8 @@ namespace Mad\Ai;
  * (connection_aborted) para o loop poder parar e nao gastar tokens.
  *
  * Tipos de evento (LiveTransport.ts): text_delta, tool_use_end, block,
- * message_end, error, usage (opcional — contagem de tokens do turno).
+ * message_end, error, usage (opcional — contagem de tokens do turno),
+ * confirm_result (desfecho do cartão de confirmação, no turno da aprovação).
  */
 final class SseSink
 {
@@ -140,6 +141,17 @@ final class SseSink
         $this->emit('error', ['message' => $message]
             + ($code !== null && $code !== '' ? ['code' => $code] : [])
             + ($resetAt !== null && $resetAt !== '' ? ['reset_at' => $resetAt] : []));
+    }
+
+    /**
+     * Desfecho de uma confirmação aprovada (fw#564): `ok` só quando a escrita
+     * rodou; `message` diz ao usuário o motivo da falha. Sai antes do
+     * message_end/error do turno, para o cartão mostrar o resultado real.
+     */
+    public function confirmResult(string $id, bool $ok, ?string $message = null): void
+    {
+        $this->emit('confirm_result', ['id' => $id, 'ok' => $ok]
+            + ($message !== null && $message !== '' ? ['message' => $message] : []));
     }
 
     /** Evento opcional p/ o cliente exibir a contagem de tokens do turno. */

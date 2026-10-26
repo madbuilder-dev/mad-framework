@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.228.0] — 2026-10-26
+
+### Correções
+
+- **Chat IA:** com o banco do sistema num PostgreSQL próprio e o framework em SQLite (o padrão do servidor próprio), confirmar uma alteração pedida ao chat dava sempre "Confirmação expirada ou inválida" e nada era gravado; o histórico das conversas, os favoritos e os painéis de "Meus Dashboards" também não ficavam salvos. Agora a alteração confirmada é feita, e conversas, favoritos e painéis ficam guardados na conexão `ai` do framework, sem criar tabelas no banco do sistema. O que já estava salvo no banco do sistema continua aparecendo.
+- **Chat IA:** quando o chat não consegue guardar ou ler o pedido de confirmação, a mensagem diz isso, em vez de "expirada", e o cartão de confirmação mostra se a alteração foi feita ou por que não foi.
+
 ## [5.227.0] — 2026-10-25
 
 ### Melhorias

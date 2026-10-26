@@ -4,9 +4,9 @@ namespace Mad\Ai\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\DashboardStore;
 use Mad\Mcp\McpCurrentUser;
-use Mad\Mcp\McpManifestLoader;
 
 /**
  * EmbedDashboardController — dashboards do usuário final ("Meus Dashboards").
@@ -190,14 +190,9 @@ final class EmbedDashboardController
         return response()->json(['users' => $users, 'groups' => $groups]);
     }
 
+    /** Dashboards salvos moram com o estado do chat ({@see ChatStorage}). */
     private static function store(): DashboardStore
     {
-        try {
-            $db = McpManifestLoader::load()->database();
-        } catch (\Throwable) {
-            $db = (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
-        }
-
-        return new DashboardStore($db);
+        return new DashboardStore(ChatStorage::connection());
     }
 }

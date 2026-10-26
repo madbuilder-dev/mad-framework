@@ -4,9 +4,9 @@ namespace Mad\Ai\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\ConversationStore;
 use Mad\Mcp\McpCurrentUser;
-use Mad\Mcp\McpManifestLoader;
 
 /**
  * EmbedConversationController — histórico de conversas do chat embed.
@@ -70,14 +70,9 @@ final class EmbedConversationController
         }
     }
 
+    /** Mesma conexão do EmbedChatController ({@see ChatStorage}). */
     private static function store(): ConversationStore
     {
-        try {
-            $db = McpManifestLoader::load()->database();
-        } catch (\Throwable) {
-            $db = (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
-        }
-
-        return new ConversationStore($db);
+        return new ConversationStore(ChatStorage::connection());
     }
 }

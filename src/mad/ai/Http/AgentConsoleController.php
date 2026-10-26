@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Mad\Ai\AgentRunner;
+use Mad\Ai\ChatStorage;
 use Mad\Ai\ConfirmCoordinator;
 use Mad\Ai\Console\AgentConsolePromptAssembler;
 use Mad\Ai\Console\SystemToolExecutor;
@@ -31,9 +32,18 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *   - resolveConfirm RE-CHECA admin e executa via SystemToolExecutor
  *     (backup→mutate→verify→rollback), nunca confiando no `approved` do front.
  *   - admin-only é imposto pelo AgentConsoleAdminMiddleware (rota) + re-check aqui.
+ *
+ * Conversa, pendências e auditoria ficam na conexão do {@see ChatStorage}, a
+ * mesma do embed; o desfecho da aprovação sai em `confirm_result`.
  */
 final class AgentConsoleController
 {
+    /** A pendência do cartão deste turno não foi guardada (CHAT_STORAGE_UNAVAILABLE). */
+    private const STORAGE_SAVE_FAILED = 'Não consegui guardar este pedido de confirmação, então ele não pode ser confirmado. Nada foi alterado. Peça de novo em instantes; se o erro continuar, confira o banco da conexão ai.';
+
+    /** A conversa não pôde ser lida no turno da aprovação (CHAT_STORAGE_UNAVAILABLE). */
+    private const STORAGE_READ_FAILED = 'Não consegui ler o pedido de confirmação guardado nesta conversa. Nada foi alterado. Peça de novo em instantes; se o erro continuar, confira o banco da conexão ai.';
+
     public function __invoke(Request $request): StreamedResponse
     {
         $bearer     = trim((string) $request->bearerToken());
@@ -80,7 +90,7 @@ final class AgentConsoleController
             try {
                 MadAi::boot();
 
-                $db = (string) (config('mad.mcp.database') ?: config('mad.general.main_database', 'business'));
+                $db = ChatStorage::connection();
 
                 $store    = new ConversationStore($db);
                 $confirms = new ConfirmCoordinator();
@@ -106,6 +116,7 @@ final class AgentConsoleController
                         $login,
                         $messages,
                         $transcript,
+                        $state['error'],
                     );
 
                     return;
@@ -173,7 +184,7 @@ final class AgentConsoleController
                 $turnTrans   = [['role' => 'user', 'text' => $message]];
                 $turnTrans[] = ['role' => 'agent', 'items' => $sink->transcript()];
 
-                $store->save(
+                $saved = $store->save(
                     $conversationId,
                     $userId,
                     array_merge($messages, $turnMsgs),
@@ -181,6 +192,15 @@ final class AgentConsoleController
                     null,
                     array_merge($transcript, $turnTrans),
                 );
+
+                // Cartão deste turno que não foi guardado: avisa já, em vez
+                // de o Confirmar voltar "expirada" (fw#564).
+                if (! $saved && array_diff_key($confirms->all(), $state['pending']) !== []) {
+                    $sink->error(self::STORAGE_SAVE_FAILED, 'CHAT_STORAGE_UNAVAILABLE');
+                    $sink->done();
+
+                    return;
+                }
 
                 $sink->messageEnd();
                 $sink->done();
@@ -221,6 +241,8 @@ final class AgentConsoleController
     /**
      * Resolve uma confirmação: executa (aprovado) ou cancela. Determinístico, sem
      * modelo. RE-CHECA admin antes de qualquer mutação — nunca confiar no front.
+     * Aprovada, o desfecho sai em `confirm_result` antes do message_end/error;
+     * $storageFailed = a conversa não pôde ser lida (CHAT_STORAGE_UNAVAILABLE).
      *
      * @param array<string, mixed>                       $confirm
      * @param list<array{role: string, content: string}> $messages
@@ -237,6 +259,7 @@ final class AgentConsoleController
         string $login,
         array $messages,
         array $transcript,
+        bool $storageFailed = false,
     ): void {
         $saveAll = static function () use (&$messages, &$transcript, $store, $confirms, $conversationId, $userId, $sink): void {
             $items = $sink->transcript();
@@ -265,6 +288,7 @@ final class AgentConsoleController
         // Re-gate admin: só o administrador do dono (login `admin` E grupo 1)
         // executa a ação. Defesa contra approved forjado.
         if (! \Mad\Security\OwnerAdmin::session()) {
+            $sink->confirmResult($id, false, 'Voce nao tem permissao para executar esta acao (admin requerido).');
             $sink->error('Voce nao tem permissao para executar esta acao (admin requerido).');
             $saveAll();
             $sink->done();
@@ -273,7 +297,11 @@ final class AgentConsoleController
         }
 
         if ($pending === null) {
-            $sink->error('Confirmacao expirada ou invalida. Refaca a solicitacao.');
+            [$text, $code] = $storageFailed
+                ? [self::STORAGE_READ_FAILED, 'CHAT_STORAGE_UNAVAILABLE']
+                : ['Confirmacao expirada ou invalida. Refaca a solicitacao.', 'CONFIRM_EXPIRED'];
+            $sink->confirmResult($id, false, $text);
+            $sink->error($text, $code);
             $saveAll();
             $sink->done();
 
@@ -288,9 +316,11 @@ final class AgentConsoleController
         $outcome = $executor->execute($tool, $args, $sink, $id);
 
         if ($outcome->ok) {
+            $sink->confirmResult($id, true);
             $sink->textDelta('Acao "' . $tool . '" executada com sucesso. ' . $outcome->message);
             $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' executada: ' . $outcome->message];
         } else {
+            $sink->confirmResult($id, false, 'Nao foi possivel executar a acao: ' . $outcome->message);
             $sink->textDelta('Nao foi possivel executar a acao: ' . $outcome->message);
             $messages[] = ['role' => 'assistant', 'content' => 'Falha ao executar ' . $tool . ': ' . $outcome->message];
         }
