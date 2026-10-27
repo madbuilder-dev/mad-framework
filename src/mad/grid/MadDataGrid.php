@@ -3751,7 +3751,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** @param GridColumn[] $columns */
     private function _canStreamExport(array $columns): bool
     {
-        if (empty($this->model) || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
+        if (empty($this->model) || ($this->_filterGateOn() && !$this->_hasUserFilter()) || $this->_keylessModel()) {
             return false;
         }
         foreach (self::STREAM_EXPORT_HOOKS as $method) {
@@ -5898,6 +5898,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** Chave primária no fim da ordenação (ordem total), sem repetir a que já está lá. */
     private static function _orderByKeyLast(\Illuminate\Database\Eloquent\Builder $q): \Illuminate\Database\Eloquent\Builder
     {
+        // Model sem chave: não há coluna para fechar a ordem (`ORDER BY tabela.` era erro de SQL).
+        if ((string) $q->getModel()->getKeyName() === '') {
+            return $q;
+        }
         $key    = $q->getModel()->getQualifiedKeyName();
         $orders = $q->getQuery()->orders ?? [];
         $last   = end($orders);
@@ -6270,6 +6274,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
+     * O model da grade não tem chave primária (`$primaryKey = null`: tabela de
+     * carga sem PK). Sem chave não há ordem total, e ler por página (lotes do
+     * relatório, janelas, exportação em fluxo) podia repetir ou pular linha:
+     * o relatório e a exportação leem numa consulta só.
+     */
+    private function _keylessModel(): bool
+    {
+        return !empty($this->model) && $this->rowIdField() === '';
+    }
+
+    /**
      * O relatório pode carregar em lotes? Precisa das colunas (no AJAX de um
      * `<mad-grid self>` elas só chegam no render — aí vale a cópia do estado),
      * da consulta Eloquent e de nenhum gancho de carga sobrescrito pelo app.
@@ -6278,7 +6293,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _canLoadInBatches(array $columns): bool
     {
-        if ($columns === [] || empty($this->model)) {
+        if ($columns === [] || empty($this->model) || $this->_keylessModel()) {
             return false;
         }
         foreach (self::REPORT_BATCH_HOOKS as $method) {

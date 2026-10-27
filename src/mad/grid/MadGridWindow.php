@@ -119,7 +119,8 @@ trait MadGridWindow
      */
     private function _windowAllowed(array $columns): bool
     {
-        if ($this->perPage > 0 || $this->selectable || $this->_usesSource() || !empty($this->exportMeta['windowOff'])) {
+        if ($this->perPage > 0 || $this->selectable || $this->_usesSource() || !empty($this->exportMeta['windowOff'])
+            || $this->_keylessModel()) {
             return false;
         }
         if ($this->_inlineConfig === null && !empty($this->exportColConfigs)) {

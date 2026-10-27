@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.228.2] — 2026-10-26
+
+### Correções
+
+- **Listagem, relatório e exportação:** tela montada sobre um model sem chave primária (`$primaryKey = null`, comum em tabela de carga) abria com erro de SQL. Agora a listagem, o relatório e a exportação para Excel e CSV abrem e trazem cada linha uma vez.
+
 ## [5.228.1] — 2026-10-26
 
 ### Correções
