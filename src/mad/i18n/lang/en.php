@@ -460,7 +460,7 @@ return [
         // Visual hierarchy (MadOrgChart)
         'orgchart' => [
             'search'           => 'Search…',
-            'fit'              => 'Reset',
+            'fit'              => 'Fit',
             'truncated'        => 'Large tree: only the first nodes were loaded',
             'node_missing'     => 'Node not found or out of scope',
             'drag_off'         => 'Drag is disabled for this chart',

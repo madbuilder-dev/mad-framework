@@ -15,6 +15,8 @@
     'use strict';
 
     var ZOOM_MIN = 0.3, ZOOM_MAX = 2, ZOOM_STEP = 0.15;
+    // Menor zoom do ajuste automático: abaixo disso o texto do card não se lê.
+    var FIT_MIN = 0.5;
 
     function wireCall(componentEl, method, payload) {
         var MW = null;
@@ -65,10 +67,46 @@
                         self._loaded[id] = true;
                     };
                     this.$el.addEventListener('mad-orgchart:children', this._onChildren);
+                    // Abria em 100% com a árvore encostada à esquerda: as raízes que não
+                    // cabiam ficavam fora da vista, sem sinal de que existiam. Agora abre
+                    // ajustada à largura da área.
+                    this.$nextTick(function () { self._fitWhenVisible(); });
                 },
 
                 destroy() {
                     this.$el.removeEventListener('mad-orgchart:children', this._onChildren);
+                    if (this._fitObserver) this._fitObserver.disconnect();
+                },
+
+                /** Ajusta já, ou na 1ª vez que a área ganhar largura (aba ou cortina ainda fechada). */
+                _fitWhenVisible() {
+                    var self = this, vp = this.$refs.viewport;
+                    if (!vp) return;
+                    if (vp.clientWidth > 0) { this.fitView(); return; }
+                    if (typeof ResizeObserver === 'undefined') return;
+                    this._fitObserver = new ResizeObserver(function () {
+                        if (vp.clientWidth > 0) {
+                            self._fitObserver.disconnect();
+                            self._fitObserver = null;
+                            self.fitView();
+                        }
+                    });
+                    this._fitObserver.observe(vp);
+                },
+
+                /**
+                 * Cabe na largura: 100%, centralizada. Não cabe: reduz até caber, no
+                 * mínimo FIT_MIN, e começa pela esquerda (o resto é arrastar/zoom).
+                 */
+                fitView() {
+                    var vp = this.$refs.viewport, cv = this.$refs.canvas;
+                    if (!vp || !cv) return;
+                    var vw = vp.clientWidth, cw = cv.scrollWidth;
+                    if (!vw || !cw) return;
+                    var z = Math.min(1, Math.max(FIT_MIN, vw / cw));
+                    this.zoom = z;
+                    this.panX = cw * z <= vw ? Math.round((vw - cw * z) / 2) : 0;
+                    this.panY = 0;
                 },
 
                 // ── Pan / zoom ───────────────────────────────────────────
@@ -110,9 +148,7 @@
                 },
 
                 resetView() {
-                    this.zoom = 1;
-                    this.panX = 0;
-                    this.panY = 0;
+                    this.fitView();
                 },
 
                 // ── Delegação: toggle / click no card ────────────────────

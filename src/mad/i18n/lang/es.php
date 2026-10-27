@@ -450,7 +450,7 @@ return [
 
         'orgchart' => [
             'search'           => 'Buscar…',
-            'fit'              => 'Restablecer',
+            'fit'              => 'Ajustar',
             'truncated'        => 'Árbol grande: solo se cargaron los primeros nodos',
             'node_missing'     => 'Nodo no encontrado o fuera de alcance',
             'drag_off'         => 'Arrastrar está deshabilitado en este organigrama',

@@ -450,7 +450,7 @@ return [
 
         'orgchart' => [
             'search'           => 'Buscar…',
-            'fit'              => 'Resetar',
+            'fit'              => 'Ajustar',
             'truncated'        => 'Árvore grande: só os primeiros nós foram carregados',
             'node_missing'     => 'Nó não encontrado ou fora do escopo',
             'drag_off'         => 'Arrastar está desabilitado neste organograma',

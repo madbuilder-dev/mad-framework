@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.232.1] — 2026-10-27
+
+### Correções
+
+- **Organograma:** a árvore abria em 100% encostada à esquerda, e numa estrutura larga (uma EAP com três entregas, por exemplo) o que passava da largura ficava fora da vista, sem sinal de que existia. Agora o `<mad-org-chart>` abre ajustado: a árvore que cabe fica centralizada, e a que não cabe é reduzida até caber (no mínimo 50%, para o texto continuar legível). Dentro de uma aba ou cortina ainda fechada, o ajuste espera a área aparecer. O botão **Resetar** virou **Ajustar** e refaz esse ajuste.
+
 ## [5.232.0] — 2026-10-27
 
 ### Novidades
