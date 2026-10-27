@@ -12,6 +12,25 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.232.0] — 2026-10-27
+
+### Novidades
+
+- **Dias úteis:** prazos e cronogramas podem contar por um calendário próprio, com os dias da semana e os feriados dele, em vez dos da filial. Serve para um CD que trabalha aos sábados ou para o recesso de fim de ano de uma equipe.
+
+### Melhorias
+
+- **Formulários:** campo com erro ao salvar fica bem mais visível: o rótulo fica vermelho, a mensagem ganha um marcador e a tela rola até o primeiro campo com erro, que pisca. O aviso diz quais campos corrigir ("Corrija Responsável e Prazo da resposta.") e a lista do combo não abre mais por cima da mensagem de erro.
+- **Listagens:** excluir um registro que tem partes que saem junto com ele (as etapas de uma obra, os itens de um contrato) agora pede uma segunda confirmação dizendo o que vai junto ("Junto com este registro também serão excluídos: Etapas (2 registros)") com o botão **Excluir tudo**.
+- **Listagens:** o aviso de "registro em uso" não cita mais as partes que sairiam junto com o registro: diz só quem de fato o segura — inclusive o que usa essas partes ("em uso em Atividades (2 registros)").
+
+### Correções
+
+- **Filtros:** a lista com caixas de marcar (`<mad-dbselect-check-field>` e `<mad-select-check-field>`) sumia de dentro do bloco de filtros da listagem, do painel, do kanban, do calendário e do Gantt. Agora aparece e filtra por todos os valores marcados.
+- **Filtros:** filtro de várias opções (`multiple`, `<mad-select-check-field>`, `<mad-dbselect-check-field>`) reabria sem nada marcado depois de Aplicar, e o Aplicar seguinte limpava o filtro. Agora o bloco reabre com as opções escolhidas.
+- **Formulários:** a lista de opções marcadas (`<mad-checkbox-group-field>` e os outros campos de várias opções gravados numa coluna) era recusada ao salvar com "não pode ter mais que 20 caracteres" mesmo cabendo na coluna. Agora a conferência olha o que vai ser gravado, e não marcar nada cai no obrigatório.
+- **Passos:** a situação escrita no próprio passo (`<mad-step status="completed">`, `active`, `pending`) era ignorada e a trilha seguia só o `current`. Agora a situação do passo vale; passo sem ela segue o `current`.
+
 ## [5.231.0] — 2026-10-27
 
 ### Novidades

@@ -198,7 +198,7 @@ class MadGrid extends MadDataGrid
      * conferidas de novo, desfecho honesto) é o mesmo da listagem
      * `<mad-grid self>`: {@see MadDataGrid::_deleteVisibleRow()}.
      */
-    public function onMadGridDelete(int|string $id): mixed
+    public function onMadGridDelete(int|string $id, int|string $along = 0): mixed
     {
         $model = $this->gridConfig['model'] ?? '';
         if (empty($model) || !class_exists($model)) {
@@ -220,7 +220,7 @@ class MadGrid extends MadDataGrid
             return MadToast::danger(mad_t('mad.error.bad_request'));
         }
 
-        return $this->_deleteVisibleRow($id);
+        return $this->_deleteVisibleRow($id, (string) $along === '1');
     }
 
     // ── Dono da permissão ─────────────────────────────────────────────────

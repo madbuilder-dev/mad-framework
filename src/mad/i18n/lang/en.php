@@ -279,6 +279,11 @@ return [
             'row_gone'       => 'This record is no longer in the list: it may have been deleted or changed by someone else. Refresh the page.',
             'delete_gone'    => 'Nothing was deleted: the record is no longer in the list. It may have been deleted by someone else.',
             'delete_refused' => 'The record was not deleted: the deletion was refused.',
+            // Deletion that takes along what belongs to the record (on delete cascade): second confirmation.
+            'delete_along'         => 'Along with this record, these will also be deleted: :where. This cannot be undone.',
+            'delete_along_title'   => 'Delete the record and what belongs to it?',
+            'delete_along_confirm' => 'Delete all',
+            'delete_along_cancel'  => 'Cancel',
             'action_gone'    => 'The action was not run: the record is no longer in the list.',
             'action_refused' => 'The action was not run: it does not apply to this record.',
             'cell_not_saved' => 'The change was not saved.',

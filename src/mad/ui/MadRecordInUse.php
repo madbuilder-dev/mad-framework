@@ -2,8 +2,12 @@
 
 namespace Mad\Ui;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 /**
@@ -21,6 +25,12 @@ use Illuminate\Support\Str;
  * Model gerado as escreve). Cada uma é contada pela própria relação, com os
  * escopos do Model filho. Sem relação que explique, vale a tabela que o banco
  * cita na recusa da chave estrangeira (PostgreSQL e MySQL), sem a quantidade.
+ *
+ * Filha que a chave estrangeira do banco exclui JUNTO (`on delete cascade`:
+ * etapas da obra, itens do contrato) não usa o registro: vai com ele. Ela entra
+ * em {@see alongWith()}, e quem a usa (as atividades daquelas etapas) é que
+ * entra na lista — até {@see MAX_DEPTH} níveis. Filha que fica sem o vínculo
+ * (`on delete set null`) não conta em nenhuma das duas.
  *
  * O NOME mostrado é o do Model filho: a constante `MAD_LABEL`, quando ele a
  * declara, senão o nome da classe por extenso (`ItemPedido` → "Item pedido").
@@ -49,6 +59,12 @@ final class MadRecordInUse
 
     /** Tabelas citadas por extenso; o resto vira "mais N lugares". */
     private const MAX_LISTED = 3;
+
+    /** Níveis olhados: as filhas, as filhas das que vão junto, e mais um. */
+    private const MAX_DEPTH = 3;
+
+    /** `on_delete` das chaves estrangeiras lidas na chamada, por conexão e tabela filha. */
+    private static array $foreignKeys = [];
 
     /**
      * A frase com quem usa o registro, ou null quando o erro não é "registro em
@@ -90,26 +106,24 @@ final class MadRecordInUse
             return null;
         }
 
-        $parts = [];
-        foreach (array_slice($usages, 0, self::MAX_LISTED) as $use) {
-            $parts[] = match (true) {
-                $use['count'] === null => $use['label'],
-                $use['count'] === 1    => self::text('in_use_one', ':label (1 registro)', ['label' => $use['label']]),
-                default                => self::text('in_use_many', ':label (:count registros)', ['label' => $use['label'], 'count' => $use['count']]),
-            };
-        }
-        $more = count($usages) - count($parts);
-        if ($more > 0) {
-            $parts[] = self::text('in_use_more', 'mais :count lugares', ['count' => $more]);
-        }
-
-        $last  = array_pop($parts);
-        $where = $parts === [] ? $last : implode(', ', $parts) . self::text('in_use_and', ' e ') . $last;
-
         return self::text(
             'in_use',
             'Não é possível excluir este registro: ele está em uso em :where. Exclua ou altere esses registros primeiro.',
-            ['where' => $where]
+            ['where' => self::where($usages)]
+        );
+    }
+
+    /**
+     * A pergunta antes de excluir o registro junto com o que pertence a ele.
+     *
+     * @param list<array{label:string,count:int|null}> $along {@see alongWith()}
+     */
+    public static function alongMessage(array $along): string
+    {
+        return self::text(
+            'delete_along',
+            'Junto com este registro também serão excluídos: :where. Não dá para desfazer.',
+            ['where' => self::where($along)]
         );
     }
 
@@ -121,38 +135,7 @@ final class MadRecordInUse
      */
     public static function usages(Model $record, ?\Throwable $e = null): array
     {
-        $byLabel = [];
-        $seen    = [];
-        foreach ((new \ReflectionClass($record))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-            if (! self::isChildRelation($method)) {
-                continue;
-            }
-            try {
-                $relation = $method->invoke($record);
-                if (! $relation instanceof HasOneOrMany) {
-                    continue;
-                }
-                $related = $relation->getRelated();
-                // `hasOne` ao lado do `hasMany` da mesma chave (tabela irmã 1:1): um uso só.
-                $key = get_class($related) . '|' . $relation->getForeignKeyName();
-                if (isset($seen[$key])) {
-                    continue;
-                }
-                $seen[$key] = true;
-                $count = (int) $relation->count();
-            } catch (\Throwable) {
-                continue;
-            }
-            if ($count > 0) {
-                $label           = self::label($related);
-                $byLabel[$label] = ($byLabel[$label] ?? 0) + $count;
-            }
-        }
-
-        $usages = [];
-        foreach ($byLabel as $label => $count) {
-            $usages[] = ['label' => (string) $label, 'count' => $count];
-        }
+        $usages = self::scan($record)[0];
         if ($usages !== [] || $e === null) {
             return $usages;
         }
@@ -160,6 +143,22 @@ final class MadRecordInUse
         $table = self::tableFrom($e);
 
         return $table !== null ? [['label' => self::humanize($table), 'count' => null]] : [];
+    }
+
+    /**
+     * O que o banco exclui JUNTO com o registro (`on delete cascade`), com a
+     * quantidade — para quem exclui saber antes. Registro com lixeira
+     * (SoftDeletes) não leva nada: a exclusão só o marca.
+     *
+     * @return list<array{label:string,count:int}>
+     */
+    public static function alongWith(Model $record): array
+    {
+        if (in_array(SoftDeletes::class, class_uses_recursive($record), true)) {
+            return [];
+        }
+
+        return self::scan($record)[1];
     }
 
     /** Como a tabela do Model se chama para quem usa o app. */
@@ -175,6 +174,166 @@ final class MadRecordInUse
     }
 
     // ── Internos ────────────────────────────────────────────────────────
+
+    /**
+     * Quem usa o registro e o que vai junto, numa passada.
+     *
+     * @return array{0:list<array{label:string,count:int}>,1:list<array{label:string,count:int}>}
+     */
+    private static function scan(Model $record): array
+    {
+        self::$foreignKeys = [];
+        $inUse = $along = [];
+        try {
+            self::walk($record, null, 1, $inUse, $along);
+        } finally {
+            self::$foreignKeys = [];
+        }
+
+        $list = static function (array $byLabel): array {
+            $out = [];
+            foreach ($byLabel as $label => $count) {
+                $out[] = ['label' => (string) $label, 'count' => $count];
+            }
+
+            return $out;
+        };
+
+        return [$list($inUse), $list($along)];
+    }
+
+    /**
+     * As filhas de `$model`: a que o banco exclui junto soma em `$along` e as
+     * filhas dela são olhadas no nível de baixo; a que fica sem vínculo não
+     * conta; o resto soma em `$inUse`.
+     *
+     * @param Builder|null $parents as linhas de `$model` no nível de cima (null = `$model` é o registro)
+     */
+    private static function walk(Model $model, ?Builder $parents, int $depth, array &$inUse, array &$along): void
+    {
+        foreach (self::relations($model, $parents === null) as $relation) {
+            try {
+                $rule  = self::onDelete($relation, $model);
+                $query = $relation->getQuery();
+                if ($parents !== null) {
+                    $query->whereIn(
+                        $relation->getQualifiedForeignKeyName(),
+                        (clone $parents)->select($model->qualifyColumn($relation->getLocalKeyName()))
+                    );
+                    if ($relation instanceof MorphOneOrMany) {
+                        $query->where($relation->getQualifiedMorphType(), $relation->getMorphClass());
+                    }
+                }
+                if ($rule === 'set null' || $rule === 'set default') {
+                    continue;
+                }
+                $count = (int) (clone $query)->count();
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($count === 0) {
+                continue;
+            }
+            $label = self::label($relation->getRelated());
+            if ($rule !== 'cascade') {
+                $inUse[$label] = ($inUse[$label] ?? 0) + $count;
+                continue;
+            }
+            $along[$label] = ($along[$label] ?? 0) + $count;
+            if ($depth < self::MAX_DEPTH) {
+                self::walk($relation->getRelated(), $query, $depth + 1, $inUse, $along);
+            }
+        }
+    }
+
+    /**
+     * As relações filhas de `$model`, na ordem em que o Model as declara.
+     * Sem `$constrained` (nível de baixo, Model sem registro), a relação vem
+     * sem o filtro do pai: quem chama filtra pelas linhas do nível de cima.
+     *
+     * @return list<HasOneOrMany>
+     */
+    private static function relations(Model $model, bool $constrained): array
+    {
+        $out  = [];
+        $seen = [];
+        foreach ((new \ReflectionClass($model))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            if (! self::isChildRelation($method)) {
+                continue;
+            }
+            try {
+                $relation = $constrained
+                    ? $method->invoke($model)
+                    : Relation::noConstraints(fn () => $method->invoke($model));
+            } catch (\Throwable) {
+                continue;
+            }
+            if (! $relation instanceof HasOneOrMany) {
+                continue;
+            }
+            // `hasOne` ao lado do `hasMany` da mesma chave (tabela irmã 1:1): um uso só.
+            $key = get_class($relation->getRelated()) . '|' . $relation->getForeignKeyName();
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[]      = $relation;
+        }
+
+        return $out;
+    }
+
+    /**
+     * O que o banco faz com a filha quando o pai é excluído: `cascade`,
+     * `set null`, `restrict`, `no action`… null quando a chave estrangeira não
+     * existe no banco ou não deu para ler (conta como uso, como antes).
+     */
+    private static function onDelete(HasOneOrMany $relation, Model $parent): ?string
+    {
+        $child = $relation->getRelated();
+        try {
+            $connection = $child->getConnection();
+            $cacheKey   = $connection->getName() . '|' . $child->getTable();
+            self::$foreignKeys[$cacheKey] ??= $connection->getSchemaBuilder()->getForeignKeys($child->getTable());
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $parentTable = Str::afterLast($parent->getTable(), '.');
+        foreach (self::$foreignKeys[$cacheKey] as $fk) {
+            if ((array) ($fk['columns'] ?? []) === [$relation->getForeignKeyName()]
+                && Str::afterLast((string) ($fk['foreign_table'] ?? ''), '.') === $parentTable) {
+                return strtolower((string) ($fk['on_delete'] ?? '')) ?: null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * "Produtos (3 registros), Itens (1 registro) e mais 2 lugares".
+     *
+     * @param list<array{label:string,count:int|null}> $usages
+     */
+    private static function where(array $usages): string
+    {
+        $parts = [];
+        foreach (array_slice($usages, 0, self::MAX_LISTED) as $use) {
+            $parts[] = match (true) {
+                $use['count'] === null => $use['label'],
+                $use['count'] === 1    => self::text('in_use_one', ':label (1 registro)', ['label' => $use['label']]),
+                default                => self::text('in_use_many', ':label (:count registros)', ['label' => $use['label'], 'count' => $use['count']]),
+            };
+        }
+        $more = count($usages) - count($parts);
+        if ($more > 0) {
+            $parts[] = self::text('in_use_more', 'mais :count lugares', ['count' => $more]);
+        }
+
+        $last = array_pop($parts);
+
+        return $parts === [] ? $last : implode(', ', $parts) . self::text('in_use_and', ' e ') . $last;
+    }
 
     /**
      * Método público, sem parâmetro, que DECLARA devolver `HasMany`/`HasOne`

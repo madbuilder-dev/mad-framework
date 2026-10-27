@@ -1178,6 +1178,14 @@ class MadFormRegistry
 
     // ── Transformação de valores ──────────────────────────────────────────────
 
+    /** Tipos de campo cuja lista de opções vira CSV numa coluna (mesmos braços do {@see transformField()}). */
+    public const CSV_LIST_TYPES = ['checkbox-group', 'checklist', 'multi-search', 'db-multi-search', 'sort-list', 'db-checkbox-group'];
+
+    public static function isCsvListType(string $type): bool
+    {
+        return in_array($type, self::CSV_LIST_TYPES, true);
+    }
+
     /**
      * Transforma um valor de campo de acordo com as props do schema.
      *

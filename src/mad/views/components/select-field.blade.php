@@ -80,7 +80,7 @@
     $_emptyLabel     = $_hasPlaceholder ? $placeholder : 'Selecione...';
     $_slotValues   = \Mad\Support\MadSelectSlot::valueList(
         $selected,
-        [$name ? (\Mad\Component\MadRenderContext::current()[$name] ?? null) : null, $_rawSelected, $_rawValue],
+        [$name ? \Mad\Component\MadRenderContext::listValue($name) : null, $_rawSelected, $_rawValue],
         $_slotMultiple
     );
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);

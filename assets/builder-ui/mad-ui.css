@@ -3329,6 +3329,20 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    no arquivo: sem esta regra a mensagem de validacao sai cinza de hint. */
 .mad-field-hint.mad-error { color: var(--mad-danger-text, var(--mad-danger)); }
 [data-field-error]:empty { display: none; }
+/* Erro de validação que se vê: num formulário comprido a mensagem pequena passava
+   despercebida. Rótulo em vermelho, mensagem 12,5px com marcador e o campo pisca
+   quando a tela o revela (Mad._madRevealFirstError). */
+.mad-field:has(> [data-field-error].mad-error:not(:empty)) > .mad-label { color: var(--mad-danger-text, var(--mad-danger)); }
+.mad-field-hint.mad-error:not(:empty) { font-size: 12.5px; font-weight: 500; display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; line-height: 1.4; }
+.mad-field-hint.mad-error:not(:empty)::before {
+  content: '!'; flex: none; width: 15px; height: 15px; margin-top: 1px; border-radius: 50%;
+  background: var(--mad-danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
+}
+@keyframes mad-error-pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--mad-ring-danger); } 50% { box-shadow: 0 0 0 7px var(--mad-ring-danger); } }
+.mad-field.mad-error-flash .mad-input-error,
+.mad-field.mad-error-flash .mad-sel-control,
+.mad-field.mad-error-flash .mad-textarea-error { animation: mad-error-pulse .45s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) { .mad-field.mad-error-flash * { animation: none !important; } }
 /* Asterisco no vermelho cheio dava 3,5:1 no escuro: a mesma tinta do aviso de erro (fw#322). */
 .mad-required   { color: var(--mad-danger-text, var(--mad-danger)); margin-left: 2px; }
 

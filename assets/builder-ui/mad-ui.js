@@ -3538,19 +3538,34 @@ window._madWhen = _madWhen;
 _madWhen.onBlocked = function (list, form, editor) {
     var first = list[0];
     var slot = first.field.querySelector('[data-field-error]') || first.field;
-    if (window.Mad && typeof window.Mad._revealFieldError === 'function') window.Mad._revealFieldError(slot);
+    var M = window.Mad;
+    var scope = form.closest('[mad-component]') || form;
     // Editor de Detail Form: o cursor vai ao controle do modal. Procurar pelo
     // nome no componente acharia o campo homônimo do formulário principal.
     if (editor) {
+        if (M && typeof M._revealFieldError === 'function') M._revealFieldError(slot);
         if (typeof first.control.focus === 'function') {
             try { first.control.focus(); } catch (e) { /* controle escondido */ }
         }
-    } else if (window.Mad && typeof window.Mad._madFocusField === 'function') {
-        window.Mad._madFocusField(first.name, form.closest('[mad-component]') || form);
+    } else if (M && typeof M._madRevealFirstError === 'function') {
+        // Rola até o campo, cursor nele sem abrir a lista do combo, e o campo pisca.
+        M._madRevealFirstError(scope, { slot: slot, name: first.name, box: first.field.closest('.mad-field') || first.field });
+    } else if (M && typeof M._madFocusField === 'function') {
+        if (typeof M._revealFieldError === 'function') M._revealFieldError(slot);
+        M._madFocusField(first.name, scope);
     } else if (typeof first.control.focus === 'function') {
         try { first.control.focus(); } catch (e) { /* controle escondido */ }
     }
-    if (typeof window.madToast === 'function') window.madToast('Corrija os erros antes de continuar.', 'warning');
+    // O aviso nomeia os campos que faltam (um campo: a mensagem dele).
+    var msg = 'Corrija os erros antes de continuar.';
+    if (M && typeof M._madErrorSummary === 'function') {
+        var items = list.map(function (it) {
+            var box = it.field.closest('.mad-field') || it.field;
+            return { slot: it.field.querySelector('[data-field-error]'), name: it.name, box: box };
+        });
+        msg = M._madErrorSummary(scope, items) || msg;
+    }
+    if (typeof window.madToast === 'function') window.madToast(msg, 'warning');
 };
 
 // Liga uma condição a um elemento. `onCleanup` recebe o teardown (o `cleanup`

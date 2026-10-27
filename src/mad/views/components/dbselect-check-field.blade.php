@@ -78,11 +78,11 @@
     $hasError    = !empty($error);
     $reqStar     = $required ? ' <span class="mad-required">*</span>' : '';
 
-    // Auto-resolve selected do MadRenderContext
+    // Auto-resolve selected do MadRenderContext (ou da prop array da tela)
     if (empty($selected) && $name) {
-        $_ctx = \Mad\Component\MadRenderContext::current();
-        if (array_key_exists($name, $_ctx)) {
-            $selected = $_ctx[$name];
+        $_ctxValue = \Mad\Component\MadRenderContext::listValue($name);
+        if ($_ctxValue !== null) {
+            $selected = $_ctxValue;
         }
     }
     // Auto-load selected from pivot table (mode=table). O `name` vai junto: o

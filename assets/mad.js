@@ -1879,6 +1879,8 @@ const Mad = {
     },
 
     async _applyOpsLoop(ops, scope = null) {
+        // Esta resposta marca erro de validação em algum campo (MadResponse::fieldError)?
+        const marked = Array.isArray(ops) && ops.some((o) => o && o.op === 'addClass' && o.content === 'mad-error');
         for (const op of ops) {
             const el = op.target ? this._opTarget(op.target, scope) : null;
 
@@ -1975,7 +1977,10 @@ const Mad = {
 
                 case 'toast':
                     if (window.madToast) {
-                        madToast({ message: op.message, type: op.type || 'info', title: op.title || '', position: op.position || 'top-right' });
+                        // "Corrija os erros antes de continuar." sozinho não dizia QUAIS: com os campos já
+                        // marcados por esta resposta, o aviso nomeia os campos (ver _madErrorSummary).
+                        const msg = op.message === this.VALIDATION_TOAST && marked ? (this._madErrorSummary(scope) || op.message) : op.message;
+                        madToast({ message: msg, type: op.type || 'info', title: op.title || '', position: op.position || 'top-right' });
                     }
                     break;
 
@@ -2765,6 +2770,69 @@ const Mad = {
                 }
             }
         }
+        // O erro do servidor só pintava o campo: num formulário comprido (cortina) ele ficava fora da
+        // vista e o usuário via só o aviso. Agora a tela rola até o 1º campo com erro e ele pisca.
+        // Enfeite: falhar aqui nunca pode impedir a resposta de ser aplicada.
+        if (marked) { try { this._madRevealFirstError(scope); } catch (e) { console.warn('[MadWire] reveal error', e); } }
+    },
+
+    /** Texto do aviso padrão de validação (MadValidationException::DEFAULT_TOAST). */
+    VALIDATION_TOAST: 'Corrija os erros antes de continuar.',
+
+    /** Campos com erro marcado agora (slot `[data-field-error]` com `.mad-error` e texto), na ordem da tela. */
+    _madErrorFields(scope = null) {
+        const root = (scope && scope.querySelectorAll) ? (scope.closest('[data-mad-overlay]') || scope) : document;
+        return [...root.querySelectorAll('[data-field-error]')]
+            .filter((n) => n.classList && n.classList.contains('mad-error') && (n.textContent || '').trim() !== '')
+            .map((n) => ({ slot: n, name: n.getAttribute('data-field-error'), box: n.closest('.mad-field') || n.parentElement }));
+    },
+
+    /** Rótulo legível do campo (sem o asterisco de obrigatório). */
+    _madFieldLabel(box) {
+        const lab = box && box.querySelector('.mad-label');
+        if (!lab) return '';
+        const clone = lab.cloneNode(true);
+        clone.querySelectorAll('.mad-required, .mad-label-required, [aria-hidden="true"]').forEach((x) => x.remove());
+        return (clone.textContent || '').replace(/\s*\*\s*$/, '').replace(/\s+/g, ' ').trim();
+    },
+
+    /**
+     * Aviso que diz o que corrigir: um campo → a própria mensagem dele; até três → "Corrija A, B e C.";
+     * mais → "Corrija os N campos marcados em vermelho, a começar por A." Sem rótulo, null (fica o padrão).
+     */
+    _madErrorSummary(scope = null, list = null) {
+        const items = list || this._madErrorFields(scope);
+        if (!items.length) return null;
+        if (items.length === 1) {
+            const t = (items[0].slot && items[0].slot.textContent || '').trim();
+            return t || null;
+        }
+        const labels = items.map((i) => i.label || this._madFieldLabel(i.box)).filter(Boolean);
+        if (!labels.length) return null;
+        if (items.length <= 3 && labels.length === items.length) {
+            return 'Corrija ' + (labels.length === 2 ? labels.join(' e ') : labels.slice(0, -1).join(', ') + ' e ' + labels[labels.length - 1]) + '.';
+        }
+        return `Corrija os ${items.length} campos marcados em vermelho, a começar por ${labels[0]}.`;
+    },
+
+    /**
+     * Leva o usuário ao 1º campo com erro: abre a aba dele, rola até o meio da tela (a cortina rola
+     * junto), põe o cursor SEM abrir a lista do combo (a lista cobria a mensagem) e o campo pisca.
+     */
+    _madRevealFirstError(scope = null, first = null) {
+        const item = first || this._madErrorFields(scope)[0];
+        if (!item || !item.box) return;
+        this._revealFieldError(item.slot);
+        setTimeout(() => {
+            const box = item.box;
+            if (!box.getClientRects().length) return;
+            try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { box.scrollIntoView(); }
+            if (item.name) this._madFocusField(item.name, scope, { open: false });
+            box.classList.remove('mad-error-flash');
+            void box.offsetWidth;
+            box.classList.add('mad-error-flash');
+            setTimeout(() => box.classList.remove('mad-error-flash'), 1200);
+        }, 60);
     },
 
     // ── Field binding (data-mad-action) ──────────────────────────────────────
@@ -3133,14 +3201,16 @@ const Mad = {
      * busca ficar visível (o foco se perdia). Aqui a busca entra na mesma
      * espera dos outros campos.
      */
-    _madFocusField(name, scope = null) {
+    _madFocusField(name, scope = null, opts = {}) {
         let tries = 0;
         const attempt = () => {
             let el = this._madFocusTarget(name, scope);
             if (el && el._madSelect) {
                 // Combo sem busca (`no-search`): não há caixa de digitação para
                 // receber o cursor — o foco vai para o próprio controle, fechado.
-                if (el._madSelect.searchable === false) {
+                // Foco de erro de validação (`open: false`): também fechado — a
+                // lista aberta cobria a mensagem do próprio campo.
+                if (el._madSelect.searchable === false || opts.open === false) {
                     el = el._madSelect.control;
                 } else {
                     el._madSelect.openDropdown();

@@ -109,6 +109,36 @@ class MadRenderContext
     }
 
     /**
+     * Valor atual de um campo de várias opções: o do contexto e, sem ele, a
+     * prop pública ARRAY de mesmo nome da tela (a que o `mad:model` do campo
+     * liga). O `push()` só põe no contexto pelo nome o que é escalar — prop
+     * array é achatada e o nome some. No filtro de várias opções
+     * (`public array $farol`) o bloco reabria sem nada marcado depois de
+     * Aplicar, e o Aplicar seguinte limpava o filtro.
+     */
+    public static function listValue(string $name): mixed
+    {
+        if ($name === '') {
+            return null;
+        }
+        $ctx = self::current();
+        if (array_key_exists($name, $ctx)) {
+            return $ctx[$name];
+        }
+        $comp = self::getComponent();
+        if ($comp === null || ! property_exists($comp, $name)) {
+            return null;
+        }
+        $prop = new \ReflectionProperty($comp, $name);
+        if (! $prop->isPublic() || $prop->isStatic() || ! $prop->isInitialized($comp)) {
+            return null;
+        }
+        $value = $prop->getValue($comp);
+
+        return is_array($value) ? $value : null;
+    }
+
+    /**
      * Retorna o contexto atual (topo do stack), ou [] se não há nenhum.
      * Usado pelos blade components de campo para auto-popular valores.
      */

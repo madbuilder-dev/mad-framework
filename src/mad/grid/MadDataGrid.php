@@ -2593,8 +2593,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *
      * A permissão é a de Excluir da tela (ActionVocab: onMadGridDelete →
      * delete), conferida pelo handler antes de chegar aqui.
+     *
+     * @param int|string $along 1 = quem clicou já confirmou excluir junto o que
+     *                          pertence ao registro ({@see _deleteVisibleRow()})
      */
-    public function onMadGridDelete(int|string $id): mixed
+    public function onMadGridDelete(int|string $id, int|string $along = 0): mixed
     {
         if (!$this->gridDeleteDeclared) {
             \Illuminate\Support\Facades\Log::warning(
@@ -2605,7 +2608,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadToast::danger(mad_t('mad.error.bad_request'));
         }
 
-        return $this->_deleteVisibleRow($id);
+        return $this->_deleteVisibleRow($id, (string) $along === '1');
     }
 
     /**
@@ -2620,15 +2623,21 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * está mais na listagem (outra pessoa excluiu, mudou de dono) e exclusão que
      * o Model recusou no evento `deleting` avisam isso, e a listagem recarregada
      * mostra o que ficou.
+     *
+     * Registro com filhas que o banco exclui junto (`on delete cascade`: as
+     * etapas da obra, os itens do contrato): antes de excluir, a tela diz o que
+     * vai junto e pede um segundo "Excluir tudo" ($confirmedAlong). Se algo de
+     * fora ainda usa o registro, a recusa vem já, sem a pergunta.
      */
-    protected function _deleteVisibleRow(int|string $id): mixed
+    protected function _deleteVisibleRow(int|string $id, bool $confirmedAlong = false): mixed
     {
         $found   = false;
         $deleted = false;
         $blocked = false;   // a linha não tem o Excluir: escondido ou desabilitado pela condição
         $target  = null;    // o registro que se tentou excluir: a recusa "em uso" diz quem o usa
+        $ask     = null;    // o que vai junto, ainda sem a confirmação
         try {
-            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, &$found, &$deleted, &$blocked, &$target) {
+            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, $confirmedAlong, &$found, &$deleted, &$blocked, &$target, &$ask) {
                 $record = $this->_visibleRecord($id);
                 if (!$record) {
                     return;
@@ -2639,6 +2648,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     return;
                 }
                 $target = $record;
+                if (!$confirmedAlong) {
+                    $along = \Mad\Ui\MadRecordInUse::alongWith($record);
+                    if ($along !== []) {
+                        $ask = ['along' => $along, 'inUse' => \Mad\Ui\MadRecordInUse::message($record)];
+                        return;
+                    }
+                }
                 // delete() devolve false quando um `deleting` cancela. O estado
                 // do registro confirma (um delete() sobrescrito pode não devolver
                 // nada): sumiu do banco, ou foi para a lixeira (SoftDeletes).
@@ -2655,6 +2671,22 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadUserError::isTechnical($e)
                 ? \Mad\Ui\MadToast::danger(\Mad\Ui\MadUserError::message($e, $inUse ?? mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
                 : \Mad\Ui\MadToast::danger($inUse ?? 'Erro ao excluir: ' . $e->getMessage());
+        }
+
+        if ($ask !== null) {
+            if ($ask['inUse'] !== null) {
+                return \Mad\Ui\MadToast::danger($ask['inUse']);
+            }
+
+            return \Mad\Ui\MadMessage::confirm(
+                mad_t('mad.error.delete_along_title'),
+                e(\Mad\Ui\MadRecordInUse::alongMessage($ask['along'])),
+                $this,
+                'trash-2'
+            )
+                ->button(mad_t('mad.error.delete_along_confirm'), 'onMadGridDelete', [$id, 1], 'destructive')
+                ->onCancel(mad_t('mad.error.delete_along_cancel'))
+                ->build();
         }
 
         $this->loadData();

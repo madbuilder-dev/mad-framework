@@ -272,6 +272,11 @@ return [
             'row_gone'       => 'Este registro não está mais na listagem: pode ter sido excluído ou alterado por outra pessoa. Atualize a tela.',
             'delete_gone'    => 'Nada foi excluído: o registro não está mais na listagem. Ele pode ter sido excluído por outra pessoa.',
             'delete_refused' => 'O registro não foi excluído: a exclusão foi recusada.',
+            // Exclusão que leva junto o que pertence ao registro (on delete cascade): segunda confirmação.
+            'delete_along'         => 'Junto com este registro também serão excluídos: :where. Não dá para desfazer.',
+            'delete_along_title'   => 'Excluir o registro e o que pertence a ele?',
+            'delete_along_confirm' => 'Excluir tudo',
+            'delete_along_cancel'  => 'Cancelar',
             'action_gone'    => 'A ação não foi executada: o registro não está mais na listagem.',
             'action_refused' => 'A ação não foi executada: ela não vale para este registro.',
             'cell_not_saved' => 'A alteração não foi gravada.',

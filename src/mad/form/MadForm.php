@@ -6528,6 +6528,38 @@ class MadForm
     }
 
     /**
+     * Campos de várias opções gravados numa coluna (`checkbox-group`,
+     * `checklist`, `multi-search`…): o navegador posta a lista como JSON
+     * ('["1","2","3"]') e o save() grava o CSV ('1,2,3'). A regra `max:N`
+     * gerada da coluna conferia o JSON e recusava o que cabia: cinco dias da
+     * semana numa coluna de 20 já davam "não pode ter mais que 20 caracteres".
+     * Valida o que vai pro banco; regra `array`/`json` continua vendo a lista.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, mixed>  $rules
+     * @return array<string, mixed>
+     */
+    private function _withCsvLists(array $fields, array $rules): array
+    {
+        foreach ($fields as $name => $value) {
+            $name = (string) $name;
+            if (!isset($rules[$name]) || !(is_array($value) || (is_string($value) && str_starts_with($value, '[')))) {
+                continue;
+            }
+            $rule = is_array($rules[$name]) ? implode('|', array_filter($rules[$name], 'is_string')) : (string) $rules[$name];
+            if (preg_match('/(?:^|\|)\s*(?:array|json|list)(?:$|[|:])/', $rule)) {
+                continue;
+            }
+            $props = MadFormRegistry::requestFieldProps($name);
+            if ($props !== null && MadFormRegistry::isCsvListType((string) ($props['type'] ?? ''))) {
+                $fields[$name] = MadFormRegistry::transformField($value, $props);
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
      * Imagem guardada na PRÓPRIA coluna (sem `storage`): os limites que a tela
      * declarou — Tamanho máximo e Tipos aceitos — ficam anotados no estado
      * (`$_known[DECLARED]['i']`), com os valores.
@@ -7669,7 +7701,7 @@ class MadForm
 
         // A regra `date`/`after:` lê com strtotime: "21/10/2026" é recusada e
         // "05/11/2026" vira 11 de maio. Valida o que o save() grava (fw#463).
-        [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withDbDates($this->_withoutMask($this->fields)), $parsedRules);
+        [$data, $parsedRules] = $this->_reconcileUploadRules($this->_withCsvLists($this->_withDbDates($this->_withoutMask($this->fields)), $parsedRules), $parsedRules);
 
         $this->_offScreenRequired = null;
         $offScreen = $this->_offScreenRequiredRules($parsedRules, $data);

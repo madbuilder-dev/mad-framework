@@ -29,7 +29,12 @@ use Mad\Support\Holidays\BrazilNationalHolidays;
  *  5. {@see BrazilNationalHolidays}.
  *
  * `$unitId` é a unidade (filial) cujo calendário vale: feriado municipal de uma
- * unidade não atrasa o prazo de outra. A lista de cada ano×unidade fica em
+ * unidade não atrasa o prazo de outra. No lugar da unidade vai também um
+ * {@see BusinessCalendar} — calendário próprio (de um projeto, de uma equipe),
+ * com os SEUS dias da semana úteis e feriados:
+ *
+ *   BusinessDays::addBusinessDays($inicio, 10, new BusinessCalendar('projeto:12', [1, 2, 3, 4, 5, 6], $feriados));
+ * A lista de cada ano×unidade fica em
  * memória por {@see CACHE_TTL} segundos (worker de fila vê feriado novo sem
  * reiniciar); {@see flush()} zera na hora.
  */
@@ -100,23 +105,25 @@ final class BusinessDays
         return $days !== [] ? $days : [1, 2, 3, 4, 5];
     }
 
-    public static function isBusinessDay(DateTimeInterface|string $date, int|string|null $unitId = null): bool
+    public static function isBusinessDay(DateTimeInterface|string $date, int|string|BusinessCalendar|null $unitId = null): bool
     {
         $d = self::carbon($date);
-        if (!in_array($d->dayOfWeek, self::workingDays(), true)) {
+        $unit = self::unit($unitId);
+        $days = $unit instanceof BusinessCalendar ? $unit->workingDays : self::workingDays();
+        if (!in_array($d->dayOfWeek, $days, true)) {
             return false;
         }
 
-        return !isset(self::yearHolidays($d->year, self::unit($unitId))[$d->format('Y-m-d')]);
+        return !isset(self::yearHolidays($d->year, $unit)[$d->format('Y-m-d')]);
     }
 
-    public static function isHoliday(DateTimeInterface|string $date, int|string|null $unitId = null): bool
+    public static function isHoliday(DateTimeInterface|string $date, int|string|BusinessCalendar|null $unitId = null): bool
     {
         return self::holidayName($date, $unitId) !== null;
     }
 
     /** Nome do feriado na data (string vazia se o provedor não deu nome), ou null. */
-    public static function holidayName(DateTimeInterface|string $date, int|string|null $unitId = null): ?string
+    public static function holidayName(DateTimeInterface|string $date, int|string|BusinessCalendar|null $unitId = null): ?string
     {
         $d = self::carbon($date);
 
@@ -127,7 +134,7 @@ final class BusinessDays
      * Soma (ou, com $days negativo, subtrai) dias úteis, mantendo a hora.
      * Sexta + 1 = segunda; 0 devolve a própria data, útil ou não.
      */
-    public static function addBusinessDays(DateTimeInterface|string $from, int $days, int|string|null $unitId = null): Carbon
+    public static function addBusinessDays(DateTimeInterface|string $from, int $days, int|string|BusinessCalendar|null $unitId = null): Carbon
     {
         $d = self::carbon($from);
         $unit = self::unit($unitId);
@@ -146,7 +153,7 @@ final class BusinessDays
         return $d;
     }
 
-    public static function subBusinessDays(DateTimeInterface|string $from, int $days, int|string|null $unitId = null): Carbon
+    public static function subBusinessDays(DateTimeInterface|string $from, int $days, int|string|BusinessCalendar|null $unitId = null): Carbon
     {
         return self::addBusinessDays($from, -$days, $unitId);
     }
@@ -155,7 +162,7 @@ final class BusinessDays
      * Próximo dia útil DEPOIS da data (mesma hora). Com $orSame, a própria data
      * quando ela já é útil.
      */
-    public static function nextBusinessDay(DateTimeInterface|string $date, int|string|null $unitId = null, bool $orSame = false): Carbon
+    public static function nextBusinessDay(DateTimeInterface|string $date, int|string|BusinessCalendar|null $unitId = null, bool $orSame = false): Carbon
     {
         if ($orSame && self::isBusinessDay($date, $unitId)) {
             return self::carbon($date);
@@ -165,7 +172,7 @@ final class BusinessDays
     }
 
     /** Dia útil anterior à data (mesma hora). Com $orSame, a própria data quando útil. */
-    public static function previousBusinessDay(DateTimeInterface|string $date, int|string|null $unitId = null, bool $orSame = false): Carbon
+    public static function previousBusinessDay(DateTimeInterface|string $date, int|string|BusinessCalendar|null $unitId = null, bool $orSame = false): Carbon
     {
         if ($orSame && self::isBusinessDay($date, $unitId)) {
             return self::carbon($date);
@@ -180,7 +187,7 @@ final class BusinessDays
      * diff($a, $b) === -diff($b, $a). addBusinessDays($a, diff($a, $b)) cai em
      * $b sempre que $b é dia útil.
      */
-    public static function diffBusinessDays(DateTimeInterface|string $a, DateTimeInterface|string $b, int|string|null $unitId = null): int
+    public static function diffBusinessDays(DateTimeInterface|string $a, DateTimeInterface|string $b, int|string|BusinessCalendar|null $unitId = null): int
     {
         $from = self::carbon($a)->startOfDay();
         $to = self::carbon($b)->startOfDay();
@@ -210,7 +217,7 @@ final class BusinessDays
      *
      * @return array<string,string> 'Y-m-d' => nome
      */
-    public static function holidaysBetween(DateTimeInterface|string $a, DateTimeInterface|string $b, int|string|null $unitId = null): array
+    public static function holidaysBetween(DateTimeInterface|string $a, DateTimeInterface|string $b, int|string|BusinessCalendar|null $unitId = null): array
     {
         $from = self::carbon($a)->format('Y-m-d');
         $to = self::carbon($b)->format('Y-m-d');
@@ -235,12 +242,25 @@ final class BusinessDays
     // ── internos ─────────────────────────────────────────────────────────
 
     /** @return array<string,string> */
-    private static function yearHolidays(int $year, ?int $unitId): array
+    private static function yearHolidays(int $year, BusinessCalendar|int|null $unitId): array
     {
-        $key = $year . '|' . ($unitId ?? '');
+        $key = $year . '|' . ($unitId instanceof BusinessCalendar ? 'c:' . $unitId->key : ($unitId ?? ''));
         $now = microtime(true);
         if (isset(self::$memo[$key]) && $now - self::$memo[$key][0] < self::CACHE_TTL) {
             return self::$memo[$key][1];
+        }
+
+        if ($unitId instanceof BusinessCalendar) {
+            try {
+                $list = self::normalize($unitId->holidays($year));
+            } catch (\Throwable $e) {
+                self::warn("BusinessDays: os feriados do calendário '{$unitId->key}' falharam; usando os feriados nacionais. " . $e->getMessage());
+
+                return (new BrazilNationalHolidays())->holidays($year, null);
+            }
+            self::$memo[$key] = [$now, $list];
+
+            return $list;
         }
 
         $provider = self::provider();
@@ -330,8 +350,11 @@ final class BusinessDays
         return $date instanceof DateTimeInterface ? Carbon::instance($date) : Carbon::parse($date);
     }
 
-    private static function unit(int|string|null $unitId): ?int
+    private static function unit(int|string|BusinessCalendar|null $unitId): BusinessCalendar|int|null
     {
+        if ($unitId instanceof BusinessCalendar) {
+            return $unitId;
+        }
         if ($unitId === null || $unitId === '') {
             return null;
         }

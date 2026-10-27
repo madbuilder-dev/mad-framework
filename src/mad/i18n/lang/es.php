@@ -272,6 +272,11 @@ return [
             'row_gone'       => 'Este registro ya no está en el listado: puede haber sido eliminado o modificado por otra persona. Actualice la pantalla.',
             'delete_gone'    => 'No se eliminó nada: el registro ya no está en el listado. Puede haber sido eliminado por otra persona.',
             'delete_refused' => 'El registro no fue eliminado: la eliminación fue rechazada.',
+            // Eliminación que se lleva lo que pertenece al registro (on delete cascade): segunda confirmación.
+            'delete_along'         => 'Junto con este registro también se eliminarán: :where. No se puede deshacer.',
+            'delete_along_title'   => '¿Eliminar el registro y lo que le pertenece?',
+            'delete_along_confirm' => 'Eliminar todo',
+            'delete_along_cancel'  => 'Cancelar',
             'action_gone'    => 'La acción no se ejecutó: el registro ya no está en el listado.',
             'action_refused' => 'La acción no se ejecutó: no aplica a este registro.',
             'cell_not_saved' => 'El cambio no fue guardado.',

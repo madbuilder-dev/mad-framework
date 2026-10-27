@@ -26,8 +26,9 @@
         $_step['color']       = $_step['color']       ?? '';
         $_step['status']      = $_step['status']      ?? '';
 
-        if ($_step['status'] === 'error') {
-            // keep explicit error
+        if (in_array($_step['status'], ['error', 'completed', 'active', 'pending'], true)) {
+            // Situação dada no próprio <mad-step status="..."> vence o `current`:
+            // o passo 3 pode estar feito com o 2 ainda pendente (fw 5.230.2).
         } elseif (($i + 1) < $current) {
             $_step['status'] = 'completed';
         } elseif (($i + 1) === $current) {

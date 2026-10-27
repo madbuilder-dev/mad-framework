@@ -21,6 +21,9 @@ class MadDashFiltersCompiler
      * o `<mad-radio-field>` do "filtro rápido", nunca aparecia e a ação recusava
      * o valor vazio. Os campos de valor escalar do kit entram todos (5.90.0);
      * o que não serve de filtro (upload, editor rico, checklist) continua fora.
+ * As listas com caixas de marcar (`<mad-dbselect-check-field>`,
+ * `<mad-select-check-field>`) filtram por vários valores, como o
+ * `<mad-select-field multiple>` (5.230.1).
      */
     public const FILTER_TAGS = [
         'mad-period-monthyear',
@@ -42,6 +45,8 @@ class MadDashFiltersCompiler
         'mad-dbradio-field',
         'mad-dbmulti-search-field',
         'mad-dbcheckbox-group-field',
+        'mad-dbselect-check-field',
+        'mad-select-check-field',
         'mad-datetime-field',
         'mad-time-field',
         'mad-textarea-field',
@@ -74,6 +79,8 @@ class MadDashFiltersCompiler
         'mad-dbradio-field'         => 'dbcombo',
         'mad-dbmulti-search-field'  => 'dbsearch',
         'mad-dbcheckbox-group-field' => 'dbcombo',
+        'mad-dbselect-check-field'  => 'dbcombo',
+        'mad-select-check-field'    => 'select',
         'mad-datetime-field'        => 'datetime',
         'mad-time-field'            => 'time',
         'mad-textarea-field'        => 'input',
