@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.235.0] — 2026-10-27
+
+### Melhorias
+
+- **Listagens e relatórios:** a tela com `require-filter` que já abre com um filtro preenchido (o período padrão da tela ou o período que veio no link) mostra os registros direto, sem pedir que você clique em Buscar. O **Limpar** volta ao período padrão já carregado. Sem filtro nenhum, a tela continua abrindo vazia e pedindo os filtros.
+
+### Correções
+
+- **Menu lateral:** num grupo que abre uma tela ao ser clicado, fechar o grupo também levava para a tela dele. Agora fechar só recolhe o grupo, e abrir continua levando à tela.
+
 ## [5.234.0] — 2026-10-27
 
 ### Novidades

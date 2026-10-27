@@ -2343,6 +2343,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->syncFormFields();
         $this->saveFilterSession();
         $this->_resetToDeferred();
+        // Limpar = como abriu: com require-filter e o período padrão de volta,
+        // a tela carrega nele (sem padrão, volta a pedir os filtros).
+        if ($this->requireFilter && $this->_hasUserFilter()) {
+            $this->loadData();
+        }
     }
 
     /**
@@ -4525,6 +4530,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($declaredPerPage > 0 && !$this->perPageLocked && $this->perPage !== $declaredPerPage) {
             $this->perPage     = $declaredPerPage;
             $this->_dataLoaded = false; // força recarregar com o limit/offset corretos
+        }
+
+        // require-filter barra a consulta SEM filtro. Na abertura com um filtro
+        // já preenchido (o período padrão da tela, o do link, o lembrado) a
+        // regra está cumprida: abre carregado, em vez de mostrar o chip do
+        // período e pedir o Buscar. Numa ação, quem decide é a própria ação.
+        if ($this->_isDeferred() && $this->requireFilter && !$this->_gridHydrated && $this->_hasUserFilter()) {
+            $this->loadRequested = true;
+            $this->_dataLoaded   = false;
         }
 
         if ($this->_isDeferred()) {
