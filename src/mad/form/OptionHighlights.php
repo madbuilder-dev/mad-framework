@@ -27,8 +27,31 @@ use Mad\Support\HighlightRules;
  */
 final class OptionHighlights
 {
-    /** O que a cor pinta: a linha da opção (padrão) ou só o selo. */
-    public const PAINTS = ['row', 'badge'];
+    /** O que a cor pinta: a linha da opção (padrão), só o selo ou só um ponto antes do texto. */
+    public const PAINTS = ['row', 'badge', 'dot'];
+
+    /**
+     * Nome de cor aceito na cor por opção (`colors` do select, coluna do
+     * `color-column`) além dos tons e de cor CSS: o vocabulário do `badge`.
+     */
+    private const COLOR_ALIASES = [
+        'primary'   => 'var(--mad-primary)',
+        'secondary' => 'var(--mad-text-muted)',
+        'neutral'   => 'var(--mad-text-muted)',
+        'muted'     => 'var(--mad-text-muted)',
+        'default'   => 'var(--mad-text-muted)',
+        'error'     => 'danger',
+        // Cor pelo nome em português ("Aberto=azul, Concluído=verde").
+        'azul'      => '#2563eb',
+        'verde'     => '#16a34a',
+        'vermelho'  => '#dc2626',
+        'amarelo'   => '#eab308',
+        'laranja'   => '#f97316',
+        'roxo'      => '#9333ea',
+        'rosa'      => '#db2777',
+        'cinza'     => '#71717a',
+        'preto'     => '#18181b',
+    ];
 
     /** Tamanho máximo do texto do selo (o resto vira reticências). */
     private const BADGE_MAX = 40;
@@ -51,6 +74,14 @@ final class OptionHighlights
         }
         $out = [];
         foreach ($raw as $r) {
+            // Cor vinda de uma coluna do registro (`color-column` do combo).
+            if (is_array($r) && array_key_exists('color_column', $r)) {
+                $col = trim((string) $r['color_column']);
+                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)) {
+                    $out[] = self::colorColumnRule($col);
+                }
+                continue;
+            }
             $rule = HighlightRules::normalizeRule($r, $hosts);
             if ($rule === null) {
                 continue;
@@ -61,11 +92,114 @@ final class OptionHighlights
             $out[] = $rule + [
                 'badge' => $badge,
                 // Só o selo leva a cor: sem selo não há o que pintar, vale a linha.
-                'paint' => $paint === 'badge' && $badge !== '' ? 'badge' : 'row',
+                'paint' => self::paint($paint, $badge),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Regra da cor por opção lida de uma coluna do registro (`color-column`):
+     * a coluna guarda o tom (`success`), o nome do selo (`primary`) ou a cor
+     * (`#16a34a`). Vem depois das regras com condição — o destaque vence.
+     *
+     * @return array{color_column: string, when: string, tone: string, color: string, badge: string, paint: string}
+     */
+    public static function colorColumnRule(string $column): array
+    {
+        return ['color_column' => $column, 'when' => '', 'tone' => '', 'color' => '', 'badge' => '', 'paint' => 'dot'];
+    }
+
+    /** Regras do campo + a da `color-column` (quando há coluna válida). */
+    public static function withColorColumn(array $rules, mixed $column): array
+    {
+        $column = is_scalar($column) ? trim((string) $column) : '';
+        if ($column === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column)) {
+            return $rules;
+        }
+
+        return array_merge($rules, [self::colorColumnRule($column)]);
+    }
+
+    /**
+     * A marca de uma cor por opção: ponto antes do texto, na lista e no valor
+     * escolhido. Aceita tom (`success`), nome do selo (`primary`, `secondary`)
+     * ou cor CSS (`#16a34a`, `green`, `var(--x)`). Vazio ou inválido: null.
+     *
+     * @return array{paint: string, tone?: string, color?: string}|null
+     */
+    public static function colorMark(mixed $value): ?array
+    {
+        $v = is_scalar($value) ? trim((string) $value) : '';
+        if ($v === '') {
+            return null;
+        }
+        $v = self::COLOR_ALIASES[strtolower($v)] ?? $v;
+        if (in_array(strtolower($v), HighlightRules::TONES, true)) {
+            return ['paint' => 'dot', 'tone' => strtolower($v)];
+        }
+        $color = HighlightRules::safeColor($v);
+
+        return $color !== '' ? ['paint' => 'dot', 'color' => $color] : null;
+    }
+
+    /**
+     * Marcas por chave de opção de uma lista fixa (`<mad-select-field>`):
+     * prop `colors` ("aberto:info|concluido:success" ou array) e, sem ela para
+     * a opção, a cor do par de selo nos itens (`['aberto' => ['Aberto', 'info']]`)
+     * ou a chave `color` da lista de objetos.
+     *
+     * @param  array<array-key, mixed> $items  itens CRUS (antes do MadItems::normalize)
+     * @return array<string, array>
+     */
+    public static function staticMarks(mixed $colors, array $items = []): array
+    {
+        $map = [];
+        foreach ($items as $k => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            if (array_is_list($items) && isset($item['color'])) {
+                $key = $item['value'] ?? $item['id'] ?? $item['key'] ?? null;
+                if (is_scalar($key)) {
+                    $map[(string) $key] = $item['color'];
+                }
+            } elseif (!array_is_list($items) && array_is_list($item) && isset($item[1]) && is_string($item[1])) {
+                $map[(string) $k] = $item[1];
+            }
+        }
+        if (is_string($colors)) {
+            foreach (explode('|', $colors) as $pair) {
+                $p = explode(':', $pair, 2);
+                if (count($p) === 2 && trim($p[0]) !== '') {
+                    $map[trim($p[0])] = trim($p[1]);
+                }
+            }
+        } elseif (is_array($colors)) {
+            foreach ($colors as $k => $c) {
+                $map[(string) $k] = $c;
+            }
+        }
+
+        $out = [];
+        foreach ($map as $k => $c) {
+            if (($mark = self::colorMark($c)) !== null) {
+                $out[(string) $k] = $mark;
+            }
+        }
+
+        return $out;
+    }
+
+    /** `paint` aceito: `badge` só com texto de selo; `dot`; o resto é `row`. */
+    private static function paint(string $paint, string $badge): string
+    {
+        return match (true) {
+            $paint === 'badge' && $badge !== '' => 'badge',
+            $paint === 'dot' => 'dot',
+            default => 'row',
+        };
     }
 
     /**
@@ -95,14 +229,29 @@ final class OptionHighlights
         if ($rules === []) {
             return null;
         }
-        $row  = $record instanceof Model ? $record->getAttributes() : get_object_vars($record);
-        $rule = HighlightRules::first($rules, $record, $row, self::WHO);
+        $row   = $record instanceof Model ? $record->getAttributes() : get_object_vars($record);
+        $conds = array_values(array_filter($rules, static fn ($r) => !isset($r['color_column'])));
+        $rule  = $conds !== [] ? HighlightRules::first($conds, $record, $row, self::WHO) : null;
         if ($rule === null) {
+            // Sem destaque que case: a cor da coluna (`color-column`), se houver.
+            foreach ($rules as $r) {
+                if (isset($r['color_column'])) {
+                    try {
+                        $v = $record->{$r['color_column']} ?? ($row[$r['color_column']] ?? null);
+                    } catch (\Throwable $e) {
+                        $v = $row[$r['color_column']] ?? null;
+                    }
+                    if (($mark = self::colorMark($v)) !== null) {
+                        return $mark;
+                    }
+                }
+            }
+
             return null;
         }
 
         $badge = self::badgeText((string) ($rule['badge'] ?? ''), $record);
-        $mark  = ['paint' => ($rule['paint'] ?? 'row') === 'badge' && $badge !== '' ? 'badge' : 'row'];
+        $mark  = ['paint' => self::paint((string) ($rule['paint'] ?? 'row'), $badge)];
         if (($rule['color'] ?? '') !== '') {
             $mark['color'] = $rule['color'];
         } else {

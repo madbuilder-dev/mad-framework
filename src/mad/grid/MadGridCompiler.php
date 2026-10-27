@@ -2813,7 +2813,7 @@ class MadGridCompiler
     }
 
     /** `paint` do `<mad-option-highlight>` — espelha {@see \Mad\Form\OptionHighlights::PAINTS}. */
-    protected const OPTION_HIGHLIGHT_PAINTS = ['row', 'badge'];
+    protected const OPTION_HIGHLIGHT_PAINTS = ['row', 'badge', 'dot'];
 
     /**
      * Regras do `<mad-option-highlights>` (framework#323) → configs

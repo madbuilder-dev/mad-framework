@@ -61,6 +61,8 @@
     $noResultsMessage             = $noResultsMessage             ?? '';
         $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError    = !empty($error);
+    // `hint-icon`: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar     = $required ? ' <span class="mad-required">*</span>' : '';
 
     // Auto-resolve selected do MadRenderContext (ou da prop array da tela)
@@ -128,7 +130,7 @@
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <select
         id="{{ $id }}"

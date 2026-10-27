@@ -2095,7 +2095,8 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
    Destaque por condição (`<mad-option-highlights>`): o servidor calcula a
    MARCA de cada opção e a grava na `<option>` em `data-mad-hl` (row|badge),
    `data-mad-hl-tone` ou `data-mad-hl-color`, e `data-mad-hl-badge`. A lista
-   pinta a linha (ou só o selo) e o valor escolhido ganha uma bolinha da cor.
+   pinta a linha (ou só o selo, ou só um ponto — `dot`, a cor por opção dos
+   `colors`/`color-column`) e o valor escolhido ganha uma bolinha da cor.
    Marca que chega por JSON (busca no servidor, recarga da cascata) entra na
    `<option>` por `_madSelSetHl` — o <select> continua a fonte da verdade. */
 
@@ -2117,7 +2118,7 @@ function _madSelHlNorm(hl) {
     if (color && !_MAD_SEL_HL_COLOR.test(color)) color = '';
     var badge = hl.badge == null ? '' : String(hl.badge);
     return {
-        paint: hl.paint === 'badge' && badge ? 'badge' : 'row',
+        paint: hl.paint === 'badge' && badge ? 'badge' : (hl.paint === 'dot' ? 'dot' : 'row'),
         tone: color ? '' : (_MAD_SEL_HL_TONES[hl.tone] ? hl.tone : 'warning'),
         color: color, badge: badge
     };
@@ -2272,7 +2273,7 @@ function _madSelectFactory() {
                 if (el.style && el.style.length) el.style.removeProperty('--mad-sel-hl-color');
                 return;
             }
-            el.setAttribute('data-mad-hl', hl.paint === 'badge' ? 'badge' : 'row');
+            el.setAttribute('data-mad-hl', hl.paint === 'badge' || hl.paint === 'dot' ? hl.paint : 'row');
             el.setAttribute('data-mad-hl-tone', hl.color ? 'color' : (hl.tone || 'warning'));
             if (hl.color) el.style.setProperty('--mad-sel-hl-color', hl.color);
             else if (el.style && el.style.length) el.style.removeProperty('--mad-sel-hl-color');
@@ -15665,6 +15666,7 @@ document.addEventListener("alpine:init", function () {
     function hide() {
         if (showTimer) { clearTimeout(showTimer); showTimer = null; }
         if (tipEl) tipEl.style.display = 'none';
+        if (currentTarget && currentTarget.classList && currentTarget.classList.contains('mad-label-hint')) currentTarget.setAttribute('aria-expanded', 'false');
         currentTarget = null;
     }
 
@@ -15727,6 +15729,23 @@ document.addEventListener("alpine:init", function () {
     // toque) é barrado aqui, na captura, ANTES de qualquer handler — Alpine,
     // MadWire (data-mad-click), onclick, submit, link — e a dica aparece, que
     // é o que o toque no celular (sem hover) precisa.
+    // ⓘ do rótulo (`hint-icon`): o toque abre/fecha a dica — no celular não há
+    // hover, e o Safari não dá foco a botão no toque. Fica dentro do <label>:
+    // o preventDefault segura o clique que o rótulo repassaria ao controle.
+    window.addEventListener('click', function (e) {
+        var t = e.target;
+        var el = t && t.closest ? t.closest('.mad-label-hint[data-mad-title]') : null;
+        if (!el) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        // Aberta pelo toque anterior: fecha. Aberta só pelo hover/foco (o
+        // Android foca o botão antes do clique): continua aberta.
+        if (currentTarget === el && el.getAttribute('aria-expanded') === 'true') { hide(); return; }
+        hide();
+        show(el);
+        el.setAttribute('aria-expanded', 'true');
+    }, true);
+
     window.addEventListener('click', function (e) {
         var t = e.target;
         var el = t && t.closest ? t.closest('[data-mad-deny][aria-disabled="true"]') : null;

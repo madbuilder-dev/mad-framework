@@ -54,6 +54,8 @@
      *   create-icon     string  Icone Lucide (padrao: 'plus')
      *   create-params   array   Parametros fixos da abertura (:create-params="['origem' => 'x']")
      *
+     *   color-column string  Coluna do model com a cor da opção (`success`, `primary`, `#16a34a`):
+     *       ponto colorido antes do texto, na lista e no valor escolhido.
      *   option-highlights array  Destaque das opções por condição. Em geral vem da tag filha:
      *       <mad-option-highlights>
      *           <mad-option-highlight when-field="status" when-value="inativo" tone="danger" badge="Inativo" />
@@ -88,7 +90,9 @@
     // <mad-option-highlights> → regras saneadas (display-condition resolvido na
     // tela) + coletor que marca cada opção na MESMA consulta. Sem regras: [] e
     // null, e nada abaixo muda. Ver \Mad\Form\OptionHighlights.
-    $__hlRules     = \Mad\Form\OptionHighlights::forField($optionHighlights ?? []);
+    // `color-column`: coluna do model com a cor de cada opção (tom, nome do
+    // selo ou #hex) → ponto na lista e no valor; vem depois dos destaques.
+    $__hlRules     = \Mad\Form\OptionHighlights::withColorColumn(\Mad\Form\OptionHighlights::forField($optionHighlights ?? []), $colorColumn ?? '');
     $__hlMarks     = [];
     $__hlEach      = \Mad\Form\OptionHighlights::collector($__hlRules, $__hlMarks);
 
@@ -176,6 +180,8 @@
     }
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError    = !empty($error);
+    // `hint-icon`: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar     = $required ? ' <span class="mad-required">*</span>' : '';
 
     // Em branco grava NULL (a chave de outra tabela nunca é ''): coluna
@@ -417,7 +423,7 @@
 @else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }}{{ $_isReadonly ? ' mad-readonly' : '' }}" @if($name) data-mad-field="{{ $name }}" @endif @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     @if($_createBtn !== '')<div class="mad-combo-create-row" style="display:flex;gap:6px;align-items:flex-start;min-width:0"><div style="flex:1;min-width:0">@endif
     <select

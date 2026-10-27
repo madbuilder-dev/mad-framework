@@ -1,6 +1,7 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => '', 'model' => '', 'display' => '', 'key' => '', 'attrs' => '', 'options' => [], 'hideEmpty' => false])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'name' => '', 'label' => '', 'value' => null, 'format' => '', 'badge' => '', 'icon' => '', 'variant' => '', 'copyable' => false, 'expandable' => false, 'empty' => '—', 'hint' => '', 'class' => '', 'model' => '', 'display' => '', 'key' => '', 'attrs' => '', 'options' => [], 'hideEmpty' => false, 'html' => false])
 @php
     $copyable   = !empty($copyable);
+    $html       = !empty($html) && $html !== 'false';
     $expandable = !empty($expandable);
 
     // Resolve valor: prop value > MadRenderContext
@@ -160,12 +161,18 @@
             default:
                 $displayHtml = htmlspecialchars($rawValue, ENT_QUOTES);
         }
+    } elseif ($html) {
+        // `html`: valor gravado pelo editor rico (descrição, observação) sai
+        // formatado, passando pela mesma limpeza do <mad-html-editor-field>
+        // (sem script, evento on*, javascript: etc.).
+        $displayHtml = '<div class="mad-display-field-html">' . \Mad\Util\MadHtmlSanitizer::sanitize($rawValue) . '</div>';
     } else {
         $displayHtml = nl2br(htmlspecialchars($rawValue, ENT_QUOTES));
     }
 
     $variantClass = $variant ? ' mad-display-field-' . $variant : '';
-    $copyVal = htmlspecialchars($rawValue, ENT_QUOTES);
+    $_plain  = $html ? trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($rawValue), ENT_QUOTES, 'UTF-8'))) : $rawValue;
+    $copyVal = htmlspecialchars($_plain, ENT_QUOTES);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle('', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
 @endphp
 @if($hideEmpty && $isEmpty)
@@ -186,7 +193,7 @@
         @endif
     </div>
     @endif
-    @if($expandable && !$isEmpty && mb_strlen($rawValue) > 200)
+    @if($expandable && !$isEmpty && mb_strlen($_plain) > 200)
         <div x-data="{ expanded: false }">
             <div class="mad-display-field-value{{ $variantClass }}"
                  :class="expanded ? '' : 'mad-display-field-clamped'">

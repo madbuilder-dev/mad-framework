@@ -1730,6 +1730,14 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   background: var(--mad-sel-hl-accent, var(--mad-warning));
 }
 .mad-sel-chip > .mad-sel-dot { overflow: visible; }
+/* Cor por opção (`colors` do select, `color-column` do combo): só o ponto antes
+   do texto, sem pintar a linha. Na lista com checkbox o ponto vem depois dele. */
+.mad-sel-option[data-mad-hl="dot"]::before {
+  content: ''; flex: 0 0 auto;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--mad-sel-hl-accent, var(--mad-warning));
+}
+.mad-sel-option[data-mad-hl="dot"] > .mad-sel-checkbox { order: -1; }
 .mad-sel-checkbox {
   -webkit-appearance: checkbox !important;
   -moz-appearance: checkbox !important;
@@ -1790,6 +1798,16 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   color: var(--mad-label-color, color-mix(in srgb, var(--mad-text) 85%, var(--mad-bg)));
 }
 .mad-label-required::after { content: ' *'; color: var(--mad-danger); }
+/* ⓘ do rótulo (`hint-icon`): a dica abre pelo tooltip global (hover, foco e
+   toque, ver mad-ui.js). Botão sem fundo, do tamanho da letra do rótulo. */
+.mad-label-hint {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px;
+  width: 16px; height: 16px; margin: 0 0 0 4px; padding: 0; border: 0; border-radius: 999px;
+  background: none; color: var(--mad-text-muted); cursor: help; line-height: 1;
+}
+.mad-label-hint svg { width: 13px; height: 13px; display: block; pointer-events: none; }
+.mad-label-hint:hover, .mad-label-hint[aria-expanded="true"] { color: var(--mad-text); }
+.mad-label-hint:focus-visible { outline: 2px solid var(--mad-primary); outline-offset: 1px; color: var(--mad-text); }
 /* Dica é texto que se lê: texto secundário, não o cinza de placeholder (2,6:1, fw#292). */
 .mad-hint    { font-size: var(--mad-text-xs); color: var(--mad-hint-color, var(--mad-text-muted)); line-height: 1.5; }
 .mad-error   { font-size: var(--mad-text-xs); color: var(--mad-danger-text, var(--mad-danger)); }
@@ -2632,6 +2650,14 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 
 .mad-display-field-value a      { color: var(--mad-info); text-decoration: none; }
 .mad-display-field-value a:hover { text-decoration: underline; }
+/* `html`: texto do editor rico. Parágrafo/lista com o respiro do texto, não o do navegador. */
+.mad-display-field-html > :first-child { margin-top: 0; }
+.mad-display-field-html > :last-child  { margin-bottom: 0; }
+.mad-display-field-html p, .mad-display-field-html ul, .mad-display-field-html ol { margin: 0 0 .5em; }
+.mad-display-field-html ul, .mad-display-field-html ol { padding-left: 1.4em; }
+.mad-display-field-html img { max-width: 100%; height: auto; }
+.mad-display-field-html table { border-collapse: collapse; max-width: 100%; }
+.mad-display-field-html td, .mad-display-field-html th { border: 1px solid var(--mad-border); padding: 4px 8px; }
 
 /* Empty state */
 .mad-display-field-empty { color: var(--mad-text-subtle); font-weight: 400; font-style: italic; }
@@ -15478,7 +15504,7 @@ textarea.mad-dg-inline-input {
   border-bottom: 1px solid var(--mad-border, #e4e4e7); background: var(--mad-bg-subtle, #fafafa);
   font-size: 12.5px; color: var(--mad-text-muted, #71717a);
 }
-.mad-ctl-time { font-family: var(--mad-font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; color: var(--mad-text, #18181b); }
+.mad-ctl-time { font-variant-numeric: tabular-nums; color: var(--mad-text, #18181b); }
 .mad-ctl-login, .mad-ctl-prog { display: inline-flex; align-items: center; gap: 5px; }
 .mad-ctl-login { color: var(--mad-text, #18181b); font-weight: 500; }
 .mad-ctl-login svg, .mad-ctl-prog svg { width: 13px; height: 13px; }
@@ -15495,8 +15521,8 @@ textarea.mad-dg-inline-input {
 .mad-ctl-record { padding: 10px 14px 12px; }
 .mad-ctl-record + .mad-ctl-record { border-top: 1px dashed var(--mad-border, #e4e4e7); }
 .mad-ctl-record-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
-.mad-ctl-table { font-family: var(--mad-font-mono, ui-monospace, monospace); color: var(--mad-text, #18181b); font-weight: 500; }
-.mad-ctl-pk { font-family: var(--mad-font-mono, ui-monospace, monospace); color: var(--mad-text-muted, #71717a); }
+.mad-ctl-table { color: var(--mad-text, #18181b); font-weight: 500; }
+.mad-ctl-pk { font-variant-numeric: tabular-nums; color: var(--mad-text-muted, #71717a); }
 .mad-ctl-op {
   font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 999px;
@@ -15510,7 +15536,7 @@ textarea.mad-dg-inline-input {
 .mad-ctl-diff td { padding: 4px 8px; vertical-align: top; border-top: 1px solid var(--mad-bg-muted, #f4f4f5); }
 .mad-ctl-diff tr:first-child td { border-top: 0; }
 .mad-ctl-col {
-  width: 34%; max-width: 260px; font-family: var(--mad-font-mono, ui-monospace, monospace); font-size: 12.5px;
+  width: 34%; max-width: 260px; font-size: 12.5px; font-variant-numeric: tabular-nums;
   color: var(--mad-text-muted, #71717a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mad-ctl-vals { word-break: break-word; }
@@ -15522,14 +15548,14 @@ textarea.mad-dg-inline-input {
 .mad-ctl-arrow { display: inline-block; margin: 0 8px; color: var(--mad-text-muted, #71717a); }
 .mad-ctl-mask {
   display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 4px;
-  font-family: var(--mad-font-mono, ui-monospace, monospace); font-weight: 600;
+  font-weight: 600;
   background: var(--mad-warning-subtle, #fef3c7); color: var(--mad-warning, #b45309);
 }
 .mad-ctl-mask svg { width: 12px; height: 12px; }
 .mad-ctl-row--created .mad-ctl-col::before,
 .mad-ctl-row--changed .mad-ctl-col::before,
 .mad-ctl-row--deleted .mad-ctl-col::before {
-  display: inline-block; width: 12px; font-family: var(--mad-font-mono, ui-monospace, monospace); font-weight: 600;
+  display: inline-block; width: 12px; text-align: center; font-weight: 600;
 }
 .mad-ctl-row--created .mad-ctl-col::before { content: '+'; color: var(--mad-success, #15803d); }
 .mad-ctl-row--changed .mad-ctl-col::before { content: '~'; color: var(--mad-info, #1d4ed8); }

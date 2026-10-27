@@ -11,6 +11,7 @@ use Illuminate\Http\Response;
 use Mad\Component\MadComponent;
 use Mad\Routing\MadRoutes;
 use Mad\Security\ClassSource;
+use Mad\Security\LoginDestination;
 use Mad\Security\PermissionGate;
 use Mad\Site\MadSitePage;
 use Illuminate\Support\Facades\Auth;
@@ -294,10 +295,19 @@ class MadAuthenticate
             return new JsonResponse(['error' => 'Permission denied', 'redirect' => $loginUrl], 401);
         }
 
-        $url = htmlspecialchars($loginUrl, ENT_QUOTES);
+        // Navegação até uma tela: o login leva o destino e devolve a pessoa a
+        // ela depois de entrar ({@see LoginDestination}).
+        if ($target === null || $target === '') {
+            $method   = $request->route('method');
+            $loginUrl = LoginDestination::loginUrl($request, $this->resolveClass($request), is_string($method) ? $method : null);
+        }
+
+        // Literal JS (não entidade HTML): dentro do <script> o `&amp;` não vira
+        // `&` e quebraria os parâmetros do destino.
+        $url = json_encode($loginUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
 
         return new Response(
-            '<script>window.location.href="' . $url . '";</script>',
+            '<script>window.location.href=' . $url . ';</script>',
             401,
             ['Content-Type' => 'text/html; charset=utf-8']
         );

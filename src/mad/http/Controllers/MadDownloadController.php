@@ -87,6 +87,15 @@ class MadDownloadController
             'Content-Type'           => $safeInline ? self::SAFE_INLINE_MIME[$extension] : 'application/octet-stream',
         ];
         $disposition = $asAttachment ? 'attachment' : 'inline';
+        // Prévia na própria tela (`<iframe src="mad_download_url($pdf)">`): o
+        // arquivo inline de tipo seguro aceita moldura SÓ do próprio app. O
+        // `frame-ancestors` vale mesmo com o X-Frame-Options: DENY que o app
+        // põe em toda resposta (o navegador dá precedência ao CSP); o
+        // SAMEORIGIN cobre quem só lê o cabeçalho antigo.
+        if (!$asAttachment) {
+            $headers['Content-Security-Policy'] = "frame-ancestors 'self'";
+            $headers['X-Frame-Options']         = 'SAMEORIGIN';
+        }
 
         // Disco de uploads (default storage/app/mad ou MAD_UPLOAD_DISK=s3),
         // streamando pelo app — modelo signed-URL + mad.auth + bucket privado.

@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => 'Cadastrar novo', 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => 'Adicionar', 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => 'Cadastrar novo', 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => 'Adicionar', 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => '', 'colors' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -20,6 +20,9 @@
     }
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] —
     // antes saía <option value="0"></option>, sem erro (\Mad\Support\MadItems).
+    // Cor por opção (ponto na lista e no valor): prop `colors`, par de selo
+    // `['aberto' => ['Aberto', 'info']]` ou `color` na lista de objetos.
+    $__colorMarks = \Mad\Form\OptionHighlights::staticMarks($colors ?? '', $items);
     $items = \Mad\Support\MadItems::normalize($items);
     $_isHidden   = $name && \Mad\Component\MadRenderContext::isHidden($name);
     // `readonly` / `:readonly` da tag trava como o do formulário (fw#315).
@@ -85,6 +88,8 @@
     );
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError = !empty($error);
+    // `hint-icon`: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     // As opções que a tela desenha (`:items`, a lista do setItems() ou as
     // <option> do slot): o valor escolhido tem de ser uma delas — o que chega
@@ -122,7 +127,7 @@
 @else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }}{{ $_isReadonly ? ' mad-readonly' : '' }}" @if($name) data-mad-field="{{ $name }}" @endif @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <select
         id="{{ $id }}"
@@ -148,7 +153,7 @@
                         $optLabel = method_exists($optLabel, '__toString') ? (string)$optLabel : '';
                     }
                 @endphp
-                <option value="{{ $optKey }}" @if($_slotMultiple ? in_array((string)$optKey, $_slotValues, true) : (string)$optKey === (string)$selected) selected @endif>{{ $optLabel }}</option>
+                <option value="{{ $optKey }}"{!! $__colorMarks ? \Mad\Form\OptionHighlights::attrs($__colorMarks[(string) $optKey] ?? null) : '' !!} @if($_slotMultiple ? in_array((string)$optKey, $_slotValues, true) : (string)$optKey === (string)$selected) selected @endif>{{ $optLabel }}</option>
             @endforeach
         @else
             {{-- Slot: quem escreve as <option> escreve também a em branco; só o

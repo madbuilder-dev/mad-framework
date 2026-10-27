@@ -126,7 +126,7 @@ class MadAppController
 
                 return redirect($target !== null && $target !== ''
                     ? \Mad\Routing\MadRoutes::urlFor($target)
-                    : \Mad\Routing\MadRoutes::loginUrl());
+                    : \Mad\Security\LoginDestination::loginUrl($request, $class, 'show'));
             }
 
             return MadForbidden::response($request, $class);
@@ -171,8 +171,10 @@ class MadAppController
 
         if (!PermissionGate::canAccess($class, $method)) {
             // Não logado → manda pro login preservando UX; logado sem permissão → 403.
+            // O endereço do login leva a tela pedida: depois de entrar a pessoa
+            // volta para ela, não para o Início.
             if (!session('logged') && $class !== 'LoginForm') {
-                return redirect(\Mad\Routing\MadRoutes::loginUrl());
+                return redirect(\Mad\Security\LoginDestination::loginUrl($request, $class, $method));
             }
 
             // Método estático pela rota JSON: a recusa em JSON (fw#413).

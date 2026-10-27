@@ -4,7 +4,7 @@
     'value' => '',
     'min' => '',
     'max' => '',
-    'hint' => '',
+    'hint' => '', 'hintIcon' => false,
     'error' => '',
     'required' => false,
     'disabled' => false,
@@ -66,6 +66,8 @@
 
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
     $hasError = !empty($error);
+    // `hint-icon`: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
     $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => 'a']);
@@ -95,7 +97,7 @@
 @else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <div class="mad-input-group" style="position:relative;"
          x-data="madDateTimePicker({{ $alpineCfg }})"

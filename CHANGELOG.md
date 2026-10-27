@@ -12,6 +12,23 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.236.0] — 2026-10-27
+
+### Novidades
+
+- **Campos:** `hint-icon` nos campos de texto, seleção, combo, data, data e hora, área de texto, moeda e número leva a ajuda (`hint`) para um ⓘ ao lado do rótulo, que abre ao passar o mouse, focar ou tocar no celular. Com texto (`hint-icon="..."`), o ⓘ mostra esse texto e o `hint` continua embaixo.
+- **Campos:** `<mad-display-field html>` mostra texto formatado (negrito, listas, links) gravado pelo editor de texto, com a mesma limpeza do editor. Sem `html`, o texto continua aparecendo como foi digitado.
+- **Combo:** cor por opção. No `<mad-select-field>`, `colors="aberto:info|concluido:success"` (ou a cor no item, `['aberto' => ['Aberto', 'info']]`); no `<mad-dbcombo-field>`, `color-column="cor"` lê a cor de uma coluna da tabela. Um ponto colorido aparece antes de cada opção e do valor escolhido. Vale tom (`info`, `success`, `warning`, `danger`, `primary`), nome em português (`azul`, `verde`) ou código (`#16a34a`).
+- **Upload:** PDF e imagem do upload agora abrem dentro de um `<iframe>` na própria tela (prévia do arquivo). Antes a moldura ficava em branco.
+
+### Melhorias
+
+- **Detalhe:** o histórico de alterações (`<mad-change-timeline>`) usa a fonte do texto da página no nome da tabela, no registro, no campo e na hora, que antes apareciam numa fonte de máquina de escrever.
+
+### Correções
+
+- **Autenticação:** quem abria o endereço de uma tela sem estar logado ia ao login e, depois de entrar, caía no Início. Agora volta para a tela pedida, com os mesmos parâmetros. E quem já está logado e abre um link de login com destino vai direto para a tela.
+
 ## [5.235.0] — 2026-10-27
 
 ### Melhorias
