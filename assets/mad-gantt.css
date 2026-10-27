@@ -595,8 +595,11 @@ html.dark .mad-gantt {
 }
 .mad-gantt-chart-scroll::-webkit-scrollbar-track { background: transparent; }
 
-.mad-gantt-chart-svg { display: block; user-select: none; }
+.mad-gantt-chart-svg { display: block; user-select: none; cursor: grab; }
 .mad-gantt-chart-svg.is-dragging { cursor: grabbing; }
+/* Arrastando o fundo (MadGantt.panDrag): a mãozinha fecha em tudo. */
+.mad-gantt-chart-scroll.is-panning,
+.mad-gantt-chart-scroll.is-panning * { cursor: grabbing !important; }
 
 .mad-gantt-chart-svg .mad-gantt-holiday { fill: color-mix(in oklch, var(--mg-critical) 7%, transparent); }
 .mad-gantt-weekend { fill: var(--mg-weekend); }
@@ -634,6 +637,15 @@ html.dark .mad-gantt {
     font-family: "IBM Plex Sans", sans-serif;
     font-size: 11.5px; font-weight: 500;
     letter-spacing: -0.005em;
+}
+/* show-bar-avatars: o responsável no começo da barra; o anel na cor da
+   superfície separa o círculo da barra. */
+.mad-gantt-bar-avatar circle { stroke: var(--mg-surface); stroke-width: 1.5; }
+.mad-gantt-bar-avatar text {
+    fill: #fff;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
 }
 .mad-gantt-bar-pct {
     font-family: "JetBrains Mono", monospace;

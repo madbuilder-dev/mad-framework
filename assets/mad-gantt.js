@@ -1879,6 +1879,51 @@
 
     const TEXT_PADDING = 8;
 
+    /** Responsáveis da tarefa (assignees > owners > owner "1,2"), como na coluna. */
+    function assigneesOf(t) {
+        if (Array.isArray(t.assignees)) return t.assignees.map(String);
+        if (Array.isArray(t.owners))    return t.owners.map(String);
+        if (t.owner != null && t.owner !== '') return String(t.owner).split(/[,;]\s*/).filter(Boolean);
+        return [];
+    }
+
+    function initialsOf(name) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+    }
+
+    /**
+     * `show-bar-avatars`: o primeiro responsável em círculo no começo da barra
+     * (as iniciais na cor da pessoa, como na coluna). Devolve a largura ocupada
+     * para o rótulo começar depois dele; 0 quando não cabe ou não há ninguém.
+     */
+    function renderBarAvatar(group, task, geom, barY, barH, ctx, dark) {
+        if (!ctx.barAvatars) return 0;
+        const ids = assigneesOf(task);
+        const r = Math.max(6, barH / 2 - 2);
+        if (!ids.length || geom.w < 2 * r + 8) return 0;
+        const id = ids[0];
+        const p = (ctx.people || {})[id] || { name: id, initials: initialsOf(id), color: colors.phaseColors(colors.hashHue(id), dark).bar };
+        const cx = geom.x + 2 + r;
+        const cy = barY + barH / 2;
+        const g = createNS('g', {
+            class: 'mad-gantt-bar-avatar',
+            'data-x0': geom.x,
+            'pointer-events': 'none',
+        });
+        g.appendChild(createNS('circle', { cx, cy, r, fill: p.color || '#64748b' }));
+        const txt = createNS('text', {
+            x: cx, y: cy + 0.5,
+            'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            'font-size': Math.max(7, Math.round(r * 0.9)),
+        });
+        txt.textContent = p.initials || initialsOf(p.name || id);
+        g.appendChild(txt);
+        group.appendChild(g);
+        return 2 * r + 4;
+    }
+
     // Classe(s) CSS da tarefa (`class-field`, fw#471): só letras, números, - e _.
     function taskClass(task) {
         const cls = String((task && task.className) || '').replace(/[^A-Za-z0-9_\s-]+/g, '').trim();
@@ -1966,16 +2011,19 @@
             'data-drag-mode': 'right',
         }));
 
+        const avatarW = renderBarAvatar(group, task, geom, barY, barH, ctx, dark);
+
         // Labels (conditional on width)
-        if (geom.w > 60 && task.name) {
+        if (geom.w > 60 + avatarW && task.name) {
             const label = createNS('text', {
                 class: 'mad-gantt-bar-label',
-                x: geom.x + TEXT_PADDING,
+                x: geom.x + TEXT_PADDING + avatarW,
                 y: barY + barH / 2 + 1,
                 'dominant-baseline': 'middle',
                 fill: c.text,
                 'pointer-events': 'none',
             });
+            if (avatarW) label.setAttribute('data-off', avatarW);
             label.textContent = task.name;
             group.appendChild(label);
         }
@@ -2593,7 +2641,13 @@
         }
         if (hL) hL.setAttribute('x', geom.x - 3);
         if (hR) hR.setAttribute('x', geom.x + geom.w - 3);
-        if (label) label.setAttribute('x', geom.x + 8);
+        if (label) label.setAttribute('x', geom.x + 8 + (parseFloat(label.getAttribute('data-off')) || 0));
+        // Avatar da barra (show-bar-avatars) anda junto com o começo dela.
+        const avatar = group.querySelector('.mad-gantt-bar-avatar');
+        if (avatar) {
+            const x0 = parseFloat(avatar.getAttribute('data-x0'));
+            if (Number.isFinite(x0)) avatar.setAttribute('transform', `translate(${geom.x - x0},0)`);
+        }
         if (pct)   pct.setAttribute('x', geom.x + geom.w - 8);
         // Selo ao lado da barra acompanha o fim dela.
         const badge = group.querySelector('.mad-gantt-bar-badge');
@@ -3332,6 +3386,72 @@
 
 })(typeof window !== 'undefined' ? window : globalThis);
 /**
+ * MadGantt — Arrastar o fundo do gráfico com a "mãozinha" rola a linha do
+ * tempo. Só mouse (no toque a rolagem já é nativa) e só fora de barra, alça,
+ * âncora e controle; 4 px de folga antes de virar arrasto, e o clique que o
+ * navegador dispara no fim do arrasto não chega à linha.
+ */
+(function (root) {
+    'use strict';
+
+    const SKIP = '[data-task-id], [data-drag-mode], [data-dep-anchor], button, a, input, select, textarea';
+    const SLOP = 4;
+
+    function attach(el) {
+        if (!el) return null;
+        let st = null;
+
+        const onDown = (e) => {
+            if (e.pointerType && e.pointerType !== 'mouse') return;
+            if ((e.button !== undefined && e.button !== 0) || e.shiftKey || e.ctrlKey || e.metaKey) return;
+            if (e.target && e.target.closest && e.target.closest(SKIP)) return;
+            st = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop, moved: false, id: e.pointerId };
+        };
+        const onMove = (e) => {
+            if (!st) return;
+            const dx = e.clientX - st.x;
+            const dy = e.clientY - st.y;
+            if (!st.moved) {
+                if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+                st.moved = true;
+                el.classList.add('is-panning');
+                try { el.setPointerCapture(st.id); } catch (_) {}
+            }
+            if (e.cancelable) e.preventDefault();
+            el.scrollLeft = st.left - dx;
+            el.scrollTop  = st.top - dy;
+        };
+        const onUp = () => {
+            if (!st) return;
+            const moved = st.moved;
+            st = null;
+            el.classList.remove('is-panning');
+            if (!moved) return;
+            const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+            el.addEventListener('click', swallow, { capture: true, once: true });
+            setTimeout(() => el.removeEventListener('click', swallow, { capture: true }), 350);
+        };
+
+        el.addEventListener('pointerdown', onDown);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+
+        return {
+            detach() {
+                el.removeEventListener('pointerdown', onDown);
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+            },
+        };
+    }
+
+    root.MadGantt = root.MadGantt || {};
+    root.MadGantt.panDrag = { attach };
+
+})(typeof window !== 'undefined' ? window : globalThis);
+/**
  * MadGantt — Drag-to-create dependency.
  *
  * Dois gestos:
@@ -3746,7 +3866,7 @@
             coords, tree, criticalPath: cpm, autoSchedule: autoSched, calendar,
             defs, header, sidebar, chartSvg, dependencies, minimap, tooltip, workload,
             scrollSync, dragBar, dragDependency, hover, keyboard,
-            wire, persistence,
+            wire, persistence, panDrag,
         } = M;
 
         root.Alpine.data('madGantt', (cfg = {}) => ({
@@ -3812,6 +3932,7 @@
             showWeekends:       cfg.showWeekends !== false,
             showGrid:           cfg.showGrid !== false,
             showAvatars:        cfg.showAvatars !== false,
+            barAvatars:         cfg.barAvatars === true,
             showViewModeButton: !!cfg.showViewModeButton,
             showZoomButton:     !!cfg.showZoomButton,
             enableInlineEdit:   !!cfg.enableInlineEdit,
@@ -3993,6 +4114,8 @@
                             this._scheduleFlush();
                         },
                     }));
+                    // Arrastar o fundo rola a linha do tempo (a "mãozinha").
+                    if (panDrag) this._bindings.push(panDrag.attach(chartScroll));
                 }
                 if (svgEl) {
                     this._bindings.push(dragBar.attach(svgEl, {
@@ -4625,6 +4748,8 @@
                     criticalMode: this.criticalMode,
                     showWeekends: this.showWeekends,
                     showGrid: this.showGrid,
+                    barAvatars: this.barAvatars,
+                    people: this.people,
                     workingDays: this.workingDays,
                     holidays: this.holidays,
                     window: this._win && this._win.virtual ? this._win : null,

@@ -1026,6 +1026,7 @@ abstract class MadGanttComponent extends MadComponent
                 'showWeekends'=> array_key_exists('showWeekends',$config) ? $this->_truthy($config['showWeekends']): null,
                 'showGrid'    => array_key_exists('showGrid',    $config) ? $this->_truthy($config['showGrid'])    : null,
                 'showAvatars' => array_key_exists('showAvatars', $config) ? $this->_truthy($config['showAvatars']) : null,
+                'barAvatars'  => array_key_exists('barAvatars',  $config) ? $this->_truthy($config['barAvatars'])  : null,
                 'taskColWidth'=> $config['taskColWidth'] ?? null,
                 'compactColumns' => array_key_exists('compactColumns', $config) ? $this->_truthy($config['compactColumns']) : null,
                 'fitBtn'         => array_key_exists('fitBtn',         $config) ? $this->_truthy($config['fitBtn'])         : null,
@@ -1201,6 +1202,7 @@ abstract class MadGanttComponent extends MadComponent
         if ($vt['showWeekends'] !== null) $gantt->showWeekends((bool) $vt['showWeekends']);
         if ($vt['showGrid']     !== null) $gantt->showGridLines((bool) $vt['showGrid']);
         if ($vt['showAvatars']  !== null) $gantt->showAvatars((bool) $vt['showAvatars']);
+        if (($vt['barAvatars'] ?? null) !== null) $gantt->barAvatars((bool) $vt['barAvatars']);
         if (!empty($vt['taskColWidth'])) $gantt->taskColWidth((int) $vt['taskColWidth']);
         if (($vt['compactColumns'] ?? null) !== null) $gantt->compactColumns((bool) $vt['compactColumns']);
         if (($vt['fitBtn'] ?? null) !== null)         $gantt->fitButton((bool) $vt['fitBtn']);

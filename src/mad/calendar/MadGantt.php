@@ -86,6 +86,8 @@ class MadGantt
     protected bool    $showWeekendsBg = true;
     protected bool    $showGridLines  = true;
     protected bool    $showAvatars    = true;
+    /** Responsável em círculo no começo da barra (show-bar-avatars). */
+    protected bool    $barAvatars     = false;
     protected int     $taskColWidth   = 300;
     /** Lateral enxuta: null = só no tema ERP; true/false fixa. */
     protected ?bool   $compactColumns = null;
@@ -182,6 +184,7 @@ class MadGantt
         if (isset($cfg['show_weekends']))   $g->showWeekends((bool) $cfg['show_weekends']);
         if (isset($cfg['show_grid']))       $g->showGridLines((bool) $cfg['show_grid']);
         if (isset($cfg['show_avatars']))    $g->showAvatars((bool) $cfg['show_avatars']);
+        if (isset($cfg['bar_avatars']))     $g->barAvatars((bool) $cfg['bar_avatars']);
         if (!empty($cfg['task_col_width'])) $g->taskColWidth((int) $cfg['task_col_width']);
         if (isset($cfg['compact_columns'])) $g->compactColumns((bool) $cfg['compact_columns']);
         if (isset($cfg['fit_btn']))         $g->fitButton((bool) $cfg['fit_btn']);
@@ -632,6 +635,8 @@ class MadGantt
     public function showWeekends(bool $v = true): static   { $this->showWeekendsBg = $v; return $this; }
     public function showGridLines(bool $v = true): static  { $this->showGridLines  = $v; return $this; }
     public function showAvatars(bool $v = true): static    { $this->showAvatars    = $v; return $this; }
+    /** Iniciais do primeiro responsável dentro da barra, no começo dela. */
+    public function barAvatars(bool $v = true): static     { $this->barAvatars     = $v; return $this; }
     public function taskColWidth(int $px): static          { $this->taskColWidth   = max(160, $px); return $this; }
 
     /**
@@ -1458,6 +1463,7 @@ class MadGantt
             'showWeekends'      => $this->showWeekendsBg,
             'showGrid'          => $this->showGridLines,
             'showAvatars'       => $this->showAvatars,
+            'barAvatars'        => $this->barAvatars,
             'taskColWidth'      => $this->taskColWidth,
             'compactColumns'    => $this->compactColumns,
             'fitBtn'            => $this->fitBtn,

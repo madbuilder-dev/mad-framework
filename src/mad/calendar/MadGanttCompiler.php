@@ -355,6 +355,8 @@ class MadGanttCompiler
             'show-weekends'            => 'showWeekends',
             'show-grid'                => 'showGrid',
             'show-avatars'             => 'showAvatars',
+            // Responsável em círculo no começo da barra (padrão: só na coluna).
+            'show-bar-avatars'         => 'barAvatars',
             // fw#499: lateral enxuta e botão "Caber tudo" (sem o atributo: só no tema ERP)
             'compact-columns'          => 'compactColumns',
             'fit-btn'                  => 'fitBtn',

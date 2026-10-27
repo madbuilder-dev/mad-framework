@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.234.0] — 2026-10-27
+
+### Novidades
+
+- **Gantt:** com `show-bar-avatars`, o responsável aparece num círculo com as iniciais dentro da barra, no começo dela, e acompanha a barra quando ela é arrastada. Sem o atributo, o avatar continua só na coluna.
+- **Gantt:** arrastar o fundo do gráfico com o mouse rola a linha do tempo, como uma mãozinha. Barras, alças e cliques continuam como antes.
+- **Topo do app:** o logo leva para a tela inicial de quem está logado.
+- **Trilha do topo:** o módulo, o grupo e a tela de origem viraram links. O módulo abre a primeira tela dele, e a tela de origem volta para a lista de onde a ficha saiu.
+- **Login (variante 6):** a imagem de fundo do tema aparece no painel da marca, sob um véu na cor da marca, com o título e os destaques legíveis.
+
+### Melhorias
+
+- **Perfil no topo:** quem não tem foto vê as iniciais do nome no círculo, como no Google, em vez da silhueta cinza.
+- **Menu lateral:** com o painel recolhido, o módulo aberto por cima ganhou o botão **Fixar**, que deixa o menu aberto ao escolher a tela. A escolha fica guardada.
+
 ## [5.233.0] — 2026-10-27
 
 ### Novidades
