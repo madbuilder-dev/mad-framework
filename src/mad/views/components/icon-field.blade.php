@@ -44,10 +44,9 @@
                 @if($disabled) disabled @endif
                 :aria-expanded="open.toString()"
                 aria-haspopup="dialog">
-            <span class="mad-iconfield-preview" aria-hidden="true">
-                <i x-show="selectedIcon" :data-lucide="selectedIcon"></i>
-                <i x-show="!selectedIcon" data-lucide="image" class="mad-iconfield-empty-icon"></i>
-            </span>
+            {{-- Desenhada por paintPreview(): o lucide troca o <i> por <svg>, e um
+                 :data-lucide aqui ficava preso ao nó antigo (a prévia não mudava). --}}
+            <span class="mad-iconfield-preview" aria-hidden="true" x-ref="preview"></span>
             <span class="mad-iconfield-name" x-text="selectedIcon || '{{ addslashes($placeholder) }}'"
                   :class="{ 'mad-iconfield-name-empty': !selectedIcon }"></span>
             <span class="mad-iconfield-caret" aria-hidden="true">
@@ -86,17 +85,31 @@
             </div>
 
             <div class="mad-iconfield-tabs" role="tablist">
+                {{-- Duas bibliotecas: Lucide (padrão) e Tabler (`tabler:<nome>`, lista baixada ao abrir a aba). --}}
                 <button type="button" role="tab"
+                        data-tab="all"
+                        :aria-selected="(tab === 'all').toString()"
                         :class="{ 'is-active': tab === 'all' }"
-                        @click.prevent="tab = 'all'; filter()">
+                        @click.prevent="setTab('all')">
                     <i data-lucide="grid-3x3"></i>
-                    <span>{{ mad_t('mad.icon_field.all') }}</span>
+                    <span>{{ mad_t('mad.icon_field.lucide') }}</span>
                     <span class="mad-iconfield-count" x-text="all.length"></span>
                 </button>
                 <button type="button" role="tab"
+                        data-tab="tabler"
+                        :aria-selected="(tab === 'tabler').toString()"
+                        :class="{ 'is-active': tab === 'tabler' }"
+                        @click.prevent="setTab('tabler')">
+                    <i data-lucide="shapes"></i>
+                    <span>{{ mad_t('mad.icon_field.tabler') }}</span>
+                    <span class="mad-iconfield-count" x-show="tabler.length" x-text="tabler.length"></span>
+                </button>
+                <button type="button" role="tab"
+                        data-tab="recent"
                         x-show="recents.length"
+                        :aria-selected="(tab === 'recent').toString()"
                         :class="{ 'is-active': tab === 'recent' }"
-                        @click.prevent="tab = 'recent'; filter()">
+                        @click.prevent="setTab('recent')">
                     <i data-lucide="clock"></i>
                     <span>{{ mad_t('mad.icon_field.recent') }}</span>
                     <span class="mad-iconfield-count" x-text="recents.length"></span>
@@ -119,7 +132,15 @@
                         <i :data-lucide="icon"></i>
                     </button>
                 </template>
-                <div x-show="!visible.length" class="mad-iconfield-empty">
+                <div x-show="tab === 'tabler' && tablerState === 'loading'" class="mad-iconfield-empty mad-iconfield-loading">
+                    <i data-lucide="loader-circle" aria-hidden="true"></i>
+                    <p>{{ mad_t('mad.icon_field.loading') }}</p>
+                </div>
+                <div x-show="tab === 'tabler' && tablerState === 'error'" class="mad-iconfield-empty">
+                    <i data-lucide="cloud-off" aria-hidden="true"></i>
+                    <p>{{ mad_t('mad.icon_field.load_error') }}</p>
+                </div>
+                <div x-show="!visible.length && !(tab === 'tabler' && tablerState)" class="mad-iconfield-empty">
                     <i data-lucide="search-x" aria-hidden="true"></i>
                     <p>{{ mad_t('mad.icon_field.none') }}</p>
                     <small x-text="query ? @js(mad_t('mad.icon_field.term')).replace(':q', query) : ''"></small>

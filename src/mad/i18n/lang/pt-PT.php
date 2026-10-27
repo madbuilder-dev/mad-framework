@@ -424,6 +424,10 @@ return [
             'count_many'   => ':n ícones',
             'loaded'       => '(:n carregados)',
             'clear'        => 'Limpar seleção',
+            'lucide'       => 'Lucide',
+            'tabler'       => 'Tabler',
+            'loading'      => 'A carregar ícones...',
+            'load_error'   => 'Não foi possível carregar os ícones Tabler. Tente novamente.',
         ],
 
         // Tela inicial (WelcomeView)

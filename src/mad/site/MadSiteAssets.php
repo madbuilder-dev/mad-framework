@@ -120,7 +120,7 @@ class MadSiteAssets
             // Pilha reativa: Lucide (icones) → mad.js (namespace + fetch) →
             // mad-livewire.js (MadWire global) → mad-ui.js (Alpine components).
             // Ordem importa: defer preserva ordem de execucao apos parse do HTML.
-            $out[] = '<script src="' . site_url('/lib/lucide/lucide.min.js?afver=20261027') . '" defer></script>';
+            $out[] = '<script src="' . site_url('/lib/lucide/lucide.min.js?afver=20261027b') . '" defer></script>';
             $out[] = '<script src="' . site_url('/lib/mad/mad.js') . '" defer></script>';
             $out[] = '<script src="' . site_url('/lib/mad/mad-livewire.js') . '" defer></script>';
             $out[] = '<script src="' . site_url('/app/lib/include/builder/ui/mad-ui.js') . '" defer></script>';

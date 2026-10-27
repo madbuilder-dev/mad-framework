@@ -4955,7 +4955,24 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 
-    /* madIconField — picker de icones Lucide com busca, recents, keyboard nav e paginacao */
+    /* madIconField — picker de icones Lucide e Tabler com busca, recents, keyboard nav e paginacao.
+     * Aba Tabler (fórum #177): os nomes vêm de lucide.tabler.names() só quando a aba abre
+     * e cada valor guarda o token inteiro (`tabler:truck`); a grade desenha pelo mesmo
+     * createIcons, que baixa só os baldes dos ícones renderizados. */
+    const _MAD_TABLER = 'tabler:';
+    let _madTablerCache = null;
+    let _madTablerLoading = null;
+    function _madLoadTablerList() {
+        if (_madTablerCache) return Promise.resolve(_madTablerCache);
+        if (!_madTablerLoading) {
+            const api = typeof lucide !== 'undefined' && lucide.tabler;
+            if (!api || typeof api.names !== 'function') return Promise.reject(new Error('lucide.tabler indisponível'));
+            _madTablerLoading = api.names()
+                .then((names) => (_madTablerCache = names.map((n) => _MAD_TABLER + n)))
+                .finally(() => { _madTablerLoading = null; });
+        }
+        return _madTablerLoading;
+    }
     let _madIconCache = null;
     function _madBuildIconList() {
         if (_madIconCache) return _madIconCache;
@@ -4982,6 +4999,8 @@ document.addEventListener('alpine:init', () => {
         query: '',
         tab: 'all',
         all: [],
+        tabler: [],
+        tablerState: '',
         filtered: [],
         visible: [],
         pageSize: 120,
@@ -4995,13 +5014,24 @@ document.addEventListener('alpine:init', () => {
                 this.recents = JSON.parse(localStorage.getItem('mad-iconfield-recents') || '[]');
             } catch (e) { this.recents = []; }
             this.filter();
+            this.paintPreview();
             this.$nextTick(() => this.renderIcons());
             this.$watch('selectedIcon', () => {
+                this.paintPreview();
                 this.$nextTick(() => this.renderIcons());
                 // dispara change para mad:model coletar
                 const inp = this.$el.querySelector('input[type="hidden"][name]');
                 if (inp) inp.dispatchEvent(new Event('change', { bubbles: true }));
             });
+        },
+
+        paintPreview() {
+            const box = this.$refs.preview;
+            if (!box) return;
+            const name = String(this.selectedIcon || '').replace(/[^a-z0-9:_-]/gi, '');
+            box.innerHTML = name
+                ? '<i data-lucide="' + name + '"></i>'
+                : '<i data-lucide="image" class="mad-iconfield-empty-icon"></i>';
         },
 
         toggle() {
@@ -5015,6 +5045,12 @@ document.addEventListener('alpine:init', () => {
                 this.all = _madBuildIconList();
                 this.filter();
             }
+            // abre na aba da biblioteca do valor salvo
+            if (this.selectedIcon) {
+                const want = this.selectedIcon.indexOf(_MAD_TABLER) === 0 ? 'tabler' : 'all';
+                if (this.tab !== want && this.tab !== 'recent') this.setTab(want);
+                else if (this.tab === 'recent' && this.recents.indexOf(this.selectedIcon) === -1) this.setTab(want);
+            }
             this.$nextTick(() => {
                 if (this.$refs.searchInput) this.$refs.searchInput.focus();
                 this.renderIcons();
@@ -5024,10 +5060,32 @@ document.addEventListener('alpine:init', () => {
 
         close() { this.open = false; this.cursor = -1; },
 
+        setTab(tab) {
+            this.tab = tab;
+            if (tab === 'tabler' && !this.tabler.length) this.loadTabler();
+            this.filter();
+            this.$nextTick(() => this.scrollSelectedIntoView());
+        },
+
+        loadTabler() {
+            if (this.tablerState === 'loading') return;
+            this.tablerState = 'loading';
+            _madLoadTablerList().then((list) => {
+                this.tabler = list;
+                this.tablerState = '';
+                if (this.tab === 'tabler') {
+                    this.filter();
+                    this.$nextTick(() => this.scrollSelectedIntoView());
+                }
+            }, () => { this.tablerState = 'error'; });
+        },
+
         filter() {
             const q = (this.query || '').trim().toLowerCase();
-            const src = this.tab === 'recent' ? this.recents : this.all;
-            this.filtered = q ? src.filter(n => n.indexOf(q) !== -1) : src.slice();
+            const src = this.tab === 'recent' ? this.recents : (this.tab === 'tabler' ? this.tabler : this.all);
+            // a busca olha o nome, não o prefixo `tabler:`
+            const key = (n) => (n.indexOf(_MAD_TABLER) === 0 ? n.slice(_MAD_TABLER.length) : n);
+            this.filtered = q ? src.filter(n => key(n).indexOf(q) !== -1) : src.slice();
             this.visible = this.filtered.slice(0, this.pageSize);
             this.cursor = this.visible.length ? 0 : -1;
             if (this.$refs.grid) this.$refs.grid.scrollTop = 0;
@@ -5110,7 +5168,9 @@ document.addEventListener('alpine:init', () => {
         renderIcons() {
             if (typeof lucide !== 'undefined' && lucide.createIcons) {
                 try {
-                    lucide.createIcons({ nameAttr: 'data-lucide', root: this.$el });
+                    // $root, não $el: chamado de @click/@input, o $el é o botão da aba
+                    // ou o input da busca, e a grade nova ficava sem desenho.
+                    lucide.createIcons({ nameAttr: 'data-lucide', root: this.$root || this.$el });
                 } catch (e) {}
             }
         },

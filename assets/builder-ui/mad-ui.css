@@ -4821,6 +4821,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-iconfield-empty svg { width: 28px; height: 28px; opacity: 0.5; }
 .mad-iconfield-empty p { margin: 0; font-size: 0.875rem; }
 .mad-iconfield-empty small { font-size: 0.75rem; opacity: 0.7; font-family: var(--mad-font-mono, monospace); }
+.mad-iconfield-loading svg { animation: mad-spin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .mad-iconfield-loading svg { animation: none; } }
 
 /* Footer */
 .mad-iconfield-footer {

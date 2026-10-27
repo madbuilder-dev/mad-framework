@@ -628,6 +628,10 @@ return [
             'count_many'   => ':n icons',
             'loaded'       => '(:n loaded)',
             'clear'        => 'Clear selection',
+            'lucide'       => 'Lucide',
+            'tabler'       => 'Tabler',
+            'loading'      => 'Loading icons...',
+            'load_error'   => 'Could not load the Tabler icons. Try again.',
         ],
 
         // Tela inicial (WelcomeView)
