@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.228.3] — 2026-10-27
+
+### Correções
+
+- **Indicadores do painel:** o ícone de ajuda (ⓘ) do `<mad-kpi-card help="...">` aparecia fino e desalinhado, sobretudo no Windows, diferente dos outros ícones do cartão. Agora ele tem o mesmo traço e tamanho dos ícones ao lado do rótulo e escurece ao passar o mouse.
+
 ## [5.228.2] — 2026-10-26
 
 ### Correções

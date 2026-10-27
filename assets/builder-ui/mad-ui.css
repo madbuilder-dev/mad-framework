@@ -15233,7 +15233,9 @@ textarea.mad-dg-inline-input {
 .mad-kpi-pill-down { background: color-mix(in srgb, var(--mad-danger, #dc2626) 12%, transparent);  color: var(--mad-danger, #dc2626); }
 .mad-kpi-pill-flat { background: color-mix(in srgb, var(--mad-text-muted) 14%, transparent); color: var(--mad-text-muted); }
 /* tooltip ⓘ — NUNCA dentro de elemento com overflow:hidden */
-.mad-kpi-help { position: relative; cursor: help; color: var(--mad-text-muted); font-size: .72rem; margin-left: 4px; flex: 0 0 auto; }
+.mad-kpi-help { position: relative; display: inline-flex; align-items: center; cursor: help; color: var(--mad-text-muted); font-size: .72rem; margin-left: 2px; flex: 0 0 auto; border-radius: 99px; }
+.mad-kpi-help-icon { width: 13px; height: 13px; display: block; }
+.mad-kpi-help:hover, .mad-kpi-help:focus-visible { color: var(--mad-text); }
 .mad-kpi-help-tip {
     display: none; position: absolute; z-index: 60; left: 0; top: calc(100% + 6px);
     width: 240px; padding: 8px 10px; border-radius: 8px;
