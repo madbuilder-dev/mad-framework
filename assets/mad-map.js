@@ -107,6 +107,14 @@
         var span = document.createElement('span');
         span.className = 'mad-map-pin';
         if (color) span.style.setProperty('--mad-map-pin', color);
+        // `tabler:nome`: o bloco Tabler do lucide.min.js baixa o desenho e troca o <i>.
+        if (icon && icon.indexOf('tabler:') === 0 && window.lucide && typeof window.lucide.createIcons === 'function') {
+            var i = document.createElement('i');
+            i.setAttribute('data-lucide', icon);
+            span.appendChild(i);
+            try { window.lucide.createIcons({ root: span }); } catch (e) { /* sem ícone: pino continua */ }
+            return window.L.divIcon({ className: 'mad-map-pin-wrap', html: span, iconSize: [28, 36], iconAnchor: [14, 34], popupAnchor: [0, -30], tooltipAnchor: [0, -30] });
+        }
         var svg = iconNode(icon);
         if (svg) span.appendChild(svg); else span.classList.add('is-dot');
         return window.L.divIcon({ className: 'mad-map-pin-wrap', html: span, iconSize: [28, 36], iconAnchor: [14, 34], popupAnchor: [0, -30], tooltipAnchor: [0, -30] });

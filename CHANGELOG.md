@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.231.0] — 2026-10-27
+
+### Novidades
+
+- **Ícones Tabler:** além do Lucide, as telas agora desenham os mais de 6 mil ícones do Tabler Icons. Escreva o nome com o prefixo `tabler:` em qualquer lugar que aceita ícone (ações da listagem, botões, menu, cabeçalho da página…): `icon="tabler:truck"`, e `icon="tabler:heart-filled"` para a versão preenchida. Ícone sem prefixo continua Lucide, então nada muda nas telas que você já tem. O ícone sai com o mesmo tamanho e cor dos ícones Lucide ao lado, e a página só baixa o desenho dos ícones que usa. Nomes em tabler.io/icons.
+
 ## [5.228.3] — 2026-10-27
 
 ### Correções

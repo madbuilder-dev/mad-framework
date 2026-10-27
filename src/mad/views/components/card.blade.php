@@ -5,8 +5,8 @@
     // mão e a doc antiga usavam `title`, que sumia sem aviso).
     $header = $header ?? ($title ?? null);
     $footer = $footer ?? null;
-    // Ícone Lucide antes do título do cabeçalho (sem título, não aparece).
-    $icon   = is_string($icon ?? null) && preg_match('/^[a-z0-9-]+$/', trim($icon)) ? trim($icon) : '';
+    // Ícone Lucide (ou `tabler:nome`) antes do título do cabeçalho (sem título, não aparece).
+    $icon   = is_string($icon ?? null) && preg_match('/^(tabler:)?[a-z0-9-]+$/', trim($icon)) ? trim($icon) : '';
     $class  = $class  ?? '';
     $style  = $style  ?? '';
     $__cardEsc = function ($v) {

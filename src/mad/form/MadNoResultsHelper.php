@@ -243,7 +243,7 @@ class MadNoResultsHelper
             'field'  => (string) ($cfg['name'] ?? ''),
         ];
         $label = $create['label'] !== '' ? $create['label'] : 'Cadastrar novo';
-        $icon  = preg_match('/^[a-z0-9-]+$/', $create['icon']) ? $create['icon'] : 'plus';
+        $icon  = preg_match('/^(tabler:)?[a-z0-9-]+$/', $create['icon']) ? $create['icon'] : 'plus';
         $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 
         return '<button type="button" class="mad-btn mad-btn-secondary mad-combo-create-btn"'

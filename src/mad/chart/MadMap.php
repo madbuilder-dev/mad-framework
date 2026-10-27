@@ -103,7 +103,7 @@ final class MadMap
 
         return $data + [
             'label'  => $label,
-            'icon'   => preg_match('/^[a-z0-9-]{1,40}$/', $icon) ? $icon : '',
+            'icon'   => preg_match('/^(tabler:)?[a-z0-9-]{1,40}$/', $icon) ? $icon : '',
             'color'  => self::color((string) ($p['color'] ?? '')),
             'hidden' => self::bool($p['hidden'] ?? null, false),
             'click'  => $click,

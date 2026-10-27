@@ -194,8 +194,9 @@ final class PublicLoginLinks
 
         return [
             'label' => $label,
-            // Nome de ícone Lucide (`user-round`); outra coisa não vai para o HTML.
-            'icon'  => preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/i', $icon) ? strtolower($icon) : '',
+            // Nome de ícone Lucide (`user-round`) ou Tabler (`tabler:truck`);
+            // outra coisa não vai para o HTML.
+            'icon'  => preg_match('/^(tabler:)?[a-z0-9][a-z0-9-]{0,63}$/i', $icon) ? strtolower($icon) : '',
             'order' => is_int($value['order'] ?? null) ? $value['order'] : null,
         ];
     }

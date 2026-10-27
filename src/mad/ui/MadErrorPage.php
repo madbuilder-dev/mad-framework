@@ -179,7 +179,7 @@ class MadErrorPage
         }
 
         $homeClass = $buttons === '' ? 'mad-btn mad-btn-primary' : 'mad-btn mad-btn-secondary';
-        $icon      = preg_match('/^[a-z0-9-]+$/', (string) ($reason['icon'] ?? '')) ? (string) $reason['icon'] : 'lock';
+        $icon      = preg_match('/^(tabler:)?[a-z0-9-]+$/', (string) ($reason['icon'] ?? '')) ? (string) $reason['icon'] : 'lock';
 
         return self::card(
             $icon,
