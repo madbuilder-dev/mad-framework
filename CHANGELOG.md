@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.237.0] — 2026-10-27
+
+### Novidades
+
+- **Campos:** no `<mad-daterange-field>` dá para digitar as datas de início e fim no próprio quadro do período, com a máscara do campo (dd/mm/aaaa). Enter ou **Aplicar** confere as datas, o fim igual ou depois do início e os limites do campo. Calendário e atalhos continuam.
+
+### Correções
+
+- **Listagem (grid):** coluna com selo (`badge`) e valor vazio mostrava uma bolinha sem texto. Agora a célula fica vazia, a não ser que o mapa do selo tenha um rótulo para o vazio.
+- **Tema:** o selo `primary` aparecia cinza, quase igual ao `secondary`, e um status como "Em execução" parecia parado. Agora usa a cor principal do tema.
+
 ## [5.236.0] — 2026-10-27
 
 ### Novidades

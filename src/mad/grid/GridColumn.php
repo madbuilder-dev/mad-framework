@@ -1243,6 +1243,11 @@ class GridColumn
         if ($this->isBadge) {
             $entry = $this->badgeEntry($value);
             $raw   = self::badgeValue($value);
+            // Valor vazio sem entrada no mapa: célula vazia, não um selo sem
+            // texto (que aparecia como uma bolinha solta).
+            if ($entry === null && trim($raw) === '') {
+                return '';
+            }
             if ($entry === null) {
                 $variant = 'secondary';
                 $lbl     = $raw;
@@ -1378,6 +1383,11 @@ class GridColumn
         if ($this->isBadge) {
             $entry = $this->badgeEntry($value);
             $raw   = self::badgeValue($value);
+            // Valor vazio sem entrada no mapa: célula vazia, não um selo sem
+            // texto (que aparecia como uma bolinha solta).
+            if ($entry === null && trim($raw) === '') {
+                return '';
+            }
             if ($entry === null) {
                 $variant = 'secondary';
                 $lbl     = $raw;

@@ -157,6 +157,30 @@
             </div>
         </template>
 
+        <div class="mad-drp-main">
+        {{-- Digitar as datas (Scherer R4 item 95): máscara do display-mask,
+             Enter ou Aplicar confere fim ≥ início, min/max e max-span. --}}
+        @if(!$disabled)
+        <div class="mad-drp-typed" @keydown.enter.prevent="applyTyped()">
+            <label class="mad-drp-typed-field">
+                <span>Início</span>
+                <input type="text" class="mad-input mad-drp-typed-input" inputmode="numeric" autocomplete="off"
+                       :placeholder="typedPlaceholder" :maxlength="_displayMask.length"
+                       x-model="typedStart" @input="typedStart = maskTyped($event.target.value); typedError = ''"
+                       aria-label="Data inicial">
+            </label>
+            <label class="mad-drp-typed-field">
+                <span>Fim</span>
+                <input type="text" class="mad-input mad-drp-typed-input" inputmode="numeric" autocomplete="off"
+                       :placeholder="typedPlaceholder" :maxlength="_displayMask.length"
+                       x-model="typedEnd" @input="typedEnd = maskTyped($event.target.value); typedError = ''"
+                       aria-label="Data final">
+            </label>
+            <button type="button" class="mad-btn mad-btn-primary mad-btn-sm mad-drp-typed-apply" @click="applyTyped()">Aplicar</button>
+            <p class="mad-drp-typed-error" x-show="typedError" x-text="typedError" role="alert"></p>
+        </div>
+        @endif
+
         {{-- Calendars --}}
         <div class="mad-drp-calendars">
             {{-- Left calendar --}}
@@ -212,6 +236,7 @@
                     </template>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 

@@ -13671,6 +13671,10 @@ document.addEventListener('alpine:init', () => {
             _nameEnd: cfg.nameEnd || '',
             _databaseMask: _databaseMask,
             _displayMask: _displayMask,
+            // Datas digitadas no popover (no formato do display-mask).
+            typedStart: '',
+            typedEnd: '',
+            typedError: '',
 
             init: function() {
                 // Parse initial values via databaseMask (com fallback legado)
@@ -13707,6 +13711,61 @@ document.addEventListener('alpine:init', () => {
                 }
 
                 this._ensureMonthOrder();
+                this._syncTyped();
+            },
+
+            get typedPlaceholder() {
+                return this._displayMask.replace(/yyyy/g, 'aaaa').replace(/yy/g, 'aa');
+            },
+
+            // Encaixa os dígitos nas posições da máscara ("01022026" → "01/02/2026").
+            maskTyped: function(v) {
+                var digits = String(v || '').replace(/\D/g, '');
+                var mask = this._displayMask, out = '', di = 0;
+                for (var i = 0; i < mask.length && di < digits.length; i++) {
+                    var ch = mask.charAt(i);
+                    if ('dmyhHiMsS'.indexOf(ch) >= 0) { out += digits.charAt(di++); }
+                    else { out += ch; }
+                }
+                return out;
+            },
+
+            _syncTyped: function() {
+                this.typedStart = _drpFormatWithMask(this.startDate, this._displayMask);
+                this.typedEnd   = _drpFormatWithMask(this.endDate,   this._displayMask);
+                this.typedError = '';
+            },
+
+            // Data digitada válida (dia que existe no calendário) ou null.
+            _parseTyped: function(s) {
+                var d = _drpParseWithMask(String(s || '').trim(), this._displayMask);
+                if (!d || _drpFormatWithMask(d, this._displayMask) !== String(s).trim()) return null;
+                d.setHours(0, 0, 0, 0);
+                return d;
+            },
+
+            // Aplica as datas digitadas: as duas válidas, fim ≥ início, dentro
+            // de min/max e do max-span. Os dois vazios limpam o campo.
+            applyTyped: function() {
+                if (cfg.disabled) return;
+                var ts = String(this.typedStart || '').trim(), te = String(this.typedEnd || '').trim();
+                if (ts === '' && te === '') { this.clear(); this.isOpen = false; return; }
+                var start = this._parseTyped(ts), end = this._parseTyped(te);
+                var fmt = this.typedPlaceholder;
+                if (!start) { this.typedError = 'Data inicial inválida (use ' + fmt + ').'; return; }
+                if (!end)   { this.typedError = 'Data final inválida (use ' + fmt + ').'; return; }
+                if (end < start) { this.typedError = 'A data final deve ser igual ou posterior à inicial.'; return; }
+                if (this._minDate && start < this._minDate) { this.typedError = 'A data inicial é anterior a ' + _drpFormatWithMask(this._minDate, this._displayMask) + '.'; return; }
+                if (this._maxDate && end > this._maxDate) { this.typedError = 'A data final é posterior a ' + _drpFormatWithMask(this._maxDate, this._displayMask) + '.'; return; }
+                if (this._maxSpan > 0 && _drpDiffDays(end, start) > this._maxSpan) { this.typedError = 'O período pode ter no máximo ' + this._maxSpan + ' dias.'; return; }
+                this.startDate = start;
+                this.endDate = end;
+                this.selectingEnd = false;
+                this.hoveredDate = null;
+                this.leftMonth = _drpStartOfMonth(start);
+                this.rightMonth = _drpSameDay(_drpStartOfMonth(start), _drpStartOfMonth(end)) ? _drpAddMonths(this.leftMonth, 1) : _drpStartOfMonth(end);
+                this._ensureMonthOrder();
+                this._apply();
             },
 
             get displayText() {
@@ -13821,6 +13880,7 @@ document.addEventListener('alpine:init', () => {
             open: function() {
                 if (this.isOpen) return;
                 this.isOpen = true;
+                this._syncTyped();
                 // Re-position months if we have selection
                 if (this.startDate && !this.selectingEnd) {
                     this.leftMonth = _drpStartOfMonth(this.startDate);
@@ -13862,6 +13922,7 @@ document.addEventListener('alpine:init', () => {
                     this.endDate = null;
                     this.selectingEnd = true;
                     this.hoveredDate = null;
+                    this._syncTyped();
                 } else {
                     // Second click: set end
                     var end = new Date(d);
@@ -13896,11 +13957,13 @@ document.addEventListener('alpine:init', () => {
                 this.endDate = null;
                 this.selectingEnd = false;
                 this.hoveredDate = null;
+                this._syncTyped();
                 this._syncHiddens();
                 this._dispatchChange();
             },
 
             _apply: function() {
+                this._syncTyped();
                 this._syncHiddens();
                 this._dispatchChange();
                 this.isOpen = false;

@@ -1917,7 +1917,10 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    Sim/Não. Neutra, igual à secondary (os tokens já trocam no escuro). */
 .mad-badge-muted     { background: var(--mad-bg-muted); color: var(--mad-text-muted); border-color: var(--mad-border); }
 .mad-badge-outline   { background: transparent; color: var(--mad-text); border-color: var(--mad-border-strong); }
-.mad-badge-primary   { background: var(--mad-primary-subtle); color: var(--mad-text-muted); border-color: var(--mad-border); }
+/* Primary na cor do tema (antes: fundo --mad-primary-subtle, que é cinza no
+   tema padrão, e texto muted — "Em execução" parecia parado ao lado do
+   secondary). Fundo = primária misturada; texto = tinta legível da primária. */
+.mad-badge-primary   { background: color-mix(in srgb, var(--mad-primary) 12%, var(--mad-bg)); color: var(--mad-primary-ink, var(--mad-primary)); border-color: color-mix(in srgb, var(--mad-primary) 30%, transparent); }
 .mad-badge-info      { background: var(--mad-info-subtle); color: var(--mad-badge-info-fg, #1e40af); border-color: rgba(74,144,217,.3); }
 /* Tinta do selo por token: a cor cheia (--mad-success…) dava 3,1:1 no fundo
    claro e o vermelho 3,3:1 no escuro (fw#295). Os escuros definem tons claros. */
@@ -4999,6 +5002,16 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   font-weight: 500;
 }
 
+/* Datas digitadas (Início / Fim / Aplicar) em cima dos calendários. */
+.mad-drp-main { display: flex; flex-direction: column; min-width: 0; }
+.mad-drp-typed {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px;
+  padding: 12px 16px 0;
+}
+.mad-drp-typed-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--mad-text-muted); }
+.mad-drp-typed-input { width: 128px; font-variant-numeric: tabular-nums; }
+.mad-drp-typed-error { flex-basis: 100%; margin: 0; font-size: var(--mad-text-xs); color: var(--mad-danger-text, var(--mad-danger)); }
+
 /* Calendars container */
 .mad-drp-calendars {
   display: flex;
@@ -5291,6 +5304,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
     gap: 12px;
     padding: 12px 16px 20px;
   }
+  .mad-drp-typed { padding: 10px 16px 0; }
+  .mad-drp-typed-field { flex: 1 1 120px; }
+  .mad-drp-typed-input { width: 100%; font-size: 16px; } /* 16px: o iOS não dá zoom no foco */
   .mad-drp-cal {
     width: 100%;
   }
