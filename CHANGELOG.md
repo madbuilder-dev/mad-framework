@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.239.0] — 2026-10-27
+
+### Novidades
+
+- **Anexos:** dá para colar um print direto no campo de arquivos com Ctrl+V (ou Cmd+V): clique na área de arquivos e cole. O print entra na lista com o nome da data e da hora, pronto para enviar.
+- **Lista de itens (`<mad-field-list>`):** cada coluna pode sumir em telas estreitas com `hide-below`, como nas colunas da grade: `<mad-field-list-column field="obs" label="Obs" hide-below="1100" />` esconde a coluna abaixo de 1100px, e as outras colunas fecham o espaço.
+- **Substitutos do workflow:** o motivo do substituto pode ser uma lista fixa (Férias, Licença médica, Viagem…), com um comentário livre ao lado. A lista vem da variável `MAD_WF_DELEGATION_REASONS`, com os motivos separados por `|`. Sem a variável, o motivo continua sendo um texto livre.
+
+### Correções
+
+- **Lista de itens:** com muitas colunas, a lista empurrava o formulário inteiro para o lado e a coluna sem largura definida sumia. Agora só a lista rola de lado, dentro do espaço dela, e o "Adicionar linha" fica à vista. A coluna sem largura não fica mais estreita demais para ler.
+- **Anexos:** depois de clicar em Enviar, o arquivo continuava na lista de envio, e um segundo Enviar mandava o mesmo arquivo de novo. Agora a lista esvazia depois do envio.
+- **Anexos e comentários:** numa tela com lista de itens e anexos no mesmo formulário, o Enviar do anexo falhava com "Não foi possível concluir a operação". Agora o anexo é gravado normalmente.
+- **Combos e busca:** o botão "+" ao lado do combo, o "Cadastrar novo" de quando a busca não acha nada e o "Novo" da busca apareciam para quem não tem acesso à tela de cadastro e levavam a "Permissão negada". Agora esses botões só aparecem para quem pode cadastrar.
+
 ## [5.238.0] — 2026-10-27
 
 ### Correções

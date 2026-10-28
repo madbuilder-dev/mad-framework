@@ -3289,6 +3289,7 @@ class MadGridCompiler
             'icon-color'     => 'iconColor',
             'icon-side'      => 'iconSide',
             'max-width'      => 'maxWidth',
+            'hide-below'     => 'hideBelow',
         ];
         foreach ($kebabMap as $k => $method) {
             if (isset($attrs[$k])) {

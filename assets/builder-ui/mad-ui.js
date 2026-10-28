@@ -5579,6 +5579,50 @@ document.addEventListener('alpine:init', () => {
                     self.existingFiles.push({ path: ef.path });
                 });
             }
+            // Colar imagem (Ctrl+V): o print vira arquivo da lista, como se
+            // tivesse sido escolhido. Escuta no documento — ver onPaste.
+            this._onPaste = (e) => this.onPaste(e);
+            document.addEventListener('paste', this._onPaste);
+        },
+        destroy() {
+            if (this._onPaste) document.removeEventListener('paste', this._onPaste);
+        },
+        // Imagem colada vira "print-AAAAMMDD-HHMMSS.png" na lista. Vale quando o
+        // foco está no próprio campo, ou — fora de qualquer caixa de texto —
+        // quando este é o único campo de vários arquivos visível na tela (o
+        // Ctrl+V num campo de texto continua colando texto ali).
+        onPaste(e) {
+            var cd = e.clipboardData;
+            if (!cd || !cd.files || !cd.files.length) return;
+            var imgs = Array.from(cd.files).filter(function (f) { return /^image\//.test(f.type || ''); });
+            if (!imgs.length || !this.$refs.fileInput || this.$refs.fileInput.disabled) return;
+            if (!this.$el.contains(e.target)) {
+                var t = e.target;
+                if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+                if (this.$el.offsetParent === null) return;
+                var visible = Array.prototype.filter.call(document.querySelectorAll('.mad-multi-file-wrap'), function (w) { return w.offsetParent !== null; });
+                if (visible.length !== 1 || visible[0] !== this.$el) return;
+            }
+            e.preventDefault();
+            var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+            var stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+            var exts = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp', 'image/svg+xml': 'svg' };
+            var named = imgs.map(function (f, i) {
+                var ext = exts[f.type] || 'png';
+                return new File([f], 'print-' + stamp + (i ? '-' + (i + 1) : '') + '.' + ext, { type: f.type || 'image/png', lastModified: d.getTime() });
+            });
+            this.addFiles(named);
+        },
+        // O formulário que enviou estes arquivos foi limpo (Enviar do
+        // <mad-attachments>/<mad-db-blocks>): os arquivos NOVOS saem da lista.
+        // Sem isto o reset (`value = ''` + change) rodava addFiles([]) e o
+        // syncInput devolvia os arquivos ao <input> — o 2º Enviar mandava de novo.
+        clearNew() {
+            this.files = this.files.filter(function (f) {
+                if (f && !f.existing && f.thumb && typeof URL !== 'undefined') { try { URL.revokeObjectURL(f.thumb); } catch (e) {} }
+                return f && f.existing;
+            });
+            this.syncInput();
         },
         addFiles(list) {
             var added = false;
@@ -9595,6 +9639,14 @@ document.addEventListener('alpine:init', () => {
                 }
                 // MAD Select e Lucide são inicializados via x-init em cada row
 
+                // Colunas que não cabem: a própria lista rola para o lado
+                // (_flFit), não a cortina/página inteira com o form junto.
+                this.$nextTick(() => this._flFit());
+                if (typeof ResizeObserver !== 'undefined') {
+                    this._flRo = new ResizeObserver(() => this._flFit());
+                    this._flRo.observe(this.$el);
+                }
+
                 // Marca ready após próximo tick para que onTotalize/onAdd
                 // não disparem no load inicial.
                 this.$nextTick(() => {
@@ -9616,6 +9668,33 @@ document.addEventListener('alpine:init', () => {
                             this._fireFlEvent(this._onTotalize, [current]);
                         }, 150);
                     }, { deep: true });
+                }
+            },
+
+            destroy() {
+                if (this._flRo) { this._flRo.disconnect(); this._flRo = null; }
+            },
+
+            // ── Rolagem lateral da própria lista ────────────────────────────
+            // Muitas colunas (ou larguras que somam mais que o espaço): o
+            // cabeçalho transborda. Em vez de deixar o transbordo empurrar quem
+            // está em volta (numa cortina, cabeçalho e campos do form rolavam
+            // junto), a lista ganha .mad-fl-scroll (overflow-x:auto) e todas as
+            // faixas (cabeçalho, linhas, totais, grupos) ficam com a MESMA
+            // largura mínima — a do cabeçalho —, então as colunas continuam
+            // alinhadas. Celular (cabeçalho escondido, linhas em cartão): nada.
+            _flFit() {
+                const el = this.$el;
+                const head = el.querySelector(':scope > .mad-fl-header');
+                if (!head) return;
+                el.classList.remove('mad-fl-scroll');
+                el.style.removeProperty('--mad-fl-min');
+                el.style.removeProperty('--mad-fl-box');
+                const need = head.scrollWidth;
+                if (head.offsetParent !== null && need > head.clientWidth + 1) {
+                    el.style.setProperty('--mad-fl-min', need + 'px');
+                    el.style.setProperty('--mad-fl-box', el.clientWidth + 'px');
+                    el.classList.add('mad-fl-scroll');
                 }
             },
 

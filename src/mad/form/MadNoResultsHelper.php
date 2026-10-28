@@ -123,6 +123,11 @@ class MadNoResultsHelper
             ];
         }
 
+        // A única ação era um cadastro sem permissão: nada a oferecer.
+        if (!isset($data['create']) && !isset($data['quick'])) {
+            return null;
+        }
+
         return base64_encode(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
@@ -173,6 +178,15 @@ class MadNoResultsHelper
         [$cls, $mtd] = explode('::', $createAction, 2);
         $cls = trim($cls);
         $mtd = trim($mtd) ?: 'show';
+
+        // Sem permissão para a tela de cadastro, não há botão: o "+" do combo,
+        // o "Cadastrar novo" do no-results e o "Novo" do seek levavam a uma
+        // tela que respondia "Permissão negada". Sem login (tela pública) fica
+        // como sempre foi — quem decide é a própria tela de destino.
+        if (\Mad\Security\PermissionGate::isLogged()
+            && !\Mad\Security\PermissionGate::canAccess($cls, $mtd)) {
+            return null;
+        }
 
         // Parâmetros fixos da abertura (`:create-params` do "+" do combo) —
         // assados na URL como os de um <mad-btn navigate>. A origem continua

@@ -9738,6 +9738,19 @@ textarea.mad-dg-inline-input {
   overflow: visible;
 }
 
+/* Colunas que não cabem: a lista rola sozinha (classe posta pelo _flFit do
+   madFieldList), com todas as faixas na largura do cabeçalho. Sem isso o
+   transbordo rolava a cortina inteira, com o form junto. */
+.mad-fl { min-width: 0; max-width: 100%; }
+.mad-fl.mad-fl-scroll { overflow-x: auto; }
+.mad-fl.mad-fl-scroll > .mad-fl-group-band,
+.mad-fl.mad-fl-scroll > .mad-fl-header,
+.mad-fl.mad-fl-scroll > .mad-fl-body,
+.mad-fl.mad-fl-scroll > .mad-fl-totals { min-width: var(--mad-fl-min, 100%); }
+/* "Adicionar linha" e "Nenhum item" ficam à vista com a lista rolada. */
+.mad-fl.mad-fl-scroll > .mad-fl-add-row,
+.mad-fl.mad-fl-scroll .mad-fl-empty { position: sticky; left: 0; max-width: var(--mad-fl-box, 100%); }
+
 .mad-fl-has-error .mad-fl-group-band,
 .mad-fl-has-error .mad-fl-header,
 .mad-fl-has-error .mad-fl-body .mad-fl-row:last-child,

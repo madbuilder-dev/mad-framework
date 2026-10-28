@@ -102,6 +102,7 @@ class FieldListColumn
     public string $iconColor      = '';   // cor CSS do ícone
     public string $iconSide       = 'left'; // left | right
     public string $maxWidth       = '';   // limite do input DENTRO da célula (≠ width, que é o track da coluna)
+    public int    $hideBelow      = 0;    // some em telas mais estreitas que N px (como o hide-below do <mad-col>)
     public ?int   $maxlength      = null;  // auto-setado por alias de máscara quando ausente
     public bool   $togglePassword = false; // inicia como password + botão olho
 
@@ -185,6 +186,7 @@ class FieldListColumn
     public function iconColor(string $v): self     { $this->iconColor = $v;                    return $this; }
     public function iconSide(string $v): self      { $this->iconSide = $v;                     return $this; }
     public function maxWidth(string $v): self      { $this->maxWidth = $v;                     return $this; }
+    public function hideBelow(int|string $px): self { $this->hideBelow = max(0, (int) preg_replace('/\s*px$/i', '', trim((string) $px))); return $this; }
     public function maxlength(int $v): self        { $this->maxlength = $v;                    return $this; }
     public function togglePassword(bool $on = true): self { $this->togglePassword = $on;     return $this; }
 

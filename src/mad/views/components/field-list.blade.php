@@ -87,14 +87,23 @@
     // invalida a declaração INTEIRA — o grid colapsa numa coluna e a lista toda
     // empilha. Normalizar aqui, em render, cobre os três caminhos de autoria de
     // uma vez: tag compilada, chain fluente e `:width="$x"` bind.
-    $gridParts = array_map(fn($c) => \Mad\Form\FieldListColumn::cssTrack($c->width), $visibleCols);
-    if ($sortable)  array_unshift($gridParts, '24px'); // espaço para o handle
-    if (!empty($actions)) {
-        $actionsWidth = (count($actions) * 32) + 8;
-        $gridParts[]  = $actionsWidth . 'px';
-    }
-    if ($removable) $gridParts[] = '48px';
-    $gridTemplate = implode(' ', $gridParts);
+    //
+    // Coluna sem width: `minmax(7.5rem, 1fr)`, não `1fr` cru. Com muitas colunas
+    // de largura fixa o `1fr` sobrava com 0px (a coluna Nome sumia); com o piso
+    // o cabeçalho transborda e a lista rola sozinha (_flFit do madFieldList).
+    $__flTemplate = function (array $skip = []) use ($visibleCols, $sortable, $actions, $removable) {
+        $parts = [];
+        if ($sortable) $parts[] = '24px'; // espaço para o handle
+        foreach ($visibleCols as $_i => $_c) {
+            if (isset($skip[$_i])) continue;
+            $parts[] = trim((string) $_c->width) === '' ? 'minmax(7.5rem, 1fr)' : \Mad\Form\FieldListColumn::cssTrack($_c->width);
+        }
+        if (!empty($actions)) $parts[] = ((count($actions) * 32) + 8) . 'px';
+        if ($removable) $parts[] = '48px';
+
+        return implode(' ', $parts);
+    };
+    $gridTemplate = $__flTemplate();
 
     // ── Bandas de grupo (<mad-field-list-group label="...">) ─────────────────
     // Derivadas de $visibleCols, NÃO de um array paralelo montado no compilador:
@@ -103,17 +112,54 @@
     // $gridTemplate. Span errado desalinha TODAS as bandas seguintes.
     $groupBands = [];
     $hasGroups  = false;
-    foreach ($visibleCols as $_gc) {
+    foreach ($visibleCols as $_gi => $_gc) {
         $_k    = $_gc->groupKey !== '' ? $_gc->groupKey : $_gc->group;
         $_last = $groupBands ? array_key_last($groupBands) : null;
         if ($_last !== null && $groupBands[$_last]['key'] === $_k) {
             $groupBands[$_last]['span']++;
+            $groupBands[$_last]['cols'][] = $_gi;
         } else {
-            $groupBands[] = ['key' => $_k, 'label' => $_gc->group, 'span' => 1];
+            $groupBands[] = ['key' => $_k, 'label' => $_gc->group, 'span' => 1, 'cols' => [$_gi]];
         }
         if ($_gc->group !== '') $hasGroups = true;
     }
     if (!$hasGroups) $groupBands = [];   // custo zero nas páginas existentes
+
+    // ── hide-below por coluna (<mad-field-list-column hide-below="900">) ─────
+    // Como o do <mad-col>: a coluna some em telas mais estreitas que N px. A
+    // grade tem um template por faixa (as colunas que somem saem dele, senão as
+    // da direita andam uma casa) e as bandas de grupo encolhem junto. Um @media
+    // por limite, do maior para o menor: o menor vem depois e esconde mais.
+    // Dentro do cartão do celular a célula também some (mesma régua). O valor
+    // continua indo no POST: a célula só não aparece.
+    $__flUid  = '';
+    $__flHbCss = '';
+    $__flHbs  = array_values(array_unique(array_filter(array_map(fn ($c) => (int) $c->hideBelow, $visibleCols))));
+    if ($__flHbs) {
+        rsort($__flHbs);
+        $__flUid = 'fl' . bin2hex(random_bytes(5));
+        $__r = '[data-mad-fl-uid="' . $__flUid . '"]';
+        foreach ($__flHbs as $__t) {
+            $__skip = [];
+            foreach ($visibleCols as $_hi => $_hc) {
+                if ((int) $_hc->hideBelow >= $__t) $__skip[$_hi] = true;
+            }
+            $__cells = [];
+            foreach (array_keys($__skip) as $_hi) {
+                $__cells[] = "{$__r} > .mad-fl-header > .mad-fl-c{$_hi}, {$__r} > .mad-fl-body > .mad-fl-row > .mad-fl-c{$_hi}, {$__r} > .mad-fl-totals > .mad-fl-c{$_hi}";
+            }
+            $__css = "{$__r} > .mad-fl-header, {$__r} > .mad-fl-body > .mad-fl-row, {$__r} > .mad-fl-totals, {$__r} > .mad-fl-group-band"
+                . '{grid-template-columns:' . $__flTemplate($__skip) . ' !important}'
+                . implode(',', $__cells) . '{display:none !important}';
+            foreach ($groupBands as $_bi => $_band) {
+                $_n   = count(array_filter($_band['cols'], fn ($i) => !isset($__skip[$i])));
+                $_nth = $_bi + 1 + ($sortable ? 1 : 0);
+                $__css .= "{$__r} > .mad-fl-group-band > .mad-fl-group-cell:nth-child({$_nth})"
+                    . ($_n > 0 ? "{grid-column:span {$_n} !important}" : '{display:none !important}');
+            }
+            $__flHbCss .= '@media (max-width:' . ($__t - 0.02) . 'px){' . $__css . '}';
+        }
+    }
 
     // ── Normaliza rows e monta JSON de config para o Alpine ──────────────────
     $initialRows = \Mad\Form\FieldListColumn::normalizeRows($rows);
@@ -423,8 +469,12 @@
     @endif
 
     {{-- Container principal do field-list ------------------------------------ --}}
+    @if($__flHbCss !== '')
+        <style>{!! $__flHbCss !!}</style>
+    @endif
     <div class="mad-fl {{ $hasError ? 'mad-fl-has-error' : '' }}"
          data-mad-fl-name="{{ $name }}"
+         @if($__flUid !== '') data-mad-fl-uid="{{ $__flUid }}" @endif
          @if($_flNested !== '') data-mad-fl-nested="{{ $_flNested }}" @endif
          x-data="madFieldList({{ $cfgJson }})"
          @if($sortable) data-sortable="1" @endif>
@@ -462,7 +512,7 @@
                 <div class="mad-fl-header-cell"></div>
             @endif
             @foreach($visibleCols as $col)
-                <div class="mad-fl-header-cell">
+                <div class="mad-fl-header-cell mad-fl-c{{ $loop->index }}">
                     {{ $col->label }}
                     @if($col->required)
                         <span style="color:var(--mad-danger);margin-left:2px;">*</span>
@@ -553,7 +603,7 @@
                          grade (.mad-fl-cell-off = visibility:hidden; no cartão do
                          celular, display:none). Com x-show (display:none) as
                          células da direita andavam uma casa (fw#316). --}}
-                    <div class="mad-fl-cell" data-label="{{ $col->label }}"
+                    <div class="mad-fl-cell mad-fl-c{{ $loop->index }}" data-label="{{ $col->label }}"
                          @if($col->hint !== '') title="{{ $col->hint }}" @endif
                          @if($vw !== '') :class="{ 'mad-fl-cell-off': !({{ $vw }}) }" :aria-hidden="!({{ $vw }}) ? 'true' : null" @endif>
 
@@ -1350,7 +1400,7 @@
         <div class="mad-fl-totals" style="grid-template-columns:{{ $gridTemplate }}">
             @if($sortable) <div class="mad-fl-cell"></div> @endif
             @foreach($visibleCols as $col)
-                <div class="mad-fl-cell mad-fl-total-cell">
+                <div class="mad-fl-cell mad-fl-total-cell mad-fl-c{{ $loop->index }}">
                     @if($col->doSum)
                         <span x-text="getSum('{{ $col->field }}')"></span>
                     @elseif($col->doCount)

@@ -369,6 +369,7 @@ return [
             // Campo de arquivo no celular (fw#495).
             'take_photo'     => 'Tomar foto',
             'tap_to_choose'  => 'Toque para elegir un archivo',
+            'paste_image'    => 'o pega una captura (Ctrl+V)',
             // Campo em leitura e <mad-display-field> booleano (fw#498).
             'yes'            => 'Sí',
             'no'             => 'No',

@@ -107,7 +107,13 @@ trait MadDbBlocksTrait
                     if (in_array((string) $k, $fixed, true)) {
                         continue;
                     }
-                    if (is_array($v)) $v = implode(',', $v);
+                    if (is_array($v)) {
+                        // Lista de linhas (um <mad-field-list> do form da tela)
+                        // não é coluna do item: o implode estourava e o envio
+                        // do bloco falhava com erro genérico.
+                        if (array_filter($v, 'is_array') !== []) continue;
+                        $v = implode(',', $v);
+                    }
                     $sent[(string) $k] = $v;
                     // A coluna é descartada e o INSERT segue — o item grava
                     // incompleto e o usuário ainda recebe toast de sucesso. Cast
@@ -424,7 +430,13 @@ trait MadDbBlocksTrait
                     if (in_array((string) $k, $fixed, true)) {
                         continue;
                     }
-                    if (is_array($v)) $v = implode(',', $v);
+                    if (is_array($v)) {
+                        // Lista de linhas (um <mad-field-list> do form da tela)
+                        // não é coluna do item: o implode estourava e o envio
+                        // do bloco falhava com erro genérico.
+                        if (array_filter($v, 'is_array') !== []) continue;
+                        $v = implode(',', $v);
+                    }
                     $sent[(string) $k] = $v;
                     // Igual ao blockAdd, e pior no UPDATE: a coluna que falhou
                     // mantém o valor ANTIGO no banco enquanto a tela mostra o
@@ -514,7 +526,7 @@ trait MadDbBlocksTrait
             . "if((el.name||'').indexOf('__mad_')===0)return;"
             . "if(el.type==='checkbox'||el.type==='radio'){el.checked=el.defaultChecked;}"
             . "else if(el.tagName==='SELECT'){Array.prototype.forEach.call(el.options,function(o){o.selected=o.defaultSelected;});}"
-            . "else if(el.type==='file'){el.value='';}"
+            . "else if(el.type==='file'){el.value='';el.dispatchEvent(new CustomEvent('mad-file-reset',{bubbles:true}));}"
             . "else{el.value=el.defaultValue;}"
             . "el.dispatchEvent(new Event('input',{bubbles:true}));"
             . "el.dispatchEvent(new Event('change',{bubbles:true}));});})()"

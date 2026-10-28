@@ -155,6 +155,7 @@
         @dragover.prevent="dragOver = true"
         @dragleave.prevent="dragOver = false"
         @drop.prevent="onDrop($event)"
+        @mad-file-reset="clearNew()"
         :class="{ 'mad-multi-file-over': dragOver }"
     >
         <input
@@ -180,9 +181,11 @@
             <input type="hidden" :name="'__mad_new_files[{{ $name }}][]'" :value="nf.uid">
         </template>
         {{-- Dropzone --}}
-        <div class="mad-file-body" @click="$refs.fileInput.click()" style="cursor:pointer;">
+        {{-- tabindex: com o foco aqui, o Ctrl+V cola o print no campo (onPaste). --}}
+        <div class="mad-file-body" tabindex="0" role="button" @click="$refs.fileInput.click()" @keydown.enter.prevent="$refs.fileInput.click()" @keydown.space.prevent="$refs.fileInput.click()" style="cursor:pointer;">
             <i data-lucide="upload-cloud" style="width:32px;height:32px;margin-bottom:8px;color:var(--mad-muted);"></i>
             <span class="mad-file-text-drop">Arraste arquivos aqui ou <strong>clique para selecionar</strong></span>
+            <small class="mad-file-text-drop" style="color:var(--mad-muted);">{{ mad_t('mad.field.paste_image') }}</small>
             <span class="mad-file-text-touch"><strong>{{ mad_t('mad.field.tap_to_choose') }}</strong></span>
             @if($maxFiles) <small style="color:var(--mad-muted);">Máx. {{ $maxFiles }} arquivo(s)</small> @endif
             @if($maxSize)  <small style="color:var(--mad-muted);">Máx. {{ round($maxSize / 1024, 1) }}MB por arquivo</small> @endif
