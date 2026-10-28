@@ -77,6 +77,30 @@ return [
 
         // Filtro avançado do grid (<mad-custom-filters>): botão, construtor de
         // condições, rótulos naturais de operador por tipo, períodos e filtros salvos.
+        'gridview' => [
+            'views' => 'Vistas',
+            'system' => 'Vista padrão do sistema',
+            'mine' => 'As minhas vistas',
+            'shared' => 'Partilhadas',
+            'none' => 'Ainda não há vistas guardadas.',
+            'save_current' => 'Guardar vista atual…',
+            'name' => 'Nome da vista',
+            'name_placeholder' => 'Ex.: Atrasados da minha equipa',
+            'share' => 'Partilhar com todos',
+            'default_on' => 'Abrir o ecrã nesta vista',
+            'default_off' => 'Deixar de abrir nesta vista',
+            'rename' => 'Mudar o nome',
+            'delete' => 'Eliminar',
+            'confirm_delete' => 'Eliminar?',
+            'save' => 'Guardar',
+            'cancel' => 'Cancelar',
+            'shared_badge' => 'partilhada',
+            'saved_ok' => 'Vista guardada.',
+            'deleted_ok' => 'Vista eliminada.',
+            'not_allowed' => 'Não pode alterar esta vista.',
+            'name_invalid' => 'Indique um nome de 1 a 120 caracteres.',
+            'save_failed' => 'Não foi possível guardar a vista.',
+        ],
         'gridcf' => [
             'button'             => 'Filtros',
             'title'              => 'Filtrar registos',

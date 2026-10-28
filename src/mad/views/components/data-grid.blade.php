@@ -242,7 +242,7 @@
         : '';
 @endphp
 <div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"{{ $rowClick ? ' data-row-click' : '' }}{!! $_autoRefreshAttrs !!}{!! $_lookAttrs !!}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
-     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
+     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if(!empty($gridViews)), gvText: {{ json_encode(['nameInvalid' => mad_t('mad.gridview.name_invalid')]) }}@if(is_array($gridViews['client'] ?? null)), viewClient: {{ json_encode($gridViews['client']) }}@endif @endif @if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
      x-init="init($el)"
      @mad-dg-page="handlePage($event)"
      @mad-dg-call="handleCall($event)"
@@ -260,7 +260,8 @@
         $_exportLabel = trim((string) ($exportLabel ?? ''));
         $hasRefresh = $refreshable ?? false;
         $hasChooser = $columnChooser && !$hasActions && $hasChoosable;
-        $showToolbar = $searchable || $hasExport || $hasChooser || ($cardView && empty($gridCompact)) || $hasRefresh || $cfEnabled;
+        $_gv = !empty($gridViews) ? $gridViews : null;
+        $showToolbar = $searchable || $hasExport || $hasChooser || ($cardView && empty($gridCompact)) || $hasRefresh || $cfEnabled || $_gv;
     @endphp
     @if($showToolbar)
     <div class="mad-dg-toolbar">
@@ -268,6 +269,78 @@
         <input type="search" class="mad-input mad-dg-search" placeholder="{{ __('grid.search_placeholder') }}" x-model="search" @input="handleSearch()" @search="handleSearch()">
         @endif
         <div class="mad-dg-toolbar-right">
+            {{-- Visões salvas (<mad-grid saved-views>): filtros, ordenação, colunas e por página com nome. --}}
+            @if($_gv)
+            <div class="mad-dg-gv" @click.outside="gvOpen=false" @keydown.escape="gvOpen=false">
+                <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-gv-btn" aria-haspopup="menu"
+                        :aria-expanded="gvOpen ? 'true' : 'false'" @click.stop="gvToggle()" title="{{ mad_t('mad.gridview.views') }}">
+                    <i data-lucide="bookmark" style="width:14px;height:14px;"></i>
+                    <span class="mad-dg-gv-label">{{ $_gv['name'] ?? mad_t('mad.gridview.views') }}</span>
+                    <i data-lucide="chevron-down" style="width:12px;height:12px;"></i>
+                </button>
+                <div class="mad-dg-gv-menu" x-show="gvOpen" x-cloak role="menu" aria-label="{{ mad_t('mad.gridview.views') }}">
+                    <button type="button" class="mad-dg-gv-item mad-dg-gv-system{{ $_gv['current'] === null ? ' is-current' : '' }}" role="menuitem" @click="gvReset()">
+                        <i data-lucide="rotate-ccw"></i><span>{{ mad_t('mad.gridview.system') }}</span>
+                    </button>
+                    @foreach(['mine' => mad_t('mad.gridview.mine'), 'shared' => mad_t('mad.gridview.shared')] as $_gvGroup => $_gvTitle)
+                        @if($_gvGroup === 'mine' || count($_gv['shared']) > 0)
+                        <div class="mad-dg-gv-group">{{ $_gvTitle }}</div>
+                        @endif
+                        @foreach($_gv[$_gvGroup] as $_v)
+                        <div class="mad-dg-gv-row{{ $_v['id'] === $_gv['current'] ? ' is-current' : '' }}">
+                            <template x-if="gvRenaming !== {{ (int) $_v['id'] }}">
+                                <button type="button" class="mad-dg-gv-item" role="menuitem" @click="gvApply({{ (int) $_v['id'] }})">
+                                    <i data-lucide="{{ $_v['isDefault'] ? 'star' : ($_gvGroup === 'shared' ? 'users' : 'bookmark') }}" class="{{ $_v['isDefault'] ? 'is-default' : '' }}"></i>
+                                    <span class="mad-dg-gv-name-txt">{{ $_v['name'] }}</span>
+                                    @if($_v['shared'] && $_v['own'])<span class="mad-dg-gv-badge">{{ mad_t('mad.gridview.shared_badge') }}</span>@endif
+                                </button>
+                            </template>
+                            <template x-if="gvRenaming === {{ (int) $_v['id'] }}">
+                                <form class="mad-dg-gv-rename" @submit.prevent="gvRename({{ (int) $_v['id'] }})">
+                                    <input class="mad-input mad-input-sm" maxlength="120" x-model="gvRenameText" x-init="$nextTick(() => $el.focus())">
+                                    <button type="submit" class="mad-btn mad-btn-primary mad-btn-sm">{{ mad_t('mad.gridview.save') }}</button>
+                                </form>
+                            </template>
+                            <span class="mad-dg-gv-acts" x-show="gvRenaming !== {{ (int) $_v['id'] }}">
+                                @if($_v['canDefault'])
+                                <button type="button" @click.stop="gvDefault({{ (int) $_v['id'] }})"
+                                        title="{{ $_v['isDefault'] ? mad_t('mad.gridview.default_off') : mad_t('mad.gridview.default_on') }}"
+                                        aria-label="{{ $_v['isDefault'] ? mad_t('mad.gridview.default_off') : mad_t('mad.gridview.default_on') }}"><i data-lucide="star"></i></button>
+                                @endif
+                                @if($_v['canEdit'])
+                                <button type="button" @click.stop="gvStartRename({ id: {{ (int) $_v['id'] }}, name: @js($_v['name']) })"
+                                        title="{{ mad_t('mad.gridview.rename') }}" aria-label="{{ mad_t('mad.gridview.rename') }}"><i data-lucide="pencil"></i></button>
+                                <button type="button" class="is-danger" :class="{ 'is-armed': gvConfirm === {{ (int) $_v['id'] }} }" @click.stop="gvDelete({{ (int) $_v['id'] }})"
+                                        :title="gvConfirm === {{ (int) $_v['id'] }} ? @js(mad_t('mad.gridview.confirm_delete')) : @js(mad_t('mad.gridview.delete'))"
+                                        aria-label="{{ mad_t('mad.gridview.delete') }}"><i data-lucide="trash-2"></i><span x-show="gvConfirm === {{ (int) $_v['id'] }}" x-cloak>{{ mad_t('mad.gridview.confirm_delete') }}</span></button>
+                                @endif
+                            </span>
+                        </div>
+                        @endforeach
+                        @if($_gvGroup === 'mine' && count($_gv['mine']) === 0)
+                        <div class="mad-dg-gv-empty">{{ mad_t('mad.gridview.none') }}</div>
+                        @endif
+                    @endforeach
+                    <form class="mad-dg-gv-form" x-show="gvForm" @submit.prevent="gvSave()" novalidate>
+                        <label class="mad-dg-gv-field"><span>{{ mad_t('mad.gridview.name') }}</span>
+                            <input class="mad-input mad-input-sm mad-dg-gv-name" maxlength="120" autocomplete="off" x-model="gvName" placeholder="{{ mad_t('mad.gridview.name_placeholder') }}">
+                        </label>
+                        @if($_gv['canShare'])
+                        <label class="mad-dg-gv-check"><input type="checkbox" x-model="gvShare"><span>{{ mad_t('mad.gridview.share') }}</span></label>
+                        @endif
+                        <label class="mad-dg-gv-check"><input type="checkbox" x-model="gvDefaultChk"><span>{{ mad_t('mad.gridview.default_on') }}</span></label>
+                        <div class="mad-dg-gv-err" x-show="gvError !== ''" x-text="gvError"></div>
+                        <div class="mad-dg-gv-form-row">
+                            <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click="gvForm=false">{{ mad_t('mad.gridview.cancel') }}</button>
+                            <button type="submit" class="mad-btn mad-btn-primary mad-btn-sm">{{ mad_t('mad.gridview.save') }}</button>
+                        </div>
+                    </form>
+                    <button type="button" class="mad-dg-gv-item mad-dg-gv-new" x-show="!gvForm" @click="gvOpenForm(@js($_gv['name'] ?? ''))">
+                        <i data-lucide="plus"></i><span>{{ mad_t('mad.gridview.save_current') }}</span>
+                    </button>
+                </div>
+            </div>
+            @endif
             {{-- Filtro avançado: botão "Filtros" + popover (teleportado pro body). --}}
             @if($cfEnabled)
             @include('components.data-grid-custom-filters', [

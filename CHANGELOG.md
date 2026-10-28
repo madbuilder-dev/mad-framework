@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.241.0] — 2026-10-28
+
+### Novidades
+
+- **Grade:** visões salvas. Com `<mad-grid saved-views>`, a barra da grade ganha o menu "Visões": quem usa a tela guarda com um nome o jeito como a deixou (filtros da tela, inclusive período e listas, condições do filtro avançado, busca, ordenação, quantidade por página, colunas escondidas e Tabela/Cartões) e volta a ele com um clique. Cada visão pode ser renomeada, excluída ou marcada para abrir a tela já nela; "Visão padrão do sistema" volta tudo ao normal. Com `saved-views="shared"`, o administrador também compartilha visões com todos; `saved-views="everyone"` deixa qualquer usuário compartilhar. Filtro ou coluna que saiu da tela depois é ignorado ao aplicar a visão.
+
+### Melhorias
+
+- **Grade:** `<mad-grid reorder>` agora também funciona na grade agrupada por uma coluna (`group-by="uso"`): a linha se arrasta dentro do seu grupo e a ordem vale dentro dele. Agrupada por data com granularidade ou por campo de outra tabela, a alça continua escondida.
+- **Tela inicial:** a "Atividade recente" e os "Atalhos rápidos" mostram o título da tela ("Tipos de obra") no lugar do nome técnico ("Infra Tipo Obra"). Tela sem título continua com o nome técnico separado em palavras.
+
 ## [5.240.0] — 2026-10-28
 
 ### Novidades

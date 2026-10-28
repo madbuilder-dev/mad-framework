@@ -7254,7 +7254,14 @@ document.addEventListener('alpine:init', () => {
         // navegador (de quando a coluna era ocultável) não a esconde mais;
         // sem a caixa no seletor ela ficaria escondida para sempre.
         const _fixed = new Set(_cols.filter(c => c.hideable === false).map(c => c.field));
-        if (_sk) {
+        // <mad-grid saved-views>: o servidor acabou de aplicar uma visão — as
+        // colunas escondidas dela valem (e passam a ser a escolha guardada).
+        const _vc = (cfg.viewClient && typeof cfg.viewClient === 'object') ? cfg.viewClient : null;
+        if (_vc) {
+            const hid = (Array.isArray(_vc.hidden) ? _vc.hidden : []).filter(f => !_fixed.has(f) && f in _colVisibility);
+            hid.forEach(f => { _colVisibility[f] = false; });
+            if (_sk) { try { localStorage.setItem('mad-dg-cols:' + _sk, JSON.stringify(hid)); } catch(e) {} }
+        } else if (_sk) {
             try {
                 const saved = localStorage.getItem('mad-dg-cols:' + _sk);
                 if (saved) JSON.parse(saved).forEach(f => { if (!_fixed.has(f)) _colVisibility[f] = false; });
@@ -7337,6 +7344,8 @@ document.addEventListener('alpine:init', () => {
         cols:           _cols,
         colVisibility:  _colVisibility,
         colChooserOpen: false,
+        gvOpen: false, gvForm: false, gvName: '', gvShare: false, gvDefaultChk: false, gvError: '',
+        gvConfirm: null, gvRenaming: null, gvRenameText: '',
         // Colunas escondidas AGORA pelo hide-below (field → true).
         colNarrow:      _colNarrow,
 
@@ -7379,12 +7388,27 @@ document.addEventListener('alpine:init', () => {
             // Card view: restore from localStorage
             if (this._cfg.cardView) {
                 var sk = this._cfg.storageKey;
+                // Visão salva aplicada agora: Tabela/Cartões dela; vazio = a do sistema.
+                var vc = this._cfg.viewClient;
+                if (vc && sk) {
+                    try {
+                        if (vc.mode === 'card' || vc.mode === 'table') localStorage.setItem('mad-dg-view:' + sk, vc.mode);
+                        else localStorage.removeItem('mad-dg-view:' + sk);
+                    } catch (e) {}
+                }
                 var saved = sk ? localStorage.getItem('mad-dg-view:' + sk) : null;
                 this.viewMode = (saved === 'card' || saved === 'table') ? saved
                               : this._cfg.cardDefault ? 'card' : 'table';
                 // card-below="576": sem escolha do usuário, Cards em tela mais
                 // estreita que o limiar — e acompanha a largura até ele escolher.
                 if (saved !== 'card' && saved !== 'table' && !this._cfg.cardDefault) this._watchCardBelow();
+            }
+
+            // Visão padrão aplicada só no render da grade (1ª abertura): a barra de
+            // filtros da tela saiu sem ela — pede um redesenho inteiro.
+            if (this._cfg.viewClient && this._cfg.viewClient.refresh) {
+                this._cfg.viewClient.refresh = false;
+                setTimeout(() => this._gvCall('onGridViewSync', []), 0);
             }
 
             // Busca rápida: debounce controlado via handleSearch (chamado pelo @input do template)
@@ -8342,12 +8366,65 @@ document.addEventListener('alpine:init', () => {
             if (lost) this._cellNotice(field, 'dropped', 'warning');
         },
 
+        // ── <mad-grid saved-views> — menu "Visões" ─────────────────────
+        // A lista e as ações vivem no servidor (MadGridSavedViews); aqui só o
+        // que o navegador sabe entra no Salvar: colunas escondidas e
+        // Tabela/Cartões. Cada ação redesenha a grade inteira.
+        gvToggle() {
+            this.gvOpen = !this.gvOpen;
+            this.gvForm = false;
+            this.gvConfirm = null;
+            this.gvRenaming = null;
+            if (this.gvOpen) this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+        _gvCall(method, params) {
+            const root = this.$root || this.$el;
+            const w = this._wrapper || (root && root.closest ? root.closest('[mad-component]') : null);
+            if (!w || typeof MadWire === 'undefined') return;
+            return MadWire.call(w, method, params || []);
+        },
+        gvApply(id) { this.gvOpen = false; this._gvCall('onGridViewApply', [Number(id)]); },
+        gvReset() { this.gvOpen = false; this._gvCall('onGridViewReset', []); },
+        gvDefault(id) { this._gvCall('onGridViewDefault', [Number(id)]); },
+        gvDelete(id) {
+            // Sem diálogo do navegador: o 1º clique arma, o 2º exclui.
+            if (this.gvConfirm !== id) { this.gvConfirm = id; return; }
+            this.gvConfirm = null;
+            this._gvCall('onGridViewDelete', [Number(id)]);
+        },
+        gvStartRename(v) { this.gvRenaming = v.id; this.gvRenameText = v.name; },
+        gvRename(id) {
+            const name = String(this.gvRenameText || '').replace(/\s+/g, ' ').trim();
+            if (!name || name.length > 120) return;
+            this.gvRenaming = null;
+            this._gvCall('onGridViewRename', [Number(id), name]);
+        },
+        gvOpenForm(name) {
+            this.gvForm = true;
+            this.gvName = name || '';
+            this.gvShare = false;
+            this.gvDefaultChk = false;
+            this.gvError = '';
+            this.$nextTick(() => { const i = (this.$root || this.$el).querySelector('.mad-dg-gv-name'); if (i) i.focus(); });
+        },
+        gvSave() {
+            const name = String(this.gvName || '').replace(/\s+/g, ' ').trim();
+            if (!name || name.length > 120) { this.gvError = (this._cfg.gvText || {}).nameInvalid || ''; return; }
+            const hidden = Object.keys(this.colVisibility || {}).filter(f => this.colVisibility[f] === false);
+            const mode = this._cfg.cardView ? this.viewMode : '';
+            this.gvOpen = false;
+            this.gvForm = false;
+            this._gvCall('onGridViewSave', [name, !!this.gvShare, !!this.gvDefaultChk, { hidden: hidden, mode: mode }]);
+        },
+
         // ── <mad-grid reorder="ordem"> ───────────────────────────────
         // Cada linha ganha uma alça na 1ª célula; soltar a linha manda as
         // chaves da página, na ordem nova, para o onReorder() do servidor, que
         // grava a coluna de ordem e redesenha a grade. Linha redesenhada
         // sozinha (manage_row) ganha a alça de novo pelo MutationObserver.
-        // Sem `reorder` no cfg (ordenada por outra coluna, agrupada) não liga.
+        // Grade agrupada: a linha só anda dentro do seu grupo (entre um
+        // cabeçalho/total de grupo e o próximo) e só as linhas dele vão.
+        // Sem `reorder` no cfg (ordenada por outra coluna) não liga.
         _initReorder(root) {
             if (!this._cfg.reorder || typeof Sortable === 'undefined' || !root || this._reorderOff) return;
             const body = root.querySelector('tbody.mad-dg-body');
@@ -8384,14 +8461,27 @@ document.addEventListener('alpine:init', () => {
             handles();
             const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(handles) : null;
             if (mo) mo.observe(body, { childList: true });
+            const isBreak = tr => tr.classList.contains('mad-dg-group-row') || tr.classList.contains('mad-dg-group-total');
+            const segmentOf = (tr) => {
+                const seg = [tr];
+                for (let p = tr.previousElementSibling; p && !isBreak(p); p = p.previousElementSibling) seg.unshift(p);
+                for (let n = tr.nextElementSibling; n && !isBreak(n); n = n.nextElementSibling) seg.push(n);
+                return seg.filter(x => x.matches('tr.mad-dg-row[data-row-id]'));
+            };
+            let seg = null;
             const sortable = Sortable.create(body, {
                 handle: '.mad-dg-drag',
                 draggable: 'tr.mad-dg-row',
                 animation: 150,
                 ghostClass: 'mad-dg-row-dragging',
+                onStart: (evt) => { seg = segmentOf(evt.item); },
+                onMove: (evt) => !seg || seg.indexOf(evt.related) !== -1,
                 onEnd: (evt) => {
+                    const group = seg || [];
+                    seg = null;
                     if (evt.oldIndex === evt.newIndex) return;
                     const ids = Array.from(body.querySelectorAll(':scope > tr.mad-dg-row[data-row-id]'))
+                        .filter(tr => group.indexOf(tr) !== -1)
                         .map(tr => String(tr.getAttribute('data-row-id')))
                         .map(id => (prefix && id.indexOf(prefix) === 0) ? id.slice(prefix.length) : id);
                     const w = this._wrapper || (root.closest ? root.closest('[mad-component]') : null);

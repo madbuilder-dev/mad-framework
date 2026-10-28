@@ -73,6 +73,30 @@ return [
 
         // Filtro avançado do grid (<mad-custom-filters>): botão, construtor de
         // condições, rótulos naturais de operador por tipo, períodos e filtros salvos.
+        'gridview' => [
+            'views' => 'Visões',
+            'system' => 'Visão padrão do sistema',
+            'mine' => 'Minhas visões',
+            'shared' => 'Compartilhadas',
+            'none' => 'Nenhuma visão salva ainda.',
+            'save_current' => 'Salvar visão atual…',
+            'name' => 'Nome da visão',
+            'name_placeholder' => 'Ex.: Atrasados do meu time',
+            'share' => 'Compartilhar com todos',
+            'default_on' => 'Abrir a tela nesta visão',
+            'default_off' => 'Não abrir mais nesta visão',
+            'rename' => 'Renomear',
+            'delete' => 'Excluir',
+            'confirm_delete' => 'Excluir?',
+            'save' => 'Salvar',
+            'cancel' => 'Cancelar',
+            'shared_badge' => 'compartilhada',
+            'saved_ok' => 'Visão salva.',
+            'deleted_ok' => 'Visão excluída.',
+            'not_allowed' => 'Você não pode alterar esta visão.',
+            'name_invalid' => 'Dê um nome de 1 a 120 caracteres.',
+            'save_failed' => 'Não foi possível salvar a visão.',
+        ],
         'gridcf' => [
             'button'             => 'Filtros',
             'title'              => 'Filtrar registros',

@@ -56,6 +56,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     // Filtro avançado do usuário final (<mad-custom-filters>).
     use MadGridCustomFilters;
+    // Visões salvas da listagem (<mad-grid saved-views>).
+    use MadGridSavedViews;
     use MadGridWindow;
 
     // ── Props de estado (serializadas e criptografadas) ───────────────────
@@ -1023,6 +1025,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         // Request hydrate
         $req = array_merge($_GET ?? [], $_POST ?? []);
+        $this->_svNoteOpenSource($req, $params);
         $this->hydrateFiltersFromArray($req);
         $this->hydrateFiltersFromArray($params);
 
@@ -1034,6 +1037,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // são conhecidas aqui (grid standalone — o MadGrid as aplica antes do
         // parent::mount()). No <mad-grid self> quem aplica é o render.
         $this->_cfApplyDefaultFilter();
+        // Visão padrão do usuário (grid standalone; no `self` quem aplica é o render).
+        $this->_svApplyDefault();
         if ($this->_autoLoadAllowed()) {
             $this->loadData();
         }
@@ -1354,7 +1359,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // e ficam no state — `mad_model[requireFilter]=0` numa requisição
         // qualquer destravava a consulta sem filtro que a opção existe para
         // impedir. `perPageLocked` só muda pelo onPerPage().
-        if (in_array($prop, ['requireFilter', 'autoLoad', 'loadRequested', 'perPageLocked', 'reorder'], true)) {
+        if (in_array($prop, ['requireFilter', 'autoLoad', 'loadRequested', 'perPageLocked', 'reorder'], true)
+            || in_array($prop, self::SAVED_VIEW_PROPS, true)) {
             return false;
         }
         return parent::_isModelAssignable($prop);
@@ -2896,12 +2902,6 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
-     * A grade deixa arrastar as linhas agora? Com `reorder`, model gravável,
-     * sem ordenação escolhida pelo usuário (clique no cabeçalho) e sem quebra
-     * por grupo: numa lista ordenada por outra coluna, a posição arrastada não
-     * teria sentido na coluna de ordem.
-     */
-    /**
      * `reorder` do config compilado (inline `self` e MadGrid standalone, no
      * mount e no hydrate). Sem order-by declarado, a lista vem na ordem que o
      * usuário montou.
@@ -2918,12 +2918,38 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
     }
 
+    /**
+     * A grade deixa arrastar as linhas agora? Com `reorder`, model gravável e
+     * sem ordenação escolhida pelo usuário (clique no cabeçalho): numa lista
+     * ordenada por outra coluna, a posição arrastada não teria sentido na
+     * coluna de ordem. Com quebra por grupo, só quebra por coluna da própria
+     * tabela — a ordem vale dentro de cada grupo.
+     */
     protected function _reorderActive(): bool
     {
         return $this->reorder !== ''
             && $this->_recordModel() !== ''
             && $this->sortBy === ''
-            && $this->_queryGroupFields() === [];
+            && $this->_reorderGroupColumns() !== null;
+    }
+
+    /**
+     * Colunas da quebra que o arrastar respeita (a linha só troca de lugar
+     * dentro do seu grupo). null = quebra por relação ou por granularidade
+     * (`data|month`): o grupo não é um valor da linha — sem arrastar.
+     *
+     * @return string[]|null
+     */
+    protected function _reorderGroupColumns(): ?array
+    {
+        $fields = $this->_queryGroupFields();
+        foreach ($fields as $f) {
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $f)) {
+                return null;
+            }
+        }
+
+        return $fields;
     }
 
     /** `reorder` para a view: liga a alça e o arrastar no madDataGrid. */
@@ -2942,6 +2968,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * páginas e dos registros filtrados fora não muda. Sem valor ou com valor
      * repetido, numera em sequência a partir do menor (ou da posição da
      * página). Grava pelo Model (eventos e log de alterações valem).
+     * Grade agrupada: chegam só as linhas de UM grupo (o navegador não deixa
+     * soltar fora dele); linhas de grupos diferentes são recusadas.
      */
     public function onReorder(array $ids = []): \Mad\Http\MadResponse
     {
@@ -2971,6 +2999,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 return $resp->toast(mad_t('mad.error.row_gone'), 'warning');
             }
             $records[] = $record;
+        }
+
+        foreach ($this->_reorderGroupColumns() ?? [] as $gc) {
+            $groups = array_unique(array_map(fn ($r) => (string) $r->getAttribute($gc), $records));
+            if (count($groups) > 1) {
+                $this->loadData();
+
+                return $resp->toast(mad_t('mad.grid.reorder_failed'), 'warning');
+            }
         }
 
         $current = array_map(fn ($r) => $r->getAttribute($col), $records);
@@ -4482,7 +4519,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => false,
             'cardBelow'    => 0,
             'cardCols'     => '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData()];
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData()];
     }
 
     // ── Inline grid (<mad-grid self>) ─────────────────────────────────────
@@ -4630,6 +4667,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($this->_cfApplyDefaultFilter()) {
             $this->_dataLoaded = false;
         }
+        // Visão padrão do usuário (1ª abertura, sem filtro no link): vence o
+        // filtro avançado padrão, porque a visão já traz as condições dela.
+        $this->_applySavedViewsConfig($config);
+        $this->_svOnRender();
 
         // Propriedades de estado: aplicar apenas como default na primeira carga.
         // Se loadData() já rodou (mount/hydrate), preservar o valor serializado.
@@ -4761,7 +4802,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => $this->_inlineConfig['cardDefault'] ?? false,
             'cardBelow'    => max(0, (int) ($this->_inlineConfig['cardBelow'] ?? 0)),
             'cardCols'     => $this->_inlineConfig['cardCols'] ?? '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData());
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData());
     }
 
     /**

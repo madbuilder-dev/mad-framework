@@ -78,6 +78,7 @@ class MadGrid extends MadDataGrid
             $this->baseFilters = $cfg['filters'];
         }
         $this->_applyReorderConfig($cfg);
+        $this->_applySavedViewsConfig($cfg);
         // Filtro avançado (<mad-custom-filters>): defs seladas SÓ aqui, no
         // primeiro render, a partir do config compilado. O hydrate() NÃO as
         // reaplica do gridConfig — ele viaja no estado e pode ter sido reescrito
@@ -121,6 +122,7 @@ class MadGrid extends MadDataGrid
             $this->baseFilters = $cfg['filters'];
         }
         $this->_applyReorderConfig($cfg);
+        $this->_applySavedViewsConfig($cfg);
         parent::hydrate();
     }
 

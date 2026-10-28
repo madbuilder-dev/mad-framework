@@ -7443,7 +7443,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dg-drag {
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 auto; width: 18px; height: 18px;
-  color: var(--mad-muted); cursor: grab; border-radius: 4px; touch-action: none;
+  color: var(--mad-text-muted); cursor: grab; border-radius: 4px; touch-action: none;
 }
 .mad-dg-drag:hover { color: var(--mad-text); background: var(--mad-surface-2, rgba(0,0,0,.05)); }
 .mad-dg-drag:active { cursor: grabbing; }
@@ -7568,6 +7568,53 @@ tr.mad-dg-row.mad-dg-hl > td:first-child { box-shadow: inset 3px 0 0 var(--mad-d
   cursor: not-allowed;
 }
 .mad-dg-export-item:disabled:hover { background: none; }
+
+/* <mad-grid saved-views>: menu "Visões" da barra (MadGridSavedViews). */
+.mad-dg-gv { position: relative; }
+.mad-dg-gv-btn { gap: 6px; max-width: 220px; }
+.mad-dg-gv-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mad-dg-gv-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+  background: var(--mad-bg); border: 1px solid var(--mad-border);
+  border-radius: var(--mad-radius-md);
+  box-shadow: var(--mad-shadow-lg, 0 8px 24px rgba(0,0,0,.12));
+  padding: 4px; width: 280px; max-width: calc(100vw - 24px);
+  max-height: min(420px, 70vh); overflow-y: auto;
+}
+.mad-dg-gv-group {
+  padding: 8px 10px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--mad-text-muted);
+}
+.mad-dg-gv-row { display: flex; align-items: center; border-radius: var(--mad-radius-sm); }
+.mad-dg-gv-row:hover { background: var(--mad-bg-subtle); }
+.mad-dg-gv-item {
+  display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; width: 100%;
+  padding: 7px 10px; border: none; background: none; cursor: pointer; text-align: left;
+  font-size: 13px; border-radius: var(--mad-radius-sm); color: var(--mad-text);
+}
+.mad-dg-gv-item:hover { background: var(--mad-bg-subtle); }
+.mad-dg-gv-item svg, .mad-dg-gv-item i { width: 14px; height: 14px; flex: 0 0 auto; color: var(--mad-text-muted); }
+.mad-dg-gv-item .is-default { color: var(--mad-warning, #d97706); fill: currentColor; }
+.mad-dg-gv-row.is-current .mad-dg-gv-item, .mad-dg-gv-system.is-current { font-weight: 600; }
+.mad-dg-gv-name-txt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mad-dg-gv-badge { font-size: 11px; color: var(--mad-text-muted); }
+.mad-dg-gv-acts { display: flex; align-items: center; gap: 2px; padding-right: 4px; flex: 0 0 auto; }
+.mad-dg-gv-acts button {
+  display: inline-flex; align-items: center; gap: 4px; border: none; background: none; cursor: pointer;
+  padding: 4px; border-radius: var(--mad-radius-sm); color: var(--mad-text-muted); font-size: 12px;
+}
+.mad-dg-gv-acts button svg, .mad-dg-gv-acts button i { width: 13px; height: 13px; }
+.mad-dg-gv-acts button:hover { color: var(--mad-text); background: var(--mad-bg-muted, rgba(0,0,0,.05)); }
+.mad-dg-gv-acts button.is-danger:hover, .mad-dg-gv-acts button.is-armed { color: var(--mad-danger, #dc2626); }
+.mad-dg-gv-empty { padding: 6px 10px 8px; font-size: 12px; color: var(--mad-text-muted); }
+.mad-dg-gv-rename { display: flex; gap: 6px; padding: 4px 6px; flex: 1 1 auto; }
+.mad-dg-gv-rename input { flex: 1 1 auto; min-width: 0; }
+.mad-dg-gv-new { border-top: 1px solid var(--mad-border); border-radius: 0; margin-top: 4px; padding-top: 9px; }
+.mad-dg-gv-form { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--mad-border); margin-top: 4px; }
+.mad-dg-gv-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--mad-text-muted); }
+.mad-dg-gv-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mad-text); cursor: pointer; }
+.mad-dg-gv-err { font-size: 12px; color: var(--mad-danger, #dc2626); }
+.mad-dg-gv-form-row { display: flex; justify-content: flex-end; gap: 6px; }
 
 /* ── Autocomplete dropdown ───────────────────────────────────────── */
 .mad-ac-dropdown {

@@ -1848,6 +1848,14 @@ class MadGridCompiler
             $c[] = "'requireFilterFields' => [" . implode(', ', array_map(fn($f) => static::qs($f), $fields)) . ']';
         }
         if (static::has($a, 'no-load-button'))     $c[] = "'loadButton' => false";
+        // saved-views: menu "Visões" (filtros, ordenação, colunas e por página
+        // com nome). Sem valor = só pessoais; `shared` = admin compartilha;
+        // `everyone` = qualquer um compartilha. Scherer R4, item 94.
+        if (static::has($a, 'saved-views') && $a['saved-views']['type'] !== 'php') {
+            $_sv = strtolower(trim(static::str($a, 'saved-views')));
+            $_sv = match ($_sv) { '', 'true', 'user' => 'user', 'shared' => 'shared', 'everyone' => 'everyone', default => '' };
+            if ($_sv !== '') $c[] = static::kv('savedViews', static::qs($_sv));
+        }
         // reorder="ordem": o usuário arrasta as linhas e a nova ordem é gravada
         // nessa coluna (Scherer R4, item 126). Só identificador de coluna.
         if (isset($a['reorder']) && $a['reorder']['type'] !== 'php') {

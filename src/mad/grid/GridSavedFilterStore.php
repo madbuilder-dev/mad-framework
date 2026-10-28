@@ -318,6 +318,9 @@ final class GridSavedFilterStore
      */
     public static function sanitizePayload(array $payload): array
     {
+        if (($payload['kind'] ?? '') === 'view') {
+            return self::sanitizeViewPayload($payload);
+        }
         $match = ($payload['match'] ?? '') === 'any' ? 'any' : 'all';
         $rules = [];
         foreach ((array) ($payload['rules'] ?? []) as $r) {
@@ -351,6 +354,59 @@ final class GridSavedFilterStore
         }
 
         return ['match' => $match, 'rules' => $rules];
+    }
+
+    /**
+     * Visão salva da grade (`<mad-grid saved-views>`, kind=view): só ESTRUTURA
+     * e tamanho — valores de filtro escalares ou listas de escalares, nomes
+     * curtos. O significado (o filtro existe? a coluna ordena?) é conferido
+     * pela grade ao aplicar.
+     *
+     * @param  array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public static function sanitizeViewPayload(array $payload): array
+    {
+        $short = fn ($v, int $max = 200): string => is_scalar($v) ? mb_substr((string) $v, 0, $max) : '';
+        $isName = fn ($k): bool => is_string($k) && $k !== '' && strlen($k) <= 120 && preg_match('/^[A-Za-z_][A-Za-z0-9_.\->|]*$/', $k) === 1;
+
+        $filters = [];
+        foreach ((array) ($payload['filters'] ?? []) as $k => $v) {
+            if (!$isName($k)) continue;
+            if (is_array($v)) {
+                $list = [];
+                foreach ($v as $item) {
+                    if (is_scalar($item)) $list[] = mb_substr((string) $item, 0, 200);
+                    if (count($list) >= 500) break;
+                }
+                $filters[$k] = $list;
+            } elseif (is_scalar($v) || $v === null) {
+                $filters[$k] = $short($v);
+            }
+            if (count($filters) >= 100) break;
+        }
+
+        $hidden = [];
+        foreach ((array) ($payload['hidden'] ?? []) as $f) {
+            if ($isName($f)) $hidden[] = $f;
+            if (count($hidden) >= 200) break;
+        }
+
+        $by = $payload['sort']['by'] ?? '';
+
+        return [
+            'kind'    => 'view',
+            'filters' => $filters,
+            'cf'      => self::sanitizePayload(is_array($payload['cf'] ?? null) ? $payload['cf'] : []),
+            'search'  => $short($payload['search'] ?? ''),
+            'sort'    => [
+                'by'  => $isName($by) ? $by : '',
+                'dir' => ($payload['sort']['dir'] ?? '') === 'desc' ? 'desc' : 'asc',
+            ],
+            'perPage' => max(0, min(100000, (int) ($payload['perPage'] ?? 0))),
+            'hidden'  => array_values(array_unique($hidden)),
+            'mode'    => in_array($payload['mode'] ?? '', ['table', 'card'], true) ? $payload['mode'] : '',
+        ];
     }
 
     /** Nome aparado, 1..120 caracteres; null = inválido. */
@@ -473,7 +529,10 @@ final class GridSavedFilterStore
             'canEdit'   => $own || ($shared && $isAdmin),
             // Padrão: só o dono (ver docblock da classe).
             'canDefault' => $own,
-            'count'     => is_array($payload) && is_array($payload['rules'] ?? null) ? count($payload['rules']) : 0,
+            'count'     => !is_array($payload) ? 0 : (($payload['kind'] ?? '') === 'view'
+                ? count(array_filter((array) ($payload['filters'] ?? []), fn ($v) => $v !== '' && $v !== [] && $v !== null))
+                    + count((array) ($payload['cf']['rules'] ?? []))
+                : (is_array($payload['rules'] ?? null) ? count($payload['rules']) : 0)),
         ];
     }
 }
