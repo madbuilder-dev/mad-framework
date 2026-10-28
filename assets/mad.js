@@ -1888,7 +1888,18 @@ const Mad = {
 
                 case 'html':
                     if (el) {
-                        el.innerHTML = op.content;
+                        // Slot de erro do campo (`<p data-field-error>`) também é
+                        // onde mora a dica (`hint`). O 1º erro guarda a dica; o
+                        // clearFieldError() (html '') a devolve — antes ele
+                        // apagava a dica de todo campo validado sem erro.
+                        let content = op.content;
+                        if (op.target && op.target.indexOf('data-field-error') !== -1 && el.hasAttribute) {
+                            if (!el.hasAttribute('data-mad-hint') && !el.classList.contains('mad-error')) {
+                                el.setAttribute('data-mad-hint', el.innerHTML);
+                            }
+                            if (!content && el.hasAttribute('data-mad-hint')) content = el.getAttribute('data-mad-hint');
+                        }
+                        el.innerHTML = content;
                         this._reinit(el);
                         // fieldError() em campo dentro de aba inativa (x-show):
                         // o slot existe no DOM mas fica invisível — ativa a aba.

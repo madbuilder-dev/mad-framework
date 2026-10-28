@@ -258,10 +258,12 @@
 
     // ── Fonte → builder (100% Query Builder). :query | :filters | model ──
     // :filters vira wheres no builder; a agregação roda sobre o builder (fromQuery).
-    if (!\Mad\Database\QuerySource::isQuery($query) && $model && !empty($filters)) {
+    // Dentro de um painel, model= sem :query já recebe o período e os filtros
+    // da barra (QuerySource::modelQuery) — antes o gráfico contava a tabela toda.
+    $__inDashboard = \Mad\Component\MadRenderContext::getComponent() instanceof \Mad\Dashboard\MadDashboard;
+    if (!\Mad\Database\QuerySource::isQuery($query) && $model && (!empty($filters) || $__inDashboard)) {
         try {
-            $__m  = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
-            $__qb = $__m::query();
+            $__qb = \Mad\Database\QuerySource::modelQuery($model);
             if (!empty($filters)) {
                 \Mad\Database\QuerySource::applyArrayFilters($__qb, $filters);
             }

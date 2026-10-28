@@ -1530,7 +1530,13 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         // o GROUP BY e o Postgres recusava a consulta (coluna fora do grupo).
         // O count()/sum() do recálculo não precisa: sem GROUP BY o próprio
         // Laravel descarta a ordenação do agregado.
-        $rows = $q->toBase()->reorder()->selectRaw($select)->groupBy($this->stageField)->get();
+        // select(), não selectRaw(): o selectRaw SOMA às colunas da busca, e um
+        // withCount()/select() do onSearch (`tabela.*` + subconsulta) ia junto
+        // para o GROUP BY — o Postgres recusava (coluna fora do grupo) e o
+        // quadro inteiro saía com erro no lugar dos cartões. O select() troca
+        // as colunas e os bindings delas pela contagem da etapa.
+        $rows = $q->toBase()->reorder()->select(new \Illuminate\Database\Query\Expression($select))
+            ->groupBy($this->stageField)->get();
 
         foreach ($rows as $row) {
             $sid = (string) ($row->__sid ?? '');

@@ -28,8 +28,8 @@
     $__buildError = null;
     if (!\Mad\Database\QuerySource::isQuery($query) && $model) {
         try {
-            $__m  = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
-            $__qb = $__m::query();
+            // Dentro de um painel: já com o período e os filtros da barra.
+            $__qb = \Mad\Database\QuerySource::modelQuery($model);
             if (!empty($filters)) {
                 \Mad\Database\QuerySource::applyArrayFilters($__qb, $filters);
             }

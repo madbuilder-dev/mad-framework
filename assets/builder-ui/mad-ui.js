@@ -2488,13 +2488,16 @@ function _madSelectFactory() {
                 if (!opt.selected && this.maxItems && this.selectedValues.length >= this.maxItems) return;
                 opt.selected = !opt.selected;
                 this._commit(); this._emit(opt.selected ? 'item_add' : 'item_remove', v);
-                // AJAX: mantém query + results pra continuar selecionando vários da mesma
-                // busca (o selecionado some da lista via filtro em visibleOptions).
+                // AJAX: a caixa de busca esvazia, mas os resultados ficam na lista
+                // pra continuar escolhendo vários da mesma busca (o escolhido some
+                // via filtro em visibleOptions). Antes o texto ficava na caixa e o
+                // próximo termo emendava no anterior ("Urgente" + "Teste" =
+                // "UrgenteTeste", e o "Criar" criava o item com o nome emendado).
                 // Estático: limpa a busca pra mostrar o restante das opções —
                 // EXCETO no modo checkbox: lá a lista re-renderizava inteira sob o
                 // cursor e o clique seguinte caía em outra opção (desmarcando uma
                 // já escolhida). Mantém o filtro pra marcar vários do mesmo termo.
-                if (!this.ajax && !this.checkbox) this.query = '';
+                if (!this.checkbox) this.query = '';
                 var self = this; this.$nextTick(function () { var i = self.$refs.input; if (i) { i.focus(); self._measure(); } });
             } else {
                 // Linha em branco: o campo volta a vazio pelo mesmo caminho do clear().

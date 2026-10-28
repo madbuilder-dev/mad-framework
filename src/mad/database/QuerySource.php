@@ -32,6 +32,33 @@ class QuerySource
     }
 
     /**
+     * Consulta de um `model=` sem `:query` dentro de um painel.
+     *
+     * Num `MadDashboard`, `<mad-db-metric-card model="X">` e `<mad-db-chart
+     * model="X">` sem `:query` faziam `X::query()` puro: ignoravam a barra de
+     * filtros e o período, e o "Custo no período" somava a tabela inteira. Aqui
+     * eles recebem a mesma base que o `:query="$that->baseQuery(X::class)"`
+     * daria (período + unidade + filtros da barra). Fora de um painel, ou se a
+     * base falhar, devolve `X::query()` como antes.
+     */
+    public static function modelQuery(string $model): EloquentBuilder
+    {
+        $class = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
+        $host  = \Mad\Component\MadRenderContext::getComponent();
+        if ($host instanceof \Mad\Dashboard\MadDashboard) {
+            try {
+                return $host->baseQuery($model);
+            } catch (\Throwable $e) {
+                if (function_exists('report')) {
+                    report($e);
+                }
+            }
+        }
+
+        return $class::query();
+    }
+
+    /**
      * Query\Builder base (WHERE aplicado, sem select) pronta p/ agregação.
      *
      * @param mixed       $source   Eloquent Builder | Query Builder | null

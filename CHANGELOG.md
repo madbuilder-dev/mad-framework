@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.238.0] — 2026-10-27
+
+### Correções
+
+- **Painel:** o cartão de número (`<mad-db-metric-card>`) e o gráfico (`<mad-db-chart>`) montados só com `model=` ignoravam o período e a barra de filtros do painel: o "Custo no período" somava a tabela inteira. Agora eles seguem o período e os filtros, como os que já recebiam a consulta do painel.
+- **Calendário:** um evento de vários dias com início e fim só com data aparecia um dia mais curto: a atividade de 03/11 a 07/11 ocupava de 03 a 06. Agora ela ocupa até o dia 07, e arrastar ou esticar o evento grava o último dia certo. Evento de um dia só continua com um dia.
+- **Quadro (kanban):** uma busca do quadro que contava registros ligados (como "quantos participantes") derrubava o quadro inteiro no Postgres, com uma mensagem de erro no lugar dos cartões. Agora os cartões, a contagem e o total de cada coluna aparecem normalmente.
+- **Busca com vários valores:** depois de escolher um item, o texto digitado ficava na caixa e a próxima busca emendava no anterior ("Urgente" + "Teste" virava "UrgenteTeste", e o botão Adicionar criava o item com o nome emendado). Agora a caixa esvazia a cada escolha, e os resultados da última busca continuam na lista para escolher mais de um.
+- **Formulário:** a dica embaixo de um campo sumia de vez quando o formulário era salvo com erro em outro campo. Agora ela continua lá, e a mensagem de erro do campo aparece no lugar dela só enquanto o erro existir.
+
+### Atenção
+
+- **Painel:** um cartão ou gráfico com `model=` que precisa continuar mostrando o total geral, sem o período e os filtros, passa a usar `:query="\App\Models\SeuModelo::query()"`.
+
 ## [5.237.0] — 2026-10-27
 
 ### Novidades

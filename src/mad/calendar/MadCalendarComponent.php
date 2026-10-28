@@ -461,6 +461,15 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             }
         }
 
+        // Fim de evento de dia inteiro numa coluna `date`: o FullCalendar trata o
+        // `end` como EXCLUSIVO, e a atividade de 03/11 a 07/11 aparecia de 03 a
+        // 06. O feed manda o dia seguinte; a volta do arrasto desfaz
+        // ({@see _storedAllDayEnd}). Início = fim continua um dia só.
+        if (!empty($event['allDay']) && isset($event['end']) && $endCol !== ''
+            && $this->_isDateOnly($r, $endCol, $event['end'])) {
+            $event['end'] = self::_shiftDay(substr($event['end'], 0, 10), 1);
+        }
+
         // Per-event editable override → editable
         if ($this->editableField !== '') {
             $v = $this->_resolvePath($r, $this->editableField);
@@ -589,12 +598,13 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         if (!$rec) {
             return $this->_eventUpdateRefused('mad.calendar_event_gone');
         }
+        $endCol = $this->_endColumn();
+        $end    = $this->_storedAllDayEnd($rec, $endCol, $start, $end);
         if (!$this->beforeEventUpdate($recKey, $start, $end)) {
             return $this->_eventUpdateRefused('mad.calendar_update_refused');
         }
 
         try {
-            $endCol   = $this->_endColumn();
             $oldStart = (string) ($rec->{$this->startField} ?? '');
             $oldEnd   = $endCol !== '' ? (string) ($rec->{$endCol} ?? '') : '';
             $saved    = true;
@@ -617,6 +627,34 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         } catch (\Throwable $e) {
             return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
         }
+    }
+
+    /**
+     * Fim que vai para a coluna, vindo do arrasto/redimensionamento.
+     *
+     * Evento de dia inteiro: o navegador manda o fim EXCLUSIVO (meia-noite do
+     * dia seguinte ao último). Numa coluna `date` isso gravava um dia a mais;
+     * aqui volta ao último dia do evento. Coluna com horário fica como veio.
+     */
+    protected function _storedAllDayEnd(object $rec, string $endCol, string $start, string $end): string
+    {
+        if ($endCol === '' || !preg_match('/^(\d{4}-\d{2}-\d{2})(?:[ T]00:00(?::00)?)?$/', trim($end), $m)) {
+            return $end;
+        }
+        $old = (string) ($rec instanceof \Illuminate\Database\Eloquent\Model ? ($rec->getAttributes()[$endCol] ?? '') : ($rec->{$endCol} ?? ''));
+        if (!$this->_isDateOnly($rec, $endCol, $old)) {
+            return $end;
+        }
+        $startDay = substr(trim($start), 0, 10);
+
+        return $m[1] > $startDay ? self::_shiftDay($m[1], -1) : $m[1];
+    }
+
+    private static function _shiftDay(string $day, int $delta): string
+    {
+        $d = \DateTimeImmutable::createFromFormat('!Y-m-d', $day);
+
+        return $d ? $d->modify(($delta >= 0 ? '+' : '') . $delta . ' day')->format('Y-m-d') : $day;
     }
 
     /**
