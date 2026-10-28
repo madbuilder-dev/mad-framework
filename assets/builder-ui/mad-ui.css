@@ -653,7 +653,8 @@ html[data-theme="dark"] .mad-ui {
 html[data-theme="dark"] .mad-page-breadcrumb {
   color: var(--mad-text-muted);
 }
-html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th {
+html[data-theme="dark"] .mad-dg-table thead th.mad-dg-th,
+html[data-theme="dark"] .mad-dt > thead > tr > th {
   color: var(--mad-dg-head-color, var(--mad-text-muted)) !important;
   /* O mesmo tema do app pinta toda borda do cabeçalho de #2e2e38 com
      !important: sem isto a cor das linhas escolhida no tema (fórum #126) não
@@ -6157,7 +6158,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Grid: STRIPE ─────────────────────────────────────── */
-.mad-layout-stripe .mad-dg-wrap {
+.mad-layout-stripe .mad-dg-wrap,
+.mad-layout-stripe .mad-dt,
+.mad-layout-stripe .mad-dt-empty {
   border: none;
   border-radius: 0;
   overflow: visible;
@@ -6167,7 +6170,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom: 1px solid var(--mad-border);
   padding: var(--mad-dg-toolbar-py, 10px) 0;
 }
-.mad-layout-stripe .mad-dg-th {
+.mad-layout-stripe .mad-dg-th,
+.mad-layout-stripe .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
   text-transform: none;
@@ -6175,15 +6179,20 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   letter-spacing: 0;
   color: var(--mad-dg-head-color, var(--mad-text-muted));
 }
-.mad-layout-stripe .mad-dg-head {
+.mad-layout-stripe .mad-dg-head,
+.mad-layout-stripe .mad-dt > thead {
   background: transparent;
 }
-.mad-layout-stripe .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
-.mad-layout-stripe .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
-.mad-layout-stripe .mad-dg-row:hover td {
+.mad-layout-stripe .mad-dg-row-even,
+.mad-layout-stripe .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-stripe .mad-dg-row-odd,
+.mad-layout-stripe .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-layout-stripe .mad-dg-row:hover td,
+.mad-layout-stripe .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 4%, transparent));
 }
-.mad-layout-stripe .mad-dg-cell {
+.mad-layout-stripe .mad-dg-cell,
+.mad-layout-stripe .mad-dt > tbody > tr > td {
   border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-layout-stripe .mad-dg-footer {
@@ -6197,7 +6206,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid: DOCK ───────────────────────────────────────── */
-.mad-layout-dock .mad-dg-wrap {
+.mad-layout-dock .mad-dg-wrap,
+.mad-layout-dock .mad-dt,
+.mad-layout-dock .mad-dt-empty {
   border: none;
   border-radius: 0;
 }
@@ -6213,22 +6224,28 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   height: 28px;
   font-size: 0.8rem;
 }
-.mad-layout-dock .mad-dg-th {
+.mad-layout-dock .mad-dg-th,
+.mad-layout-dock .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
   font-size: var(--mad-dg-head-font-size, 0.75rem);
   padding: 6px 10px;
 }
-.mad-layout-dock .mad-dg-head {
+.mad-layout-dock .mad-dg-head,
+.mad-layout-dock .mad-dt > thead {
   background: transparent;
 }
-.mad-layout-dock .mad-dg-cell {
+.mad-layout-dock .mad-dg-cell,
+.mad-layout-dock .mad-dt > tbody > tr > td {
   font-size: 0.82rem;
   padding: 8px 10px;
 }
-.mad-layout-dock .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
-.mad-layout-dock .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
-.mad-layout-dock .mad-dg-row:hover td {
+.mad-layout-dock .mad-dg-row-even,
+.mad-layout-dock .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-dock .mad-dg-row-odd,
+.mad-layout-dock .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-layout-dock .mad-dg-row:hover td,
+.mad-layout-dock .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, var(--mad-bg-muted));
 }
 .mad-layout-dock .mad-dg-footer {
@@ -6242,7 +6259,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid: GLASS ──────────────────────────────────────── */
-.mad-layout-glass .mad-dg-wrap {
+.mad-layout-glass .mad-dg-wrap,
+.mad-layout-glass .mad-dt,
+.mad-layout-glass .mad-dt-empty {
   border: 1px solid rgba(0,0,0,.06);
   border-radius: 12px;
   background: rgba(255,255,255,.4);
@@ -6254,16 +6273,21 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: rgba(255,255,255,.3);
   border-bottom-color: rgba(0,0,0,.06);
 }
-.mad-layout-glass .mad-dg-th {
+.mad-layout-glass .mad-dg-th,
+.mad-layout-glass .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, rgba(255,255,255,.25));
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, rgba(0,0,0,.08));
 }
-.mad-layout-glass .mad-dg-head {
+.mad-layout-glass .mad-dg-head,
+.mad-layout-glass .mad-dt > thead {
   background: transparent;
 }
-.mad-layout-glass .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
-.mad-layout-glass .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, rgba(255,255,255,.2)); }
-.mad-layout-glass .mad-dg-row:hover td {
+.mad-layout-glass .mad-dg-row-even,
+.mad-layout-glass .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-glass .mad-dg-row-odd,
+.mad-layout-glass .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, rgba(255,255,255,.2)); }
+.mad-layout-glass .mad-dg-row:hover td,
+.mad-layout-glass .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, rgba(255,255,255,.35));
 }
 .mad-layout-glass .mad-dg-footer {
@@ -6282,7 +6306,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid: BORDER ─────────────────────────────────────── */
-.mad-layout-border .mad-dg-wrap {
+.mad-layout-border .mad-dg-wrap,
+.mad-layout-border .mad-dt,
+.mad-layout-border .mad-dt-empty {
   border: none;
   border-radius: 0;
 }
@@ -6291,7 +6317,8 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom: 1px solid var(--mad-border);
   padding: var(--mad-dg-toolbar-py, 8px) 0;
 }
-.mad-layout-border .mad-dg-th {
+.mad-layout-border .mad-dg-th,
+.mad-layout-border .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, transparent);
   text-transform: uppercase;
   font-size: var(--mad-dg-head-font-size, 0.72rem);
@@ -6300,15 +6327,20 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   color: var(--mad-dg-head-color, var(--mad-text-subtle));
   border-bottom: var(--mad-dg-head-border-width, 2px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
-.mad-layout-border .mad-dg-head {
+.mad-layout-border .mad-dg-head,
+.mad-layout-border .mad-dt > thead {
   background: transparent;
 }
-.mad-layout-border .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
-.mad-layout-border .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
-.mad-layout-border .mad-dg-row:hover td {
+.mad-layout-border .mad-dg-row-even,
+.mad-layout-border .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-border .mad-dg-row-odd,
+.mad-layout-border .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-layout-border .mad-dg-row:hover td,
+.mad-layout-border .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 3%, transparent));
 }
-.mad-layout-border .mad-dg-cell {
+.mad-layout-border .mad-dg-cell,
+.mad-layout-border .mad-dt > tbody > tr > td {
   border-bottom: var(--mad-dg-row-border-width, 1px) solid var(--mad-dg-row-border-color, var(--mad-border));
 }
 .mad-layout-border .mad-dg-footer {
@@ -6322,7 +6354,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid: INSET ──────────────────────────────────────── */
-.mad-layout-inset .mad-dg-wrap {
+.mad-layout-inset .mad-dg-wrap,
+.mad-layout-inset .mad-dt,
+.mad-layout-inset .mad-dt-empty {
   border: none;
   border-radius: 8px;
   overflow: hidden;
@@ -6333,12 +6367,14 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom: 1px solid var(--mad-border);
   padding: var(--mad-dg-toolbar-py, 10px) 14px;
 }
-.mad-layout-inset .mad-dg-th {
+.mad-layout-inset .mad-dg-th,
+.mad-layout-inset .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, var(--mad-bg));
   border-bottom: var(--mad-dg-head-border-width, 2px) solid
     var(--mad-dg-head-border-color, color-mix(in srgb, var(--mad-accent, var(--mad-primary)) 15%, var(--mad-border)));
 }
-.mad-layout-inset .mad-dg-head {
+.mad-layout-inset .mad-dg-head,
+.mad-layout-inset .mad-dt > thead {
   background: var(--mad-bg);
 }
 .mad-layout-inset .mad-dg-footer {
@@ -6351,7 +6387,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid: FLOAT ──────────────────────────────────────── */
-.mad-layout-float .mad-dg-wrap {
+.mad-layout-float .mad-dg-wrap,
+.mad-layout-float .mad-dt,
+.mad-layout-float .mad-dt-empty {
   border: none;
   border-radius: 0;
 }
@@ -6360,15 +6398,19 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom: 1px solid var(--mad-border);
   padding: var(--mad-dg-toolbar-py, 10px) 0;
 }
-.mad-layout-float .mad-dg-th {
+.mad-layout-float .mad-dg-th,
+.mad-layout-float .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, transparent);
   border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
-.mad-layout-float .mad-dg-head {
+.mad-layout-float .mad-dg-head,
+.mad-layout-float .mad-dt > thead {
   background: transparent;
 }
-.mad-layout-float .mad-dg-row-even { background: var(--mad-dg-row-even-bg, transparent); }
-.mad-layout-float .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
+.mad-layout-float .mad-dg-row-even,
+.mad-layout-float .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, transparent); }
+.mad-layout-float .mad-dg-row-odd,
+.mad-layout-float .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, var(--mad-bg-subtle)); }
 .mad-layout-float .mad-dg-footer {
   background: transparent;
   border-top: 1px solid var(--mad-border);
@@ -6380,7 +6422,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* ── Grid Dark: all variants ──────────────────────────── */
-.mad-dark .mad-dg-wrap {
+.mad-dark .mad-dg-wrap,
+.mad-dark .mad-dt,
+.mad-dark .mad-dt-empty {
   background: var(--mad-bg);
   border-color: var(--mad-border);
 }
@@ -6388,20 +6432,26 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: var(--mad-bg);
   border-bottom-color: var(--mad-border);
 }
-.mad-dark .mad-dg-th {
+.mad-dark .mad-dg-th,
+.mad-dark .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
   color: var(--mad-dg-head-color, var(--mad-text-muted));
   border-bottom-color: var(--mad-dg-head-border-color, var(--mad-border));
 }
-.mad-dark .mad-dg-head {
+.mad-dark .mad-dg-head,
+.mad-dark .mad-dt > thead {
   background: var(--mad-bg-subtle);
 }
-.mad-dark .mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
-.mad-dark .mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
-.mad-dark .mad-dg-row:hover td {
+.mad-dark .mad-dg-row-even,
+.mad-dark .mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
+.mad-dark .mad-dg-row-odd,
+.mad-dark .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-dark .mad-dg-row:hover td,
+.mad-dark .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, var(--mad-bg-subtle));
 }
-.mad-dark .mad-dg-cell {
+.mad-dark .mad-dg-cell,
+.mad-dark .mad-dt > tbody > tr > td {
   color: var(--mad-dg-body-color, var(--mad-text));
   border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
 }
@@ -6515,29 +6565,45 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dark.mad-layout-stripe .mad-dg-footer,
 .mad-dark .mad-layout-stripe .mad-dg-footer,
 .mad-dark.mad-layout-stripe .mad-dg-th,
+.mad-dark.mad-layout-stripe .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-stripe .mad-dg-th,
+.mad-dark .mad-layout-stripe .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-stripe .mad-dg-head,
+.mad-dark.mad-layout-stripe .mad-dt > thead,
 .mad-dark .mad-layout-stripe .mad-dg-head,
+.mad-dark .mad-layout-stripe .mad-dt > thead,
 .mad-dark.mad-layout-border .mad-dg-toolbar,
 .mad-dark .mad-layout-border .mad-dg-toolbar,
 .mad-dark.mad-layout-border .mad-dg-footer,
 .mad-dark .mad-layout-border .mad-dg-footer,
 .mad-dark.mad-layout-border .mad-dg-th,
+.mad-dark.mad-layout-border .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-border .mad-dg-th,
+.mad-dark .mad-layout-border .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-border .mad-dg-head,
+.mad-dark.mad-layout-border .mad-dt > thead,
 .mad-dark .mad-layout-border .mad-dg-head,
+.mad-dark .mad-layout-border .mad-dt > thead,
 .mad-dark.mad-layout-float .mad-dg-toolbar,
 .mad-dark .mad-layout-float .mad-dg-toolbar,
 .mad-dark.mad-layout-float .mad-dg-footer,
 .mad-dark .mad-layout-float .mad-dg-footer,
 .mad-dark.mad-layout-float .mad-dg-th,
+.mad-dark.mad-layout-float .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-float .mad-dg-th,
+.mad-dark .mad-layout-float .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-float .mad-dg-head,
+.mad-dark.mad-layout-float .mad-dt > thead,
 .mad-dark .mad-layout-float .mad-dg-head,
+.mad-dark .mad-layout-float .mad-dt > thead,
 .mad-dark.mad-layout-dock .mad-dg-th,
+.mad-dark.mad-layout-dock .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-dock .mad-dg-th,
+.mad-dark .mad-layout-dock .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-dock .mad-dg-head,
+.mad-dark.mad-layout-dock .mad-dt > thead,
 .mad-dark .mad-layout-dock .mad-dg-head,
+.mad-dark .mad-layout-dock .mad-dt > thead,
 .mad-dark.mad-layout-dock .mad-dg-footer,
 .mad-dark .mad-layout-dock .mad-dg-footer {
   background: transparent;
@@ -6545,13 +6611,21 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 /* Cabeçalho da regra acima, sozinho: o fundo escolhido no tema (Tabelas,
    builder#469) vale também neste layout escuro. Sem a var, o de antes. */
 .mad-dark.mad-layout-stripe .mad-dg-th,
+.mad-dark.mad-layout-stripe .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-stripe .mad-dg-th,
+.mad-dark .mad-layout-stripe .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-border .mad-dg-th,
+.mad-dark.mad-layout-border .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-border .mad-dg-th,
+.mad-dark .mad-layout-border .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-float .mad-dg-th,
+.mad-dark.mad-layout-float .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-float .mad-dg-th,
+.mad-dark .mad-layout-float .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-dock .mad-dg-th,
-.mad-dark .mad-layout-dock .mad-dg-th {
+.mad-dark.mad-layout-dock .mad-dt > thead > tr > th,
+.mad-dark .mad-layout-dock .mad-dg-th,
+.mad-dark .mad-layout-dock .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, transparent);
 }
 .mad-dark.mad-layout-dock .mad-dg-toolbar,
@@ -6559,7 +6633,11 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: var(--mad-bg-muted);
 }
 .mad-dark.mad-layout-glass .mad-dg-wrap,
-.mad-dark .mad-layout-glass .mad-dg-wrap {
+.mad-dark.mad-layout-glass .mad-dt,
+.mad-dark.mad-layout-glass .mad-dt-empty,
+.mad-dark .mad-layout-glass .mad-dg-wrap,
+.mad-dark .mad-layout-glass .mad-dt,
+.mad-dark .mad-layout-glass .mad-dt-empty {
   background: rgba(255,255,255,.03);
   border-color: rgba(255,255,255,.06);
 }
@@ -6569,20 +6647,28 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-bottom-color: rgba(255,255,255,.06);
 }
 .mad-dark.mad-layout-glass .mad-dg-th,
-.mad-dark .mad-layout-glass .mad-dg-th {
+.mad-dark.mad-layout-glass .mad-dt > thead > tr > th,
+.mad-dark .mad-layout-glass .mad-dg-th,
+.mad-dark .mad-layout-glass .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, rgba(255,255,255,.04));
   border-bottom-color: var(--mad-dg-head-border-color, rgba(255,255,255,.08));
 }
 .mad-dark.mad-layout-glass .mad-dg-head,
-.mad-dark .mad-layout-glass .mad-dg-head {
+.mad-dark.mad-layout-glass .mad-dt > thead,
+.mad-dark .mad-layout-glass .mad-dg-head,
+.mad-dark .mad-layout-glass .mad-dt > thead {
   background: transparent;
 }
 .mad-dark.mad-layout-glass .mad-dg-row-odd,
-.mad-dark .mad-layout-glass .mad-dg-row-odd {
+.mad-dark.mad-layout-glass .mad-dt-zebra > tbody > tr:nth-child(even),
+.mad-dark .mad-layout-glass .mad-dg-row-odd,
+.mad-dark .mad-layout-glass .mad-dt-zebra > tbody > tr:nth-child(even) {
   background: var(--mad-dg-row-odd-bg, rgba(255,255,255,.02));
 }
 .mad-dark.mad-layout-glass .mad-dg-row:hover td,
-.mad-dark .mad-layout-glass .mad-dg-row:hover td {
+.mad-dark.mad-layout-glass .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td,
+.mad-dark .mad-layout-glass .mad-dg-row:hover td,
+.mad-dark .mad-layout-glass .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td {
   background: var(--mad-dg-row-hover-bg, rgba(255,255,255,.06));
 }
 .mad-dark.mad-layout-glass .mad-dg-footer,
@@ -6600,9 +6686,13 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   background: rgba(255,255,255,.08);
 }
 .mad-dark.mad-layout-inset .mad-dg-th,
+.mad-dark.mad-layout-inset .mad-dt > thead > tr > th,
 .mad-dark .mad-layout-inset .mad-dg-th,
+.mad-dark .mad-layout-inset .mad-dt > thead > tr > th,
 .mad-dark.mad-layout-inset .mad-dg-head,
+.mad-dark.mad-layout-inset .mad-dt > thead,
 .mad-dark .mad-layout-inset .mad-dg-head,
+.mad-dark .mad-layout-inset .mad-dt > thead,
 .mad-dark.mad-layout-inset .mad-dg-toolbar,
 .mad-dark .mad-layout-inset .mad-dg-toolbar,
 .mad-dark.mad-layout-inset .mad-dg-footer,
@@ -6612,7 +6702,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 /* Cabeçalho da regra acima, sozinho: o fundo escolhido no tema (Tabelas,
    builder#469) vale também neste layout escuro. Sem a var, o de antes. */
 .mad-dark.mad-layout-inset .mad-dg-th,
-.mad-dark .mad-layout-inset .mad-dg-th {
+.mad-dark.mad-layout-inset .mad-dt > thead > tr > th,
+.mad-dark .mad-layout-inset .mad-dg-th,
+.mad-dark .mad-layout-inset .mad-dt > thead > tr > th {
   background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
 }
 .mad-dark.mad-layout-border .mad-dg-card,
@@ -8835,9 +8927,12 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 /* ── Body rows ───────────────────────────────────────────────────── */
 /* Sem zebra por padrão (o tema liga em "Grade" → --mad-dg-row-odd-bg); o
    hover é cinza neutro, não a cor primária. */
-.mad-dg-row-even { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
-.mad-dg-row-odd  { background: var(--mad-dg-row-odd-bg, transparent); }
-.mad-dg-row:hover td { background: var(--mad-dg-row-hover-bg, var(--mad-bg-subtle)); }
+.mad-dg-row-even,
+.mad-dt > tbody > tr { background: var(--mad-dg-row-even-bg, var(--mad-bg)); }
+.mad-dg-row-odd,
+.mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, transparent); }
+.mad-dg-row:hover td,
+.mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td { background: var(--mad-dg-row-hover-bg, var(--mad-bg-subtle)); }
 
 /* ── Row highlight (manageRow update/insert) ─────────────────────── */
 .mad-dg-row-highlight td {
@@ -8994,11 +9089,13 @@ html.mad-dg-cf-lock body { overflow: hidden; }
    os temas embutidos do app as declaram em todo `:root`, e lê-las aqui
    mudaria a listagem de todo app sem ninguém pedir. */
 .mad-dg-table > tbody > tr.mad-dg-row:not(.mad-dg-row-expanded) > td.mad-dg-cell,
-.mad-dg-table > tbody > tr.mad-dg-row-detail > td {
+.mad-dg-table > tbody > tr.mad-dg-row-detail > td,
+.mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total) > td {
   border-bottom-width: var(--mad-dg-row-border-width, 1px);
   border-bottom-color: var(--mad-dg-row-border-color, var(--mad-border));
 }
-.mad-dg-table > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:last-child) {
+.mad-dg-table > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:last-child),
+.mad-dt > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:last-child) {
   border-right: var(--mad-dg-col-border-width, 0px) solid var(--mad-dg-col-border-color, var(--mad-border));
 }
 /* Colunas do fim ocultas pelo seletor de colunas: a última VISÍVEL não leva
@@ -14416,99 +14513,226 @@ textarea.mad-dg-inline-input {
 
 /* ─────────────────────────────────────────────────────────────────────────
    mad-data-table — grid read-only embeddable (sem JS, sem Alpine)
+
+   Mesma cara da <mad-grid>: moldura de cartão, cabeçalho, altura de linha,
+   zebra, hover, linhas e colunas pelas --mad-dg-* do tema, em todo layout e
+   no escuro. Uma <table class="mad-dt"> escrita à mão entra no mesmo padrão.
+   A tabela não tem div em volta: a moldura fica na própria <table>
+   (border-collapse: separate) e o raio desce até as células dos cantos.
+
+   Quem divide regra com a grade: os layouts (stripe, dock, glass, border,
+   inset, float) e o .mad-dark, mais acima; a zebra e o hover (`.mad-dg-row-*`);
+   as linhas e colunas do tema (fórum #126); o escuro do app (fw#295). Aqui
+   ficam as medidas que na grade vêm de `.mad-table` + `.mad-dg-*` juntas, e o
+   que a grade tem no notch-erp.css/notch-dark.css (que o app não recebe num
+   `composer update`). Classes da grade (`mad-dg-wrap`…) NÃO entram no Blade:
+   o mad-ui.js trataria a tabela como grade.
    ───────────────────────────────────────────────────────────────────────── */
 .mad-dt {
     width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
     color: var(--mad-text, #1f2937);
     background: var(--mad-bg, #fff);
-}
-.mad-dt thead th {
-    text-align: left;
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--mad-text-muted, #6b7280);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--mad-border, #e5e7eb);
-    background: var(--mad-bg-muted, #f9fafb);
-    white-space: nowrap;
-}
-.mad-dt tbody td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--mad-border, #e5e7eb);
-    vertical-align: top;
-}
-.mad-dt tbody tr:last-child td { border-bottom: none; }
-.mad-dt tfoot td {
-    padding: 10px 12px;
-    font-weight: 600;
-    background: var(--mad-bg-muted, #f9fafb);
-    border-top: 2px solid var(--mad-border-strong, #d1d5db);
-}
-.mad-dt-zebra tbody tr:nth-child(even) td {
-    background: var(--mad-bg-muted, #fafafa);
-}
-.mad-dt-bordered { border: 1px solid var(--mad-border, #e5e7eb); }
-.mad-dt-bordered th,
-.mad-dt-bordered td {
     border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: var(--mad-radius-lg, 12px);
 }
-.mad-dt-compact thead th { padding: 6px 8px; }
-.mad-dt-compact tbody td { padding: 6px 8px; }
-.mad-dt-compact tfoot td { padding: 6px 8px; }
-.mad-dt-group td {
-    background: var(--mad-bg-muted, #f3f4f6);
-    color: var(--mad-text, #1f2937);
-    font-size: 12px;
-    padding: 6px 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+/* A tabela não corta os filhos: o fundo das células das pontas acompanha a
+   curva (o raio desce pela cascata, então o layout sem raio zera os cantos). */
+.mad-dt > :is(thead, tbody, tfoot),
+.mad-dt > :is(thead, tbody, tfoot) > tr { border-radius: inherit; }
+.mad-dt > :first-child > tr:first-child > :first-child { border-top-left-radius: inherit; }
+.mad-dt > :first-child > tr:first-child > :last-child { border-top-right-radius: inherit; }
+.mad-dt > :last-child > tr:last-child > :first-child { border-bottom-left-radius: inherit; }
+.mad-dt > :last-child > tr:last-child > :last-child { border-bottom-right-radius: inherit; }
+.mad-dt > thead { background: var(--mad-bg-subtle); }
+.mad-dt > thead > tr > th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: var(--mad-dg-head-font-size, 12px);
+    font-weight: var(--mad-dg-head-font-weight, 500);
+    color: var(--mad-dg-head-color, var(--mad-text-muted));
+    white-space: nowrap;
+    background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
+    border-bottom: var(--mad-dg-head-border-width, 1px) solid var(--mad-dg-head-border-color, var(--mad-border));
 }
-/* Hierarquia visual: nivel 0 mais escuro, niveis fundos clareiam */
-.mad-dt-group.mad-dt-group-l0 td { background: #e5e7eb; font-weight: 700; }
-.mad-dt-group.mad-dt-group-l1 td { background: #eef0f3; font-weight: 600; }
-.mad-dt-group.mad-dt-group-l2 td { background: #f3f4f6; font-weight: 500; text-transform: none; }
-.mad-dt-group .mad-dt-group-count {
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--mad-text-muted, #6b7280);
-    margin-left: 6px;
-    text-transform: none;
+.mad-dt > tbody > tr > td {
+    padding: 8px 14px;
+    vertical-align: middle;
+    font-size: 0.84rem;
+    color: var(--mad-dg-body-color, var(--mad-text));
+    border-bottom: 1px solid var(--mad-border);
 }
-.mad-dt-group .mad-dt-group-subtotals {
-    float: right;
+.mad-dt > tbody > tr:last-child > td { border-bottom-style: none; }
+/* Total geral: o rodapé da grade (`.mad-dg-foot` + `.mad-dg-total-cell`). */
+.mad-dt > tfoot { background: var(--mad-bg-subtle); }
+.mad-dt > tfoot > tr > td {
+    padding: 8px 14px;
+    vertical-align: middle;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--mad-dg-body-color, var(--mad-text));
+    border-bottom: 1px solid var(--mad-border);
+}
+/* Com quebra, o total geral da grade vira faixa (`.mad-dg-grand-total`). */
+.mad-dt:has(> tbody > .mad-dt-group) > tfoot > tr > td {
+    padding-top: 16px;
+    padding-bottom: 16px;
+    background: color-mix(in srgb, var(--mad-primary) 13%, var(--mad-bg));
+    color: var(--mad-text);
+    border-top: 2px solid var(--mad-primary);
+    border-bottom: none;
+    font-size: var(--mad-text-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+/* bordered: linha entre colunas, como a grade com --mad-dg-col-border-*
+   (a regra comum dá 0px sem tema; aqui a prop pede pelo menos 1px). */
+.mad-dt.mad-dt-bordered > :is(thead, tbody, tfoot) > tr > :is(th, td):not(:last-child) {
+    border-right: max(1px, var(--mad-dg-col-border-width, 1px)) solid var(--mad-dg-col-border-color, var(--mad-border));
+}
+/* compact = densidade compacta da grade (density="compact"). */
+.mad-dt.mad-dt-compact { --mad-dg-cell-py: 7px; }
+.mad-dt.mad-dt-compact > :is(tbody, tfoot) > tr > td {
+    padding-top: var(--mad-dg-cell-py);
+    padding-bottom: var(--mad-dg-cell-py);
+}
+
+/* Quebras (group-by): a faixa da grade (`.mad-dg-group-cell` e níveis). O
+   recuo da 1ª coluna vem do Blade, inline. Hover não pinta faixa nem subtotal. */
+.mad-dt > tbody > tr.mad-dt-group > td {
+    padding: 8px 12px;
+    /* A barra da esquerda é sombra, não borda: borda faria quina com a faixa
+       de 10px que separa os grupos de nível 0. */
+    --mad-dt-group-bar: var(--mad-border-strong);
+    box-shadow: inset 3px 0 0 var(--mad-dt-group-bar);
+    border-bottom: 1px solid var(--mad-border);
+    background: var(--mad-bg-subtle, #f8fafc);
+    color: var(--mad-text-muted);
+    font-size: var(--mad-text-xs);
+    font-weight: 600;
+    line-height: 1.45;
     text-transform: none;
     letter-spacing: 0;
 }
+.mad-dt > tbody > tr.mad-dt-group-l0 > td {
+    padding-top: 11px;
+    padding-bottom: 11px;
+    --mad-dt-group-bar: var(--mad-primary);
+    border-bottom-color: color-mix(in srgb, var(--mad-primary) 22%, var(--mad-border));
+    background: color-mix(in srgb, var(--mad-primary) 9%, var(--mad-bg));
+    color: var(--mad-text);
+    font-size: var(--mad-text-sm);
+    font-weight: 700;
+}
+.mad-dt > tbody > tr.mad-dt-group-l1 > td {
+    background: var(--mad-bg-muted);
+    color: var(--mad-text);
+    --mad-dt-group-bar: color-mix(in srgb, var(--mad-primary) 45%, var(--mad-border));
+}
+.mad-dt > tbody > tr.mad-dt-group-l0:not(:first-child) > td {
+    border-top: 10px solid var(--mad-bg);
+}
+.mad-dt-group .mad-dt-group-count {
+    margin-left: 6px;
+    color: var(--mad-text-muted);
+    font-size: var(--mad-text-xs);
+    font-weight: 400;
+}
+.mad-dt-group .mad-dt-group-subtotals { float: right; }
 .mad-dt-group .mad-dt-group-subtotal {
     margin-left: 12px;
-    font-size: 11px;
+    font-size: var(--mad-text-xs);
 }
 .mad-dt-group .mad-dt-st-lbl {
-    color: var(--mad-text-muted, #6b7280);
-    font-weight: 500;
     margin-right: 4px;
+    color: var(--mad-text-muted);
+    font-weight: 400;
 }
 .mad-dt-group .mad-dt-st-val {
-    font-weight: 700;
-    color: var(--mad-text, #1f2937);
-}
-.mad-dt-group-total td {
+    color: var(--mad-text);
     font-weight: 600;
-    background: var(--mad-bg-muted, #fafafa);
-    border-top: 1px dashed var(--mad-border, #e5e7eb);
-    color: var(--mad-text, #374151);
-    font-size: 12px;
+    font-variant-numeric: tabular-nums;
 }
-.mad-dt-group-total.mad-dt-group-total-l0 td { background: #f3f4f6; }
+/* Subtotal do grupo (`.mad-dg-group-total` e níveis). */
+.mad-dt > tbody > tr.mad-dt-group-total > td {
+    padding-top: 9px;
+    padding-bottom: 9px;
+    border-top: 1px solid var(--mad-border);
+    border-bottom: 1px solid var(--mad-border);
+    background: var(--mad-bg-subtle, #f8fafc);
+    color: var(--mad-text);
+    font-size: var(--mad-text-sm);
+    font-variant-numeric: tabular-nums;
+}
+.mad-dt > tbody > tr.mad-dt-group-total-l1 > td { background: var(--mad-bg-muted); }
+.mad-dt > tbody > tr.mad-dt-group-total-l0 > td {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    background: color-mix(in srgb, var(--mad-primary) 7%, var(--mad-bg));
+    border-bottom: 2px solid color-mix(in srgb, var(--mad-primary) 30%, var(--mad-border));
+    font-weight: 700;
+}
+.mad-dt-group-total em {
+    font-style: normal;
+    color: var(--mad-text-muted);
+}
+
+/* Sem registros: o vazio da grade (`.mad-dg-empty`), dentro da moldura. */
 .mad-dt-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
     text-align: center;
-    padding: 32px 16px;
-    color: var(--mad-text-muted, #9ca3af);
+    font-size: 0.85rem;
+    color: var(--mad-text-subtle);
+    background: var(--mad-bg, #fff);
+    border: 1px solid var(--mad-border, #e5e7eb);
+    border-radius: var(--mad-radius-lg, 12px);
 }
+.mad-dt-empty-icon {
+    width: 32px;
+    height: 32px;
+    opacity: .3;
+}
+
+/* Tema ERP: o que a grade recebe do notch-erp.css (cabeçalho, linha de 11px,
+   respiro lateral de 8px e 12 nas pontas, fonte de 13px, hover neutro, sem
+   zebra). Fica aqui porque o notch-erp.css é cópia do app e não chega num
+   `composer update`; as --erp-* são do tema e têm reserva. */
+body.mad-layout-erp .mad-dt { font-size: 13px; }
+body.mad-layout-erp .mad-dt > thead,
+body.mad-layout-erp .mad-dt > thead > tr > th { background: var(--mad-dg-head-bg, var(--erp-head-bg, #f9fafb)); }
+body.mad-layout-erp .mad-dt > thead > tr > th {
+    color: var(--mad-dg-head-color, var(--erp-muted, #6b7280));
+    font-size: var(--mad-dg-head-font-size, 12px);
+    font-weight: var(--mad-dg-head-font-weight, 500);
+    letter-spacing: 0;
+    border-bottom-color: var(--mad-dg-head-border-color, var(--erp-divider, #eef0f3));
+}
+body.mad-layout-erp .mad-dt-zebra > tbody > tr:nth-child(even) { background: var(--mad-dg-row-odd-bg, var(--mad-dg-row-even-bg, var(--mad-bg))); }
+body.mad-layout-erp .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover > td { background: var(--mad-dg-row-hover-bg, var(--erp-row-hover, #f9fafb)); }
+body.mad-layout-erp .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total) > td {
+    padding-top: var(--mad-dg-cell-py, 11px);
+    padding-bottom: var(--mad-dg-cell-py, 11px);
+    border-bottom-color: var(--mad-dg-row-border-color, var(--erp-row-line, #f1f3f6));
+}
+body.mad-layout-erp .mad-dt > :is(thead, tbody) > tr > :is(th, td) {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+body.mad-layout-erp .mad-dt > :is(thead, tbody) > tr > :is(th, td):first-child { padding-left: 12px; }
+body.mad-layout-erp .mad-dt > :is(thead, tbody) > tr > :is(th, td):last-child { padding-right: 12px; }
+
+/* Escuro do app: o que a grade recebe do notch-dark.css (fundo do cabeçalho,
+   hover da linha e texto das células). A cor e as linhas do cabeçalho seguem
+   a regra do escuro que a grade e a .mad-dt dividem, no começo do arquivo. */
+html[data-theme="dark"] .mad-dt > thead > tr > th { background: #202028 !important; }
+html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group, .mad-dt-group-total):hover { background: #202028 !important; }
+html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d4d4d8 !important; }
 
 /* ============================================================
    Dashboard Filters — <mad-dash-filters style="..."> renderers

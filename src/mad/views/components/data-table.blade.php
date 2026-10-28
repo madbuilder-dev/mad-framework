@@ -9,10 +9,13 @@
       groupTotal - bool (mostrar subtotal por grupo)
       totals     - [field => htmlFormatado] (footer geral; vazio = sem footer)
       emptyText  - mensagem quando empty
-      zebra      - linhas alternadas
-      bordered   - bordas em todas celulas
-      compact    - padding menor
+      zebra      - linhas alternadas (cor de --mad-dg-row-odd-bg, como a grade)
+      bordered   - linha entre colunas (--mad-dg-col-border-*)
+      compact    - densidade compacta da grade (--mad-dg-cell-py: 7px)
       class      - classes extras
+
+    Visual = o da <mad-grid> (mad-ui.css, bloco .mad-dt). NÃO emitir classes da
+    grade (mad-dg-wrap…): o mad-ui.js trataria a tabela como grade.
 --}}
 @php
     $cols       = $columns   ?? [];
@@ -32,8 +35,8 @@
 
 @if (empty($rows))
     <div class="mad-dt-empty">
-        <i data-lucide="inbox" style="width:32px;height:32px;color:#9ca3af;"></i>
-        <div style="margin-top:8px;color:#6b7280;font-size:13px;">{{ $emptyText ?? 'Sem registros' }}</div>
+        <i data-lucide="inbox" class="mad-dt-empty-icon"></i>
+        <div class="mad-dt-empty-text">{{ $emptyText ?? 'Sem registros' }}</div>
     </div>
 @else
 <table class="{{ $tblClasses }}">

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.244.0] — 2026-10-28
+
+### Melhorias
+
+- **Listagem (grid):** `<mad-data-table>` agora tem o mesmo visual da `<mad-grid>` (cartão, cabeçalho, altura de linha, hover, quebras, total e vazio) em todo layout e no modo escuro, e segue o tema. Tabela HTML própria entra no padrão com `<table class="mad-dt">`.
+- **Listagem (grid):** em `<mad-data-table>`, `compact` usa a densidade compacta da grade, `zebra` pinta com a cor de linha alternada do tema e `bordered` desenha a linha entre colunas.
+
 ## [5.241.2] — 2026-10-28
 
 ### Correções
