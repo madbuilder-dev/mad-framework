@@ -4434,6 +4434,7 @@ window.madFloatSelector = [
     '.mad-dashf-pop',
     '.mad-dg-export-menu',
     '.mad-dg-col-chooser-panel',
+    '.mad-dg-gv-menu',
     '.mad-iconfield-popover',
     '.mad-drp-popup',
     '.mad-megamenu',
@@ -8392,7 +8393,16 @@ document.addEventListener('alpine:init', () => {
             this.gvConfirm = null;
             this._gvCall('onGridViewDelete', [Number(id)]);
         },
-        gvStartRename(v) { this.gvRenaming = v.id; this.gvRenameText = v.name; },
+        // O menu cresce (formulário de salvar, campo de renomear) depois de
+        // posto: confere de novo contra a tela e contra o card da grade, que
+        // corta o que passa dele quando há poucas linhas.
+        _gvPlace() {
+            this.$nextTick(() => {
+                const m = (this.$root || this.$el).querySelector('.mad-dg-gv-menu');
+                if (m && typeof window.madFloatPlace === 'function') window.madFloatPlace(m);
+            });
+        },
+        gvStartRename(v) { this.gvRenaming = v.id; this.gvRenameText = v.name; this._gvPlace(); },
         gvRename(id) {
             const name = String(this.gvRenameText || '').replace(/\s+/g, ' ').trim();
             if (!name || name.length > 120) return;
@@ -8405,6 +8415,7 @@ document.addEventListener('alpine:init', () => {
             this.gvShare = false;
             this.gvDefaultChk = false;
             this.gvError = '';
+            this._gvPlace();
             this.$nextTick(() => { const i = (this.$root || this.$el).querySelector('.mad-dg-gv-name'); if (i) i.focus(); });
         },
         gvSave() {

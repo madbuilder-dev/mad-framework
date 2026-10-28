@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.241.1] — 2026-10-28
+
+### Correções
+
+- **Grade:** numa grade com poucas linhas, o menu "Visões" era cortado no pé da grade, e os botões Salvar e Cancelar (e a opção "Compartilhar com todos") de "Salvar visão atual…" ficavam escondidos. Agora o menu abre por cima da página inteiro, como o de colunas.
+
 ## [5.241.0] — 2026-10-28
 
 ### Novidades
