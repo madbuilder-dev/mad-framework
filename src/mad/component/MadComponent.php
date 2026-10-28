@@ -727,10 +727,12 @@ abstract class MadComponent
      */
     private function _offerForwardParams(): void
     {
-        if ($this->_forwardParams === [] || $this->_recordId() !== null || $this instanceof \Mad\Grid\MadDataGrid) {
+        // Os `:create-params` do "+" do combo (assinados na origem) entram na
+        // mesma oferta: cadastro novo, só campo vazio, só campo da tela.
+        $offer = $this->_forwardParams + ($this->comboOrigin()?->params() ?? []);
+        if ($offer === [] || $this->_recordId() !== null || $this instanceof \Mad\Grid\MadDataGrid) {
             return;
         }
-        $offer = $this->_forwardParams;
         unset($offer['id']);
         $this->_primaryForm()?->offerValues($offer);
     }

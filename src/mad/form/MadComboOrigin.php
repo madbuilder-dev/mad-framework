@@ -35,6 +35,8 @@ final readonly class MadComboOrigin
         private string $database = '',
         private string $key = 'id',
         private string $component = '',
+        /** @var array<string, string> */
+        private array $params = [],
     ) {}
 
     /**
@@ -59,6 +61,7 @@ final readonly class MadComboOrigin
             database:  (string)($payload['database']  ?? ''),
             key:       (string)($payload['key']       ?? 'id') ?: 'id',
             component: (string)($payload['component'] ?? ''),
+            params:    self::_params($payload['params'] ?? null),
         );
     }
 
@@ -73,7 +76,29 @@ final readonly class MadComboOrigin
             'database'   => $this->database,
             'key'        => $this->key,
             'component'  => $this->component,
+            'params'     => $this->params,
         ];
+    }
+
+    /**
+     * Valores fixos que o combo declarou para a abertura (`:create-params` do
+     * "+"), oferecidos aos campos vazios do cadastro novo.
+     *
+     * @return array<string, string>
+     */
+    public function params(): array { return $this->params; }
+
+    /** @return array<string, string> */
+    private static function _params(mixed $raw): array
+    {
+        $out = [];
+        foreach (is_array($raw) ? $raw : [] as $k => $v) {
+            if (is_string($k) && $k !== '' && $k[0] !== '_' && (is_scalar($v) || $v === null)) {
+                $out[$k] = (string) $v;
+            }
+        }
+
+        return $out;
     }
 
     /** `name` do <select> de origem (ex.: 'pais_id'). */

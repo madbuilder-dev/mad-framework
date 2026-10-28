@@ -1848,6 +1848,12 @@ class MadGridCompiler
             $c[] = "'requireFilterFields' => [" . implode(', ', array_map(fn($f) => static::qs($f), $fields)) . ']';
         }
         if (static::has($a, 'no-load-button'))     $c[] = "'loadButton' => false";
+        // reorder="ordem": o usuário arrasta as linhas e a nova ordem é gravada
+        // nessa coluna (Scherer R4, item 126). Só identificador de coluna.
+        if (isset($a['reorder']) && $a['reorder']['type'] !== 'php') {
+            $_ro = trim(static::str($a, 'reorder'), " \t{}");
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $_ro)) $c[] = static::kv('reorder', static::qs($_ro));
+        }
         if (isset($a['load-hint']))               $c[] = static::kv('loadHint', static::emit($a['load-hint']));
         // fw#518 — texto da listagem vazia; `no-results-message` é o nome antigo.
         if (isset($a['empty-text']))              $c[] = static::kv('emptyText', static::emit($a['empty-text']));

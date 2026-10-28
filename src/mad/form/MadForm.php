@@ -8060,6 +8060,47 @@ class MadForm
     }
 
     /**
+     * Os valores de um campo de várias escolhas como LISTA, na ordem em que
+     * vieram: `$this->form->getList('ordem_ids')` → `['1', '3', '2']`.
+     *
+     * Para a lista ordenável (`<mad-sort-list-field>` / `<mad-dbsort-list-field>`),
+     * as caixas de marcar e as buscas de vários valores. O `get()` devolve o
+     * valor como o navegador mandou (o texto JSON `'["1","3","2"]'`) e o
+     * `getData()` o converte para a coluna (`"1,3,2"`); quem fazia `(array)
+     * $this->form->get(...)` recebia um item só. Aceita os três formatos —
+     * lista, JSON e texto separado por vírgula (ou pelo `separator` do campo).
+     * Campo vazio ou ausente devolve `[]`.
+     *
+     * @return list<string>
+     */
+    public function getList(string $field): array
+    {
+        $this->_usedNow[$field] = true;
+        $value = $this->fields[$field] ?? null;
+        if (is_string($value) && str_starts_with(ltrim($value), '[')) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : $value;
+        }
+        if (is_string($value)) {
+            $props = MadFormRegistry::requestFieldProps($field);
+            $sep = is_array($props) && (string) ($props['separator'] ?? '') !== '' ? (string) $props['separator'] : ',';
+            $value = explode($sep, $value);
+        }
+        if (!is_array($value)) {
+            return ($value === null || $value === '' || is_bool($value)) ? [] : [(string) $value];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (is_scalar($item) && ($item = trim((string) $item)) !== '') {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * A data de um campo, pronta para usar: `$this->form->date('dia')`.
      *
      * Entende o texto que a tela mostra ("11/10/2026", "11/10/2026 19:45") e o

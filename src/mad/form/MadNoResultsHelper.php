@@ -229,6 +229,12 @@ class MadNoResultsHelper
                 'database'   => (string)($cfg['database'] ?? ''),
                 'key'        => (string)($cfg['key']      ?? 'id'),
                 'display'    => (string)($cfg['display']  ?? 'nome'),
+                // Valores fixos da abertura (`:create-params`): o form alvo os
+                // OFERECE aos campos vazios do cadastro novo — sem isso o
+                // `tipo=construtora` chegava só ao mount() e o fornecedor novo
+                // não casava o filtro do combo. Assinados: o que vira oferta é
+                // o que o combo declarou, não um param solto na URL.
+                'params'     => $params,
             ]),
         ];
     }

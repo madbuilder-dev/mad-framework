@@ -381,6 +381,9 @@ return [
             'export_disabled' => 'La exportación está desactivada en este listado.',
             // Chevron del <mad-row-expand> sin `label`.
             'expand_row'      => 'Expandir fila',
+            // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
+            'drag_row'        => 'Arrastre para cambiar el orden',
+            'reorder_failed'  => 'El nuevo orden no fue guardado. Actualice la pantalla e inténtelo de nuevo.',
         ],
 
         'kanban' => [
@@ -634,6 +637,7 @@ return [
             'accesses'          => ':count accesos',
             'no_shortcuts'      => 'Aún no hay accesos rápidos',
             'no_shortcuts_hint' => 'Tus accesos rápidos aparecerán a medida que uses el sistema.',
+            'no_shortcuts_log_off' => 'Los accesos rápidos salen del registro de accesos, que está desactivado en este sistema (MAD_REQUEST_LOG).',
             'see_all'           => 'Ver todas',
             'no_notifications'  => 'Ninguna notificación',
             'recent_activity'   => 'Actividad reciente',

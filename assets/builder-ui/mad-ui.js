@@ -7403,10 +7403,14 @@ document.addEventListener('alpine:init', () => {
 
             // Relatório grande em partes: pede a próxima janela ao rolar.
             this._initWindow();
+
+            // <mad-grid reorder>: arrastar as linhas pela alça.
+            this.$nextTick(() => this._initReorder(el || this.$el));
         },
 
         destroy() {
             this._stopAutoRefresh();
+            if (this._reorderOff) { this._reorderOff(); this._reorderOff = null; }
             this._stopWindow();
             if (this._narrowOff) this._narrowOff();
             if (this._cardBelowOff) { this._cardBelowOff(); this._cardBelowOff = null; }
@@ -8336,6 +8340,78 @@ document.addEventListener('alpine:init', () => {
             const lost  = !_edit.moved && !_sameVal(this.editValue, _edit.from);
             this._closeEditor();
             if (lost) this._cellNotice(field, 'dropped', 'warning');
+        },
+
+        // ── <mad-grid reorder="ordem"> ───────────────────────────────
+        // Cada linha ganha uma alça na 1ª célula; soltar a linha manda as
+        // chaves da página, na ordem nova, para o onReorder() do servidor, que
+        // grava a coluna de ordem e redesenha a grade. Linha redesenhada
+        // sozinha (manage_row) ganha a alça de novo pelo MutationObserver.
+        // Sem `reorder` no cfg (ordenada por outra coluna, agrupada) não liga.
+        _initReorder(root) {
+            if (!this._cfg.reorder || typeof Sortable === 'undefined' || !root || this._reorderOff) return;
+            const body = root.querySelector('tbody.mad-dg-body');
+            if (!body) return;
+            const txt = this._cfg.reorderText || {};
+            const prefix = String(this._cfg.rowPrefix || '');
+            const grip = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">'
+                + '<circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/>'
+                + '<circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+            const handles = () => {
+                body.querySelectorAll(':scope > tr.mad-dg-row').forEach(tr => {
+                    if (tr.querySelector('.mad-dg-drag')) return;
+                    const td = tr.querySelector(':scope > td.mad-dg-cell:not(.mad-dg-select-cell):not(.mad-dg-expand-cell)')
+                        || tr.querySelector(':scope > td');
+                    if (!td) return;
+                    const h = document.createElement('span');
+                    h.className = 'mad-dg-drag';
+                    h.title = txt.drag || '';
+                    h.setAttribute('aria-label', txt.drag || '');
+                    h.innerHTML = grip;
+                    h.addEventListener('click', e => e.stopPropagation());
+                    // O conteúdo da célula costuma ser bloco (.mad-dg-text): alça e
+                    // conteúdo lado a lado num flex, sem recriar os nós (Alpine segue ligado).
+                    const wrap = document.createElement('div');
+                    wrap.className = 'mad-dg-drag-wrap';
+                    const inner = document.createElement('div');
+                    inner.className = 'mad-dg-drag-body';
+                    while (td.firstChild) inner.appendChild(td.firstChild);
+                    wrap.appendChild(h);
+                    wrap.appendChild(inner);
+                    td.appendChild(wrap);
+                });
+            };
+            handles();
+            const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(handles) : null;
+            if (mo) mo.observe(body, { childList: true });
+            const sortable = Sortable.create(body, {
+                handle: '.mad-dg-drag',
+                draggable: 'tr.mad-dg-row',
+                animation: 150,
+                ghostClass: 'mad-dg-row-dragging',
+                onEnd: (evt) => {
+                    if (evt.oldIndex === evt.newIndex) return;
+                    const ids = Array.from(body.querySelectorAll(':scope > tr.mad-dg-row[data-row-id]'))
+                        .map(tr => String(tr.getAttribute('data-row-id')))
+                        .map(id => (prefix && id.indexOf(prefix) === 0) ? id.slice(prefix.length) : id);
+                    const w = this._wrapper || (root.closest ? root.closest('[mad-component]') : null);
+                    if (!w || typeof MadWire === 'undefined') return;
+                    let call;
+                    try { call = MadWire.call(w, 'onReorder', [ids], {}, {}); }
+                    catch (e) { call = Promise.reject(e); }
+                    // Sem resposta nada foi gravado: avisa (a ordem do banco volta no próximo carregamento).
+                    const lost = () => {
+                        if (typeof window.madToast === 'function') window.madToast({ message: txt.failed || '', type: 'warning' });
+                    };
+                    Promise.resolve(call).then(res => {
+                        if (res && res.ok === false && res.reason === 'network') lost();
+                    }, lost);
+                },
+            });
+            this._reorderOff = () => {
+                if (mo) mo.disconnect();
+                try { sortable.destroy(); } catch (e) {}
+            };
         },
 
         // Grava UMA célula. `rowKey` = data-row-id da linha (pode faltar).

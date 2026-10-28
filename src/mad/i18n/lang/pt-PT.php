@@ -267,6 +267,9 @@ return [
 
         'grid' => [
             'export_disabled' => 'A exportação está desativada nesta listagem.',
+            // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
+            'drag_row'        => 'Arraste para mudar a ordem',
+            'reorder_failed'  => 'A nova ordem não foi guardada. Atualize o ecrã e tente de novo.',
         ],
 
         'heatmap' => [
@@ -442,6 +445,7 @@ return [
             'accesses'          => ':count acessos',
             'no_shortcuts'      => 'Ainda sem atalhos',
             'no_shortcuts_hint' => 'Os seus atalhos vão aparecer à medida que utilizar o sistema.',
+            'no_shortcuts_log_off' => 'Os atalhos vêm do registo de acessos, que está desligado neste sistema (MAD_REQUEST_LOG).',
             'see_all'           => 'Ver todas',
             'no_notifications'  => 'Nenhuma notificação',
             'recent_activity'   => 'Atividade recente',

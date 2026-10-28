@@ -388,6 +388,9 @@ return [
             'export_disabled' => 'Export is disabled for this list.',
             // <mad-row-expand> chevron without `label`.
             'expand_row'      => 'Expand row',
+            // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
+            'drag_row'        => 'Drag to change the order',
+            'reorder_failed'  => 'The new order was not saved. Refresh the screen and try again.',
         ],
 
         'kanban' => [
@@ -646,6 +649,7 @@ return [
             'accesses'          => ':count visits',
             'no_shortcuts'      => 'No shortcuts yet',
             'no_shortcuts_hint' => 'Your shortcuts will show up as you use the system.',
+            'no_shortcuts_log_off' => 'Shortcuts come from the access log, which is turned off in this system (MAD_REQUEST_LOG).',
             'see_all'           => 'See all',
             'no_notifications'  => 'No notifications',
             'recent_activity'   => 'Recent activity',

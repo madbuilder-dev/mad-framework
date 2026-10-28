@@ -12,6 +12,22 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.240.0] — 2026-10-28
+
+### Novidades
+
+- **Grade:** dá para arrastar as linhas para mudar a ordem. `<mad-grid reorder="ordem">` mostra uma alça no começo de cada linha e grava a nova ordem na coluna `ordem`. Sem `order-by`, a grade já abre nessa ordem. Quando a grade está ordenada por outra coluna (clique no cabeçalho) ou agrupada, a alça some.
+- **Formulário:** no código da tela, `$this->form->getList('campo')` devolve os valores de um campo de vários valores sempre como lista, venham eles separados por vírgula ou já em lista.
+
+### Melhorias
+
+- **Tela inicial:** o cartão Mensagens só aparece para quem tem acesso ao correio interno. Com o registro de acessos desligado (`MAD_REQUEST_LOG=0`), o quadro de atalhos vazio explica que os atalhos dependem desse registro.
+
+### Correções
+
+- **Combos:** o "+" ao lado do combo abria o cadastro sem os valores de `:create-params`: num combo que só lista construtoras, o Tipo do cadastro novo continuava em "Prestador de serviço", e o registro gravado não aparecia no combo. Agora o cadastro abre com esses valores já preenchidos.
+- **Tela inicial:** a "Atividade recente" ficava vazia no Postgres e quando o registro de comandos SQL estava desligado. Agora ela mostra o que você criou, alterou ou excluiu nos últimos 7 dias, com o número de registros de cada gravação. O cartão Mensagens mostrava sempre 0; agora mostra as mensagens não lidas.
+
 ## [5.239.0] — 2026-10-27
 
 ### Novidades

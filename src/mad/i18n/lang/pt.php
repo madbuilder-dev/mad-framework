@@ -381,6 +381,9 @@ return [
             'export_disabled' => 'A exportação está desativada nesta listagem.',
             // Chevron do <mad-row-expand> sem `label`.
             'expand_row'      => 'Expandir linha',
+            // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
+            'drag_row'        => 'Arraste para mudar a ordem',
+            'reorder_failed'  => 'A nova ordem não foi gravada. Atualize a tela e tente de novo.',
         ],
 
         'kanban' => [
@@ -634,6 +637,7 @@ return [
             'accesses'          => ':count acessos',
             'no_shortcuts'      => 'Sem atalhos ainda',
             'no_shortcuts_hint' => 'Seus atalhos aparecerão conforme você usar o sistema.',
+            'no_shortcuts_log_off' => 'Os atalhos saem do registro de acessos, que está desligado neste sistema (MAD_REQUEST_LOG).',
             'see_all'           => 'Ver todas',
             'no_notifications'  => 'Nenhuma notificação',
             'recent_activity'   => 'Atividade recente',

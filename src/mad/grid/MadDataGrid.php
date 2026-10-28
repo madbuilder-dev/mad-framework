@@ -367,6 +367,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public string $baseOrder = '';
 
     /**
+     * `<mad-grid reorder="ordem">`: coluna inteira que guarda a ordem das
+     * linhas. O usuário arrasta as linhas pela alça e o onReorder() grava a
+     * nova ordem nela. Só vem do Blade (config compilado); fica no state para
+     * o AJAX. Vazio = sem arrastar.
+     */
+    public string $reorder = '';
+
+    /**
      * Filtros declarativos do Blade (:filters="[['status','=','pago']]") — a
      * mesma DSL do mad-db-metric-card/mad-db-chart. Público → serializado →
      * sobrevive ao AJAX. Aplicado no _buildQuery via QuerySource com subselect
@@ -1346,7 +1354,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // e ficam no state — `mad_model[requireFilter]=0` numa requisição
         // qualquer destravava a consulta sem filtro que a opção existe para
         // impedir. `perPageLocked` só muda pelo onPerPage().
-        if (in_array($prop, ['requireFilter', 'autoLoad', 'loadRequested', 'perPageLocked'], true)) {
+        if (in_array($prop, ['requireFilter', 'autoLoad', 'loadRequested', 'perPageLocked', 'reorder'], true)) {
             return false;
         }
         return parent::_isModelAssignable($prop);
@@ -2888,6 +2896,118 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
+     * A grade deixa arrastar as linhas agora? Com `reorder`, model gravável,
+     * sem ordenação escolhida pelo usuário (clique no cabeçalho) e sem quebra
+     * por grupo: numa lista ordenada por outra coluna, a posição arrastada não
+     * teria sentido na coluna de ordem.
+     */
+    /**
+     * `reorder` do config compilado (inline `self` e MadGrid standalone, no
+     * mount e no hydrate). Sem order-by declarado, a lista vem na ordem que o
+     * usuário montou.
+     */
+    protected function _applyReorderConfig(array $config): void
+    {
+        if (!isset($config['reorder']) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $config['reorder'])) {
+            return;
+        }
+        $this->reorder = (string) $config['reorder'];
+        if ($this->baseOrder === '') {
+            $this->baseOrder   = $this->reorder . ' asc';
+            $this->_dataLoaded = false;
+        }
+    }
+
+    protected function _reorderActive(): bool
+    {
+        return $this->reorder !== ''
+            && $this->_recordModel() !== ''
+            && $this->sortBy === ''
+            && $this->_queryGroupFields() === [];
+    }
+
+    /** `reorder` para a view: liga a alça e o arrastar no madDataGrid. */
+    protected function _reorderViewData(): array
+    {
+        return ['reorderActive' => $this->_reorderActive()];
+    }
+
+    /**
+     * `<mad-grid reorder="ordem">`: grava a nova ordem das linhas da página.
+     *
+     * Chegam as chaves das linhas da página, na ordem em que o usuário as
+     * deixou. Cada uma tem de estar nesta listagem (_visibleRecord) — a chave
+     * vem do navegador. Os valores da coluna que essas linhas JÁ tinham são
+     * redistribuídos na ordem nova, então a posição delas diante das outras
+     * páginas e dos registros filtrados fora não muda. Sem valor ou com valor
+     * repetido, numera em sequência a partir do menor (ou da posição da
+     * página). Grava pelo Model (eventos e log de alterações valem).
+     */
+    public function onReorder(array $ids = []): \Mad\Http\MadResponse
+    {
+        $resp = new \Mad\Http\MadResponse();
+        $col  = $this->reorder;
+        $ids  = array_values(array_unique(array_map('strval', array_filter(
+            $ids,
+            fn ($v) => is_int($v) || (is_string($v) && $v !== '' && strlen($v) <= 64)
+        ))));
+        if (!$this->_reorderActive() || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $col)
+            || count($ids) < 2 || count($ids) > 1000) {
+            $this->loadData();
+
+            return $resp->toast(mad_t('mad.grid.reorder_failed'), 'warning');
+        }
+
+        $records = [];
+        foreach ($ids as $id) {
+            $record = $this->_visibleRecord($id);
+            if ($record === null) {
+                \Illuminate\Support\Facades\Log::warning(
+                    'MadDataGrid: onReorder recusado — registro ' . static::_logSafe($id)
+                    . ' nao esta na listagem ' . static::class . ' (usuario ' . static::_logUser() . ').'
+                );
+                $this->loadData();
+
+                return $resp->toast(mad_t('mad.error.row_gone'), 'warning');
+            }
+            $records[] = $record;
+        }
+
+        $current = array_map(fn ($r) => $r->getAttribute($col), $records);
+        $nums    = array_values(array_filter($current, 'is_numeric'));
+        if (count($nums) === count($current) && count(array_unique(array_map('strval', $nums))) === count($nums)) {
+            sort($nums, SORT_NUMERIC);
+            $values = $nums;
+        } else {
+            $start  = $nums !== [] ? (int) floor(min(array_map('floatval', $nums)))
+                : (max(1, $this->page) - 1) * max(1, $this->perPage) + 1;
+            $values = range($start, $start + count($records) - 1);
+        }
+
+        try {
+            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($records, $values, $col) {
+                foreach ($records as $i => $record) {
+                    if ((string) $record->getAttribute($col) === (string) $values[$i]) {
+                        continue;
+                    }
+                    $record->setAttribute($col, $values[$i]);
+                    if ($record->save() === false) {
+                        throw new \RuntimeException('save() recusado');
+                    }
+                }
+            });
+        } catch (\Throwable $e) {
+            $this->loadData();
+
+            return $resp->toast(\Mad\Ui\MadUserError::message($e, mad_t('mad.grid.reorder_failed'), static::class . '::onReorder'), 'danger');
+        }
+
+        $this->loadData();
+
+        return $resp;
+    }
+
+    /**
      * Por que `$value` não pode ir para a coluna — ou null se pode.
      *
      * Vazio é "limpar a célula" (grava NULL) em todo tipo, menos no select de
@@ -4362,7 +4482,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => false,
             'cardBelow'    => 0,
             'cardCols'     => '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData()];
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData()];
     }
 
     // ── Inline grid (<mad-grid self>) ─────────────────────────────────────
@@ -4480,6 +4600,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // no-auto-load: pública (serializada) — o hydrate() dos AJAX seguintes
         // lê do state; aqui só o primeiro render enxerga o Blade.
         if (isset($config['autoLoad']))       $this->autoLoad      = (bool)$config['autoLoad'];
+        $this->_applyReorderConfig($config);
         if (!empty($config['requireFilter'])) {
             $this->requireFilter = true;
             $this->autoLoad      = false;
@@ -4640,7 +4761,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => $this->_inlineConfig['cardDefault'] ?? false,
             'cardBelow'    => max(0, (int) ($this->_inlineConfig['cardBelow'] ?? 0)),
             'cardCols'     => $this->_inlineConfig['cardCols'] ?? '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData());
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData());
     }
 
     /**

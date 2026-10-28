@@ -7439,6 +7439,18 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 .mad-dg-bulk-btn:disabled { opacity: .5; cursor: not-allowed; }
 .mad-dg-th-select,
+/* <mad-grid reorder>: alça de arrastar na 1ª célula (madDataGrid._initReorder). */
+.mad-dg-drag {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 18px; height: 18px;
+  color: var(--mad-muted); cursor: grab; border-radius: 4px; touch-action: none;
+}
+.mad-dg-drag:hover { color: var(--mad-text); background: var(--mad-surface-2, rgba(0,0,0,.05)); }
+.mad-dg-drag:active { cursor: grabbing; }
+.mad-dg-drag-wrap { display: flex; align-items: center; gap: 6px; }
+.mad-dg-drag-body { flex: 1 1 auto; min-width: 0; }
+.mad-dg-table > tbody > tr.mad-dg-row-dragging > td { opacity: .55; }
+
 .mad-dg-select-cell {
   width: 38px;
   min-width: 38px;
