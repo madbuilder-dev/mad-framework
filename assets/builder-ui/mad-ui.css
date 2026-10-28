@@ -9102,27 +9102,42 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 
 /* header-icons="hover": ordenar/filtrar só aparecem com o mouse no título
    (ou o foco), por cima da borda dele, sem tomar largura da coluna. Coluna
-   ordenada ou filtrada mostra os ícones sempre, no lugar de sempre. */
+   ordenada ou filtrada mostra os ícones sempre, no lugar de sempre.
+   Os ícones encostam no título, não na borda da coluna (fórum #187: em
+   coluna larga ficavam longe do título e colados no da coluna vizinha). O
+   conteúdo do cabeçalho encolhe até o título e os ícones se ancoram nele;
+   o `max-width` deixa a vaga deles dentro da coluna, e título comprido
+   demais fica por baixo deles, como antes. */
 .mad-dg-th-icons { display: contents; }
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-content {
+  position: relative;
+  width: fit-content;
+  max-width: calc(100% - 40px);
+}
 .mad-dg-wrap[data-header-icons="hover"] .mad-dg-th:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-icons {
   position: absolute;
   top: 50%;
-  right: 6px;
+  left: 100%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 2px 2px 6px;
+  padding: 2px 2px 2px 4px;
   border-radius: 4px;
   background: var(--mad-dg-head-bg, var(--mad-bg-subtle));
   opacity: 0;
   pointer-events: none;
   transition: opacity .12s;
 }
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th-align-right:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-content { margin-left: auto; }
+.mad-dg-wrap[data-header-icons="hover"] .mad-dg-th-align-center:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-content {
+  margin-inline: auto;
+  max-width: calc(100% - 80px);
+}
 .mad-dg-wrap[data-header-icons="hover"] .mad-dg-th-align-right:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered) .mad-dg-th-icons {
-  right: auto;
-  left: 6px;
-  padding: 2px 6px 2px 2px;
+  left: auto;
+  right: 100%;
+  padding: 2px 4px 2px 2px;
 }
 .mad-dg-wrap[data-header-icons="hover"] .mad-dg-th:not(.mad-dg-th-sorted):not(.mad-dg-th-filtered):is(:hover, :focus-within) .mad-dg-th-icons {
   opacity: 1;

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.241.2] — 2026-10-28
+
+### Correções
+
+- **Grade:** no tema ERP (e com `<mad-grid header-icons="hover">`), os botões de ordenar e filtrar que aparecem ao passar o mouse no título iam para o fim da coluna: numa coluna larga ficavam longe do título e colados no da coluna vizinha. Agora aparecem logo ao lado do título; na coluna alinhada à direita, logo antes dele. A largura das colunas não muda.
+
 ## [5.241.1] — 2026-10-28
 
 ### Correções
