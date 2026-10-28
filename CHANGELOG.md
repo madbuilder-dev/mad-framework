@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.245.0] — 2026-10-28
+
+### Novidades
+
+- **Gantt:** `<mad-gantt>` ganha `row-height` (altura da linha, 20–80 px) e `bar-height` (altura da barra, 10–60 px). Valor fora da faixa usa o padrão da densidade.
+
+### Melhorias
+
+- **Gantt:** linhas mais altas e barras mais grossas por padrão: linha de 45 px e barra de 25 px (`compact` 32/18, `spacious` 52/28). A barra tem a mesma altura em todos os zooms, sem afinar no Mês e no Ano.
+
+### Correções
+
+- **Gantt:** em barra curta, o percentual não fica mais por cima do nome da tarefa. Se não couber ao lado do nome, ele some, e o nome longo termina em "…".
+- **Gantt:** esticar ou encurtar a barra pela ponta volta a funcionar na altura toda dela. A bolinha de ligar dependência ficava por cima da alça e o gesto virava uma ligação; agora a bolinha aparece um pouco fora da barra.
+
 ## [5.244.0] — 2026-10-28
 
 ### Melhorias

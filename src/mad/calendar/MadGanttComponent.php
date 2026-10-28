@@ -1028,6 +1028,8 @@ abstract class MadGanttComponent extends MadComponent
                 'showAvatars' => array_key_exists('showAvatars', $config) ? $this->_truthy($config['showAvatars']) : null,
                 'barAvatars'  => array_key_exists('barAvatars',  $config) ? $this->_truthy($config['barAvatars'])  : null,
                 'taskColWidth'=> $config['taskColWidth'] ?? null,
+                'rowHeight'      => MadGantt::pxInRange($config['rowHeight'] ?? null, MadGantt::ROW_HEIGHT_RANGE),
+                'barHeight'      => MadGantt::pxInRange($config['barHeight'] ?? null, MadGantt::BAR_HEIGHT_RANGE),
                 'compactColumns' => array_key_exists('compactColumns', $config) ? $this->_truthy($config['compactColumns']) : null,
                 'fitBtn'         => array_key_exists('fitBtn',         $config) ? $this->_truthy($config['fitBtn'])         : null,
                 'initialLimit'   => isset($config['initialLimit']) && is_numeric($config['initialLimit']) ? (int) $config['initialLimit'] : null,
@@ -1204,6 +1206,8 @@ abstract class MadGanttComponent extends MadComponent
         if ($vt['showAvatars']  !== null) $gantt->showAvatars((bool) $vt['showAvatars']);
         if (($vt['barAvatars'] ?? null) !== null) $gantt->barAvatars((bool) $vt['barAvatars']);
         if (!empty($vt['taskColWidth'])) $gantt->taskColWidth((int) $vt['taskColWidth']);
+        if (($vt['rowHeight'] ?? null) !== null)      $gantt->rowHeight($vt['rowHeight']);
+        if (($vt['barHeight'] ?? null) !== null)      $gantt->barHeight($vt['barHeight']);
         if (($vt['compactColumns'] ?? null) !== null) $gantt->compactColumns((bool) $vt['compactColumns']);
         if (($vt['fitBtn'] ?? null) !== null)         $gantt->fitButton((bool) $vt['fitBtn']);
         if (($vt['initialLimit'] ?? null) !== null)   $gantt->initialLimit((int) $vt['initialLimit']);

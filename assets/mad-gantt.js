@@ -410,14 +410,47 @@
     'use strict';
 
     const ZOOM_PROFILES = {
-        hour:  { pxPerDay: 480, minor: 'hour',  major: 'day',     barH: 22, hourStep: 2 },
-        day:   { pxPerDay: 36,  minor: 'day',   major: 'month',   barH: 22 },
-        week:  { pxPerDay: 16,  minor: 'week',  major: 'month',   barH: 20 },
-        month: { pxPerDay: 5,   minor: 'month', major: 'quarter', barH: 16 },
+        hour:  { pxPerDay: 480, minor: 'hour',  major: 'day',     hourStep: 2 },
+        day:   { pxPerDay: 36,  minor: 'day',   major: 'month' },
+        week:  { pxPerDay: 16,  minor: 'week',  major: 'month' },
+        month: { pxPerDay: 5,   minor: 'month', major: 'quarter' },
         // Ano: escala do mês da 1ª tarefa ao mês da última (antes eram anos
         // inteiros — jun/2026–mar/2027 virava 2 anos de largura).
-        year:  { pxPerDay: 3,   minor: 'month', major: 'year',    barH: 14, alignMonth: true },
+        year:  { pxPerDay: 3,   minor: 'month', major: 'year',    alignMonth: true },
     };
+
+    /**
+     * Altura da linha e da barra (px) — ponto único. A barra tem a mesma
+     * altura em todos os zooms. `row-height`/`bar-height` vencem a densidade;
+     * valor fora da faixa cai no padrão dela. Barra ≤ linha − 8.
+     */
+    const DENSITY_SIZES = {
+        compact:     { row: 32, bar: 18 },
+        comfortable: { row: 45, bar: 25 },
+        spacious:    { row: 52, bar: 28 },
+    };
+    const ROW_RANGE = [20, 80];
+    const BAR_RANGE = [10, 60];
+
+    function densitySize(density) {
+        return DENSITY_SIZES[density] || DENSITY_SIZES.comfortable;
+    }
+
+    function inRange(v, [min, max]) {
+        if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+        const n = Number(v);
+        return Number.isInteger(n) && n >= min && n <= max ? n : null;
+    }
+
+    function rowHeight(density, override) {
+        return inRange(override, ROW_RANGE) ?? densitySize(density).row;
+    }
+
+    function barHeight(density, override, rowH) {
+        const bar = inRange(override, BAR_RANGE) ?? densitySize(density).bar;
+        const row = rowH ?? rowHeight(density);
+        return Math.max(BAR_RANGE[0], Math.min(bar, row - 8));
+    }
 
     /**
      * `zoom="auto"` (padrão, fw#499) — e o legado `fit` — não é um perfil: o
@@ -484,6 +517,13 @@
         pxPerDay,
         pxPerHour,
         listKeys,
+    };
+    root.MadGantt.sizing = {
+        DENSITY_SIZES,
+        ROW_RANGE,
+        BAR_RANGE,
+        rowHeight,
+        barHeight,
     };
 
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1668,7 +1708,7 @@
 
     function render(rootEl, rows, opts = {}) {
         if (!rootEl) return;
-        const rowH = opts.rowH || 38;
+        const rowH = opts.rowH || root.MadGantt.sizing.rowHeight();
         const collapsedPhases = opts.collapsedPhases || {};
         const expanded = opts.expanded || {};
         const showAvatars = opts.showAvatars !== false;
@@ -1878,6 +1918,44 @@
     const { createNS, diamondPoints, escAttr, escText } = svg;
 
     const TEXT_PADDING = 8;
+    // Fontes do rótulo e do % (iguais às do mad-gantt.css) para medir o texto.
+    const LABEL_FONT = { css: '500 11.5px "IBM Plex Sans", sans-serif', px: 11.5, k: 0.55 };
+    const PCT_FONT   = { css: '600 9.5px "JetBrains Mono", monospace', px: 9.5, k: 0.62 };
+    const PCT_GAP = 6;
+    // Alça de resize e bolinha de dependência não se cobrem: alça de 8 px na
+    // borda (±4), bolinha de raio 4 com o centro 10 px fora da barra.
+    const HANDLE_W = 8;
+    const ANCHOR_OUT = 10;
+    const ANCHOR_R = 4;
+    let measureCtx;
+
+    /** Largura do texto em px: canvas quando há; senão, estimativa pela fonte. */
+    function textWidth(text, font) {
+        if (measureCtx === undefined) {
+            measureCtx = null;
+            try {
+                const cv = document.createElement('canvas');
+                measureCtx = (cv && typeof cv.getContext === 'function' && cv.getContext('2d')) || null;
+            } catch (_) { measureCtx = null; }
+        }
+        if (measureCtx) {
+            measureCtx.font = font.css;
+            return measureCtx.measureText(text).width;
+        }
+        return String(text).length * font.px * font.k;
+    }
+
+    /** Corta o texto com "…" para caber em `max` px ('' se nem a 1ª letra cabe). */
+    function fitText(text, max, font) {
+        const chars = Array.from(String(text));
+        let lo = 0, hi = chars.length;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (textWidth(chars.slice(0, mid).join('').trimEnd() + '…', font) <= max) lo = mid;
+            else hi = mid - 1;
+        }
+        return lo ? chars.slice(0, lo).join('').trimEnd() + '…' : '';
+    }
 
     /** Responsáveis da tarefa (assignees > owners > owner "1,2"), como na coluna. */
     function assigneesOf(t) {
@@ -1931,12 +2009,14 @@
     }
 
     // Selo curto ao lado da barra (`badge-field`, fw#471). `x` = onde começa.
-    function appendBadge(group, task, x, cy) {
+    /** Selo `gap` px depois de `endX` (fim da barra); o arrasto anda pelo data-badge-end. */
+    function appendBadge(group, task, endX, cy, gap = 8) {
         const text = String((task && task.badge) || '').trim();
         if (!text) return;
+        const x = endX + gap;
         const h = 16;
         const w = Math.round(text.length * 6.2 + 12);
-        const g = createNS('g', { class: 'mad-gantt-bar-badge', 'data-badge-x': x, 'pointer-events': 'none' });
+        const g = createNS('g', { class: 'mad-gantt-bar-badge', 'data-badge-end': endX, 'pointer-events': 'none' });
         g.appendChild(createNS('rect', { x, y: cy - h / 2, width: w, height: h, rx: h / 2 }));
         const label = createNS('text', {
             x: x + w / 2, y: cy + 1,
@@ -1999,22 +2079,34 @@
             }));
         }
 
-        // Resize handles
+        // Resize handles (HANDLE_W px centrados na borda, a barra inteira de altura)
         group.appendChild(createNS('rect', {
             class: 'mad-gantt-bar-handle mad-gantt-bar-handle--left',
-            x: geom.x - 3, y: barY, width: 6, height: barH,
+            x: geom.x - HANDLE_W / 2, y: barY, width: HANDLE_W, height: barH,
             'data-drag-mode': 'left',
         }));
         group.appendChild(createNS('rect', {
             class: 'mad-gantt-bar-handle mad-gantt-bar-handle--right',
-            x: geom.x + geom.w - 3, y: barY, width: 6, height: barH,
+            x: geom.x + geom.w - HANDLE_W / 2, y: barY, width: HANDLE_W, height: barH,
             'data-drag-mode': 'right',
         }));
 
         const avatarW = renderBarAvatar(group, task, geom, barY, barH, ctx, dark);
 
-        // Labels (conditional on width)
-        if (geom.w > 60 + avatarW && task.name) {
+        // Rótulo e %: o % só entra se couber ao lado do nome; o nome que não
+        // cabe na barra é cortado com reticências (o nome inteiro está na dica).
+        const showLabel = geom.w > 60 + avatarW && !!task.name;
+        const pctText = `${Math.round(prog * 100)}%`;
+        const room = geom.w - TEXT_PADDING * 2 - avatarW;
+        let labelText = showLabel ? String(task.name) : '';
+        let showPct = geom.w > 110 && prog > 0;
+        if (showLabel) {
+            const pctW = showPct ? textWidth(pctText, PCT_FONT) + PCT_GAP : 0;
+            const nameW = textWidth(labelText, LABEL_FONT);
+            if (showPct && nameW + pctW > room) showPct = false;
+            if (nameW > room) labelText = fitText(labelText, room, LABEL_FONT);
+        }
+        if (showLabel && labelText) {
             const label = createNS('text', {
                 class: 'mad-gantt-bar-label',
                 x: geom.x + TEXT_PADDING + avatarW,
@@ -2024,10 +2116,10 @@
                 'pointer-events': 'none',
             });
             if (avatarW) label.setAttribute('data-off', avatarW);
-            label.textContent = task.name;
+            label.textContent = labelText;
             group.appendChild(label);
         }
-        if (geom.w > 110 && prog > 0) {
+        if (showPct) {
             const pct = createNS('text', {
                 class: 'mad-gantt-bar-pct',
                 x: geom.x + geom.w - TEXT_PADDING,
@@ -2037,27 +2129,28 @@
                 fill: c.text,
                 'pointer-events': 'none',
             });
-            pct.textContent = `${Math.round(prog * 100)}%`;
+            pct.textContent = pctText;
             group.appendChild(pct);
         }
 
         // Connection anchors (bolinhas de dependencia) — visiveis no hover.
-        // Arrastar de uma ancora cria dependencia sem precisar de tecla.
+        // Arrastar de uma ancora cria dependencia sem precisar de tecla. Ficam
+        // FORA da barra (ANCHOR_OUT px da borda), sem cobrir a alça de resize.
         const cy = barY + barH / 2;
         group.appendChild(createNS('circle', {
             class: 'mad-gantt-bar-anchor mad-gantt-bar-anchor--start',
-            cx: geom.x, cy, r: 4,
+            cx: geom.x - ANCHOR_OUT, cy, r: ANCHOR_R,
             'data-dep-anchor': 'start',
             'data-dep-task': task.id,
         }));
         group.appendChild(createNS('circle', {
             class: 'mad-gantt-bar-anchor mad-gantt-bar-anchor--end',
-            cx: geom.x + geom.w, cy, r: 4,
+            cx: geom.x + geom.w + ANCHOR_OUT, cy, r: ANCHOR_R,
             'data-dep-anchor': 'end',
             'data-dep-task': task.id,
         }));
 
-        appendBadge(group, task, geom.x + geom.w + 8, cy);
+        appendBadge(group, task, geom.x + geom.w, cy, ANCHOR_OUT + ANCHOR_R + 6);
     }
 
     function renderSummary(group, task, geom, ctx) {
@@ -2089,7 +2182,7 @@
             points: `${geom.x + geom.w},${barY - 2} ${geom.x + geom.w - 5},${barY - 2} ${geom.x + geom.w},${barY + capH - 2}`,
             fill: c.label,
         }));
-        appendBadge(group, task, geom.x + geom.w + 8, barY + barH / 2);
+        appendBadge(group, task, geom.x + geom.w, barY + barH / 2);
     }
 
     function renderMilestone(group, task, geom, ctx) {
@@ -2098,7 +2191,8 @@
         const c     = colors.taskColors(task, phase, dark, 155);
         const isCrit = ctx.criticalSet && ctx.criticalSet.has(String(task.id));
         const isDim  = ctx.criticalMode && !isCrit;
-        const size = 11;
+        // Losango acompanha a barra (barra 25 → 11, como antes).
+        const size = Math.max(6, Math.round(ctx.barH * 0.45));
         const cx = geom.x + geom.w / 2;
         const cy = geom.y + geom.h / 2;
         const phaseId = phase ? phase.id : '';
@@ -2130,7 +2224,7 @@
             'pointer-events': 'none',
         }));
 
-        appendBadge(group, task, cx + size + 6, cy);
+        appendBadge(group, task, cx + size, cy, 6);
     }
 
     function renderBaseline(group, task, geom, ctx) {
@@ -2138,7 +2232,8 @@
         const bsX = ctx.dayToX(task.baselineStart);
         const beX = ctx.dayToX(task.baselineEnd) + ctx.pxPerDay;
         const barH = Math.max(4, ctx.barH * 0.25);
-        const y = geom.y + geom.h - barH - 4;
+        // Logo abaixo da barra, sem passar do fim da linha.
+        const y = Math.min(geom.y + (geom.h + ctx.barH) / 2 + 2, geom.y + geom.h - barH - 2);
         group.appendChild(createNS('rect', {
             class: 'mad-gantt-baseline',
             x: bsX, y, width: Math.max(2, beX - bsX), height: barH, rx: 1,
@@ -2158,6 +2253,10 @@
         renderBar,
         renderSummary,
         renderMilestone,
+        HANDLE_W,
+        ANCHOR_OUT,
+        textWidth,
+        fitText,
         renderBaseline,
     };
 
@@ -2542,7 +2641,7 @@
                 const v = t[ctx.phaseField];
                 return v != null ? (phasesById[String(v)] || null) : null;
             },
-            barH: zoom.get(ctx.zoom).barH,
+            barH: ctx.barH || root.MadGantt.sizing.barHeight(ctx.density, null, ctx.rowH),
             pxPerDay: zoom.get(ctx.zoom).pxPerDay,
             dayToX: (d) => {
                 const { coords } = root.MadGantt;
@@ -2605,8 +2704,6 @@
             return;
         }
 
-        const barH = zoom.get(ctx.zoom).barH;
-        const barY = geom.y + (geom.h - barH) / 2;
         const fill   = group.querySelector('.mad-gantt-bar-fill');
         const track  = group.querySelector('.mad-gantt-bar-track');
         const prog   = group.querySelector('.mad-gantt-bar-progress');
@@ -2639,8 +2736,13 @@
             crit.setAttribute('x', geom.x + 0.5);
             crit.setAttribute('width', geom.w - 1);
         }
-        if (hL) hL.setAttribute('x', geom.x - 3);
-        if (hR) hR.setAttribute('x', geom.x + geom.w - 3);
+        const { HANDLE_W, ANCHOR_OUT } = root.MadGantt.bars;
+        if (hL) hL.setAttribute('x', geom.x - HANDLE_W / 2);
+        if (hR) hR.setAttribute('x', geom.x + geom.w - HANDLE_W / 2);
+        const aS = group.querySelector('.mad-gantt-bar-anchor--start');
+        const aE = group.querySelector('.mad-gantt-bar-anchor--end');
+        if (aS) aS.setAttribute('cx', geom.x - ANCHOR_OUT);
+        if (aE) aE.setAttribute('cx', geom.x + geom.w + ANCHOR_OUT);
         if (label) label.setAttribute('x', geom.x + 8 + (parseFloat(label.getAttribute('data-off')) || 0));
         // Avatar da barra (show-bar-avatars) anda junto com o começo dela.
         const avatar = group.querySelector('.mad-gantt-bar-avatar');
@@ -2652,8 +2754,8 @@
         // Selo ao lado da barra acompanha o fim dela.
         const badge = group.querySelector('.mad-gantt-bar-badge');
         if (badge) {
-            const baseX = parseFloat(badge.getAttribute('data-badge-x'));
-            if (Number.isFinite(baseX)) badge.setAttribute('transform', `translate(${geom.x + geom.w + 8 - baseX},0)`);
+            const baseEnd = parseFloat(badge.getAttribute('data-badge-end'));
+            if (Number.isFinite(baseEnd)) badge.setAttribute('transform', `translate(${geom.x + geom.w - baseEnd},0)`);
         }
     }
 
@@ -3862,7 +3964,7 @@
         const M = root.MadGantt;
         const escText = M.svg.escText;
         const {
-            dates, zoom, colors,
+            dates, zoom, sizing, colors,
             coords, tree, criticalPath: cpm, autoSchedule: autoSched, calendar,
             defs, header, sidebar, chartSvg, dependencies, minimap, tooltip, workload,
             scrollSync, dragBar, dragDependency, hover, keyboard,
@@ -3898,6 +4000,9 @@
             workloadModeActive: (cfg.workloadMode === 'toggle' ? 'hours' : (cfg.workloadMode || 'hours')),
             arrowStyle:         cfg.arrowStyle || 'elbow',
             density:            cfg.density || 'comfortable',
+            // Altura da linha e da barra em px (row-height / bar-height); null = da densidade.
+            rowHeight:          cfg.rowHeight ?? null,
+            barHeight:          cfg.barHeight ?? null,
             // Largura da sidebar: quando ha colunas declaradas, e a soma das
             // larguras das colunas visiveis (cada uma renderiza na largura dada);
             // senao, o task-col-width explicito (default 300).
@@ -4694,7 +4799,7 @@
                 if (this.rowsHidden !== cut.hidden) this.rowsHidden = cut.hidden;
                 if (this.rowsShown !== cut.shown) this.rowsShown = cut.shown;
                 if (this.rowsTotal !== cut.total) this.rowsTotal = cut.total;
-                const rowH = densityToRowH(this.density);
+                const rowH = this._rowH();
                 const pxPerDay = zoom.get(this.zoom).pxPerDay;
                 this._geom = coords.buildGeom(this._rows, this._range, pxPerDay, rowH);
                 this._win = this._calcWindow();
@@ -4709,7 +4814,7 @@
                     (this._rows || []).length,
                     span.top,
                     span.height,
-                    densityToRowH(this.density),
+                    this._rowH(),
                     { threshold: this.virtualThreshold, overscan },
                 );
             },
@@ -4723,6 +4828,16 @@
                 this._scheduleFlush();
             },
 
+            /** Altura da linha (px): row-height ou o padrão da densidade. */
+            _rowH() {
+                return sizing.rowHeight(this.density, this.rowHeight);
+            },
+
+            /** Altura da barra (px), igual em todos os zooms: bar-height ou o padrão da densidade. */
+            _barH() {
+                return sizing.barHeight(this.density, this.barHeight, this._rowH());
+            },
+
             _renderAll() {
                 // Alias público (mad.js ops / integrações): render completo.
                 this._renderLayers({ all: true });
@@ -4731,12 +4846,14 @@
             _renderLayers(d) {
                 if (!this._range) return;
                 const all = !!d.all;
-                const rowH = densityToRowH(this.density);
+                const rowH = this._rowH();
                 const ctx = {
                     uid: this._ganttId,
                     range: this._range,
                     zoom: this.zoom,
                     rowH,
+                    barH: this._barH(),
+                    density: this.density,
                     theme: this.theme,
                     today: this._today,
                     phases: this.phases,
@@ -4903,12 +5020,6 @@
         if (d.dataset.theme === 'dark') return 'dark';
         if (d.classList.contains('dark') || d.classList.contains('theme-dark')) return 'dark';
         return 'light';
-    }
-
-    function densityToRowH(density) {
-        if (density === 'compact')  return 30;
-        if (density === 'spacious') return 48;
-        return 38;
     }
 
     function clamp01(v) {

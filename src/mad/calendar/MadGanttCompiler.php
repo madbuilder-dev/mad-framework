@@ -31,7 +31,9 @@ namespace Mad\Calendar;
  * │                            initial-limit (só as N primeiras tarefas + botão  │
  * │                            "Mostrar todas"; a busca procura em todas),       │
  * │                            virtual-rows (acima de N linhas desenha só a      │
- * │                            parte na tela; padrão 300, "false" desliga)       │
+ * │                            parte na tela; padrão 300, "false" desliga),      │
+ * │                            density, row-height (px, 20–80),                  │
+ * │                            bar-height (px, 10–60; igual em todo zoom)        │
  * │                                                                              │
  * │    Atributos toolbar:     inline-edit,                                       │
  * │                            multi-select, view-mode-btn, zoom-btn,            │
@@ -309,6 +311,8 @@ class MadGanttCompiler
             'phase-field'              => 'phaseField',
             'arrow-style'              => 'arrowStyle',
             'density'                  => 'density',
+            'row-height'               => 'rowHeight',
+            'bar-height'               => 'barHeight',
             'task-col-width'           => 'taskColWidth',
             'initial-limit'            => 'initialLimit',
             'virtual-rows'             => 'virtualRows',

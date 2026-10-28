@@ -81,6 +81,9 @@ class MadGantt
     protected array   $people     = [];            // ['ms' => ['name'=>'...', 'initials'=>'MS', 'color'=>'#...']]
     protected string  $arrowStyle = 'elbow';       // elbow | curved | straight
     protected string  $density    = 'comfortable'; // compact | comfortable | spacious
+    /** Altura da linha / da barra em px (row-height / bar-height); null = padrão da densidade. */
+    protected ?int    $rowHeight  = null;
+    protected ?int    $barHeight  = null;
     protected bool    $showMinimap = true;
     protected bool    $showSearch  = true;
     protected bool    $showWeekendsBg = true;
@@ -179,6 +182,8 @@ class MadGantt
         if (!empty($cfg['people']))         $g->people($cfg['people']);
         if (!empty($cfg['arrow_style']))    $g->arrowStyle($cfg['arrow_style']);
         if (!empty($cfg['density']))        $g->density($cfg['density']);
+        if (isset($cfg['row_height']))      $g->rowHeight($cfg['row_height']);
+        if (isset($cfg['bar_height']))      $g->barHeight($cfg['bar_height']);
         if (isset($cfg['show_minimap']))    $g->showMinimap((bool) $cfg['show_minimap']);
         if (isset($cfg['show_search']))     $g->showSearch((bool) $cfg['show_search']);
         if (isset($cfg['show_weekends']))   $g->showWeekends((bool) $cfg['show_weekends']);
@@ -622,12 +627,53 @@ class MadGantt
     }
 
     /**
-     * Densidade visual: compact (30px) | comfortable (38px) | spacious (48px)
+     * Densidade visual (linha / barra): compact (32/18px) | comfortable (45/25px) | spacious (52/28px)
      */
     public function density(string $mode): static
     {
         $this->density = in_array($mode, ['compact', 'comfortable', 'spacious'], true) ? $mode : 'comfortable';
         return $this;
+    }
+
+    /** Faixas aceitas para row-height / bar-height (px). Fora delas vale o padrão da densidade. */
+    public const ROW_HEIGHT_RANGE = [20, 80];
+    public const BAR_HEIGHT_RANGE = [10, 60];
+
+    /**
+     * Altura da linha em px (20–80). Inválido ou null = padrão da densidade.
+     */
+    public function rowHeight(mixed $px): static
+    {
+        $this->rowHeight = self::pxInRange($px, self::ROW_HEIGHT_RANGE);
+        return $this;
+    }
+
+    /**
+     * Altura da barra em px (10–60), igual em todos os zooms. Inválido ou null =
+     * padrão da densidade. O desenho limita a barra a linha − 8.
+     */
+    public function barHeight(mixed $px): static
+    {
+        $this->barHeight = self::pxInRange($px, self::BAR_HEIGHT_RANGE);
+        return $this;
+    }
+
+    /** Inteiro dentro de [min, max] (aceita "45" e "45px"); qualquer outra coisa vira null. */
+    public static function pxInRange(mixed $v, array $range): ?int
+    {
+        if (is_string($v)) {
+            $v = preg_replace('/px$/i', '', trim($v));
+        }
+        if (is_int($v)) {
+            $n = $v;
+        } elseif (is_string($v) && preg_match('/^\d+$/', $v)) {
+            $n = (int) $v;
+        } elseif (is_float($v) && floor($v) === $v) {
+            $n = (int) $v;
+        } else {
+            return null;
+        }
+        return $n >= $range[0] && $n <= $range[1] ? $n : null;
     }
 
     public function showMinimap(bool $v = true): static    { $this->showMinimap   = $v; return $this; }
@@ -1458,6 +1504,8 @@ class MadGantt
             'people'            => $this->people,
             'arrowStyle'        => $this->arrowStyle,
             'density'           => $this->density,
+            'rowHeight'         => $this->rowHeight,
+            'barHeight'         => $this->barHeight,
             'showMinimap'       => $this->showMinimap,
             'showSearch'        => $this->showSearch,
             'showWeekends'      => $this->showWeekendsBg,
