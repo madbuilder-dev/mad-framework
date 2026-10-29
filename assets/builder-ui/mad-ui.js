@@ -3726,8 +3726,28 @@ var _madCompute = (function () {
         return js === '' ? null : window._madWhen.compile(js);
     }
 
+    // Campo com máscara que está sendo digitado. O decimal só passa o número
+    // para o oculto quando o cursor sai dele (no foco mostra o número cru):
+    // lendo só o oculto, o Total esperava o usuário sair da Quantidade. Vale
+    // o texto visível, lido como o blur do campo vai ler. Só campo numérico:
+    // no combo, o texto do input é a busca, não o valor.
+    function typed(scope, n) {
+        var act = document.activeElement;
+        if (!act || act.tagName !== 'INPUT' || act.type === 'hidden' || !act.closest) return null;
+        var root = act.closest('.mad-field');
+        var hidden = root && root.querySelector('input[type="hidden"][name]');
+        if (!hidden || hidden.name !== n) return null;
+        if ((act.closest('form') || act.closest('[mad-component]') || document) !== scope) return null;
+        var ad = componentOf(root);
+        if (!ad || typeof ad._madDecimals !== 'number') return null;
+        return String(act.value == null ? '' : act.value).replace(/[^\d,.\-]/g, '');
+    }
+
     function reader(scope) {
-        var read = function (n) { return window._madWhen.readValue(scope, n); };
+        var read = function (n) {
+            var t = typed(scope, n);
+            return t !== null ? t : window._madWhen.readValue(scope, n);
+        };
         var g = function (n) { return toNum(read(n)); };
         g.text = function (n) { var s = read(n); return s === '' ? '%' : s; };
         g.round = round;

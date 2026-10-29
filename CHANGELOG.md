@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.246.1] — 2026-10-29
+
+### Correções
+
+- **Formulários:** o campo com `compute` só se atualizava quando o usuário saía de um campo decimal (`<mad-numeric-field>`), como a Quantidade. Agora acompanha a digitação nele também, como já acontecia no campo de moeda.
+
 ## [5.246.0] — 2026-10-29
 
 ### Novidades
