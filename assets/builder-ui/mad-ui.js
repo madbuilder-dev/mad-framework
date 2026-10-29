@@ -3643,6 +3643,279 @@ document.addEventListener('alpine:initialized', function () { _madWhenMountOrpha
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   compute — campo calculado no navegador
+   ═══════════════════════════════════════════════════════════════════
+
+   <mad-money-field name="total" compute="{preco} * {quantidade}" readonly />
+
+   O compilador MAD (MadBlade::parseParams) troca o `compute` de
+   <mad-money-field>, <mad-numeric-field> e <mad-number-field> pela diretiva
+   `x-mad-compute="expr"` no `attrs` do campo. A fórmula é a mesma do
+   `compute` da coluna da Lista de itens (FieldListColumn::compileFormula):
+   `{campo}` vira o NÚMERO do campo `name="campo"` do mesmo formulário (vazio
+   = 0) e valem round, max, min, abs, floor, ceil, if e discount. É
+   recalculada a cada change/input do formulário — inclusive os do servidor
+   (op `val` do $this->form->set()) e os de outro campo calculado.
+
+   Reusa o núcleo do *-when: `_madWhen.compile` (`{campo}` → leitor) e
+   `_madWhen.readValue` (valor atual, hidden do campo com máscara).
+   O resultado entra pelo `setValue()` do componente do campo (moeda,
+   decimal: máscara e casas decimais dele) ou, no campo de número sem
+   componente, direto no input. Só escreve quando o valor muda; o evento que
+   ele dispara leva a profundidade, e uma corrente de cálculos que não para
+   (ciclo `{a}` ← `{b}` ← `{a}`) é cortada em MAX_DEPTH. Fórmula inválida ou
+   que lança = sem efeito (o campo fica como está).
+*/
+// <madCompute:core> — núcleo puro, fatiado por tests/js/mad-compute.test.mjs
+var _madCompute = (function () {
+    var api = {};
+    var MAX_DEPTH = 10;
+    var _seq = 0;
+
+    function warn() {
+        if (window.console) window.console.warn.apply(window.console, arguments);
+    }
+
+    // Valor do formulário como número: oculto do campo com máscara ("1234.5"),
+    // texto pt-BR ("1.234,56"), checkbox ("1"/"0"). Vazio ou ilegível = 0,
+    // como o `parseFloat(row[x]||0)` da Lista de itens.
+    function toNum(v) {
+        if (typeof v === 'number') return isFinite(v) ? v : 0;
+        var s = String(v == null ? '' : v).trim();
+        if (s === '') return 0;
+        if (s.indexOf(',') !== -1) s = s.replace(/\./g, '').replace(',', '.');
+        var n = parseFloat(s);
+        return isFinite(n) ? n : 0;
+    }
+
+    // Mesmo arredondamento do _madRound (1.005 → 1.01).
+    function round(v, decimals) {
+        if (decimals == null) decimals = 2;
+        var f = Math.pow(10, decimals);
+        return Math.round((+v + Number.EPSILON) * f) / f;
+    }
+
+    // Mesmo desconto do _madDiscount: '%' = percentual; outro tipo = valor.
+    function discount(subtotal, desconto, tipo) {
+        subtotal = +subtotal || 0;
+        desconto = +desconto || 0;
+        if (String(tipo).trim() === '%') return Math.max(subtotal * (1 - desconto / 100), 0);
+        return Math.max(subtotal - desconto, 0);
+    }
+
+    // Funções da fórmula → JS. O 3º argumento do discount é o TIPO (texto,
+    // '%' ou 'R$'): não pode virar número.
+    function translate(expr) {
+        var js = String(expr == null ? '' : expr);
+        if (js.trim() === '') return '';
+        js = js.replace(/\bdiscount\s*\((.+),\s*\{(\w+)\}\s*,\s*\{(\w+)\}\s*\)/i, function (_, sub, d, t) {
+            return '$v.discount(' + sub + ', {' + d + '}, $v.text(' + JSON.stringify(t) + '))';
+        });
+        js = js.replace(/\bround\s*\(/gi, '$v.round(')
+            .replace(/\bmax\s*\(/gi, 'Math.max(')
+            .replace(/\bmin\s*\(/gi, 'Math.min(')
+            .replace(/\babs\s*\(/gi, 'Math.abs(')
+            .replace(/\bfloor\s*\(/gi, 'Math.floor(')
+            .replace(/\bceil\s*\(/gi, 'Math.ceil(');
+        js = js.replace(/\bif\s*\(\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)/gi, '(($1) ? ($2) : ($3))');
+        return js;
+    }
+
+    function compile(expr) {
+        var js = translate(expr);
+        return js === '' ? null : window._madWhen.compile(js);
+    }
+
+    function reader(scope) {
+        var read = function (n) { return window._madWhen.readValue(scope, n); };
+        var g = function (n) { return toNum(read(n)); };
+        g.text = function (n) { var s = read(n); return s === '' ? '%' : s; };
+        g.round = round;
+        g.discount = discount;
+        return g;
+    }
+
+    // Resultado da fórmula: número ou '' (campo vazio). Divisão por zero e
+    // afins (NaN, Infinity) esvaziam o campo em vez de mostrar lixo.
+    function result(fn, g) {
+        var r = fn(g);
+        if (r === true || r === false) r = r ? 1 : 0;
+        if (r === null || r === undefined || r === '') return '';
+        if (typeof r !== 'number') r = toNum(r);
+        return isFinite(r) ? r : '';
+    }
+
+    // Ruído do ponto flutuante: 10.1 * 3 = 30.299999999999997 → 30.3.
+    function clean(v) {
+        return parseFloat(v.toPrecision(12));
+    }
+
+    function same(cur, v) {
+        var curBlank = cur === '' || cur === null || cur === undefined;
+        if (v === '') return curBlank;
+        if (curBlank) return false;
+        return Math.abs(Number(cur) - v) < 1e-9;
+    }
+
+    function fire(el, types, depth) {
+        for (var i = 0; i < types.length; i++) {
+            var ev = new window.Event(types[i], { bubbles: true });
+            ev.madComputeDepth = depth + 1;
+            el.dispatchEvent(ev);
+        }
+    }
+
+    // Componente do campo (moeda, decimal): o contrato do campo mascarado é
+    // `setValue()` + `rawValue` (o mesmo do _madSyncMaskedField). O x-data
+    // tem de ser o do PRÓPRIO campo: o <mad-number-field> não tem um, e o
+    // escopo de fora (MadComponent, um mad-data) não é dele.
+    function componentOf(root) {
+        if (!root || !root.hasAttribute || !root.hasAttribute('x-data')) return null;
+        if (!window.Alpine || typeof window.Alpine.$data !== 'function') return null;
+        try {
+            var ad = window.Alpine.$data(root);
+            return ad && typeof ad.setValue === 'function' && 'rawValue' in ad ? ad : null;
+        } catch (e) { return null; }
+    }
+
+    // Escreve o resultado no campo. true = valor mudou.
+    function write(el, root, value, depth) {
+        var ad = componentOf(root);
+        if (ad) {
+            var dec = typeof ad._madDecimals === 'number' ? ad._madDecimals : null;
+            var v = value === '' ? '' : (dec === null ? clean(value) : round(value, dec));
+            if (same(ad.rawValue, v)) return false;
+            ad.setValue(v);
+            // O hidden `:value="rawValue"` só muda no próximo ciclo do Alpine:
+            // grava já, para quem lê o formulário a seguir (outro compute, o
+            // *-when, o Salvar). Mesmos eventos do blur do próprio campo.
+            var hidden = root.querySelector('input[type="hidden"][name]');
+            if (hidden) {
+                hidden.value = ad.rawValue;
+                fire(hidden, ['input', 'change'], depth);
+            }
+            return true;
+        }
+        // <mad-number-field>: o input nativo é o próprio campo. Só `input`: o
+        // `change` dispararia o On Change (mad:change) dele a cada recálculo.
+        var s = value === '' ? '' : String(clean(value));
+        if (String(el.value == null ? '' : el.value) === s) return false;
+        el.value = s;
+        fire(el, ['input'], depth);
+        return true;
+    }
+
+    // Um cálculo montado num campo. Não liga listener nenhum: quem decide
+    // QUANDO recalcular é a diretiva (e o teste).
+    function mount(el, expression) {
+        var fn = compile(expression);
+        if (!fn) {
+            warn('[mad-compute] fórmula inválida:', expression);
+            return null;
+        }
+        var id = ++_seq;
+        var root = (el.closest && el.closest('.mad-field')) || el;
+        var scope = (el.closest && (el.closest('form') || el.closest('[mad-component]'))) || document;
+        var g = reader(scope);
+        var warned = false;
+
+        function apply(depth) {
+            depth = depth || 0;
+            if (depth >= MAX_DEPTH) {
+                if (!warned) { warned = true; warn('[mad-compute] cálculo encadeado sem fim (um campo calcula o outro?):', expression); }
+                return false;
+            }
+            var v;
+            try { v = result(fn, g); }
+            catch (e) {
+                if (!warned) { warned = true; warn('[mad-compute] erro ao calcular:', expression, e); }
+                return false;
+            }
+            return write(el, root, v, depth);
+        }
+
+        return { id: id, root: root, scope: scope, apply: apply };
+    }
+
+    api.MAX_DEPTH = MAX_DEPTH;
+    api.translate = translate;
+    api.compile = compile;
+    api.toNum = toNum;
+    api.mount = mount;
+
+    return api;
+})();
+// </madCompute:core>
+window._madCompute = _madCompute;
+
+// Liga o cálculo ao campo. `onCleanup` recebe o teardown (o `cleanup` do
+// Alpine na diretiva; no-op na montagem fora do Alpine, logo abaixo).
+function _madComputeAttach(el, expression, onCleanup) {
+    // Re-init do mesmo elemento (initTree duplo): derruba a instância anterior.
+    if (el._madComputeOff) el._madComputeOff();
+
+    var inst = _madCompute.mount(el, expression);
+    if (!inst) return;
+
+    var dead = false, pending = false, depth = 0;
+    // Adiado um tick, como o *-when: o hidden do campo com máscara só recebe
+    // o valor depois do handler de input que disparou. Vários eventos no
+    // mesmo tick = um recálculo, com a MAIOR profundidade entre eles.
+    var schedule = function (e) {
+        if (dead) return;
+        var d = (e && e.madComputeDepth) || 0;
+        if (d > depth) depth = d;
+        if (pending) return;
+        pending = true;
+        setTimeout(function () {
+            pending = false;
+            var dd = depth;
+            depth = 0;
+            if (!dead) inst.apply(dd);
+        }, 0);
+    };
+    inst.scope.addEventListener('change', schedule);
+    inst.scope.addEventListener('input', schedule);
+
+    var teardown = function () {
+        if (dead) return;
+        dead = true;
+        inst.scope.removeEventListener('change', schedule);
+        inst.scope.removeEventListener('input', schedule);
+        if (el._madComputeOff === teardown) delete el._madComputeOff;
+    };
+    el._madComputeOff = teardown;
+    onCleanup(teardown);
+
+    // Na abertura também (registro carregado, valor padrão): depois que os
+    // componentes Alpine dos campos terminarem de montar.
+    schedule();
+}
+
+function _madRegisterCompute() {
+    if (!window.Alpine || window.Alpine.__madComputeRegistered) return;
+    window.Alpine.__madComputeRegistered = true;
+    window.Alpine.directive('mad-compute', function (el, dir, utils) {
+        _madComputeAttach(el, dir.expression, utils.cleanup);
+    });
+}
+document.addEventListener('alpine:init', _madRegisterCompute);
+if (window.Alpine) _madRegisterCompute();
+
+// Mesmo motivo do _madWhenMountOrphans: o <mad-number-field> não tem x-data
+// próprio, e numa página renderizada direto pelo servidor o Alpine não chega
+// até ele. Após o start, monta à mão o que ficou para trás.
+function _madComputeMountOrphans(root) {
+    var els = (root || document).querySelectorAll('[x-mad-compute]');
+    for (var i = 0; i < els.length; i++) {
+        if (els[i]._madComputeOff) continue;
+        _madComputeAttach(els[i], els[i].getAttribute('x-mad-compute'), function () {});
+    }
+}
+document.addEventListener('alpine:initialized', function () { _madComputeMountOrphans(document); });
+
+
+/* ═══════════════════════════════════════════════════════════════════
    DBCOMBO depends-on — cascata automática entre combos
    ═══════════════════════════════════════════════════════════════════
 
@@ -10160,6 +10433,9 @@ document.addEventListener('alpine:init', () => {
         return {
             display:  '',
             rawValue: '',
+            // Casas decimais do campo, para quem escreve de fora arredondar
+            // igual à máscara (compute — _madCompute).
+            _madDecimals: decimals,
 
             init() {
                 const inp = this.$refs.input || this.$el.querySelector('input[type="text"]');
@@ -10481,6 +10757,8 @@ document.addEventListener('alpine:init', () => {
             display:  '',
             rawValue: '',
             _intVal:  0,
+            // Casas decimais do campo (compute — _madCompute).
+            _madDecimals: decimals,
 
             init() {
                 this.setValue(cfg.value);

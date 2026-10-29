@@ -567,6 +567,15 @@ class MadBladeCompiler extends BladeCompiler
     private const PERM_TAGS = ['btn'];
 
     /**
+     * Campos em que `compute="{a} * {b}"` vira cálculo no navegador (diretiva
+     * `x-mad-compute`, mad-ui.js). Só os numéricos do formulário: na coluna da
+     * Lista de itens (`field-list-column`), na planilha (`sheet-col`) e nos
+     * cards de indicador o `compute` é outra prop, lida pelo próprio
+     * componente.
+     */
+    private const COMPUTE_TAGS = ['money-field', 'numeric-field', 'number-field'];
+
+    /**
      * Campos em que o "Valor padrão" (`default` / `:default`) é o `value` da tag.
      *
      * O painel do Studio grava `default` em quase todo campo e o catálogo do
@@ -691,6 +700,26 @@ class MadBladeCompiler extends BladeCompiler
                         // não é coluna, é campo só de tela (não é valor perdido).
                         if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_wt)) {
                             foreach ($_wt[1] as $_used) {
+                                $_whenUses[$_used] = true;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Campo calculado no cliente: compute="{preco} * {quantidade}"
+                // → diretiva Alpine `x-mad-compute` no `attrs` do campo, que
+                // refaz a conta a cada mudança do formulário (mad-ui.js). Mesma
+                // fórmula da coluna da Lista de itens. Só a forma LITERAL:
+                // `:compute` continua sendo prop PHP.
+                if ($m[1] === '' && $key === 'compute' && in_array($tag, self::COMPUTE_TAGS, true)
+                    && !preg_match('/\{\{|\{!!/', $val)) {
+                    if (trim($val) !== '') {
+                        $extraAttrs[] = 'x-mad-compute="'
+                            . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
+                        // Os campos da fórmula são usados pela TELA, como os do *-when.
+                        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_ct)) {
+                            foreach ($_ct[1] as $_used) {
                                 $_whenUses[$_used] = true;
                             }
                         }

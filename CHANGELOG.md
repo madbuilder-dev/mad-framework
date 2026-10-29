@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.246.0] — 2026-10-29
+
+### Novidades
+
+- **Formulários:** `<mad-money-field>`, `<mad-numeric-field>` e `<mad-number-field>` aceitam `compute` para se preencherem com uma conta feita no navegador a partir de outros campos do formulário, sem ida ao servidor. Exemplo: `<mad-money-field name="total" compute="{preco} * {quantidade}" readonly />`. O valor é refeito a cada mudança, inclusive quando o código da tela preenche um campo com `$this->form->set()`, e vale a mesma fórmula da coluna calculada da Lista de itens: `round`, `max`, `min`, `abs`, `floor`, `ceil`, `if` e `discount`. Campo vazio conta como 0, e o resultado segue as casas decimais do campo.
+
+### Atenção
+
+- **Formulários:** o valor de um campo com `compute` vem da tela e é gravado como chegou. Quando ele não pode ser alterado por quem usa o sistema (preço, total de venda), refaça a conta no salvar.
+
 ## [5.245.0] — 2026-10-28
 
 ### Novidades
