@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.248.1] — 2026-10-30
+
+### Correções
+
+- **Detalhe (campo Calcular e condições):** num item de detalhe com um campo de mesmo nome do formulário principal (ex.: `valor` no lançamento e no item), o campo calculado (`compute="{qtde} * {valor}"`) e as condições (`*-when`) usavam o valor do formulário principal: 10 × 50 dava 10.000,00 em vez de 500,00. Agora usam o campo do próprio item, e um campo que só existe no principal continua valendo na fórmula.
+
 ## [5.248.0] — 2026-10-30
 
 ### Novidades

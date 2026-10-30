@@ -3141,11 +3141,37 @@ var _madWhen = (function () {
 
     function _q(name) { return String(name).replace(/["\\]/g, '\\$&'); }
 
-    // Valor atual de `name` no escopo. Radio/checkbox → valor do marcado
-    // (senão o hidden de fallback do switch/checkbox, senão ''); resto → value.
-    function readValue(scope, name) {
+    // Sub-form do Detail Form / linha da Lista de itens: pode ter campo com o
+    // mesmo `name` do formulário principal (`valor` no lançamento e no item).
+    // Mesma regra do _madScopedField do <fill>.
+    var ROW_SCOPE = '[data-df-fields],.mad-fl-row';
+
+    function rowOf(node) {
+        return (node && node.closest) ? node.closest(ROW_SCOPE) : null;
+    }
+
+    // Controles `name` (ou `name[]`) do escopo que `from` enxerga: os do
+    // sub-form/linha de `from`; não havendo lá, os de fora de qualquer
+    // sub-form (o formulário principal). O de OUTRO sub-form, nunca. Sem
+    // `from`, todos.
+    function named(scope, name, from) {
         var n = _q(name);
         var els = scope.querySelectorAll('[name="' + n + '"],[name="' + n + '[]"]');
+        if (!from || !els.length) return els;
+        var mine = rowOf(from), same = [], outer = [];
+        for (var i = 0; i < els.length; i++) {
+            var r = rowOf(els[i]);
+            if (r === mine) same.push(els[i]);
+            else if (!r) outer.push(els[i]);
+        }
+        return same.length ? same : outer;
+    }
+
+    // Valor atual de `name` no escopo, visto de `from` (named). Radio/checkbox
+    // → valor do marcado (senão o hidden de fallback do switch/checkbox,
+    // senão ''); resto → value.
+    function readValue(scope, name, from) {
+        var els = named(scope, name, from);
         if (!els.length) return '';
         var hidden = null, checkable = false;
         for (var i = 0; i < els.length; i++) {
@@ -3521,7 +3547,7 @@ var _madWhen = (function () {
         var touched = new Set();
         var links = new Set();
         var warned = false;
-        var getter = function (n) { return readValue(scope, n); };
+        var getter = function (n) { return readValue(scope, n, el); };
 
         function evaluate() {
             try { return !!fn(getter); }
@@ -3597,6 +3623,7 @@ var _madWhen = (function () {
     api.KINDS = KINDS;
     api.compile = compile;
     api.readValue = readValue;
+    api.named = named;
     api.controls = controls;
     api.mount = mount;
     api.disabledByWhen = disabledByWhen;
@@ -3727,7 +3754,8 @@ document.addEventListener('alpine:initialized', function () { _madWhenMountOrpha
    `x-mad-compute="expr"` no `attrs` do campo. A fórmula é a mesma do
    `compute` da coluna da Lista de itens (FieldListColumn::compileFormula):
    `{campo}` vira o NÚMERO do campo `name="campo"` do mesmo formulário (vazio
-   = 0) e valem round, max, min, abs, floor, ceil, if e discount. É
+   = 0; no sub-form do Detail Form, o campo DELE antes do de mesmo nome do
+   principal) e valem round, max, min, abs, floor, ceil, if e discount. É
    recalculada a cada change/input do formulário — inclusive os do servidor
    (op `val` do $this->form->set()) e os de outro campo calculado.
 
@@ -3805,22 +3833,25 @@ var _madCompute = (function () {
     // lendo só o oculto, o Total esperava o usuário sair da Quantidade. Vale
     // o texto visível, lido como o blur do campo vai ler. Só campo numérico:
     // no combo, o texto do input é a busca, não o valor.
-    function typed(scope, n) {
+    function typed(scope, n, from) {
         var act = document.activeElement;
         if (!act || act.tagName !== 'INPUT' || act.type === 'hidden' || !act.closest) return null;
         var root = act.closest('.mad-field');
         var hidden = root && root.querySelector('input[type="hidden"][name]');
         if (!hidden || hidden.name !== n) return null;
         if ((act.closest('form') || act.closest('[mad-component]') || document) !== scope) return null;
+        // Mesmo name no principal e no sub-form do detalhe: só vale o campo
+        // que a fórmula lê.
+        if (Array.prototype.indexOf.call(window._madWhen.named(scope, n, from), hidden) === -1) return null;
         var ad = componentOf(root);
         if (!ad || typeof ad._madDecimals !== 'number') return null;
         return String(act.value == null ? '' : act.value).replace(/[^\d,.\-]/g, '');
     }
 
-    function reader(scope) {
+    function reader(scope, from) {
         var read = function (n) {
-            var t = typed(scope, n);
-            return t !== null ? t : window._madWhen.readValue(scope, n);
+            var t = typed(scope, n, from);
+            return t !== null ? t : window._madWhen.readValue(scope, n, from);
         };
         var g = function (n) { return toNum(read(n)); };
         g.text = function (n) { var s = read(n); return s === '' ? '%' : s; };
@@ -3910,7 +3941,7 @@ var _madCompute = (function () {
         var id = ++_seq;
         var root = (el.closest && el.closest('.mad-field')) || el;
         var scope = (el.closest && (el.closest('form') || el.closest('[mad-component]'))) || document;
-        var g = reader(scope);
+        var g = reader(scope, el);
         var warned = false;
 
         function apply(depth) {
