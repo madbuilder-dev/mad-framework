@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.246.2] — 2026-10-30
+
+### Correções
+
+- **Combos e listas de seleção:** ao abrir a lista de um combo, escolher a opção e teclar Tab, o cursor ia para o próximo campo mas a lista continuava aberta por cima da tela, e era preciso usar o mouse para fechá-la. Agora Tab e Shift+Tab fecham a lista e levam ao campo seguinte ou anterior, mantendo a opção escolhida; a opção marcada com as setas do teclado também é aceita no Tab. Sair do campo por qualquer caminho fecha a lista. Vale para todos os combos: com e sem busca, de banco, com busca no servidor, de seleção múltipla e de marcar.
+- **Combos e listas de seleção:** depois de escolher uma opção com o mouse ou com Enter, o Tab seguinte voltava ao topo da página em vez de ir ao próximo campo; e digitar com o cursor parado no combo trocava o valor por baixo sem a tela mostrar. Agora o Tab segue do combo, e digitar abre a lista já buscando o que foi digitado.
+- **Seletor de ícone:** sair do seletor com Tab fecha o painel de ícones, e no Safari o cursor já abre na busca do painel.
+
 ## [5.246.1] — 2026-10-29
 
 ### Correções

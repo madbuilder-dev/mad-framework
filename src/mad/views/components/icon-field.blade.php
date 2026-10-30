@@ -34,7 +34,8 @@
          x-data="madIconField('{{ addslashes($value) }}', { allowClear: {{ $allowClearJs }} })"
          x-init="init()"
          @keydown.escape.window="open && close()"
-         @click.outside="close()">
+         @click.outside="close()"
+         @focusout="open && $event.relatedTarget && !$el.contains($event.relatedTarget) && close()">
 
         <input id="{{ $id }}" name="{{ $name }}" type="hidden" :value="selectedIcon" {!! $attrs !!}>
 

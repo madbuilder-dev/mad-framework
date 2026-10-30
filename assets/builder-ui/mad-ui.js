@@ -2180,6 +2180,7 @@ function _madSelectFactory() {
         _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {},
         _listeners: {}, _outside: null, _onScroll: null, _ctrlRect: null,
         _isTouch: false, _uid: '', _native: null, _taBuf: '', _taTimer: null,
+        _kbPick: false, _onFocusOut: null,
 
         init() {
             // Resolve o <select> via $root (NÃO via $refs): o select pode já ter sido
@@ -2192,6 +2193,25 @@ function _madSelectFactory() {
             this._seedLabels();
             el._madSelect = this;
             el.classList.add('mad-select-init');
+            // Foco saiu do campo por qualquer caminho (Tab, clique em outro
+            // campo, script): a lista fecha. Antes só o clique fora e o Esc
+            // fechavam — com Tab o cursor ia pro próximo campo e a lista ficava
+            // aberta por cima da tela (fórum #146).
+            var self = this;
+            this._onFocusOut = function (e) {
+                if (!self.open) return;
+                var to = e.relatedTarget, d = self.dropdown;
+                if (to && (self.$root.contains(to) || (d && d.contains(to)))) return;
+                setTimeout(function () {
+                    if (!self.open) return;
+                    // Foco ainda no campo/lista: inclui a janela que perdeu o foco
+                    // (outra aba/app), que devolve o cursor ao mesmo lugar.
+                    var a = document.activeElement, dd = self.dropdown;
+                    if (a && a !== document.body && (self.$root.contains(a) || (dd && dd.contains(a)))) return;
+                    self.closeDropdown();
+                }, 0);
+            };
+            this.$root.addEventListener('focusout', this._onFocusOut);
             this._isTouch = !!(window.matchMedia && window.matchMedia('(hover:none) and (pointer:coarse)').matches);
             if (typeof _madBuildNoResultsHelpers === 'function') {
                 var h = _madBuildNoResultsHelpers(el);
@@ -2220,6 +2240,7 @@ function _madSelectFactory() {
             clearTimeout(this._debounce);
             clearTimeout(this._taTimer);
             this._detachOutside();
+            if (this._onFocusOut) { this.$root.removeEventListener('focusout', this._onFocusOut); this._onFocusOut = null; }
             if (this._native) { try { delete this._native._madSelect; } catch (e) {} }
         },
 
@@ -2409,14 +2430,19 @@ function _madSelectFactory() {
             var attempt = function () {
                 var i = self.searchable ? self.$refs.input : self.control;
                 if (!i) return;
-                if (i.getClientRects().length) { i.focus(); return; }
+                if (i.getClientRects().length) {
+                    i.focus();
+                    // Letra que abriu a lista já está na busca: cursor depois dela.
+                    if (i === self.$refs.input && i.setSelectionRange) { try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+                    return;
+                }
                 if (self.open && tries++ < 25) setTimeout(attempt, 16);
             };
             this.$nextTick(attempt);
         },
         openDropdown() {
             if (this._locked || this.open || this._readonly()) { if (this.open) this._measure(); return; }
-            this.open = true; this.activeIndex = this._currentIndex();
+            this.open = true; this.activeIndex = this._currentIndex(); this._kbPick = false;
             this._measure(); this._attachOutside();
             if (this.ajax && this.minLen === 0 && !this.results.length) this._fetch('');
             this._emit('dropdown_open');
@@ -2439,7 +2465,44 @@ function _madSelectFactory() {
             var d = this.dropdown, a = d && d.querySelector('.mad-sel-option.is-active');
             if (a) d.scrollTop = Math.max(0, a.offsetTop - (d.clientHeight - a.offsetHeight) / 2);
         },
-        closeDropdown() { if (!this.open) return; this.open = false; this.query = ''; this._detachOutside(); },
+        closeDropdown() {
+            if (!this.open) return;
+            this.open = false; this.query = ''; this._kbPick = false; this._detachOutside();
+            this._keepFocus();
+        },
+        // A caixa de busca some com a lista fechada (exceto nos chips): com o
+        // cursor nela, o foco ia para o <body> e o Tab seguinte recomeçava do
+        // topo da página. Devolve o foco ao <select> do próprio campo, que é o
+        // ponto do campo na ordem do Tab.
+        _keepFocus() {
+            var i = this.$refs.input, el = this._native;
+            // Toque: focar o <select> abriria a roda nativa do iOS.
+            if (this._isTouch || !i || document.activeElement !== i) return;
+            if (this.multiple && !this.checkbox && this.searchable) return;
+            try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+        },
+        // Tab / Shift+Tab: fecha a lista e deixa o navegador levar o foco ao
+        // campo seguinte/anterior. Padrão combobox da WAI-ARIA (APG, combobox
+        // só de seleção): Tab aceita a opção que a pessoa destacou pelo
+        // TECLADO (setas ou letra inicial) e segue; a linha que só ficou sob o
+        // mouse ou que a busca destacou sozinha não conta. Multi-seleção só fecha.
+        _tabAway(e) {
+            var el = this._native;
+            if (this.open && this._kbPick && !this.multiple && !this._readonly()) {
+                var ao = this.activeIndex >= 0 ? this.visibleOptions[this.activeIndex] : null;
+                if (ao && ao.value !== (this.selectedValues[0] || '')) {
+                    if (ao.value === '') this.clear(false);
+                    else { this._ensureOption(ao.value); el.value = ao.value; this._commit(); this._emit('item_add', ao.value); }
+                }
+            }
+            // O <select> escondido vem ANTES da busca/controle na ordem do Tab:
+            // sem isto o Shift+Tab parava nele (o próprio campo) em vez de voltar
+            // ao campo anterior. Parte dele, e o navegador anda a partir daí.
+            if (e.shiftKey && e.target !== el) { try { el.focus({ preventScroll: true }); } catch (x) { el.focus(); } }
+            // Fecha DEPOIS que o navegador moveu o foco: fechar já esconderia a
+            // caixa de busca com o cursor dentro antes de o Tab andar.
+            if (this.open) { var self = this; this._kbPick = false; setTimeout(function () { self.closeDropdown(); }, 0); }
+        },
         _measure() {
             var c = this.$root.querySelector('.mad-sel-control');
             if (c) this._ctrlRect = c.getBoundingClientRect();
@@ -2447,7 +2510,7 @@ function _madSelectFactory() {
         },
 
         onSearchInput() {
-            this.activeIndex = 0;
+            this.activeIndex = 0; this._kbPick = false;
             if (!this.open) this.openDropdown();
             if (!this.ajax) return;
             var q = (this.query || '').trim();
@@ -2474,7 +2537,7 @@ function _madSelectFactory() {
                         r.hl = _madSelHlNorm(r.hl);
                         if (r.hl) self._hlMap[r.value] = r.hl; else delete self._hlMap[r.value];
                     });
-                    self.activeIndex = self.results.length ? 0 : -1;
+                    self.activeIndex = self.results.length ? 0 : -1; self._kbPick = false;
                 })
                 .catch(function () { self.results = []; })
                 .finally(function () { self.loading = false; self.$nextTick(function () { self._reicon(); }); });
@@ -2526,6 +2589,7 @@ function _madSelectFactory() {
         },
 
         onKeydown(e) {
+            if (e.key === 'Tab') { this._tabAway(e); return; }
             if (this._readonly()) return;
             // Delete/Backspace com a lista fechada: o teclado do "×".
             if (!this.open && (e.key === 'Delete' || e.key === 'Backspace') && this.clearable) {
@@ -2539,11 +2603,21 @@ function _madSelectFactory() {
                 else if (!this.open) this.openDropdown();
                 return;
             }
-            if (!this.open && (e.key === 'ArrowDown' || e.key === 'Enter')) { if (e.key === 'ArrowDown') e.preventDefault(); this.openDropdown(); return; }
+            // Com busca, digitar com o foco no <select> escondido (chegou de Tab)
+            // abre a lista e escreve na busca — inclusive as letras que chegam
+            // antes de o cursor passar para ela. Antes a letra ia pro <select>
+            // nativo, que trocava de valor calado, sem a tela acompanhar.
+            if (this.searchable && e.target === this._native && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
+                e.preventDefault();
+                if (!this.open) this.openDropdown();
+                if (e.key !== ' ' || this.query) { this.query += e.key; this.onSearchInput(); }
+                this._focusControl(); return;
+            }
+            if (!this.open && (e.key === 'ArrowDown' || e.key === 'Enter')) { if (e.key === 'ArrowDown') e.preventDefault(); this.openDropdown(); if (this.searchable) this._focusControl(); return; }
             if (!this.open) return;
             var opts = this.visibleOptions;
-            if (e.key === 'ArrowDown') { e.preventDefault(); this.activeIndex = Math.min(opts.length - 1, this.activeIndex + 1); this._scrollActive(); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); this.activeIndex = Math.max(0, this.activeIndex - 1); this._scrollActive(); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); this.activeIndex = Math.min(opts.length - 1, this.activeIndex + 1); this._kbPick = true; this._scrollActive(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); this.activeIndex = Math.max(0, this.activeIndex - 1); this._kbPick = true; this._scrollActive(); }
             else if (e.key === 'Enter') {
                 e.preventDefault();
                 var ao = this.activeIndex >= 0 ? opts[this.activeIndex] : null;
@@ -2566,7 +2640,7 @@ function _madSelectFactory() {
             if (!this.open) this.openDropdown();
             var opts = this.visibleOptions, buf = this._taBuf;
             for (var i = 0; i < opts.length; i++) {
-                if (!opts[i].empty && String(opts[i].text).trim().toLowerCase().indexOf(buf) === 0) { this.activeIndex = i; this._scrollActive(); return; }
+                if (!opts[i].empty && String(opts[i].text).trim().toLowerCase().indexOf(buf) === 0) { this.activeIndex = i; this._kbPick = true; this._scrollActive(); return; }
             }
         },
         _scrollActive() {
@@ -5350,7 +5424,16 @@ document.addEventListener('alpine:init', () => {
                 else if (this.tab === 'recent' && this.recents.indexOf(this.selectedIcon) === -1) this.setTab(want);
             }
             this.$nextTick(() => {
-                if (this.$refs.searchInput) this.$refs.searchInput.focus();
+                // Espera a busca APARECER (no WebKit/Firefox o $nextTick chega
+                // antes do x-show): sem cursor nela, o Tab não saía do seletor.
+                let tries = 0;
+                const focusSearch = () => {
+                    const i = this.$refs.searchInput;
+                    if (!i || !this.open) return;
+                    if (i.getClientRects().length) { i.focus(); return; }
+                    if (tries++ < 25) setTimeout(focusSearch, 16);
+                };
+                focusSearch();
                 this.renderIcons();
                 this.scrollSelectedIntoView();
             });
