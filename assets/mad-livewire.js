@@ -1127,13 +1127,25 @@ const MadWire = (() => {
                     const ad = Alpine.$data(df);
                     if (ad) {
                         const row = { ...op.row };
+                        let slot;
                         if (op.editIndex >= 0 && op.editIndex < ad.rows.length) {
                             row.__id = ad.rows[op.editIndex].__id;
                             ad.rows[op.editIndex] = row;
+                            slot = ad.rows[op.editIndex];
                         } else {
                             row.__id = row.__id || (Date.now().toString(36) + Math.random().toString(36).slice(2));
                             ad.rows.push(row);
+                            slot = ad.rows[ad.rows.length - 1];
                         }
+                        // Coluna de outra tabela (`{produto_id->nome}`) e template
+                        // composto: o "Adicionar" sem before-add pede ao servidor
+                        // (op `df_display`); com before-add a linha entrava por aqui
+                        // e a célula ficava VAZIA até salvar — e com o produto
+                        // antigo na edição que troca a FK. Mesmo pedido, no
+                        // elemento do array (o proxy reativo), não no literal. O
+                        // MadWire.call vai para a fila do componente: sai depois
+                        // que esta resposta termina de ser aplicada.
+                        if (typeof ad._resolveDisplay === 'function') ad._resolveDisplay(slot);
                         ad._resetForm();
                         ad._closeFormOverlay();
                         if (typeof _madLucide === 'function') _madLucide();

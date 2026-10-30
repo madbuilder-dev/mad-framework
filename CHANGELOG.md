@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.247.1] — 2026-10-30
+
+### Correções
+
+- **Lista de detalhe:** com validação ao adicionar (`before-add`), a coluna que mostra dado de outra tabela (ex.: nome do produto) ficava vazia na linha recém-adicionada até salvar, e na edição que troca o produto continuava mostrando o antigo. Agora aparece na hora, já com o produto escolhido.
+
 ## [5.247.0] — 2026-10-30
 
 ### Novidades
