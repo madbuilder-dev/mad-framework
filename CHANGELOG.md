@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.248.0] — 2026-10-30
+
+### Novidades
+
+- **Login pela API:** o `access_token` do login (`POST /api/auth/login`) agora também abre o Copilot e Meus Dashboards (`/embed/v1/chat`, `/embed/v1/conversations` e os demais), para usar a IA do sistema num app próprio, como um app em Flutter. Antes essas rotas respondiam 401 "Token MCP invalido ou inativo.". O grupo da pessoa precisa da permissão de API `copilot` (ou `*`) e do programa Copilot IA; o token manual da tela Tokens de API continua fora.
+
 ## [5.247.1] — 2026-10-30
 
 ### Correções

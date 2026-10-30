@@ -339,6 +339,28 @@ Com verificação em duas etapas, o login responde `403 mfa_required` com
 (ou do e-mail) para `/api/auth/login/mfa` com o `mfa_token` e receba o token.
 O `mfa_token` vale 5 minutos e 5 códigos.
 
+### Copilot pelo app
+
+O `access_token` do login também abre o Copilot e Meus Dashboards
+(`/embed/v1/*`, a mesma API do chat do sistema), para usar a IA num app
+próprio. Precisa da ability `copilot` (ou `*`) no grupo da pessoa e do programa
+Copilot IA (Meus Dashboards, para `/embed/v1/dashboards` e `/embed/v1/widgets`).
+O token manual não vale aqui.
+
+```bash
+curl -N -X POST https://app.exemplo.com/embed/v1/chat \
+  -H 'Authorization: Bearer mad_api_…' -H 'Content-Type: application/json' \
+  -d '{"message":"Quantas OS abertas hoje?","conversationId":"app-123"}'
+# resposta em SSE (text/event-stream): eventos `data: {…}` e, no fim, `data: [DONE]`
+
+curl -s https://app.exemplo.com/embed/v1/conversations -H 'Authorization: Bearer mad_api_…'
+```
+
+Mande sempre o `conversationId` (qualquer texto estável do app): sem ele a
+conversa fica presa ao token, e o `access_token` muda a cada renovação. Sem a
+ability, a resposta é `403` com `{"code":"insufficient_scope"}`; sem o
+programa, `403` com `{"error":"forbidden"}`.
+
 ### Erros
 
 `{error, message}` — `error` é o código estável (para o app decidir),
