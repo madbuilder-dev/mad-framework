@@ -5117,6 +5117,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
         if (!empty($c['totalFunc'])) $col->total($c['totalFunc']);
         if (!empty($c['totalMask'])) $col->totalMask((string) $c['totalMask']);
+        if (!empty($c['totalFormula'])) $col->totalFormula((string) $c['totalFormula']);
         if (!empty($c['group']))     $col->group($c['group']);
 
         // Saldo acumulado (running balance) — 3 props que precisam sobreviver

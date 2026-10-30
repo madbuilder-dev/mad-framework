@@ -2288,6 +2288,9 @@ class MadGridCompiler
         // esta linha a prop existia no GridColumn e no Blade mas nunca chegava
         // nele: o atributo era engolido pela allowlist em silêncio.
         if (isset($a['total-mask'])) $c[] = static::kv('totalMask', static::emit($a['total-mask']));
+        // total-formula="{ctb} / {total} * 100" — total do rodapé sobre as somas
+        // de outros campos (fórum #199). Mesma DSL do `evaluate`.
+        if (isset($a['total-formula'])) $c[] = static::kv('totalFormula', static::emit($a['total-formula']));
         if (isset($a['group'])) $c[] = static::kv('group',     static::qs(static::str($a, 'group')));
 
         // ── Saldo acumulado (running balance) ────────────────────────────────

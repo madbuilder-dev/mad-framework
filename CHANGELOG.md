@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.247.0] — 2026-10-30
+
+### Novidades
+
+- **Formulário com itens (detalhe):** o total no rodapé de uma coluna agora pode ser uma conta sobre os totais das outras colunas, com `total-formula` na `<mad-col>`. Ex.: na coluna de contribuição, `total-formula="{ctb} / {total} * 100"` mostra a contribuição do conjunto (137,24 de 779,50 = 17,61%), em vez de somar os percentuais das linhas. Cada `{campo}` vale a soma daquele campo em todos os itens, e o rodapé usa o mesmo formato da coluna. Serve para margem, preço médio ponderado e qualquer percentual sobre o total.
+
 ## [5.246.2] — 2026-10-30
 
 ### Correções

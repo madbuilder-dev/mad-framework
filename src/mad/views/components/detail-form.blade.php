@@ -144,6 +144,9 @@
             'field'    => $c->field,
             'default'  => '',
             'evaluate' => $c->evaluate ?: null,
+            // Fórmula do rodapé (`total-formula`) vai pela config, não inline no
+            // x-text: o texto do dev pode ter aspas. O rodapé chama pelo índice.
+            'totalFormula' => $c->totalFormula !== '' ? $c->totalFormula : null,
         ], fn($v) => $v !== null), $columns),
         'perPage'   => $perPage,
         'beforeAdd'    => $beforeAdd ?: null,
@@ -297,7 +300,7 @@
     \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $normalizedRows);
     unset($_form, $_dfEditor);
 
-    $hasTotals = !empty(array_filter($columns, fn($c) => $c->totalFunc));
+    $hasTotals = !empty(array_filter($columns, fn($c) => $c->totalFunc || $c->totalFormula !== ''));
 @endphp
 
 <div class="mad-df" data-mad-df-name="{{ $name }}" x-data="madDetailForm({{ $alpineCfg }})">
@@ -553,7 +556,7 @@
                 @if($hasTotals)
                 <tfoot class="mad-dg-foot" x-show="rows.length > 0">
                     <tr>
-                        @foreach($columns as $col)
+                        @foreach($columns as $_dfColIdx => $col)
                         @php
                             // Agregado calculado no cliente por `_agg()` (madDetailForm) —
                             // as mesmas cinco funções da grid (computeTotals). O total é
@@ -562,11 +565,19 @@
                             // `transform="money" total="sum"` mostrava 9.990,00 na linha
                             // e 9.990 no rodapé, porque aqui só `money=` era conhecido e
                             // o resto caía num toLocaleString sem casas decimais.
+                            //
+                            // `total-formula` (fórum #199) vence o `total`: a conta sai
+                            // das SOMAS dos campos — `{ctb} / {total} * 100` dá a
+                            // contribuição da lista inteira, que somar ou tirar a média
+                            // dos percentuais das linhas não dá. Mesmo formatador.
                             $_cv  = \Mad\Grid\GridRenderHelpers::rowValueJs($col->field, 'r');
-                            $_agg = "_agg('{$col->totalFunc}', r => {$_cv})";
-                            if ($col->totalFunc === 'count') {
+                            $_hasFormula = $col->totalFormula !== '';
+                            $_agg = $_hasFormula
+                                ? '_aggFormula(' . (int) $_dfColIdx . ')'
+                                : "_agg('{$col->totalFunc}', r => {$_cv})";
+                            if (! $_hasFormula && $col->totalFunc === 'count') {
                                 $_tot = 'rows.length';               // contagem: sem máscara de dinheiro
-                            } elseif (! in_array($col->totalFunc, ['sum', 'avg', 'min', 'max'], true)) {
+                            } elseif (! $_hasFormula && ! in_array($col->totalFunc, ['sum', 'avg', 'min', 'max'], true)) {
                                 $_tot = '';
                             } elseif ($col->isMoney) {
                                 $_tot = "'{$col->moneyPrefix} ' + madNumFmt({$_agg}, 2)";

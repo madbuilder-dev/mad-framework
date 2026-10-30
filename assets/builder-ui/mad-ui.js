@@ -11920,6 +11920,32 @@ document.addEventListener('alpine:init', () => {
                 return 0;
             },
 
+            // Total por fórmula (<mad-col total-formula="{ctb} / {total} * 100">,
+            // fórum #199): cada {campo} vale a SOMA do campo em todas as linhas,
+            // então a conta sai sobre o total da lista — a contribuição de 137,24
+            // em 779,50 é 17,61%, não a soma (nem a média) dos percentuais das
+            // linhas. Mesma DSL e mesmo filtro de caracteres do _applyEvaluates;
+            // a soma entra com casas fixas e entre parênteses (sem notação 1e-7,
+            // negativo não cola no operador). Divisão por zero sai 0.
+            _aggFormula(idx) {
+                const col = (this.columns || [])[idx];
+                const formula = col && col.totalFormula ? String(col.totalFormula) : '';
+                if (!formula) return 0;
+                let expr = formula.replace(/\{([^}]+)\}/g, (whole, key) => {
+                    key = key.trim();
+                    const sum = this.rows.reduce((s, row) => {
+                        const v = parseFloat((key in row) ? row[key] : row[whole]);
+                        return s + (isNaN(v) ? 0 : v);
+                    }, 0);
+                    return '(' + sum.toFixed(10) + ')';
+                });
+                expr = expr.replace(/[^0-9.+\-*/() ]/g, '');
+                try {
+                    const result = Function('"use strict"; return (' + expr + ')')();
+                    return (typeof result === 'number' && isFinite(result)) ? result : 0;
+                } catch (e) { return 0; }
+            },
+
             // ── Colunas que SO o servidor resolve ───────────────────────
             // Caminho de relacionamento (`{produto->nome}`) e template composto
             // (`{a} - {b}`): o navegador nao percorre relacao. A linha vinda do

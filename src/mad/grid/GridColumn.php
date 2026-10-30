@@ -70,6 +70,14 @@ class GridColumn
     public ?bool   $sourceNumeric = null;
     public string  $totalFunc  = '';      // sum | avg | count | min | max
     public string  $totalMask  = '';
+    /**
+     * Total do rodapé calculado a partir das SOMAS de outros campos
+     * (`total-formula="{ctb} / {total} * 100"`): cada `{campo}` vale a soma do
+     * campo em todas as linhas. Média ponderada, margem, % de contribuição —
+     * o que `sum`/`avg` da própria coluna não dão. Hoje só o
+     * `<mad-detail-form>` calcula; vence o `totalFunc` quando os dois vêm.
+     */
+    public string  $totalFormula = '';
     public string  $group      = '';
     public bool    $hidden     = false;
     public bool    $hideable   = true;    // false = coluna sempre visível, não aparece no chooser
@@ -642,6 +650,12 @@ class GridColumn
     public function totalMask(string $mask): self
     {
         $this->totalMask = $mask;
+        return $this;
+    }
+
+    public function totalFormula(string $formula): self
+    {
+        $this->totalFormula = trim($formula);
         return $this;
     }
 
