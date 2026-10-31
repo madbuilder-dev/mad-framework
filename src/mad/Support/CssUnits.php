@@ -342,6 +342,41 @@ final class CssUnits
         return implode(' ', $out);
     }
 
+    /**
+     * Template de grid com as colunas em `%` descontando o gap (fórum #205).
+     *
+     * Em CSS o `%` de um track é da largura INTEIRA da grade e o `gap` entra por
+     * fora: `70% 30%` com gap de 16px ocupa 100% + 16px e a última coluna passa
+     * da borda direita — no modal do detalhe, o campo encostava na borda. Aqui
+     * cada `N%` vira `calc(N% - <N% da soma dos gaps>px)`: o `%` passa a ser da
+     * largura útil, sem os espaços entre colunas. `70% 30%` enche a linha e
+     * `50% 25%` continua deixando um quarto livre.
+     *
+     * Só o `N%` solto muda; `fr`, `px`, `auto`, `minmax()` e `calc()` saem como
+     * `template()` devolve. Com `repeat()` o número de colunas não se sabe aqui
+     * (`auto-fill`), então nada é descontado.
+     */
+    public static function templateNetOfGap(string $v, float $gapPx): string
+    {
+        $tracks = self::splitTopLevel(self::template($v));
+        $gaps   = $gapPx * (count($tracks) - 1);
+
+        if ($gaps <= 0 || preg_grep('/^repeat\(/i', $tracks)) {
+            return implode(' ', $tracks);
+        }
+
+        foreach ($tracks as $i => $track) {
+            if (preg_match('/^(\d*\.?\d+)%$/', $track, $m)) {
+                $off = rtrim(rtrim(number_format($gaps * (float) $m[1] / 100, 2, '.', ''), '0'), '.');
+                if ($off !== '0') {
+                    $tracks[$i] = "calc({$track} - {$off}px)";
+                }
+            }
+        }
+
+        return implode(' ', $tracks);
+    }
+
     /** Quebra por espaços que estão FORA de parênteses. */
     private static function splitTopLevel(string $v): array
     {

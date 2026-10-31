@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.248.2] — 2026-10-30
+
+### Correções
+
+- **Linha de campos (`template` em %):** uma linha com colunas em porcentagem (`template="70% 30%"`) passava da margem direita: no modal do detalhe, o campo da direita encostava na borda. Agora as porcentagens contam a largura sem o espaço entre as colunas e a linha fecha certinho dentro da margem.
+
 ## [5.248.1] — 2026-10-30
 
 ### Correções
