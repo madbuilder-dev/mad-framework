@@ -4575,7 +4575,7 @@ function _madToastMount(position = 'bottom-right') {
             @pointerdown="onPointerDown($event, toast, idx)"
             @pointermove="onPointerMove($event, toast)"
             @pointerup="onPointerUp($event, toast)">
-            <button class="mad-toast-close" @click.stop.prevent="deleteToast(toast)" aria-label="Fechar">
+            <button class="mad-toast-close" @click.stop.prevent="deleteToast(toast)" aria-label="${_madTE('close', 'Fechar')}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div class="mad-toast-icon" x-html="getIcon(toast.type)"></div>

@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.250.1] — 2026-10-31
+
+### Correções
+
+- **Traduções:** num app em inglês ou espanhol, a dica do ícone da Central de Comando, o botão de fechar dos avisos, o botão de fixar/recolher o menu lateral e a busca do menu de módulos saem no idioma do app.
+- **Traduções:** as recusas da API por token (token ausente, inválido, sem permissão, unidade ou empresa inativa) vêm no idioma do app. O campo `code` continua igual, então integrações que leem o `code` não mudam.
+- **Traduções:** títulos das telas de Assinatura, Faturas, Pagamento, Planos, Pasta, Documento e Regra de Cota aparecem no idioma do app.
+
 ## [5.250.0] — 2026-10-31
 
 ### Melhorias
