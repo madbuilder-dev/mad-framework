@@ -5508,6 +5508,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-radius: var(--mad-radius-md);
   background: var(--mad-bg);
   overflow: hidden;
+  /* A barra decide pelo tamanho do CARTÃO (não da tela): cartão estreito
+     mostra só os ícones, e o rótulo fica na dica (title) de cada botão. */
+  container-type: inline-size;
 }
 .mad-file-card-thumb {
   display: flex;
@@ -5556,6 +5559,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-file-card-toolbar button,
 .mad-file-card-toolbar a {
   flex: 1;
+  /* Sem isto o botão não encolhia abaixo do rótulo e o overflow do cartão
+     cortava o último ("Remove" virava "R" num app em inglês). */
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5579,7 +5585,11 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-file-card-toolbar a + button {
   border-left: 1px solid var(--mad-border);
 }
-.mad-file-card-toolbar svg { width: 13px; height: 13px; }
+.mad-file-card-toolbar svg { width: 13px; height: 13px; flex-shrink: 0; }
+.mad-file-card-toolbar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 300px) {
+  .mad-file-card-toolbar span { display: none; }
+}
 .mad-file-card-toolbar-danger { color: var(--mad-danger) !important; }
 .mad-file-card-toolbar-danger:hover { background: color-mix(in srgb, var(--mad-danger) 8%, transparent) !important; }
 

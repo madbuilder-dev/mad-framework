@@ -1189,8 +1189,9 @@ class MadFormRegistry
     /**
      * Transforma um valor de campo de acordo com as props do schema.
      *
-     * - date:     dd/mm/yyyy → database_mask (padrão yyyy-mm-dd); vazio → null
-     * - datetime: dd/mm/yyyy HH:MM → database_mask; vazio → null
+     * - date:     display_mask do campo (dd/mm/yyyy, mm/dd/yyyy…) → database_mask
+     *             (padrão yyyy-mm-dd); vazio → null
+     * - datetime: display_mask do campo (dd/mm/yyyy hh:ii…) → database_mask; vazio → null
      * - time:     passthrough (display == banco); vazio → null
      * - number/numeric/money/spinner/range: passthrough; vazio → null
      *   (ou 0 / '' conforme a prop `empty-as` do campo)
@@ -1206,8 +1207,11 @@ class MadFormRegistry
         $type = $props['type'] ?? 'input';
 
         $transformed = match ($type) {
-            'date'      => self::_convertDate((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd'),
-            'datetime'  => self::_convertDatetime((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd HH:MM:SS'),
+            // A data é lida com a MESMA máscara que o campo exibiu: num app em
+            // inglês ela é mm/dd/yyyy, e ler dd/mm trocava dia e mês. Token
+            // antigo (sem display_mask) segue em dd/mm/yyyy.
+            'date'      => self::_convertDate((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd', (string) ($props['display_mask'] ?? '') ?: 'dd/mm/yyyy'),
+            'datetime'  => self::_convertDatetime((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd HH:MM:SS', (string) ($props['display_mask'] ?? '') ?: 'dd/mm/yyyy hh:ii'),
             // time nao converte formato (display == banco), mas o campo vazio
             // precisa do mesmo NULL que date/datetime — '' nao e TIME valido.
             'time'      => ((string) $value === '') ? null : $value,
@@ -1434,15 +1438,16 @@ class MadFormRegistry
      * estrito grava o lixo '0000-00-00'. NULL é a representação correta de
      * "sem data" nos dois casos.
      */
-    private static function _convertDate(string $value, string $dbMask): ?string
+    private static function _convertDate(string $value, string $dbMask, string $displayMask = 'dd/mm/yyyy'): ?string
     {
         if ($value === '') {
             return null;
         }
-        $dt = \DateTime::createFromFormat('d/m/Y', $value);
+        $fmt = \Mad\Support\DateMask::toPhp($displayMask);
+        $dt = \DateTime::createFromFormat('!' . $fmt, $value);
         // O PHP aceita 31/02 e devolve 03/03: data que não volta igual não
         // existe e passa crua — quem grava a recusa (MadForm::fillRecord).
-        if (!$dt || $dt->format('d/m/Y') !== $value) {
+        if (!$dt || $dt->format($fmt) !== $value) {
             return $value;
         }
         return $dt->format(self::_maskToPhpFormat($dbMask));
@@ -1454,20 +1459,25 @@ class MadFormRegistry
      * formato do banco via form->set) passa cru. Vazio vira NULL — ver
      * _convertDate().
      */
-    private static function _convertDatetime(string $value, string $dbMask): ?string
+    private static function _convertDatetime(string $value, string $dbMask, string $displayMask = 'dd/mm/yyyy hh:ii'): ?string
     {
         if ($value === '') {
             return null;
         }
-        $dt = \DateTime::createFromFormat('!d/m/Y H:i', $value);
-        if ($dt && $dt->format('d/m/Y H:i') !== $value) {
-            $dt = false;
+        $fmt = \Mad\Support\DateMask::toPhp($displayMask);
+        // A máscara sem segundos também aceita o texto com segundos (o valor
+        // que volta do banco/servidor já formatado).
+        $formats = [$fmt];
+        if (str_contains($fmt, 'i') && !str_contains($fmt, 's')) {
+            $formats[] = $fmt . ':s';
         }
-        if (!$dt) {
-            $dt = \DateTime::createFromFormat('!d/m/Y H:i:s', $value);
+        $dt = false;
+        foreach ($formats as $f) {
+            $try = \DateTime::createFromFormat('!' . $f, $value);
             // Data (ou hora) que não existe passa crua — ver _convertDate().
-            if ($dt && $dt->format('d/m/Y H:i:s') !== $value) {
-                $dt = false;
+            if ($try && $try->format($f) === $value) {
+                $dt = $try;
+                break;
             }
         }
         if (!$dt) {

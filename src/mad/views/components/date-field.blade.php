@@ -10,7 +10,7 @@
     'disabled' => false,
     'readonly' => false,
     'attrs' => '',
-    'display_mask' => 'dd/mm/yyyy',
+    'display_mask' => '',
     'database_mask' => 'yyyy-mm-dd',
     'opens' => 'left',
 ])
@@ -18,7 +18,8 @@
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
     // converte `-` -> camel). A leitura aceita as duas formas; sem isto o valor
     // escrito na tag era descartado em silencio e valia sempre o default.
-    $display_mask  = $displayMask  ?? $display_mask;
+    // Sem máscara na tag, vale a do idioma do app (inglês = mm/dd/yyyy).
+    $display_mask  = ($displayMask ?? $display_mask) ?: \Mad\Support\DateMask::date();
     $database_mask = $databaseMask ?? $database_mask;
 
     $required = !empty($required);

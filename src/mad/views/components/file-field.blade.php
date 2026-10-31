@@ -57,7 +57,7 @@
         $_acceptText = \Mad\Form\MadUploadRules::acceptLabel((string) $accept);
         $acceptHint .= mb_strtoupper(mb_substr($_acceptText, 0, 1)) . mb_substr($_acceptText, 1);
     }
-    if ($maxSize) $acceptHint .= ($acceptHint ? ' · ' : '') . 'Máx. ' . $maxSize;
+    if ($maxSize) $acceptHint .= ($acceptHint ? ' · ' : '') . mad_t('mad.ui.max_size_value', ['size' => (string) $maxSize]);
 
     // Valor existente (edição) — path do arquivo no servidor ou base64 (storage=db)
     $_ctx = \Mad\Component\MadRenderContext::current();

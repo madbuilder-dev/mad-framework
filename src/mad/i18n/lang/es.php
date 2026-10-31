@@ -779,6 +779,8 @@ return [
         ],
         // Textos de interface dos componentes Blade (botões, dicas, placeholders) e do aviso de validação.
         'ui' => [
+            'attachments_empty'         => 'Sin adjuntos. Envíe el primero abajo.',
+            'max_size_value'            => 'Máx. :size',
             'select_period'             => 'Seleccione el período',
             'remove_item_confirm'       => '¿Quitar este ítem?',
             'name'                      => 'Nombre',

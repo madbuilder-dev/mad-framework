@@ -53,7 +53,7 @@
     $maxFiles    = (int) ($maxFiles ?? 10);
     $label       = $label       ?? '';
     $submitLabel = $submitLabel ?? mad_t('mad.ui.send');
-    $emptyText   = $emptyText   ?? 'Sem anexos. Envie o primeiro abaixo.';
+    $emptyText   = $emptyText   ?? mad_t('mad.ui.attachments_empty');
     $orderDir    = $orderDir    ?? 'desc';
     $deletable   = isset($deletable) ? !empty($deletable) : true;
     $itemTemplate = $itemTemplate ?? '';

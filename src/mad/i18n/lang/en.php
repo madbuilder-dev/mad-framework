@@ -791,6 +791,8 @@ return [
         ],
         // Textos de interface dos componentes Blade (botões, dicas, placeholders) e do aviso de validação.
         'ui' => [
+            'attachments_empty'         => 'No attachments yet. Upload the first one below.',
+            'max_size_value'            => 'Max. :size',
             'select_period'             => 'Select the period',
             'remove_item_confirm'       => 'Remove this item?',
             'name'                      => 'Name',

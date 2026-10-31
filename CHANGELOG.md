@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.250.2] — 2026-10-31
+
+### Correções
+
+- **Campos:** num app em inglês, `<mad-date-field>` e `<mad-datetime-field>` sem `display-mask` mostram mês/dia/ano (mm/dd/yyyy). Português e espanhol continuam em dia/mês/ano.
+- **Campos:** a data agora é gravada com a mesma máscara que o campo mostra. Antes, um campo com `display-mask="mm/dd/yyyy"` gravava 03/04 (4 de março) como 3 de abril.
+- **Traduções:** a Central de Comando (abas, console e a aba Migrations com o bloco das empresas) e o item dela no menu aparecem no idioma do app.
+- **App gerado:** `php artisan mad:tenant:migrate` fala o idioma do app e, quando uma tabela compartilhada não existe no banco principal, mostra em que banco procurou.
+- **Upload:** num app em inglês ou espanhol, a dica de tamanho máximo do campo de arquivo e o texto de lista vazia dos anexos saem no idioma do app.
+- **Upload:** os botões do cartão do arquivo não cortam mais o rótulo ("Remove" aparecia só "R"); em cartão estreito ficam só os ícones, com o nome na dica.
+
 ## [5.250.1] — 2026-10-31
 
 ### Correções
