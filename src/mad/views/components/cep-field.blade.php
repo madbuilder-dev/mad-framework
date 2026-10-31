@@ -237,7 +237,7 @@
             type="button"
             class="mad-btn mad-btn-secondary mad-cep-search-btn"
             data-mad-api-trigger
-            title="Buscar CEP"
+            title="{{ mad_t('mad.ui.search_cep') }}"
             style="border-top-left-radius:0;border-bottom-left-radius:0;border-left:0;padding:0 12px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;"
             @if($disabled) disabled @endif
         >

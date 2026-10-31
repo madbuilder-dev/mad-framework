@@ -597,8 +597,9 @@ abstract class MadComponent
     public function returnToCombo(
         int|string|null $id,
         string $label = '',
-        string $toast = 'Registro cadastrado e selecionado.',
+        ?string $toast = null,
     ): ?MadResponse {
+        $toast ??= mad_t('mad.ui.registered_selected');
         $origin = $this->comboOrigin();
         if ($origin === null || ! $this->openedFromCombo() || $id === null || $id === '') {
             return null;

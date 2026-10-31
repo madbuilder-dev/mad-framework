@@ -106,6 +106,6 @@
      ">
     <div class="mad-transporter-loading" style="min-height:{{ $height }}">
         <div class="mad-spinner"></div>
-        <span class="mad-transporter-loading-text">Carregando...</span>
+        <span class="mad-transporter-loading-text">{{ mad_t('mad.ui.loading_dots') }}</span>
     </div>
 </div>

@@ -14,6 +14,26 @@
  * Inclua ANTES do Alpine.js e DEPOIS do Lucide.
  */
 
+
+/* ── Textos de interface (i18n) ─────────────────────────────────────────────
+ * Fora do pt-BR o framework injeta `window.MAD_I18N` (chave → texto no idioma
+ * do app) antes dos scripts. `madT(chave, textoPtBr, {n: 3})` devolve o texto
+ * traduzido ou, sem dicionário/chave, o texto pt-BR do próprio código: página
+ * antiga sem o dicionário continua igual. Placeholders `:nome`, passada única.
+ */
+if (typeof window.madT !== 'function') {
+    window.madT = function (key, fallback, rep) {
+        var d = window.MAD_I18N;
+        var s = (d && typeof d[key] === 'string') ? d[key] : String(fallback == null ? '' : fallback);
+        if (rep) {
+            s = s.replace(/:([A-Za-z_]+)/g, function (m, k) {
+                return Object.prototype.hasOwnProperty.call(rep, k) ? String(rep[k]) : m;
+            });
+        }
+        return s;
+    };
+}
+
 // ─── madTabsScroller — fábrica Alpine do strip de abas (<mad-tabs>) ───────────
 // Definida AQUI (asset global, carregado ANTES do Alpine) além do <script>
 // inline de components/tabs-list.blade.php. Motivo: quando o <mad-tabs> é
@@ -631,14 +651,13 @@ const Mad = {
         MadDialog.show({
             type: 'info',
             icon: 'file-text',
-            title: 'Documento pronto',
-            message: 'O navegador não deixou abrir o documento em outra aba. '
-                + 'Clique em <strong>Abrir documento</strong> para ver ou em <strong>Baixar</strong> para salvar o arquivo.',
+            title: madT('doc_ready', 'Documento pronto'),
+            message: madT('doc_popup_blocked', 'O navegador não deixou abrir o documento em outra aba. Clique em <strong>Abrir documento</strong> para ver ou em <strong>Baixar</strong> para salvar o arquivo.'),
             buttons: [
-                { label: 'Fechar', type: 'secondary', callback: null },
-                { label: 'Baixar', type: 'secondary', callback: () => this._downloadDocument(url) },
+                { label: madT('close', 'Fechar'), type: 'secondary', callback: null },
+                { label: madT('download', 'Baixar'), type: 'secondary', callback: () => this._downloadDocument(url) },
                 // Recusada até no clique (iframe sem permissão de pop-up): baixa.
-                { label: 'Abrir documento', type: 'primary',
+                { label: madT('doc_open', 'Abrir documento'), type: 'primary',
                   callback: () => { if (!this._openDocumentTab(url)) this._downloadDocument(url); } },
             ],
         });
@@ -675,7 +694,7 @@ const Mad = {
         if (!fatal200 && res.status < 500 && !(res.status >= 400 && excPage)) return false;
         if (!window.MadErrorModal) {
             console.error('[Mad] HTTP', res.status, res.url, text);
-            MadDialog.show({ type: 'error', title: 'Erro ' + res.status, message: 'A requisição falhou no servidor.' });
+            MadDialog.show({ type: 'error', title: madT('error_status', 'Erro :status', { status: res.status }), message: madT('request_failed_server', 'A requisição falhou no servidor.') });
             return true;
         }
         window.MadErrorModal.showResponse(res, text, Object.assign({ source: 'Mad', method: 'GET' }, ctx || {}));
@@ -2788,7 +2807,7 @@ const Mad = {
     },
 
     /** Texto do aviso padrão de validação (MadValidationException::DEFAULT_TOAST). */
-    VALIDATION_TOAST: 'Corrija os erros antes de continuar.',
+    VALIDATION_TOAST: madT('fix_errors', 'Corrija os erros antes de continuar.'),
 
     /** Campos com erro marcado agora (slot `[data-field-error]` com `.mad-error` e texto), na ordem da tela. */
     _madErrorFields(scope = null) {
@@ -2821,9 +2840,10 @@ const Mad = {
         const labels = items.map((i) => i.label || this._madFieldLabel(i.box)).filter(Boolean);
         if (!labels.length) return null;
         if (items.length <= 3 && labels.length === items.length) {
-            return 'Corrija ' + (labels.length === 2 ? labels.join(' e ') : labels.slice(0, -1).join(', ') + ' e ' + labels[labels.length - 1]) + '.';
+            var and = madT('and', ' e ');
+            return madT('fix_fields', 'Corrija :fields.', { fields: labels.length === 2 ? labels.join(and) : labels.slice(0, -1).join(', ') + and + labels[labels.length - 1] });
         }
-        return `Corrija os ${items.length} campos marcados em vermelho, a começar por ${labels[0]}.`;
+        return madT('fix_n_fields', 'Corrija os :n campos marcados em vermelho, a começar por :first.', { n: items.length, first: labels[0] });
     },
 
     /**
@@ -2927,12 +2947,12 @@ const Mad = {
         }
         if (window.MadErrorModal) {
             window.MadErrorModal.showResponse(
-                { status: 500, statusText: 'Erro ao abrir a tela', url: (res && res.url) || (ctx && ctx.url) || '' },
+                { status: 500, statusText: madT('screen_open_error', 'Erro ao abrir a tela'), url: (res && res.url) || (ctx && ctx.url) || '' },
                 html,
                 Object.assign({ source: 'Mad' }, ctx || {}));
             return true;
         }
-        MadDialog.show({ type: 'error', title: 'Erro', message: 'A tela não pôde ser aberta. A falha foi registrada.' });
+        MadDialog.show({ type: 'error', title: madT('error', 'Erro'), message: madT('screen_open_failed', 'A tela não pôde ser aberta. A falha foi registrada.') });
         return true;
     },
 
@@ -3377,7 +3397,7 @@ const Mad = {
 
     _onError(e) {
         if (this.debug) console.error('[Mad]', e);
-        MadDialog.show({ type: 'error', title: 'Erro', message: 'Requisição falhou. Verifique a conexão.' });
+        MadDialog.show({ type: 'error', title: madT('error', 'Erro'), message: madT('request_failed', 'Requisição falhou. Verifique a conexão.') });
     },
 
     // ── Transporter — energize (refresh por nome) ────────────────────────────
@@ -3853,10 +3873,10 @@ function _madDeniedMessage(status, html) {
         return { title: text(h[1]), message: p ? text(p[1]) : '', actions: actions };
     }
     return {
-        title: 'Não foi possível abrir a tela',
+        title: madT('screen_open_title', 'Não foi possível abrir a tela'),
         message: status === 403 || status === 401
-            ? 'Você não tem acesso a esta tela. Peça a liberação a quem administra o sistema.'
-            : 'A tela não respondeu como esperado (erro ' + status + '). Tente de novo.',
+            ? madT('screen_no_access', 'Você não tem acesso a esta tela. Peça a liberação a quem administra o sistema.')
+            : madT('screen_bad_status', 'A tela não respondeu como esperado (erro :status). Tente de novo.', { status: status }),
         actions: [],
     };
 }
@@ -4162,8 +4182,8 @@ function __mad_warning(title, message, callback) {
 function __mad_question(title, message, cb_yes, cb_no, label_yes, label_no) {
     MadDialog.confirm({
         title, message,
-        labelYes: label_yes || 'Sim',
-        labelNo:  label_no  || 'Não',
+        labelYes: label_yes || madT('yes', 'Sim'),
+        labelNo:  label_no  || madT('no', 'Não'),
         onYes: cb_yes,
         onNo:  cb_no,
     });
@@ -4318,8 +4338,8 @@ const MadOverlayEsc = {
         if (el.getAttribute('data-mad-confirm-close') !== '1' || !this.isDirty(el)) { this.close(el); return; }
         if (el._madAsking) return;   // Esc repetido com a pergunta aberta
         el._madAsking = true;
-        const msg = el.getAttribute('data-mad-confirm-close-msg') || 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?';
-        const yes = el.getAttribute('data-mad-confirm-close-yes') || 'Descartar';
+        const msg = el.getAttribute('data-mad-confirm-close-msg') || madT('discard_confirm', 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?');
+        const yes = el.getAttribute('data-mad-confirm-close-yes') || madT('discard', 'Descartar');
         const no  = el.getAttribute('data-mad-confirm-close-no') || 'Continuar editando';
         // Depois do despacho do Esc: o madConfirm escuta o Esc no document e o
         // MESMO keydown ainda vai chegar lá — cancelaria a pergunta na hora.

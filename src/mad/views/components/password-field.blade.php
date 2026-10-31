@@ -31,9 +31,9 @@
     // Defaults das regras de senha forte (mesmo do TPassword.php)
     $defaultRules = [
         'minLength'          => ['value' => 8,    'message' => '8 caracteres'],
-        'requireNumbers'     => ['value' => true, 'message' => 'Pelo menos 1 número'],
-        'requireLowercase'   => ['value' => true, 'message' => 'Pelo menos 1 letra minúscula'],
-        'requireUppercase'   => ['value' => true, 'message' => 'Pelo menos 1 letra maiúscula'],
+        'requireNumbers'     => ['value' => true, 'message' => mad_t('mad.ui.pwd_number')],
+        'requireLowercase'   => ['value' => true, 'message' => mad_t('mad.ui.pwd_lower')],
+        'requireUppercase'   => ['value' => true, 'message' => mad_t('mad.ui.pwd_upper')],
         'requireSpecialChar' => ['value' => true, 'message' => 'Pelo menos 1 caractere especial'],
     ];
     $rules = $defaultRules;

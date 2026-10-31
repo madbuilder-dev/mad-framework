@@ -183,7 +183,7 @@
                                                autocomplete="off" inputmode="numeric"
                                                :data-r="r" :data-f="col.field"
                                                :readonly="col.readonly"
-                                               :placeholder="col.placeholder || 'dd/mm/aaaa'"
+                                               :placeholder="col.placeholder || @js(mad_t('mad.ui.date_placeholder'))"
                                                @click="if (!col.readonly) open()">
                                         <button type="button" class="mad-sheet-date-btn" tabindex="-1"
                                                 :disabled="col.readonly" @click="toggle()">

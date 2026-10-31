@@ -166,11 +166,11 @@ class MadConfirm
     public function onConfirm(
         string $action,
         array  $params  = [],
-        string $label   = 'Confirmar',
+        ?string $label  = null,
         string $variant = 'primary',
         string $madId   = '',
     ): static {
-        return $this->button($label, $action, $params, $variant, $madId);
+        return $this->button($label ?? mad_t('mad.ui.confirm'), $action, $params, $variant, $madId);
     }
 
     /**
@@ -178,10 +178,10 @@ class MadConfirm
      *
      * @param string $label Texto do botão (padrão: 'Cancelar')
      */
-    public function onCancel(string $label = 'Cancelar'): static
+    public function onCancel(?string $label = null): static
     {
         $this->buttons[] = [
-            'label'       => $label,
+            'label'       => $label ?? mad_t('mad.ui.cancel'),
             'variant'     => 'secondary',
             'callback_js' => 'null',
         ];

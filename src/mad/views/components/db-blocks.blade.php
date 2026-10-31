@@ -13,13 +13,13 @@
     // caso de comentários/anexos numa aba de detalhe)
     $addMode     = $addMode ?? 'popover';
     $formPosition = $formPosition ?? 'below';   // below | above (só no inline)
-    $submitLabel  = $submitLabel  ?? 'Salvar';
+    $submitLabel  = $submitLabel  ?? mad_t('mad.ui.save');
     $submitIcon   = $submitIcon   ?? 'check';
-    $addLabel    = $addLabel ?? '+ Adicionar';
+    $addLabel    = $addLabel ?? mad_t('mad.ui.add_plus');
     $addIcon     = $addIcon ?? 'plus';
     $addVariant  = $addVariant ?? 'ghost';
     $layout      = $layout ?? 'inline';   // inline (chips, wrap) | stack (rows 100%)
-    $emptyText   = $emptyText ?? 'Nenhum item';
+    $emptyText   = $emptyText ?? mad_t('mad.ui.no_items');
     $hideAddButton = !empty($hideAddButton) || $addMode === 'inline';
     // no-list: modo "só adicionar" — não pré-renderiza nem re-renderiza a lista
     // (a exibição dos itens é de outro componente, ex.: a tree de pastas do GED).
@@ -40,7 +40,7 @@
     // $vars['confirmRemove'] — os row-views do framework emitem `data-mad-confirm`,
     // que o wire já intercepta antes de disparar a ação (mad-livewire.js).
     // Um preset que já resolveu a mensagem manda ela dentro de $presetVars e vence.
-    $confirmRemove = \Mad\Form\MadDbBlocks::confirmMessage($confirmRemove ?? '', 'Remover este item?');
+    $confirmRemove = \Mad\Form\MadDbBlocks::confirmMessage($confirmRemove ?? '', mad_t('mad.ui.remove_item_confirm'));
     if ($confirmRemove !== '' && ! array_key_exists('confirmRemove', $presetVars)) {
         $presetVars['confirmRemove'] = $confirmRemove;
     }
@@ -184,7 +184,7 @@
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
                         <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary mad-btn-sm">
-                            <i data-lucide="check"></i> Salvar
+                            <i data-lucide="check"></i> {{ mad_t('mad.ui.save') }}
                         </button>
                     </div>
                 </div>
@@ -193,28 +193,28 @@
     @elseif($addMode === 'modal')
         {{-- Formulário de inclusão: clique fora não fecha (perdia o que foi
              digitado) — X e Esc fecham. --}}
-        <mad-modal name="db-blocks-{{ $name }}-modal" :title="'Adicionar'" size="md" :close-on-backdrop="false">
+        <mad-modal name="db-blocks-{{ $name }}-modal" :title="mad_t('mad.ui.add')" size="md" :close-on-backdrop="false">
             @if($formSlot)
                 <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
                         <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary mad-btn-sm">
-                            <i data-lucide="check"></i> Salvar
+                            <i data-lucide="check"></i> {{ mad_t('mad.ui.save') }}
                         </button>
                     </div>
                 </div>
             @endif
         </mad-modal>
     @else
-        <mad-drawer name="db-blocks-{{ $name }}-drawer" :title="'Adicionar'" size="md" :close-on-backdrop="false">
+        <mad-drawer name="db-blocks-{{ $name }}-drawer" :title="mad_t('mad.ui.add')" size="md" :close-on-backdrop="false">
             @if($formSlot)
                 <div class="mad-db-blocks-form" data-mad-submit="blockAdd" data-mad-block-form="{{ $name }}" role="form">
                     <input type="hidden" name="__mad_db_blocks_state" value="{{ $stateToken }}">
                     {!! $formSlot !!}
                     <div style="margin-top:8px;display:flex;justify-content:flex-end;">
                         <button type="button" data-mad-block-submit class="mad-btn mad-btn-primary">
-                            <i data-lucide="check"></i> Salvar
+                            <i data-lucide="check"></i> {{ mad_t('mad.ui.save') }}
                         </button>
                     </div>
                 </div>

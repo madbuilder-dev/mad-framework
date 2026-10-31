@@ -206,7 +206,7 @@ class MadGrid extends MadDataGrid
     {
         $model = $this->gridConfig['model'] ?? '';
         if (empty($model) || !class_exists($model)) {
-            return MadToast::danger('Model não configurado corretamente.');
+            return MadToast::danger(mad_t('mad.error.friendly'));
         }
         // Chamado sem o hydrate() (uso direto): o gridConfig é a fonte.
         if (empty($this->model)) {
@@ -575,12 +575,12 @@ class GridBuilder
      * @param string $confirm Mensagem de confirmação
      * @param string $icon    Ícone Lucide (padrão: trash-2)
      */
-    public function del(string $confirm = 'Excluir este registro?', string $icon = 'trash-2'): static
+    public function del(?string $confirm = null, string $icon = 'trash-2'): static
     {
         $this->_flush();
-        $this->_pendingAct = (new GridActBuilder($this, 'onMadGridDelete', $icon, 'Excluir'))
+        $this->_pendingAct = (new GridActBuilder($this, 'onMadGridDelete', $icon, mad_t('mad.ui.delete')))
             ->danger()
-            ->confirm($confirm);
+            ->confirm($confirm ?? mad_t('mad.ui.confirm_delete_record'));
         return $this;
     }
 
@@ -718,7 +718,7 @@ class GridColBuilder
     public function col(string $f, string $l): GridColBuilder { return $this->grid->col($f, $l); }
     public function act(string $m, string $i = '', string $l = ''): GridActBuilder { return $this->grid->act($m, $i, $l); }
     public function nav(string $i, string $l, string $c, string $mt = 'show', bool $d = false): GridBuilder { return $this->grid->nav($i, $l, $c, $mt, $d); }
-    public function del(string $confirm = 'Excluir este registro?', string $icon = 'trash-2'): GridBuilder { return $this->grid->del($confirm, $icon); }
+    public function del(?string $confirm = null, string $icon = 'trash-2'): GridBuilder { return $this->grid->del($confirm, $icon); }
     public function perPage(int $n): GridBuilder { return $this->grid->perPage($n); }
     public function handler(string $c): GridBuilder { return $this->grid->handler($c); }
     public function database(string $db): GridBuilder { return $this->grid->database($db); }
@@ -794,7 +794,7 @@ class GridActBuilder
     public function col(string $f, string $l): GridColBuilder  { return $this->grid->col($f, $l); }
     public function act(string $m, string $i = '', string $l = ''): GridActBuilder { return $this->grid->act($m, $i, $l); }
     public function nav(string $i, string $l, string $c, string $mt = 'show', bool $d = false): GridBuilder { return $this->grid->nav($i, $l, $c, $mt, $d); }
-    public function del(string $confirm = 'Excluir este registro?', string $icon = 'trash-2'): GridBuilder { return $this->grid->del($confirm, $icon); }
+    public function del(?string $confirm = null, string $icon = 'trash-2'): GridBuilder { return $this->grid->del($confirm, $icon); }
     public function perPage(int $n): GridBuilder    { return $this->grid->perPage($n); }
     public function handler(string $c): GridBuilder  { return $this->grid->handler($c); }
     public function database(string $db): GridBuilder{ return $this->grid->database($db); }

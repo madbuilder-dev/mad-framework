@@ -66,7 +66,7 @@
                                 <span class="mad-dt-group-subtotals">
                                     @foreach ($item['totals'] as $f => $v)
                                         <span class="mad-dt-group-subtotal">
-                                            <span class="mad-dt-st-lbl">Total:</span>
+                                            <span class="mad-dt-st-lbl">{{ mad_t('mad.ui.total_label') }}</span>
                                             {{-- RAW por contrato: totals são HTML pré-formatado do render helper.
                                                  Caller DEVE passar conteúdo pré-escapado/numérico (nunca input cru). --}}
                                             <span class="mad-dt-st-val">{!! $v !!}</span>
@@ -100,7 +100,7 @@
                             @endphp
                             <td @if($tdStyle) style="{{ $tdStyle }}" @endif>
                                 @if ($i === 0)
-                                    <em>Subtotal {{ $item['label'] }}</em>
+                                    <em>{{ mad_t('mad.ui.subtotal') }} {{ $item['label'] }}</em>
                                 @else
                                     {{-- RAW por contrato: total pré-formatado. Caller DEVE passar
                                          conteúdo pré-escapado/numérico (nunca input cru). --}}

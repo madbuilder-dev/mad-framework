@@ -13,7 +13,7 @@
     'disabled' => false,
     'presets' => false,
     'custom_presets' => [],
-    'placeholder' => 'Selecione o período',
+    'placeholder' => null,
     'clearable' => true,
     'opens' => 'left',
     'attrs_start' => '',
@@ -24,6 +24,7 @@
     'database_mask' => 'yyyy-mm-dd',
 ])
 @php
+    $placeholder = $placeholder ?? mad_t('mad.ui.select_period');
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
     // converte `-` -> camel). A leitura aceita as duas formas; sem isto o valor
     // escrito na tag era descartado em silencio e valia sempre o default.
@@ -104,8 +105,8 @@
         'disabled'       => $disabled,
     ], JSON_UNESCAPED_UNICODE);
 
-    \Mad\Form\MadFormRegistry::register($name_start, 'date', ['label' => strip_tags($label) . ' (início)', 'required' => $required, 'display_mask' => $display_mask, 'database_mask' => $database_mask]);
-    \Mad\Form\MadFormRegistry::register($name_end,   'date', ['label' => strip_tags($label) . ' (fim)',   'required' => false,      'display_mask' => $display_mask, 'database_mask' => $database_mask]);
+    \Mad\Form\MadFormRegistry::register($name_start, 'date', ['label' => strip_tags($label) . mad_t('mad.ui.range_start_suffix'), 'required' => $required, 'display_mask' => $display_mask, 'database_mask' => $database_mask]);
+    \Mad\Form\MadFormRegistry::register($name_end,   'date', ['label' => strip_tags($label) . mad_t('mad.ui.range_end_suffix'),   'required' => false,      'display_mask' => $display_mask, 'database_mask' => $database_mask]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
 <div class="mad-field" style="position:relative;{{ $_dimStyle }}" x-data="madDateRangePicker({{ $alpineCfg }})">
@@ -163,20 +164,20 @@
         @if(!$disabled)
         <div class="mad-drp-typed" @keydown.enter.prevent="applyTyped()">
             <label class="mad-drp-typed-field">
-                <span>Início</span>
+                <span>{{ mad_t('mad.ui.start') }}</span>
                 <input type="text" class="mad-input mad-drp-typed-input" inputmode="numeric" autocomplete="off"
                        :placeholder="typedPlaceholder" :maxlength="_displayMask.length"
                        x-model="typedStart" @input="typedStart = maskTyped($event.target.value); typedError = ''"
-                       aria-label="Data inicial">
+                       aria-label="{{ mad_t('mad.ui.start_date') }}">
             </label>
             <label class="mad-drp-typed-field">
-                <span>Fim</span>
+                <span>{{ mad_t('mad.ui.end') }}</span>
                 <input type="text" class="mad-input mad-drp-typed-input" inputmode="numeric" autocomplete="off"
                        :placeholder="typedPlaceholder" :maxlength="_displayMask.length"
                        x-model="typedEnd" @input="typedEnd = maskTyped($event.target.value); typedError = ''"
-                       aria-label="Data final">
+                       aria-label="{{ mad_t('mad.ui.end_date') }}">
             </label>
-            <button type="button" class="mad-btn mad-btn-primary mad-btn-sm mad-drp-typed-apply" @click="applyTyped()">Aplicar</button>
+            <button type="button" class="mad-btn mad-btn-primary mad-btn-sm mad-drp-typed-apply" @click="applyTyped()">{{ mad_t('mad.ui.apply') }}</button>
             <p class="mad-drp-typed-error" x-show="typedError" x-text="typedError" role="alert"></p>
         </div>
         @endif

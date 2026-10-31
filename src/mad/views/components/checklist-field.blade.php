@@ -15,7 +15,7 @@
     $selected    = $selected    ?? [];
     $searchable  = !isset($searchable) || !empty($searchable);
     $height      = \Mad\Support\CssUnits::length((string) ($height ?? ''), '320px');
-    $placeholder = $placeholder ?? 'Buscar...';
+    $placeholder = $placeholder ?? mad_t('mad.ui.search_dots');
     $hint        = $hint        ?? '';
     $error       = $error       ?? '';
     $required    = !empty($required);
@@ -297,7 +297,7 @@
                     <template x-if="filteredItems.length === 0">
                         <tr>
                             <td colspan="{{ count($columns) + 1 }}" style="text-align:center;padding:20px;color:var(--mad-text-muted);">
-                                Nenhum item
+                                {{ mad_t('mad.ui.no_items') }}
                             </td>
                         </tr>
                     </template>

@@ -537,6 +537,10 @@ class GridRenderHelpers
 
         // n = numero (0 quando nao-numerico, igual ao num() do ValueFormatter)
         $num = "const n=(v===''||v===null||v===undefined||isNaN(Number(v)))?0:Number(v);";
+        // Números do idioma do app: o toLocaleString do navegador com o
+        // locale que tem os MESMOS separadores do ValueFormatter (es-ES omite
+        // o milhar em 4 dígitos, por isso vírgula decimal = pt-BR).
+        $nloc = \Mad\Support\ValueFormatter::separators()[0] === '.' ? 'en-US' : 'pt-BR';
         $fmt = static fn (string $loc, int $dec): string =>
             "n.toLocaleString('{$loc}',{minimumFractionDigits:{$dec},maximumFractionDigits:{$dec}})";
 
@@ -550,34 +554,54 @@ class GridRenderHelpers
               . ":(/^\\d+$/.test(s)?new Date(Number(s)*1000):new Date(s));"
               . "if(isNaN(_t))return s;const p=(x)=>String(x).padStart(2,'0');";
 
-        $monthsLong  = "const M=['janeiro','fevereiro','mar\u{E7}o','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];";
-        $monthsShort = "const M=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];";
-        $weekdays    = "const W=['domingo','segunda-feira','ter\u{E7}a-feira','quarta-feira','quinta-feira','sexta-feira','s\u{E1}bado'];";
+        // Meses e dias da semana no idioma do app (os mesmos do ValueFormatter).
+        $jsList      = static fn (array $l): string => "['" . implode("','", array_map(
+            static fn (string $x): string => str_replace(['\\', "'", '"'], ['\\\\', "\\'", '&quot;'], $x),
+            array_values($l)
+        )) . "']";
+        $months      = \Mad\Support\ValueFormatter::monthNames();
+        $monthsLong  = 'const M=' . $jsList($months) . ';';
+        $monthsShort = 'const M=' . $jsList(array_map(
+            static fn (int $m): string => \Mad\Support\ValueFormatter::monthShort($m),
+            array_keys($months)
+        )) . ';';
+        $weekdays    = 'const W=' . $jsList(\Mad\Support\ValueFormatter::weekdayNames()) . ';';
 
-        $dmy  = "p(_t.getDate())+'/'+p(_t.getMonth()+1)+'/'+_t.getFullYear()";
+        $dmy      = self::jsDateExpr(\Mad\Support\ValueFormatter::dateFormat());
+        $dmyHm    = self::jsDateExpr(\Mad\Support\ValueFormatter::dateFormat(true));
+        $longTpl  = \Mad\I18n\MadLang::t('mad.fmt.date_long');
+        $dateLong = self::jsTemplateExpr($longTpl === 'mad.fmt.date_long' ? ':d de :month de :y' : $longTpl, [
+            ':month' => 'M[_t.getMonth()]',
+            ':d'     => '_t.getDate()',
+            ':y'     => '_t.getFullYear()',
+        ]);
+
+        // Sim/Não no idioma do app (o mesmo texto do ValueFormatter).
+        $yes = self::jsString(\Mad\Support\ValueFormatter::yesNo(true));
+        $no  = self::jsString(\Mad\Support\ValueFormatter::yesNo(false));
         $hm   = "p(_t.getHours())+':'+p(_t.getMinutes())";
 
         $body = match ($t) {
             // `money` SEM simbolo (contrato do ValueFormatter); os currency-* carregam.
-            'money'        => $num . 'return ' . $fmt('pt-BR', 2) . ';',
-            'currency-usd' => $num . "return 'US\$ '+" . $fmt('en-US', 2) . ';',
+            'money'        => $num . 'return ' . $fmt($nloc, 2) . ';',
+            'currency-usd' => $num . 'return ' . self::jsString(\Mad\Support\ValueFormatter::usdPrefix()) . '+' . $fmt('en-US', 2) . ';',
             'currency-eur' => $num . "return '\u{20AC} '+" . $fmt('pt-BR', 2) . ';',
             'currency-gbp' => $num . "return '\u{A3} '+" . $fmt('en-US', 2) . ';',
             'currency-jpy' => $num . "return '\u{A5} '+" . $fmt('en-US', 0) . ';',
 
-            'number'    => $num . 'return ' . $fmt('pt-BR', 2) . ';',
+            'number'    => $num . 'return ' . $fmt($nloc, 2) . ';',
             'number-en' => $num . 'return ' . $fmt('en-US', 2) . ';',
-            'integer'   => $num . 'return ' . $fmt('pt-BR', 0) . ';',
-            'percent'   => $num . 'return ' . $fmt('pt-BR', 1) . "+'%';",
-            'decimal-4' => $num . 'return ' . $fmt('pt-BR', 4) . ';',
+            'integer'   => $num . 'return ' . $fmt($nloc, 0) . ';',
+            'percent'   => $num . 'return ' . $fmt($nloc, 1) . "+'%';",
+            'decimal-4' => $num . 'return ' . $fmt($nloc, 4) . ';',
 
             'date'             => $date . 'return ' . $dmy . ';',
             'date-iso'         => $date . "return _t.getFullYear()+'-'+p(_t.getMonth()+1)+'-'+p(_t.getDate());",
-            'date-long'        => $date . $monthsLong . "return _t.getDate()+' de '+M[_t.getMonth()]+' de '+_t.getFullYear();",
+            'date-long'        => $date . $monthsLong . 'return ' . $dateLong . ';',
             'date-month-year'  => $date . $monthsShort . "return M[_t.getMonth()]+'/'+_t.getFullYear();",
             'date-weekday'     => $date . $weekdays . 'return W[_t.getDay()];',
-            'datetime'         => $date . 'return ' . $dmy . "+' '+" . $hm . ';',
-            'datetime-seconds' => $date . 'return ' . $dmy . "+' '+" . $hm . "+':'+p(_t.getSeconds());",
+            'datetime'         => $date . 'return ' . $dmyHm . ';',
+            'datetime-seconds' => $date . 'return ' . $dmyHm . "+':'+p(_t.getSeconds());",
             'time'             => $date . 'return ' . $hm . ';',
 
             'cpf'  => $dig . "return d.length===11?d.slice(0,3)+'.'+d.slice(3,6)+'.'+d.slice(6,9)+'-'+d.slice(9):s;",
@@ -589,19 +613,64 @@ class GridRenderHelpers
                     . "if(d.length===11)return '('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);"
                     . "if(d.length===10)return '('+d.slice(0,2)+') '+d.slice(2,6)+'-'+d.slice(6);return s;",
 
-            'boolean' => "if(typeof v==='string')return ['1','t','true','sim','s','y','yes'].includes(v.trim().toLowerCase())?'Sim':'N\u{E3}o';"
-                       . "return v?'Sim':'N\u{E3}o';",
+            'boolean' => "if(typeof v==='string')return ['1','t','true','sim','s','y','yes'].includes(v.trim().toLowerCase())?{$yes}:{$no};"
+                       . "return v?{$yes}:{$no};",
 
             // 'text' e qualquer token novo que o ValueFormatter aceite mas aqui
             // nao tenha ramo proprio: mesmo default do PHP (switch → text).
             default => $str . "if(Array.isArray(v))return v.map(String).join(', ');"
-                     . "if(typeof v==='boolean')return v?'Sim':'N\u{E3}o';return s;",
+                     . "if(typeof v==='boolean')return v?{$yes}:{$no};return s;",
         };
 
         return '(()=>{const v=' . $valueExpr . ';' . $body . '})()';
     }
 
     /** Literal JS entre aspas simples, seguro dentro de atributo HTML. */
+    /**
+     * Expressão JS que formata `_t` (Date) num formato PHP de data (`d/m/Y H:i`).
+     * Letras conhecidas: d j m n Y y H G i s; o resto sai como texto.
+     */
+    private static function jsDateExpr(string $phpFormat): string
+    {
+        $map = [
+            'd' => 'p(_t.getDate())',     'j' => '_t.getDate()',
+            'm' => 'p(_t.getMonth()+1)',  'n' => '(_t.getMonth()+1)',
+            'Y' => '_t.getFullYear()',    'y' => "String(_t.getFullYear()).slice(-2)",
+            'H' => 'p(_t.getHours())',    'G' => '_t.getHours()',
+            'i' => 'p(_t.getMinutes())',  's' => 'p(_t.getSeconds())',
+        ];
+        $parts = [];
+        $lit   = '';
+        foreach (preg_split('//u', $phpFormat, -1, PREG_SPLIT_NO_EMPTY) as $ch) {
+            if (isset($map[$ch])) {
+                if ($lit !== '') {
+                    $parts[] = self::jsString($lit);
+                    $lit = '';
+                }
+                $parts[] = $map[$ch];
+            } else {
+                $lit .= $ch;
+            }
+        }
+        if ($lit !== '') {
+            $parts[] = self::jsString($lit);
+        }
+
+        return $parts === [] ? "''" : implode('+', $parts);
+    }
+
+    /** Expressão JS de um modelo com marcadores (":d de :month de :y"). */
+    private static function jsTemplateExpr(string $tpl, array $tokens): string
+    {
+        $re    = '/(' . implode('|', array_map(static fn ($t) => preg_quote($t, '/'), array_keys($tokens))) . ')/';
+        $parts = [];
+        foreach (preg_split($re, $tpl, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) as $piece) {
+            $parts[] = $tokens[$piece] ?? self::jsString($piece);
+        }
+
+        return $parts === [] ? "''" : implode('+', $parts);
+    }
+
     private static function jsString(string $v): string
     {
         $v = str_replace(['\\', "'"], ['\\\\', "\\'"], $v);
@@ -1379,7 +1448,7 @@ class GridRenderHelpers
             'groupData'  => $groupData,
             'groupBy'    => $groupFields,
             'groupTotal' => $groupTotal,
-            'emptyText'  => (string)($config['empty-text'] ?? 'Sem registros'),
+            'emptyText'  => (string)($config['empty-text'] ?? mad_t('mad.ui.no_records')),
             'zebra'      => $config['zebra'] ?? true,
             'bordered'   => !empty($config['bordered']),
             'compact'    => !empty($config['compact']),

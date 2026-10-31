@@ -1,9 +1,11 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => '0,00','decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => null,'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
     $readonly  = !empty($readonly);
     $decimals  = (int)$decimals;
+    // Placeholder padrão no separador decimal do idioma ("0,00" / "0.00").
+    $placeholder = $placeholder ?? ('0' . \Mad\Support\ValueFormatter::separators()[0] . '00');
 
     // Valor inicial: registro (MadWire) > prop `value` (default do dev).
     // Sem nenhum dos dois o campo abre VAZIO: antes o NULL do registro virava

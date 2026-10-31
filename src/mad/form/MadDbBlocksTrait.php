@@ -50,7 +50,7 @@ trait MadDbBlocksTrait
         }
         $cfg = MadStateCrypt::decrypt($state);
         if (!$cfg) {
-            return MadMessage::error('Erro', 'Estado inválido');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.invalid_state'));
         }
         // O state pode ter sido selado num render em que o pai ainda não tinha
         // id (tela aberta em branco e preenchida depois). Reresolve contra ESTE
@@ -210,12 +210,12 @@ trait MadDbBlocksTrait
             return $resp;
 
         } catch (MadDbBlockCancelled $e) {
-            return MadMessage::error('Erro', 'Operação cancelada');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.operation_cancelled'));
         } catch (Throwable $e) {
             if (self::_blockIsUniqueViolation($e)) {
-                return MadMessage::error('Registro duplicado', 'Já existe um item com esses dados.');
+                return MadMessage::error(mad_t('mad.ui.duplicate_title'), mad_t('mad.ui.duplicate_item'));
             }
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
         }
     }
 
@@ -249,7 +249,7 @@ trait MadDbBlocksTrait
     {
         $cfg = MadStateCrypt::decrypt($state);
         if (!$cfg) {
-            return MadMessage::error('Erro', 'Estado inválido');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.invalid_state'));
         }
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
         $pivot   = null;
@@ -302,9 +302,9 @@ trait MadDbBlocksTrait
             return $resp;
 
         } catch (MadDbBlockCancelled $e) {
-            return MadMessage::error('Erro', 'Operação cancelada');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.operation_cancelled'));
         } catch (Throwable $e) {
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
         }
     }
 
@@ -312,7 +312,7 @@ trait MadDbBlocksTrait
     {
         $cfg = MadStateCrypt::decrypt($state);
         if (!$cfg) {
-            return MadMessage::error('Erro', 'Estado inválido');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.invalid_state'));
         }
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
         try {
@@ -330,7 +330,7 @@ trait MadDbBlocksTrait
                         . 'ou chave/escopo do bloco. Declare o campo em edit-fields se a tela o edita.',
                         $field, (string) ($cfg['name'] ?? ''), get_class($pivot)));
 
-                    return MadMessage::error('Erro', 'O campo "' . $field . '" não pode ser alterado neste bloco.');
+                    return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.field_locked_in_block', ['field' => $field]));
                 }
 
                 $hook = $cfg['onUpdate'] ?? '';
@@ -369,12 +369,12 @@ trait MadDbBlocksTrait
             });
 
         } catch (MadDbBlockCancelled $e) {
-            return MadMessage::error('Erro', 'Operação cancelada');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.operation_cancelled'));
         } catch (Throwable $e) {
             if (self::_blockIsUniqueViolation($e)) {
-                return MadMessage::error('Registro duplicado', 'Já existe um item com esses dados.');
+                return MadMessage::error(mad_t('mad.ui.duplicate_title'), mad_t('mad.ui.duplicate_item'));
             }
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
         }
     }
 
@@ -394,7 +394,7 @@ trait MadDbBlocksTrait
         }
         $cfg = MadStateCrypt::decrypt($state);
         if (!$cfg) {
-            return MadMessage::error('Erro', 'Estado inválido');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.invalid_state'));
         }
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
 
@@ -474,9 +474,9 @@ trait MadDbBlocksTrait
             });
 
         } catch (MadDbBlockCancelled $e) {
-            return MadMessage::error('Erro', 'Operação cancelada');
+            return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.operation_cancelled'));
         } catch (Throwable $e) {
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, null, static::class . ' db-blocks'));
         }
     }
 
@@ -729,8 +729,8 @@ trait MadDbBlocksTrait
                 continue;
             }
             if (MadForm::parseDate(trim($v)) === null) {
-                return MadMessage::warning('Data inválida', 'Confira a data informada.')
-                    ->fieldError((string) $k, 'Data inválida.');
+                return MadMessage::warning(mad_t('mad.ui.date_invalid_title'), mad_t('mad.ui.date_check'))
+                    ->fieldError((string) $k, mad_t('mad.ui.date_invalid'));
             }
         }
 
@@ -763,7 +763,7 @@ trait MadDbBlocksTrait
         error_log(sprintf('[MadDbBlocks] %s recusado: o item %s não está na lista do bloco "%s" (%s) — de outro registro, '
             . 'fora dos filtros da tag ou já removido.', $acao, (string) $id, (string) ($cfg['name'] ?? ''), (string) ($cfg['pivotModel'] ?? '')));
 
-        return MadMessage::error('Erro', 'Item não pertence a este registro.');
+        return MadMessage::error(mad_t('mad.ui.error'), mad_t('mad.ui.item_not_in_record'));
     }
 
     /**
@@ -911,7 +911,7 @@ trait MadDbBlocksTrait
             ReferenceGuard::logRefused(sprintf('a coluna "%s" de um item do bloco "%s"', $column, (string) ($cfg['name'] ?? '')));
         }
 
-        return MadMessage::error('Erro', implode("\n", array_values($errors)));
+        return MadMessage::error(mad_t('mad.ui.error'), implode("\n", array_values($errors)));
     }
 
     private static function _blockSave(object $pivot): void

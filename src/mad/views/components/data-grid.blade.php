@@ -1259,7 +1259,7 @@
                                  x-show="!isEditing({{ $rowIdJs }},'{{ $col->field }}')"
                                  @dblclick="startEdit({{ $rowIdJs }},'{{ $col->field }}',{{ json_encode($editInitVal) }})"
                                  title="{{ __('grid.edit') }}"
-                                 style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">duplo-clique p/ editar</span>' !!}</div>
+                                 style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">' . e(mad_t('mad.ui.dblclick_to_edit')) . '</span>' !!}</div>
                             <div x-show="isEditing({{ $rowIdJs }},'{{ $col->field }}')" x-cloak>
                                 @include('components.data-grid-edit-cell', [
                                     'col'                 => $col,
@@ -1368,7 +1368,7 @@
                                  x-show="!isEditing({{ $rowIdJs }},'{{ $col->field }}')"
                                  @dblclick="startEdit({{ $rowIdJs }},'{{ $col->field }}',{{ json_encode($editInitVal) }})"
                                  title="{{ __('grid.edit') }}"
-                                 style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">duplo-clique p/ editar</span>' !!}</div>
+                                 style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">' . e(mad_t('mad.ui.dblclick_to_edit')) . '</span>' !!}</div>
                             <div x-show="isEditing({{ $rowIdJs }},'{{ $col->field }}')" x-cloak>
                                 @include('components.data-grid-edit-cell', [
                                     'col'                 => $col,
@@ -1659,7 +1659,7 @@
         @endif
 
         @if($totalPages > 1)
-        <nav class="mad-pagination" aria-label="Paginação">
+        <nav class="mad-pagination" aria-label="{{ mad_t('mad.ui.pagination') }}">
             <button type="button" class="mad-page-btn" {{ $page<=1?'disabled':'' }}
                     @click="$dispatch('mad-dg-page',{page:{{ $page-1 }}})">
                 <i data-lucide="chevron-left" style="width:14px;height:14px;"></i>

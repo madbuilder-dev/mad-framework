@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => 'Cadastrar novo', 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => 'Adicionar', 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => '', 'colors' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => mad_t('mad.ui.create_new'), 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => mad_t('mad.ui.add'), 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => '', 'colors' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -80,7 +80,7 @@
     // placeholder. No múltiplo não existe: desmarca-se item a item.
     $_hasPlaceholder = $placeholder !== '' && $placeholder !== null;
     $_emptyOption    = !$_slotMultiple && empty($noEmpty) && (!empty($allowEmpty) || $_hasPlaceholder);
-    $_emptyLabel     = $_hasPlaceholder ? $placeholder : 'Selecione...';
+    $_emptyLabel     = $_hasPlaceholder ? $placeholder : mad_t('mad.ui.select_placeholder');
     $_slotValues   = \Mad\Support\MadSelectSlot::valueList(
         $selected,
         [$name ? \Mad\Component\MadRenderContext::listValue($name) : null, $_rawSelected, $_rawValue],

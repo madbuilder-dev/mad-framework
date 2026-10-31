@@ -73,7 +73,7 @@
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
     // Placeholder amigavel BR: ano = "a", minutos = "mm".
-    $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => 'a']);
+    $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => mad_t('mad.ui.year_letter')]);
 
     // Config do Alpine (parser tolerante usa display, database e ISO).
     $alpineCfg = json_encode([

@@ -21,15 +21,17 @@ class MadValidator
 {
     private static ?Factory $factory = null;
 
+    /** Idioma (MadLang) com que o $factory foi montado. */
+    private static ?string $factoryLocale = null;
+
     // ── Factory ───────────────────────────────────────────────────────────────
 
     public static function factory(): Factory
     {
-        if (self::$factory === null) {
-            $loader     = new ArrayLoader();
-            $loader->addMessages('pt_BR', 'validation', self::ptBrMessages());
-            $translator = new Translator($loader, 'pt_BR');
-            self::$factory = new Factory($translator);
+        $locale = self::activeLocale();
+        if (self::$factory === null || self::$factoryLocale !== $locale) {
+            self::$factory       = self::buildFactory($locale);
+            self::$factoryLocale = $locale;
         }
 
         // Regras de banco (unique/exists) exigem o presence verifier — sem ele o
@@ -48,6 +50,45 @@ class MadValidator
         }
 
         return self::$factory;
+    }
+
+    /**
+     * Idioma ativo do framework ('pt' = pt-BR). Em português (pt-BR e pt-PT)
+     * valem as mensagens pt-BR embutidas abaixo, como sempre.
+     */
+    private static function activeLocale(): string
+    {
+        try {
+            return \Mad\I18n\MadLang::getLocale();
+        } catch (\Throwable $e) {
+            return 'pt';
+        }
+    }
+
+    /**
+     * Português: as mensagens pt-BR embutidas. Outro idioma (en, es): o
+     * tradutor do app, que lê `lang/<idioma>/validation.php` (o inglês vem do
+     * próprio Laravel), com o inglês de reserva. Sem container: pt-BR.
+     */
+    private static function buildFactory(string $locale): Factory
+    {
+        if (!str_starts_with($locale, 'pt')) {
+            try {
+                if (function_exists('app') && app()->bound('translator')) {
+                    $loader = app('translator')->getLoader();
+                    $translator = new Translator($loader, $locale);
+                    $translator->setFallback('en');
+                    return new Factory($translator);
+                }
+            } catch (\Throwable $e) {
+                // sem tradutor do app: cai no pt-BR
+            }
+        }
+
+        $loader     = new ArrayLoader();
+        $loader->addMessages('pt_BR', 'validation', self::ptBrMessages());
+        $translator = new Translator($loader, 'pt_BR');
+        return new Factory($translator);
     }
 
     /**
@@ -108,8 +149,9 @@ class MadValidator
     public static function ruleMessage(string $rule, string $attribute): string
     {
         $line = self::factory()->getTranslator()->get('validation.' . $rule);
-        if (!is_string($line)) {
-            $line = 'O campo :attribute é inválido.';
+        $pt = str_starts_with(self::activeLocale(), 'pt');
+        if (!is_string($line) || (!$pt && $line === 'validation.' . $rule)) {
+            $line = $pt ? 'O campo :attribute é inválido.' : 'The :attribute field is invalid.';
         }
 
         return str_replace(':attribute', $attribute, $line);

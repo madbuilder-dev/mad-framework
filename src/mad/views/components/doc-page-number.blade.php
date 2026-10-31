@@ -2,12 +2,13 @@
      Tokens {page} / {total} are replaced by spans driven by DOMPDF CSS
      counters (defined in <mad-doc-page>).  --}}
 @props([
-    'format' => 'Página {page} de {total}',
+    'format' => null,
     'align' => 'center',
     'size' => 9,
 ])
 
 @php
+    $format = $format ?? mad_t('mad.ui.page_of');
     $alignSafe = in_array($align, ['left', 'center', 'right'], true) ? $align : 'center';
     $sizePt = max(6, min(18, (int) $size));
     $safe = htmlspecialchars((string) $format, ENT_QUOTES | ENT_HTML5, 'UTF-8');

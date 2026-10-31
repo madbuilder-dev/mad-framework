@@ -52,7 +52,7 @@
     $accept      = $accept      ?? '*';
     $maxFiles    = (int) ($maxFiles ?? 10);
     $label       = $label       ?? '';
-    $submitLabel = $submitLabel ?? 'Enviar';
+    $submitLabel = $submitLabel ?? mad_t('mad.ui.send');
     $emptyText   = $emptyText   ?? 'Sem anexos. Envie o primeiro abaixo.';
     $orderDir    = $orderDir    ?? 'desc';
     $deletable   = isset($deletable) ? !empty($deletable) : true;
@@ -74,7 +74,7 @@
     // do disco, e isso não volta.
     $confirmRemove = \Mad\Form\MadDbBlocks::confirmMessage(
         $confirmRemove ?? '',
-        'Excluir este anexo? O arquivo será removido do servidor.'
+        mad_t('mad.ui.delete_attachment_confirm')
     );
 
     // Campos por anexo (fw#457): o slot chega já desenhado, e cada campo
@@ -126,7 +126,7 @@
 
     // Item: partial dedicada (heredoc não serve — o Blade compila o arquivo
     // todo, inclusive o conteúdo da string).
-    $formTpl = '<mad-multi-file-field name="' . e($fileField) . '" label="Arquivos"'
+    $formTpl = '<mad-multi-file-field name="' . e($fileField) . '" label="' . e(mad_t('mad.ui.files')) . '"'
         . ' accept="' . e($accept) . '" :max-files="' . $maxFiles . '" />';
 
     // Compila as tags <mad-*> do slot (o {!! !!} do motor imprime cru).

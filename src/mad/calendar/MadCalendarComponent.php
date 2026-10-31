@@ -593,7 +593,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         try {
             $rec = $this->_visibleRecord($recKey);
         } catch (\Throwable $e) {
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
         }
         if (!$rec) {
             return $this->_eventUpdateRefused('mad.calendar_event_gone');
@@ -625,7 +625,7 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
 
             return MadToast::success('Atualizado');
         } catch (\Throwable $e) {
-            return MadMessage::error('Erro', \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
+            return MadMessage::error(mad_t('mad.ui.error'), \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onEventUpdate'));
         }
     }
 

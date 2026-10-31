@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.250.0] — 2026-10-31
+
+### Melhorias
+
+- **App gerado:** app em inglês ou espanhol não mostra mais textos em português: combos, upload, assinatura, imagem, datas, listas de itens, comentários, avisos e diálogos de erro saem no idioma do app. Em português nada muda.
+- **Formulário:** as mensagens de validação ("campo obrigatório" e as demais) seguem o idioma do app; antes saíam sempre em português.
+- **Listagem (grid):** colunas Sim/Não, `currency-usd` e colunas com `num`/`money` seguem o idioma do app: em inglês "Yes/No", "$1,234.56" e ponto decimal.
+- **Detalhe:** `<mad-display-field>` com `format="money"`, `date` ou `datetime` segue o idioma do app (em inglês "$1,234.56" e mês/dia/ano).
+- **Layout:** topo do sistema (data, busca, Central de Comando, menus) traduzido para inglês e espanhol.
+- **Campos:** `<mad-numeric-field>` e `<mad-money-field>` em app em inglês aceitam e mostram ponto decimal ("1,234.56"). `decimal-sep`/`thousand-sep` continuam valendo quando declarados.
+- **Listagem (grid):** datas por extenso, dia da semana, mês/ano e a data padrão da coluna seguem o idioma do app, na tela e no Excel (em inglês "March 9, 2026" e mês/dia/ano). Excluir, "Sem registros" e os avisos da grade também.
+- **Relatório:** total e subtotal dos grupos saem no idioma do app.
+- **Workflow:** a linha do tempo do `<mad-wf-map>` (enviado, aprovado, devolvido, delegado…) e o status do fluxo saem no idioma do app.
+- **App gerado:** Gantt (colunas padrão, meses e dias), assinatura, imagem, anexos, blocos, busca de itens e outros botões e avisos deixam de aparecer em português em app em inglês ou espanhol. Em português nada muda.
+
 ## [5.248.2] — 2026-10-30
 
 ### Correções

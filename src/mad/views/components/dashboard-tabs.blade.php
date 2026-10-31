@@ -242,7 +242,7 @@ window.madDashboardTabs = function (cfg) {
 
             if (!opts.silent) {
                 this.disposeCharts(pane);
-                pane.innerHTML = '<div class="mad-dbtabs-loading"><span class="mad-dbtabs-spinner"></span> Carregando…</div>';
+                pane.innerHTML = '<div class="mad-dbtabs-loading"><span class="mad-dbtabs-spinner"></span> ' + @js(mad_t('mad.ui.loading')) + '</div>';
             }
 
             try {
@@ -259,8 +259,8 @@ window.madDashboardTabs = function (cfg) {
             } catch (e) {
                 if (e && e.name === 'AbortError') return;
                 console.error('[mad-dashboard-tabs] falha ao carregar aba ' + tab, e);
-                pane.innerHTML = '<div class="mad-dbtabs-error">Não foi possível carregar esta aba.'
-                    + ' <button type="button" class="mad-btn mad-btn-sm" @click="reload(\'' + tab.replace(/'/g, '') + '\')">Tentar de novo</button></div>';
+                pane.innerHTML = '<div class="mad-dbtabs-error">' + @js(mad_t('mad.ui.tab_load_failed'))
+                    + ' <button type="button" class="mad-btn mad-btn-sm" @click="reload(\'' + tab.replace(/'/g, '') + '\')">' + @js(mad_t('mad.ui.try_again')) + '</button></div>';
                 try { if (window.Alpine) Alpine.initTree(pane); } catch (e2) {}
             } finally {
                 this.loading[tab] = false;

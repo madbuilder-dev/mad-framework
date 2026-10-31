@@ -637,7 +637,13 @@ class GridColumn
     public function date(string $format = 'd/m/Y'): self
     {
         $this->isDate     = true;
-        $this->dateFormat = $format;
+        // O formato padrão (`date` sem valor) segue o idioma do app: em inglês
+        // "10/31/2026". Em português/espanhol continua d/m/Y.
+        $this->dateFormat = match ($format) {
+            'd/m/Y'     => \Mad\Support\ValueFormatter::dateFormat(),
+            'd/m/Y H:i' => \Mad\Support\ValueFormatter::dateFormat(true),
+            default     => $format,
+        };
         return $this;
     }
 
@@ -1281,15 +1287,17 @@ class GridColumn
         // Money
         if ($this->isMoney) {
             $num = is_numeric($value) ? (float)$value : 0.0;
-            $fmt = number_format($num, 2, ',', '.');
+            [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
+            $fmt = number_format($num, 2, $dec, $tho);
             $pre = htmlspecialchars($this->moneyPrefix, ENT_QUOTES);
-            return "{$pre} {$fmt}";
+            return $pre . \Mad\Support\ValueFormatter::moneyGap() . $fmt;
         }
 
         // Number
         if ($this->isNumber) {
             $num = is_numeric($value) ? (float)$value : 0.0;
-            return number_format($num, $this->numberDecimals, ',', '.');
+            [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
+            return number_format($num, $this->numberDecimals, $dec, $tho);
         }
 
         // Date — no FUSO DO APP. O `toArray()` do Eloquent entrega as datas em
@@ -1372,7 +1380,9 @@ class GridColumn
             return null;
         }
 
-        return $d->format('H:i:s') === '00:00:00' ? $d->format('d/m/Y') : $d->format('d/m/Y H:i');
+        return $d->format('H:i:s') === '00:00:00'
+            ? $d->format(\Mad\Support\ValueFormatter::dateFormat())
+            : $d->format(\Mad\Support\ValueFormatter::dateFormat(true));
     }
 
     /**

@@ -19,6 +19,32 @@
  *   <script defer src="alpine.min.js"></script>
  */
 
+
+/* ── Textos de interface (i18n) ─────────────────────────────────────────────
+ * Fora do pt-BR o framework injeta `window.MAD_I18N` (chave → texto no idioma
+ * do app) antes dos scripts. `madT(chave, textoPtBr, {n: 3})` devolve o texto
+ * traduzido ou, sem dicionário/chave, o texto pt-BR do próprio código: página
+ * antiga sem o dicionário continua igual. Placeholders `:nome`, passada única.
+ */
+if (typeof window.madT !== 'function') {
+    window.madT = function (key, fallback, rep) {
+        var d = window.MAD_I18N;
+        var s = (d && typeof d[key] === 'string') ? d[key] : String(fallback == null ? '' : fallback);
+        if (rep) {
+            s = s.replace(/:([A-Za-z_]+)/g, function (m, k) {
+                return Object.prototype.hasOwnProperty.call(rep, k) ? String(rep[k]) : m;
+            });
+        }
+        return s;
+    };
+}
+
+/** madT() já escapado para HTML (atributo/texto montado em string). */
+function _madTE(key, fallback, rep) {
+    return String(madT(key, fallback, rep)).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Resposta JSON do wire com rede de segurança (MadErrorModal).
 //
@@ -223,16 +249,28 @@ if (typeof document.addEventListener === 'function') {
 }
 
 /**
- * Parseia string formatada pt-BR para float.
- *   "1.234,56"  → 1234.56
- *   "1234.56"   → 1234.56  (aceita ponto como decimal se não houver vírgula)
+ * Separadores [decimal, milhar] do idioma do app (dicionário MAD_I18N);
+ * sem dicionário, os do pt-BR: [',', '.']. Em inglês: ['.', ','].
+ */
+function _madNumSeps() {
+    return [madT('decimal_sep', ','), madT('thousands_sep', '.')];
+}
+window._madNumSeps = _madNumSeps;
+
+/**
+ * Parseia string formatada no idioma do app para float.
+ *   "1.234,56"  → 1234.56   (pt-BR/es)
+ *   "1234.56"   → 1234.56   (aceita ponto como decimal se não houver vírgula)
+ *   "1,234.56"  → 1234.56   (inglês: a vírgula é o milhar)
  *   ""          → 0
  */
 function madNumParse(str) {
     if (str == null || str === '') return 0;
     str = String(str).trim();
-    // Se contém vírgula, trata como formato pt-BR
-    if (str.indexOf(',') !== -1) {
+    if (_madNumSeps()[0] === '.') {
+        str = str.replace(/,/g, '');
+    } else if (str.indexOf(',') !== -1) {
+        // Se contém vírgula, trata como formato pt-BR
         str = str.replace(/\./g, '').replace(',', '.');
     }
     const n = parseFloat(str);
@@ -263,18 +301,19 @@ function _madBrDateToIso(v, withTime) {
 window._madBrDateToIso = _madBrDateToIso;
 
 /**
- * Formata float para string pt-BR.
- *   madNumFmt(1234.56, 2) → "1.234,56"
+ * Formata float com os separadores do idioma do app.
+ *   madNumFmt(1234.56, 2) → "1.234,56" (pt-BR) / "1,234.56" (inglês)
  */
 function madNumFmt(val, decimals) {
     if (decimals == null) decimals = 2;
+    const seps = _madNumSeps();
     const num = typeof val === 'number' ? val : madNumParse(val);
     const fixed = Math.abs(num).toFixed(decimals);
     const parts = fixed.split('.');
-    const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, seps[1]);
     const sign = num < 0 ? '-' : '';
     return decimals > 0
-        ? sign + intPart + ',' + parts[1]
+        ? sign + intPart + seps[0] + parts[1]
         : sign + intPart;
 }
 
@@ -294,8 +333,9 @@ function madDgMoneyMask(input, decimals) {
     var str = String(intVal).padStart(decimals + 1, '0');
     var ip = str.slice(0, str.length - decimals) || '0';
     var dp = decimals > 0 ? str.slice(str.length - decimals) : '';
-    ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    input.value = decimals > 0 ? ip + ',' + dp : ip;
+    var seps = _madNumSeps();
+    ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, seps[1]);
+    input.value = decimals > 0 ? ip + seps[0] + dp : ip;
     return intVal / Math.pow(10, decimals);
 }
 
@@ -431,7 +471,7 @@ document.addEventListener('alpine:init', () => {
              <div class="mad-megamenu-search">
                <div class="mad-megamenu-search-icon">🔍</div>
                <input class="mad-megamenu-search-input" x-model="query"
-                      placeholder="Buscar módulo..." @keydown.escape="close()">
+                      :placeholder="madT('search_module', 'Buscar módulo...')" @keydown.escape="close()">
              </div>
 
              <div class="mad-megamenu-grid">
@@ -1197,7 +1237,7 @@ function _madFlApplyCombo(row, targetName, options, keepValue, leaveRow) {
     }
 
     // Reconstrói as options no <select> nativo (fonte da verdade)
-    target.innerHTML = '<option value="">Selecione...</option>';
+    target.innerHTML = '<option value="">' + _madTE('select_placeholder', 'Selecione...') + '</option>';
     order.forEach(function(k) {
         var opt = document.createElement('option');
         opt.value = k;
@@ -1422,7 +1462,7 @@ document.addEventListener('change', function(e) {
             .catch(function(err) {
                 console.error('[mad-fl-depends] Erro:', err);
                 if (typeof MadDialog !== 'undefined' && MadDialog.show) {
-                    MadDialog.show({ type: 'error', title: 'Erro de rede', message: String(err && err.message || err) });
+                    MadDialog.show({ type: 'error', title: madT('network_error_title', 'Erro de rede'), message: String(err && err.message || err) });
                 }
             });
         });
@@ -1783,12 +1823,12 @@ function _madShowQuickFormPopover(cfg, ts) {
     pop.setAttribute('role', 'dialog');
 
     var fields = cfg.quick.fields || [];
-    var title  = cfg.quick.label || 'Cadastrar';
+    var title  = cfg.quick.label || madT('quick_register', 'Cadastrar');
     var isSingleField = !fields.length;
 
     var html = '<div class="mad-quick-popover-header">'
              + '<div class="mad-quick-popover-title">' + iconHtml(cfg.quick.icon) + esc(title) + '</div>'
-             + '<button type="button" class="mad-quick-popover-close" aria-label="Fechar" data-mad-popover-close>'
+             + '<button type="button" class="mad-quick-popover-close" aria-label="' + _madTE('close', 'Fechar') + '" data-mad-popover-close>'
              + '<i data-lucide="x" style="width:16px;height:16px;"></i>'
              + '</button>'
              + '</div>';
@@ -1801,7 +1841,7 @@ function _madShowQuickFormPopover(cfg, ts) {
         // Modo simples — sem fields configurados. Renderiza um unico input
         // marcado com data-mad-noresults-quick-input (o _madRunQuickRegister
         // le esse input e envia como `term` ao servidor).
-        var ph = cfg.quick.placeholder || 'Digite o valor...';
+        var ph = cfg.quick.placeholder || madT('quick_value_placeholder', 'Digite o valor...');
         html += '<div class="mad-field">'
               + '<input type="text" class="mad-input" placeholder="' + esc(ph) + '" '
               + 'data-mad-noresults-quick-input autofocus>'
@@ -1814,7 +1854,7 @@ function _madShowQuickFormPopover(cfg, ts) {
     html += '</div>';
 
     html += '<div class="mad-quick-popover-footer">'
-          + '<button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" data-mad-popover-cancel>Cancelar</button>'
+          + '<button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" data-mad-popover-cancel>' + _madTE('cancel', 'Cancelar') + '</button>'
           + '<button type="button" class="' + esc(cfg.quick.btnClass) + '" data-mad-popover-submit>'
           + iconHtml(cfg.quick.icon) + esc(title)
           + '</button>'
@@ -2003,7 +2043,7 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
             var f = fields[i];
             if (f.required && (!values[f.name] || String(values[f.name]).trim() === '')) {
                 if (typeof madToast !== 'undefined') {
-                    madToast.warning('Preencha o campo: ' + (f.label || f.name));
+                    madToast.warning(madT('quick_fill_field', 'Preencha o campo: :field', { field: f.label || f.name }));
                 }
                 return;
             }
@@ -2016,7 +2056,7 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
                 ? inputEl.value.trim()
                 : (ts && ts.control_input ? ts.control_input.value.trim() : '');
         if (!term) {
-            if (typeof madToast !== 'undefined') madToast.warning('Digite um valor antes de cadastrar.');
+            if (typeof madToast !== 'undefined') madToast.warning(madT('quick_type_first', 'Digite um valor antes de cadastrar.'));
             return;
         }
     }
@@ -2051,17 +2091,17 @@ function _madRunQuickRegister(cfg, ts, buttonEl, popoverEl) {
                     }
                 }
                 if (typeof madToast !== 'undefined') {
-                    madToast.success(data.toast || 'Cadastrado!');
+                    madToast.success(data.toast || madT('quick_done', 'Cadastrado!'));
                 }
             } else {
                 if (typeof madToast !== 'undefined') {
-                    madToast.danger((data && data.error) || 'Falha ao cadastrar');
+                    madToast.danger((data && data.error) || madT('quick_failed', 'Falha ao cadastrar'));
                 }
             }
         })
         .catch(function (err) {
             console.error('[mad-noresults] quick register falhou', err);
-            if (typeof madToast !== 'undefined') madToast.danger('Erro de rede.');
+            if (typeof madToast !== 'undefined') madToast.danger(madT('network_error', 'Erro de rede.'));
         })
         .then(function () {
             if (buttonEl) buttonEl.disabled = false;
@@ -2174,7 +2214,7 @@ function _madSelectFactory() {
         mode: 'single', multiple: false, ajax: false, canCreate: false,
         checkbox: false, searchable: true, token: '',
         minLen: 0, maxItems: null, maxDisplay: 3, placeholder: '',
-        noResultsMsg: 'Nenhum registro encontrado.', noResCfg: null,
+        noResultsMsg: madT('no_records', 'Nenhum registro encontrado.'), noResCfg: null,
         // ── estado transiente de UI ──
         open: false, query: '', activeIndex: -1, loading: false, results: [],
         _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {},
@@ -2264,7 +2304,7 @@ function _madSelectFactory() {
             // saía sempre "Selecione...", qualquer que fosse o texto escolhido).
             var eo = this.multiple ? null : _madSelEmptyOpt(el);
             this.placeholder = d.placeholder || (eo ? (eo.textContent || '').trim() : '')
-                || (this.ajax ? 'Digite para buscar...' : (this.mode === 'tags' ? 'Digite e pressione Enter...' : 'Selecione...'));
+                || (this.ajax ? madT('type_to_search', 'Digite para buscar...') : (this.mode === 'tags' ? madT('type_and_enter', 'Digite e pressione Enter...') : madT('select_placeholder', 'Selecione...')));
             // `no-search`: só onde a busca é filtro de uma lista já carregada.
             // Nos demais modos digitar É o campo (busca no servidor, tags, chips).
             this.searchable = !(d.madNosearch !== undefined && (this.mode === 'single' || this.mode === 'check'));
@@ -2389,7 +2429,8 @@ function _madSelectFactory() {
         get needsMoreChars() { return this.ajax && this.minLen > 0 && (this.query || '').trim().length < this.minLen; },
         get minCharsMsg() {
             var n = this.minLen;
-            return 'Digite ao menos ' + n + ' ' + (n === 1 ? 'caractere' : 'caracteres') + ' para buscar.';
+            return n === 1 ? madT('min_chars_one', 'Digite ao menos :n caractere para buscar.', { n: n })
+                : madT('min_chars_many', 'Digite ao menos :n caracteres para buscar.', { n: n });
         },
         // Multi estático: lista vazia porque TODOS já foram selecionados (não por falta de match).
         get allSelected() {
@@ -2401,7 +2442,7 @@ function _madSelectFactory() {
         get isEmptyHint() { return this.needsMoreChars || this.allSelected; },
         get emptyMsg() {
             if (this.needsMoreChars) return this.minCharsMsg;
-            if (this.allSelected) return 'Todos os itens já foram selecionados.';
+            if (this.allSelected) return madT('all_selected', 'Todos os itens já foram selecionados.');
             return this.noResultsMsg;
         },
 
@@ -2813,7 +2854,7 @@ var _MAD_SEL_CONTROL_TPL =
         '<span class="mad-sel-chip">' +
         '<template x-if="item.hl"><span class="mad-sel-dot" aria-hidden="true" x-effect="paintHl($el, item.hl)"></span></template>' +
         '<span x-text="item.text"></span>' +
-        '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="Remover" @mousedown.prevent.stop="_readonly() || removeItem(item.value)">&times;</span></span>' +
+        '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="' + _madTE('remove', 'Remover') + '" @mousedown.prevent.stop="_readonly() || removeItem(item.value)">&times;</span></span>' +
       '</template>' +
     '</span>' +
   '</template>' +
@@ -2823,7 +2864,7 @@ var _MAD_SEL_CONTROL_TPL =
   '<input class="mad-sel-input" x-ref="input" type="text" x-model="query" @input="onSearchInput()" @focus="openDropdown()" ' +
     'x-show="searchable && (open || (multiple && !checkbox))" :placeholder="(multiple && hasValue)?\'\':placeholder" ' +
     'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
-  '<span class="mad-sel-clear" role="button" tabindex="-1" aria-label="Limpar" title="Limpar" x-show="clearable" x-cloak @mousedown.prevent.stop="clearValue()" @click.stop>&times;</span>' +
+  '<span class="mad-sel-clear" role="button" tabindex="-1" aria-label="' + _madTE('clear', 'Limpar') + '" title="' + _madTE('clear', 'Limpar') + '" x-show="clearable" x-cloak @mousedown.prevent.stop="clearValue()" @click.stop>&times;</span>' +
   '<i class="mad-sel-caret" data-lucide="chevron-down"></i>' +
 '</div>' +
 '<template x-teleport="body">' +
@@ -2842,12 +2883,12 @@ var _MAD_SEL_CONTROL_TPL =
             '</li>' +
           '</template>' +
         '</ul>' +
-        '<template x-if="loading"><div class="mad-sel-loading">Carregando…</div></template>' +
+        '<template x-if="loading"><div class="mad-sel-loading">' + _madTE('loading', 'Carregando…') + '</div></template>' +
         '<template x-if="!loading && visibleOptions.length===0">' +
           '<div class="mad-ts-noresults mad-sel-noresults" :class="{\'mad-sel-hint\':isEmptyHint}">' +
             '<div class="mad-ts-noresults-msg" x-text="emptyMsg"></div>' +
             '<template x-if="!isEmptyHint && canCreate && query.trim()">' +
-              '<span class="mad-btn mad-btn-primary mad-btn-sm mad-ts-noresults-btn" role="button" tabindex="0" @mousedown.prevent="createTag()"><i data-lucide="plus"></i> <span x-text="\'Adicionar: \'+query.trim()"></span></span>' +
+              '<span class="mad-btn mad-btn-primary mad-btn-sm mad-ts-noresults-btn" role="button" tabindex="0" @mousedown.prevent="createTag()"><i data-lucide="plus"></i> <span x-text="madT(\'add_tag\', \'Adicionar: \')+query.trim()"></span></span>' +
             '</template>' +
             '<template x-if="!isEmptyHint && noResCfg && noResCfg.create">' +
               '<span class="mad-ts-noresults-btn" role="button" tabindex="0" :class="noResCfg.create.btnClass" @mousedown.prevent="fireCreate()" x-html="noResIcon(noResCfg.create.icon)+noResCfg.create.label"></span>' +
@@ -3126,7 +3167,7 @@ var _madWhen = (function () {
     var STAR = 'data-mad-when-star';
     var REQ_MARK = 'data-mad-req-error';
     // Mesma frase do `required` do validador do servidor (MadValidator).
-    var REQ_MSG = 'O campo :attribute é obrigatório.';
+    var REQ_MSG = madT('required', 'O campo :attribute é obrigatório.');
     var api = {};
     var _seq = 0;
 
@@ -3662,7 +3703,7 @@ _madWhen.onBlocked = function (list, form, editor) {
         try { first.control.focus(); } catch (e) { /* controle escondido */ }
     }
     // O aviso nomeia os campos que faltam (um campo: a mensagem dele).
-    var msg = 'Corrija os erros antes de continuar.';
+    var msg = madT('fix_errors', 'Corrija os erros antes de continuar.');
     if (M && typeof M._madErrorSummary === 'function') {
         var items = list.map(function (it) {
             var box = it.field.closest('.mad-field') || it.field;
@@ -5141,7 +5182,7 @@ function _madUploadSize(bytes, ceil) {
     var value = bytes / 1024, unit = 'KB';
     ['MB', 'GB'].forEach(function(next) { if (value >= 1024) { value /= 1024; unit = next; } });
     value = ceil ? Math.ceil(value * 100) / 100 : Math.round(value * 100) / 100;
-    return String(value).replace('.', ',') + ' ' + unit;
+    return String(value).replace('.', _madNumSeps()[0]) + ' ' + unit;
 }
 
 // O arquivo é de um tipo que `accept` aceita? Extensões (`.pdf`), tipos
@@ -5169,7 +5210,7 @@ function _madUploadAccepts(accept, file) {
 
 // `accept` para a mensagem: "PDF, imagens, DOCX".
 function _madUploadAcceptLabel(accept) {
-    var families = { 'image/*': 'imagens', 'audio/*': 'áudio', 'video/*': 'vídeo' };
+    var families = { 'image/*': madT('upload_images', 'imagens'), 'audio/*': madT('upload_audio', 'áudio'), 'video/*': madT('upload_video', 'vídeo') };
     var labels = [];
     String(accept || '').toLowerCase().split(',').map(function(t) { return t.trim(); }).filter(Boolean).forEach(function(token) {
         var label = families[token];
@@ -5192,20 +5233,20 @@ function _madUploadAcceptLabel(accept) {
 // arquivo no servidor: as extensões bloqueadas valem).
 function _madUploadProblem(file, rules) {
     rules = rules || {};
-    var name = (file && file.name) || 'arquivo';
+    var name = (file && file.name) || madT('upload_file', 'arquivo');
     var ext  = _madUploadExt(name);
     if (rules.stored && ext && _MAD_UPLOAD_BLOCKED.indexOf(ext) !== -1) {
-        return 'O arquivo "' + name + '" não pode ser enviado: arquivos .' + ext + ' não são aceitos por segurança.';
+        return madT('upload_blocked', 'O arquivo ":name" não pode ser enviado: arquivos .:ext não são aceitos por segurança.', { name: name, ext: ext });
     }
     if (rules.accept && !_madUploadAccepts(rules.accept, file)) {
-        return 'O arquivo "' + name + '" não é de um tipo aceito neste campo (' + _madUploadAcceptLabel(rules.accept) + ').';
+        return madT('upload_type', 'O arquivo ":name" não é de um tipo aceito neste campo (:types).', { name: name, types: _madUploadAcceptLabel(rules.accept) });
     }
     var size = Number(file && file.size) || 0;
     if (rules.maxBytes > 0 && size > rules.maxBytes) {
-        return 'O arquivo "' + name + '" tem ' + _madUploadSize(size, true) + '; o limite deste campo é ' + _madUploadSize(rules.maxBytes) + '.';
+        return madT('upload_too_big', 'O arquivo ":name" tem :size; o limite deste campo é :max.', { name: name, size: _madUploadSize(size, true), max: _madUploadSize(rules.maxBytes) });
     }
     if (rules.serverMax > 0 && size > rules.serverMax) {
-        return 'O arquivo "' + name + '" tem ' + _madUploadSize(size, true) + '; o servidor aceita até ' + _madUploadSize(rules.serverMax) + ' por arquivo.';
+        return madT('upload_server_max', 'O arquivo ":name" tem :size; o servidor aceita até :max por arquivo.', { name: name, size: _madUploadSize(size, true), max: _madUploadSize(rules.serverMax) });
     }
     return '';
 }
@@ -5816,7 +5857,7 @@ document.addEventListener('alpine:init', () => {
                     isImage: isImg, isPdf: ext === 'pdf',
                     icon: meta.icon, color: meta.color,
                     thumb: isImg && url ? url : null,
-                    sizeText: 'Arquivo existente',
+                    sizeText: madT('existing_file', 'Arquivo existente'),
                     existing: true, existingUrl: url,
                     previewType: isImg ? 'image' : (ext === 'pdf' ? 'pdf' : 'other'),
                 };
@@ -5900,7 +5941,7 @@ document.addEventListener('alpine:init', () => {
             f.existing    = true;
             f.existingUrl = s.url || local;
             f.name        = s.name || f.name;
-            f.sizeText    = 'Arquivo existente';
+            f.sizeText    = madT('existing_file', 'Arquivo existente');
             var input = this.$refs ? this.$refs.fileInput : null;
             if (input) input.value = '';   // já gravado: não vai de novo no próximo Salvar
         },
@@ -5980,7 +6021,7 @@ document.addEventListener('alpine:init', () => {
                         isImage: isImg, isPdf: ext === 'pdf',
                         icon: meta.icon, color: meta.color,
                         thumb: isImg ? url : null,
-                        sizeText: 'Arquivo existente',
+                        sizeText: madT('existing_file', 'Arquivo existente'),
                         existing: true, existingPath: ef.path, existingUrl: url,
                         previewType: isImg ? 'image' : (ext === 'pdf' ? 'pdf' : 'other'),
                     });
@@ -6047,8 +6088,9 @@ document.addEventListener('alpine:init', () => {
                 added = true;
             });
             if (over > 0) {
-                left.push((over === 1 ? '1 arquivo não foi incluído' : over + ' arquivos não foram incluídos')
-                    + ': o campo aceita no máximo ' + this.maxFiles + (this.maxFiles === 1 ? ' arquivo.' : ' arquivos.'));
+                left.push((over === 1 ? madT('files_over_one', '1 arquivo não foi incluído') : madT('files_over_many', ':n arquivos não foram incluídos', { n: over }))
+                    + (this.maxFiles === 1 ? madT('files_max_one', ': o campo aceita no máximo :n arquivo.', { n: this.maxFiles })
+                        : madT('files_max_many', ': o campo aceita no máximo :n arquivos.', { n: this.maxFiles })));
             }
             // Um aviso só, com tudo o que não entrou (antes saíam da lista calados).
             if (left.length) _madUploadWarn(left.join(' '));
@@ -6094,7 +6136,7 @@ document.addEventListener('alpine:init', () => {
                 f.existingPath = s.key;
                 f.existingUrl  = s.url || local;
                 f.name         = s.name || f.name;
-                f.sizeText     = 'Arquivo existente';
+                f.sizeText     = madT('existing_file', 'Arquivo existente');
                 self.existingFiles.push({ path: s.key });
                 changed = true;
             });
@@ -6537,16 +6579,16 @@ function _madCepCnpjLookup(input, endpoint, btn) {
         if (data && data.ok) {
             _madCepCnpjApplyValues(data.values || {});
             if (typeof madToast === 'function' && data.values && Object.keys(data.values).length) {
-                madToast('Endereço preenchido!', 'success');
+                madToast(madT('cep_filled', 'Endereço preenchido!'), 'success');
             }
         } else {
-            var msg = (data && data.error) || 'Falha na consulta.';
+            var msg = (data && data.error) || madT('lookup_failed', 'Falha na consulta.');
             if (typeof madToast === 'function') madToast(msg, 'warning');
         }
     })
     .catch(function (err) {
         _madCepCnpjSetLoading(btn, false);
-        if (typeof madToast === 'function') madToast('Falha na comunicação com o servidor.', 'danger');
+        if (typeof madToast === 'function') madToast(madT('server_unreachable', 'Falha na comunicação com o servidor.'), 'danger');
     });
 }
 
@@ -6581,7 +6623,7 @@ function _madInitCepField(root) {
                 e.preventDefault();
                 var digits = (el.value || '').replace(/\D/g, '');
                 if (digits.length !== 8) {
-                    if (typeof madToast === 'function') madToast('Informe um CEP válido (8 dígitos).', 'warning');
+                    if (typeof madToast === 'function') madToast(madT('cep_invalid', 'Informe um CEP válido (8 dígitos).'), 'warning');
                     el.focus();
                     return;
                 }
@@ -6623,7 +6665,7 @@ function _madInitCnpjField(root) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 if (_cleanCnpj(el.value).length !== 14) {
-                    if (typeof madToast === 'function') madToast('Informe um CNPJ completo (14 caracteres).', 'warning');
+                    if (typeof madToast === 'function') madToast(madT('cnpj_incomplete', 'Informe um CNPJ completo (14 caracteres).'), 'warning');
                     el.focus();
                     return;
                 }
@@ -7023,7 +7065,7 @@ document.addEventListener('alpine:init', () => {
             // comprimento. CEP e digitos; CNPJ e ALFANUMERICO desde
             // julho/2026, e um replace(/\D/g,'') o mutilaria.
             _clean:      opts.clean || function (v) { return String(v || '').replace(/\D/g, ''); },
-            _lengthMsg:  opts.lengthMsg || ('Informe ' + opts.maxDigits + ' dígitos.'),
+            _lengthMsg:  opts.lengthMsg || madT('digits_needed', 'Informe :n dígitos.', { n: opts.maxDigits }),
             // name -> valor que ESTA consulta escreveu no campo (ver _setField).
             _filled:     {},
             // Campos que ESTA consulta preenche (chaves do fill-fields, vindas
@@ -7300,23 +7342,23 @@ document.addEventListener('alpine:init', () => {
                 })
                 .then(function (r) { return r.text(); })
                 .then(function (text) {
-                    return _madExtractJson(text) || { ok: false, error: 'Resposta inválida do servidor.' };
+                    return _madExtractJson(text) || { ok: false, error: madT('invalid_response', 'Resposta inválida do servidor.') };
                 })
                 .then(function (data) {
                     self._setLoading(btn, false);
                     if (data && data.ok) {
                         self._applyValues(data.values || {}, data._cascade, data._labels, keepFrom);
                         if (!keepFrom && typeof madToast === 'function' && data.values && Object.keys(data.values).length) {
-                            madToast('Dados preenchidos!', 'success');
+                            madToast(madT('data_filled', 'Dados preenchidos!'), 'success');
                         }
                     } else {
-                        var msg = (data && data.error) || 'Falha na consulta.';
+                        var msg = (data && data.error) || madT('lookup_failed', 'Falha na consulta.');
                         if (typeof madToast === 'function') madToast(msg, 'warning');
                     }
                 })
                 .catch(function () {
                     self._setLoading(btn, false);
-                    if (typeof madToast === 'function') madToast('Falha na comunicação com o servidor.', 'danger');
+                    if (typeof madToast === 'function') madToast(madT('server_unreachable', 'Falha na comunicação com o servidor.'), 'danger');
                 });
             },
         });
@@ -7334,7 +7376,7 @@ document.addEventListener('alpine:init', () => {
         mask:      _madMaskCnpj,
         // CNPJ alfanumerico (Receita, julho/2026): 12 posicoes [0-9A-Z] + 2 DV.
         clean:     function (v) { return String(v || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase(); },
-        lengthMsg: 'Informe um CNPJ completo (14 caracteres).',
+        lengthMsg: madT('cnpj_incomplete', 'Informe um CNPJ completo (14 caracteres).'),
     }));
 });
 
@@ -7369,9 +7411,9 @@ window.madDeletePopover = function(event, onConfirm, message) {
 
     var btn = event.currentTarget || event.target;
     var rect = btn.getBoundingClientRect();
-    var msg = message || (typeof __ === 'function' ? __('mad.remove_item') : 'Remover este item?');
-    var lblDelete = typeof __ === 'function' ? __('mad.delete') : 'Excluir';
-    var lblCancel = typeof __ === 'function' ? __('mad.cancel') : 'Cancelar';
+    var msg = message || (typeof __ === 'function' ? __('mad.remove_item') : madT('remove_item_confirm', 'Remover este item?'));
+    var lblDelete = typeof __ === 'function' ? __('mad.delete') : madT('delete', 'Excluir');
+    var lblCancel = typeof __ === 'function' ? __('mad.cancel') : madT('cancel', 'Cancelar');
 
     // Cria o popover
     var pop = document.createElement('div');
@@ -10364,7 +10406,7 @@ document.addEventListener('alpine:init', () => {
 
             // ── Remover linha (com confirmação) ─────────────────────────────
             removeRow(index) {
-                madConfirm('Remover esta linha?').then(ok => {
+                madConfirm(madT('remove_row_confirm', 'Remover esta linha?')).then(ok => {
                     if (!ok) return;
                     // Destroi o MAD Select (e seu dropdown teleportado) antes do Alpine remover o nó
                     const domRows = this.$el.querySelectorAll('.mad-fl-row');
@@ -10583,7 +10625,7 @@ document.addEventListener('alpine:init', () => {
                 const el = e.target;
                 el.value = this.rawValue === ''
                     ? ''
-                    : String(this.rawValue).replace('.', ',');
+                    : String(this.rawValue).replace('.', _madNumSeps()[0]);
                 // Seleciona JÁ (e de novo na próxima volta, se nada foi
                 // digitado): trocar o texto acima tira a seleção, e só com o
                 // select() adiado a tecla que chegava antes dele caía no fim do
@@ -10646,9 +10688,9 @@ document.addEventListener('alpine:init', () => {
         input._madNegWarned = true;
         input.addEventListener('blur', function () { input._madNegWarned = false; }, { once: true });
         var lang = String(document.documentElement.lang || '').toLowerCase();
-        var msg = lang.indexOf('es') === 0 ? 'Este campo no acepta valores negativos.'
+        var msg = madT('no_negative', lang.indexOf('es') === 0 ? 'Este campo no acepta valores negativos.'
             : lang.indexOf('en') === 0 ? 'This field does not accept negative values.'
-            : 'Este campo não aceita valor negativo.';
+            : 'Este campo não aceita valor negativo.');
         if (typeof window.madToast === 'function') window.madToast({ message: msg, type: 'warning' });
     }
 
@@ -10660,8 +10702,8 @@ document.addEventListener('alpine:init', () => {
         const rowRef      = cfg.row || null;
         // Formatação customizável (mad-sheet): defaults preservam o
         // comportamento histórico do field-list (pt-BR, reverse-fill).
-        const decimalSep  = cfg.decimalSep ?? ',';
-        const thousandSep = (cfg.thousandSep === undefined || cfg.thousandSep === null) ? '.' : cfg.thousandSep;
+        const decimalSep  = cfg.decimalSep ?? _madNumSeps()[0];
+        const thousandSep = (cfg.thousandSep === undefined || cfg.thousandSep === null) ? _madNumSeps()[1] : cfg.thousandSep;
         const fillDir     = cfg.fillDirection === 'left' ? 'left' : 'right';
         const allowNeg    = !!cfg.allowNegative;
 
@@ -10818,8 +10860,8 @@ document.addEventListener('alpine:init', () => {
         const decimals     = cfg.decimals ?? 2;
         const min          = cfg.min ?? null;
         const max          = cfg.max ?? null;
-        const decimalSep   = cfg.decimalSep ?? ',';
-        const thousandSep  = (cfg.thousandSep === undefined || cfg.thousandSep === null) ? '.' : cfg.thousandSep;
+        const decimalSep   = cfg.decimalSep ?? _madNumSeps()[0];
+        const thousandSep  = (cfg.thousandSep === undefined || cfg.thousandSep === null) ? _madNumSeps()[1] : cfg.thousandSep;
         const fillDir      = cfg.fillDirection === 'left' ? 'left' : 'right';
         const allowNeg     = !!cfg.allowNegative;
 
@@ -11087,10 +11129,11 @@ document.addEventListener('alpine:init', () => {
                 // Só permite dígitos e uma vírgula (e o "-" do começo, com allow-negative)
                 var neg = allowNeg && val.trim().charAt(0) === '-';
                 if (!allowNeg && val.indexOf('-') !== -1) _madNoNegativeWarn(e.target);
-                val = val.replace(/[^\d,]/g, '');
-                var idx = val.indexOf(',');
+                var ds = _madNumSeps()[0];
+                val = val.replace(ds === '.' ? /[^\d.]/g : /[^\d,]/g, '');
+                var idx = val.indexOf(ds);
                 if (idx !== -1) {
-                    val = val.slice(0, idx + 1) + val.slice(idx + 1).replace(/,/g, '');
+                    val = val.slice(0, idx + 1) + val.slice(idx + 1).split(ds).join('');
                 }
                 // Limita casas decimais
                 if (idx !== -1 && val.length - idx - 1 > maxDec) {
@@ -11108,7 +11151,7 @@ document.addEventListener('alpine:init', () => {
                     // Mostra com vírgula, sem separador de milhar
                     var s = val.toFixed(maxDec);
                     if (s.indexOf('.') !== -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
-                    e.target.value = s.replace('.', ',');
+                    e.target.value = s.replace('.', _madNumSeps()[0]);
                 } else {
                     e.target.value = '';
                 }
@@ -11270,8 +11313,8 @@ document.addEventListener('alpine:init', () => {
             var str = String(abs).padStart(decimals + 1, '0');
             var intPart = str.slice(0, str.length - decimals) || '0';
             var decPart = decimals > 0 ? str.slice(str.length - decimals) : '';
-            intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-            var result = decimals > 0 ? intPart + ',' + decPart : intPart;
+            intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, _madNumSeps()[1]);
+            var result = decimals > 0 ? intPart + _madNumSeps()[0] + decPart : intPart;
             return neg ? '-' + result : result;
         }
 
@@ -12865,7 +12908,7 @@ document.addEventListener('alpine:init', () => {
 
         function _fmtDayShort(ds) {
             const d = new Date(ds + 'T12:00:00');
-            const names = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+            const names = madT('weekdays_short', 'Dom,Seg,Ter,Qua,Qui,Sex,Sáb').split(',');
             return names[d.getDay()] + ' ' + ds.slice(8, 10) + '/' + ds.slice(5, 7);
         }
 
@@ -13692,7 +13735,7 @@ document.addEventListener('alpine:init', () => {
                 );
             } catch (err) {
                 if (typeof madToast === 'function') {
-                    madToast('Câmera não disponível. Use HTTPS ou digite o código manualmente.', 'warning');
+                    madToast(madT('camera_https', 'Câmera não disponível. Use HTTPS ou digite o código manualmente.'), 'warning');
                 }
                 try { this._scanner.clear(); } catch(e) {}
                 this._scanner = null;
@@ -13929,7 +13972,7 @@ document.addEventListener('alpine:init', () => {
                 url = canvas.toDataURL(type, quality);
             }
             if (!fits(url)) {
-                _madUploadWarn('A imagem editada passa do limite deste campo (' + _madUploadSize(this._maxSize) + ') e não foi alterada.');
+                _madUploadWarn(madT('image_too_big', 'A imagem editada passa do limite deste campo (:max) e não foi alterada.', { max: _madUploadSize(this._maxSize) }));
                 return '';
             }
             return url;
@@ -13947,7 +13990,7 @@ document.addEventListener('alpine:init', () => {
                 const video = this.$refs.video;
                 if (video) video.srcObject = this._stream;
             } catch (err) {
-                if (typeof madToast === 'function') madToast('Câmera não disponível', 'danger');
+                if (typeof madToast === 'function') madToast(madT('camera_unavailable', 'Câmera não disponível'), 'danger');
             }
         },
 
@@ -14167,9 +14210,8 @@ document.addEventListener('alpine:init', () => {
        ═══════════════════════════════════════════════════════════════════ */
 
     // ── Date helpers (module-scoped) ──────────────────────────────────
-    var _drpMonths = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                      'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    var _drpWeekdays = ['D','S','T','Q','Q','S','S'];
+    var _drpMonths = madT('months_long', 'Janeiro,Fevereiro,Março,Abril,Maio,Junho,Julho,Agosto,Setembro,Outubro,Novembro,Dezembro').split(',');
+    var _drpWeekdays = madT('weekdays_min', 'D,S,T,Q,Q,S,S').split(',');
 
     function _drpParseISO(str) {
         if (!str || typeof str !== 'string') return null;
@@ -14310,14 +14352,14 @@ document.addEventListener('alpine:init', () => {
         var today = new Date(); today.setHours(0,0,0,0);
         var yesterday = _drpSubDays(today, 1);
         return [
-            { label: 'Hoje',            start: new Date(today),    end: new Date(today) },
-            { label: 'Ontem',           start: yesterday,          end: new Date(yesterday) },
-            { label: 'Últimos 7 dias',  start: _drpSubDays(today, 6),  end: new Date(today) },
-            { label: 'Últimos 30 dias', start: _drpSubDays(today, 29), end: new Date(today) },
-            { label: 'Este mês',        start: _drpStartOfMonth(today), end: _drpEndOfMonth(today) },
-            { label: 'Mês passado',     start: _drpStartOfMonth(_drpAddMonths(today, -1)), end: _drpEndOfMonth(_drpAddMonths(today, -1)) },
-            { label: 'Este trimestre',  start: _drpStartOfQuarter(today), end: _drpEndOfQuarter(today) },
-            { label: 'Este ano',        start: new Date(today.getFullYear(), 0, 1), end: new Date(today.getFullYear(), 11, 31) },
+            { label: madT('range_today', 'Hoje'),            start: new Date(today),    end: new Date(today) },
+            { label: madT('range_yesterday', 'Ontem'),           start: yesterday,          end: new Date(yesterday) },
+            { label: madT('range_last_7_days', 'Últimos 7 dias'),  start: _drpSubDays(today, 6),  end: new Date(today) },
+            { label: madT('range_last_30_days', 'Últimos 30 dias'), start: _drpSubDays(today, 29), end: new Date(today) },
+            { label: madT('range_this_month', 'Este mês'),        start: _drpStartOfMonth(today), end: _drpEndOfMonth(today) },
+            { label: madT('range_last_month', 'Mês passado'),     start: _drpStartOfMonth(_drpAddMonths(today, -1)), end: _drpEndOfMonth(_drpAddMonths(today, -1)) },
+            { label: madT('range_this_quarter', 'Este trimestre'),  start: _drpStartOfQuarter(today), end: _drpEndOfQuarter(today) },
+            { label: madT('range_this_year', 'Este ano'),        start: new Date(today.getFullYear(), 0, 1), end: new Date(today.getFullYear(), 11, 31) },
         ];
     }
 
@@ -14363,7 +14405,7 @@ document.addEventListener('alpine:init', () => {
             _minDate: null,
             _maxDate: null,
             _maxSpan: cfg.maxSpan || 0,
-            _placeholder: cfg.placeholder || 'Selecione o período',
+            _placeholder: cfg.placeholder || madT('range_placeholder', 'Selecione o período'),
             _nameStart: cfg.nameStart || '',
             _nameEnd: cfg.nameEnd || '',
             _databaseMask: _databaseMask,
@@ -14412,7 +14454,8 @@ document.addEventListener('alpine:init', () => {
             },
 
             get typedPlaceholder() {
-                return this._displayMask.replace(/yyyy/g, 'aaaa').replace(/yy/g, 'aa');
+                var y = madT('year_letter', 'a');
+                return this._displayMask.replace(/yyyy/g, y + y + y + y).replace(/yy/g, y + y);
             },
 
             // Encaixa os dígitos nas posições da máscara ("01022026" → "01/02/2026").
@@ -14449,12 +14492,12 @@ document.addEventListener('alpine:init', () => {
                 if (ts === '' && te === '') { this.clear(); this.isOpen = false; return; }
                 var start = this._parseTyped(ts), end = this._parseTyped(te);
                 var fmt = this.typedPlaceholder;
-                if (!start) { this.typedError = 'Data inicial inválida (use ' + fmt + ').'; return; }
-                if (!end)   { this.typedError = 'Data final inválida (use ' + fmt + ').'; return; }
-                if (end < start) { this.typedError = 'A data final deve ser igual ou posterior à inicial.'; return; }
-                if (this._minDate && start < this._minDate) { this.typedError = 'A data inicial é anterior a ' + _drpFormatWithMask(this._minDate, this._displayMask) + '.'; return; }
-                if (this._maxDate && end > this._maxDate) { this.typedError = 'A data final é posterior a ' + _drpFormatWithMask(this._maxDate, this._displayMask) + '.'; return; }
-                if (this._maxSpan > 0 && _drpDiffDays(end, start) > this._maxSpan) { this.typedError = 'O período pode ter no máximo ' + this._maxSpan + ' dias.'; return; }
+                if (!start) { this.typedError = madT('range_bad_start', 'Data inicial inválida (use :fmt).', { fmt: fmt }); return; }
+                if (!end)   { this.typedError = madT('range_bad_end', 'Data final inválida (use :fmt).', { fmt: fmt }); return; }
+                if (end < start) { this.typedError = madT('range_end_before', 'A data final deve ser igual ou posterior à inicial.'); return; }
+                if (this._minDate && start < this._minDate) { this.typedError = madT('range_before_min', 'A data inicial é anterior a :date.', { date: _drpFormatWithMask(this._minDate, this._displayMask) }); return; }
+                if (this._maxDate && end > this._maxDate) { this.typedError = madT('range_after_max', 'A data final é posterior a :date.', { date: _drpFormatWithMask(this._maxDate, this._displayMask) }); return; }
+                if (this._maxSpan > 0 && _drpDiffDays(end, start) > this._maxSpan) { this.typedError = madT('range_max_span', 'O período pode ter no máximo :n dias.', { n: this._maxSpan }); return; }
                 this.startDate = start;
                 this.endDate = end;
                 this.selectingEnd = false;
@@ -15317,7 +15360,7 @@ document.addEventListener('alpine:init', () => {
                 }
                 if (fits(url)) return url;
             }
-            _madUploadWarn('A assinatura passa do limite deste campo (' + _madUploadSize(_maxSize) + ') e não foi gravada.');
+            _madUploadWarn(madT('signature_too_big', 'A assinatura passa do limite deste campo (:max) e não foi gravada.', { max: _madUploadSize(_maxSize) }));
             return '';
         }
 
@@ -16597,17 +16640,17 @@ document.addEventListener("alpine:init", function () {
         var ov = document.createElement('div');
         ov.className = 'mad-lightbox-overlay';
         ov.innerHTML =
-            '<button type="button" class="mad-lightbox-close" aria-label="Fechar">&#10005;</button>' +
-            (multi ? '<button type="button" class="mad-lightbox-prev" aria-label="Anterior">&#10094;</button>' : '') +
+            '<button type="button" class="mad-lightbox-close" aria-label="' + _madTE('close', 'Fechar') + '">&#10005;</button>' +
+            (multi ? '<button type="button" class="mad-lightbox-prev" aria-label="' + _madTE('previous', 'Anterior') + '">&#10094;</button>' : '') +
             '<figure class="mad-lightbox-figure">' +
                 '<img class="mad-lightbox-img" alt="">' +
                 '<figcaption class="mad-lightbox-bar">' +
                     '<span class="mad-lightbox-caption"></span>' +
                     '<span class="mad-lightbox-count"></span>' +
-                    '<a class="mad-lightbox-dl" target="_blank" rel="noopener">Baixar</a>' +
+                    '<a class="mad-lightbox-dl" target="_blank" rel="noopener">' + _madTE('download', 'Baixar') + '</a>' +
                 '</figcaption>' +
             '</figure>' +
-            (multi ? '<button type="button" class="mad-lightbox-next" aria-label="Próxima">&#10095;</button>' : '');
+            (multi ? '<button type="button" class="mad-lightbox-next" aria-label="' + _madTE('next', 'Próxima') + '">&#10095;</button>' : '');
 
         ov.addEventListener('click', function (e) {
             if (e.target === ov) close();

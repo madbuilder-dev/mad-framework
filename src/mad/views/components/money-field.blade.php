@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => 'R$','suffix' => '', 'placeholder' => '', 'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => ',', 'thousandSep' => '.', 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => 'R$','suffix' => '', 'placeholder' => '', 'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -10,9 +10,11 @@
     // Antes era o padrão, e no mesmo formulário um campo de moeda e um
     // numérico gravavam valores 100× diferentes para o mesmo "10" (fw#307).
     $fillDirection = strtolower((string)$fillDirection) === 'right' ? 'right' : 'left';
-    // Sanitiza separadores — single char (ou string vazia para thousandSep)
-    $decimalSep  = $decimalSep !== '' ? mb_substr((string)$decimalSep, 0, 1) : ',';
-    $thousandSep = mb_substr((string)$thousandSep, 0, 1);
+    // Sanitiza separadores — single char (ou string vazia para thousandSep).
+    // Sem decimal-sep/thousand-sep valem os do idioma do app (inglês: "1,234.56").
+    [$__locDec, $__locTho] = \Mad\Support\ValueFormatter::separators();
+    $decimalSep  = ($decimalSep !== null && $decimalSep !== '') ? mb_substr((string)$decimalSep, 0, 1) : $__locDec;
+    $thousandSep = $thousandSep === null ? $__locTho : mb_substr((string)$thousandSep, 0, 1);
 
     // Valor inicial: registro (MadWire) > prop `value` (default do dev).
     // Sem nenhum dos dois o campo abre VAZIO: antes o NULL do registro virava

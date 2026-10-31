@@ -215,7 +215,7 @@ class MadDbBlocks
     {
         $items = self::loadItems($cfg);
         if (empty($items)) {
-            $empty = $cfg['emptyText'] ?? 'Nenhum item';
+            $empty = $cfg['emptyText'] ?? mad_t('mad.ui.no_items');
             return '<div class="mad-db-blocks-empty">' . htmlspecialchars($empty) . '</div>';
         }
         $html = '';
@@ -248,7 +248,7 @@ class MadDbBlocks
     {
         $items = self::loadItems($cfg);
         if (empty($items)) {
-            $empty = $cfg['emptyText'] ?? 'Nenhum item';
+            $empty = $cfg['emptyText'] ?? mad_t('mad.ui.no_items');
             return '<div class="mad-db-blocks-empty">' . htmlspecialchars($empty) . '</div>';
         }
         $html = '';

@@ -184,11 +184,11 @@
         {{-- tabindex: com o foco aqui, o Ctrl+V cola o print no campo (onPaste). --}}
         <div class="mad-file-body" tabindex="0" role="button" @click="$refs.fileInput.click()" @keydown.enter.prevent="$refs.fileInput.click()" @keydown.space.prevent="$refs.fileInput.click()" style="cursor:pointer;">
             <i data-lucide="upload-cloud" style="width:32px;height:32px;margin-bottom:8px;color:var(--mad-muted);"></i>
-            <span class="mad-file-text-drop">Arraste arquivos aqui ou <strong>clique para selecionar</strong></span>
+            <span class="mad-file-text-drop">{{ mad_t('mad.ui.drag_files_here_or') }} <strong>{{ mad_t('mad.ui.click_to_select') }}</strong></span>
             <small class="mad-file-text-drop" style="color:var(--mad-muted);">{{ mad_t('mad.field.paste_image') }}</small>
             <span class="mad-file-text-touch"><strong>{{ mad_t('mad.field.tap_to_choose') }}</strong></span>
-            @if($maxFiles) <small style="color:var(--mad-muted);">Máx. {{ $maxFiles }} arquivo(s)</small> @endif
-            @if($maxSize)  <small style="color:var(--mad-muted);">Máx. {{ round($maxSize / 1024, 1) }}MB por arquivo</small> @endif
+            @if($maxFiles) <small style="color:var(--mad-muted);">{{ mad_t('mad.ui.max_files', ['n' => $maxFiles]) }}</small> @endif
+            @if($maxSize)  <small style="color:var(--mad-muted);">{{ mad_t('mad.ui.max_per_file', ['s' => round($maxSize / 1024, 1)]) }}</small> @endif
         </div>
         @if($_camMode !== '')
         {{-- Tirar foto (celular): outra entrada, só de imagem, com a câmera de
@@ -224,7 +224,7 @@
                     </div>
                     {{-- Remove --}}
                     <button type="button" class="mad-multi-file-card-remove"
-                        @click.stop="removeFile(i)" title="Remover"
+                        @click.stop="removeFile(i)" title="{{ mad_t('mad.ui.remove') }}"
                         @if($disabled) disabled @endif>
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                     </button>
@@ -236,7 +236,7 @@
                 x-show="!maxFiles || files.length < maxFiles">
                 <div class="mad-multi-file-card-icon" style="background:var(--mad-bg-muted);height:100%;">
                     <i data-lucide="plus" style="width:28px;height:28px;color:var(--mad-text-muted);"></i>
-                    <span style="font-size:11px;color:var(--mad-text-muted);">Adicionar</span>
+                    <span style="font-size:11px;color:var(--mad-text-muted);">{{ mad_t('mad.ui.add') }}</span>
                 </div>
             </div>
         </div>
@@ -261,7 +261,7 @@
                 <iframe x-show="ftype === 'pdf'" :src="src" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>
                 <div x-show="ftype === 'other'" style="padding:60px 20px;color:var(--mad-text-muted);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
-                    <p>Preview não disponível para este tipo de arquivo.</p>
+                    <p>{{ mad_t('mad.ui.preview_unavailable') }}</p>
                 </div>
             </div>
         </div>

@@ -78,9 +78,9 @@
     $defaults = is_array($defaults ?? null) ? $defaults : [];
     $orderDir        = $orderDir        ?? 'asc';
     $label           = $label           ?? '';
-    $placeholder     = $placeholder     ?? 'Escreva um comentário...';
+    $placeholder     = $placeholder     ?? mad_t('mad.ui.comment_placeholder');
     $submitLabel     = $submitLabel     ?? 'Comentar';
-    $emptyText       = $emptyText       ?? 'Sem comentários. Escreva o primeiro abaixo.';
+    $emptyText       = $emptyText       ?? mad_t('mad.ui.comments_empty');
     $deletable       = isset($deletable) ? !empty($deletable) : true;
     $editable        = !empty($editable);
     $rows            = (int) ($rows ?? 3);
@@ -93,7 +93,7 @@
     // Opt-in: `confirm-remove` pelado usa a mensagem padrão; com valor, a sua.
     $confirmRemove = \Mad\Form\MadDbBlocks::confirmMessage(
         $confirmRemove ?? '',
-        'Excluir este comentário?'
+        mad_t('mad.ui.delete_comment_confirm')
     );
 
     $presetVars = [
@@ -115,7 +115,7 @@
     // Caixa de inclusão (form fixo abaixo da lista).
     $formTpl = '<mad-textarea-field name="' . e($bodyField) . '" :rows="' . $rows . '" placeholder="' . e($placeholder) . '" />';
     if ($internalFlag !== '' && !$hideInternal) {
-        $formTpl .= '<mad-switch-field name="' . e($internalFlag) . '" label="Comentário interno (só a equipe vê)" />';
+        $formTpl .= '<mad-switch-field name="' . e($internalFlag) . '" label="' . e(mad_t('mad.ui.internal_comment')) . '" />';
     }
 
     // ⚠️ O slot é injetado com {!! !!} — string crua NÃO passa pelo compilador,

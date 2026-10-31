@@ -70,7 +70,7 @@
     [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
-    $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => 'a']);
+    $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => mad_t('mad.ui.year_letter')]);
 
     $alpineCfg = json_encode([
         'displayMask'  => $display_mask,

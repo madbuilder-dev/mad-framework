@@ -93,7 +93,9 @@
                 $num = is_numeric($rawValue)
                     ? (float) $rawValue
                     : (float) str_replace(['.', ','], ['', '.'], $rawValue);
-                $displayHtml = htmlspecialchars($prefix, ENT_QUOTES) . ' ' . number_format($num, 2, ',', '.');
+                [$_dec, $_tho] = \Mad\Support\ValueFormatter::separators();
+                $displayHtml = htmlspecialchars($prefix, ENT_QUOTES) . \Mad\Support\ValueFormatter::moneyGap()
+                    . number_format($num, 2, $_dec, $_tho);
                 break;
 
             case 'date':
@@ -115,7 +117,7 @@
                     }
                 }
                 $displayHtml = $dt
-                    ? $dt->format($fmtType === 'date' ? 'd/m/Y' : 'd/m/Y H:i')
+                    ? $dt->format(\Mad\Support\ValueFormatter::dateFormat($fmtType !== 'date'))
                     : htmlspecialchars($rawValue, ENT_QUOTES);
                 break;
 
@@ -186,7 +188,7 @@
         @endif
         <span class="mad-display-field-label">{!! $label !!}</span>
         @if($copyable && !$isEmpty)
-            <button type="button" class="mad-display-field-copy" title="Copiar"
+            <button type="button" class="mad-display-field-copy" title="{{ mad_t('mad.ui.copy') }}"
                 onclick="navigator.clipboard.writeText('{{ $copyVal }}');var _b=this;_b.classList.add('mad-display-field-copied');setTimeout(function(){_b.classList.remove('mad-display-field-copied')},1500)">
                 <i data-lucide="copy" style="width:12px;height:12px;"></i>
             </button>

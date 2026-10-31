@@ -110,19 +110,25 @@ class MadValidationException extends \RuntimeException
 
         // Erro em campo que a tela não tem não pinta nada: a mensagem vai pro
         // toast, senão o form fica "não salva e não diz por quê".
+        // O texto padrão sai no idioma do app (pt-BR: o próprio DEFAULT_TOAST).
+        $isDefault = $toast === self::DEFAULT_TOAST;
+        if ($isDefault) {
+            $toast = self::uiText('fix_errors', self::DEFAULT_TOAST);
+        }
+
         $orphans = $this->orphanErrors();
         if ($orphans !== []) {
             $this->logOrphans($orphans);
             // Só erro de campo que a tela não tem: não há o que corrigir nela
             // (fw#373). O texto padrão vira o motivo de verdade; um toast que
             // a tela passou continua sendo dela.
-            if ($toast === self::DEFAULT_TOAST && count($orphans) === count($this->errors)) {
-                $toast = 'Não foi possível salvar.';
+            if ($isDefault && count($orphans) === count($this->errors)) {
+                $toast = self::uiText('save_failed', 'Não foi possível salvar.');
             }
             $toast = trim($toast . ' ' . self::summarize($orphans) . ' '
                 . (count($orphans) === 1
-                    ? 'Esse campo não está nesta tela: avise o responsável pelo sistema.'
-                    : 'Esses campos não estão nesta tela: avise o responsável pelo sistema.'));
+                    ? self::uiText('orphan_one', 'Esse campo não está nesta tela: avise o responsável pelo sistema.')
+                    : self::uiText('orphan_many', 'Esses campos não estão nesta tela: avise o responsável pelo sistema.')));
         }
 
         if ($toast !== '') {
@@ -130,6 +136,18 @@ class MadValidationException extends \RuntimeException
         }
 
         return $response;
+    }
+
+    /** Texto do catálogo `mad.ui.<key>` (sem catálogo: o pt-BR dado). */
+    private static function uiText(string $key, string $ptBr): string
+    {
+        try {
+            $text = \Mad\I18n\MadLang::t('mad.ui.' . $key);
+        } catch (\Throwable $e) {
+            return $ptBr;
+        }
+
+        return $text === 'mad.ui.' . $key ? $ptBr : $text;
     }
 
     /**

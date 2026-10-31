@@ -50,7 +50,7 @@
     $query       = $query       ?? null;   // Eloquent/Query Builder (novo padrão)
     $selected    = $selected    ?? [];
     $maxDisplay  = (int)($maxDisplay ?? 3);
-    $placeholder = $placeholder ?? 'Selecione...';
+    $placeholder = $placeholder ?? mad_t('mad.ui.select_placeholder');
     $maxSize     = (int)($maxSize    ?? 0);
     $mode        = $mode        ?? 'comma';
     $pivotModel  = $pivotModel  ?? '';
@@ -62,11 +62,11 @@
     $disabled    = !empty($disabled);
     $attrs       = $attrs       ?? '';
     $noResultsCreateAction        = $noResultsCreateAction        ?? '';
-    $noResultsCreateLabel         = $noResultsCreateLabel         ?? 'Cadastrar novo';
+    $noResultsCreateLabel         = $noResultsCreateLabel         ?? mad_t('mad.ui.create_new');
     $noResultsCreateIcon          = $noResultsCreateIcon          ?? 'plus';
     $noResultsCreateClass         = $noResultsCreateClass         ?? 'mad-btn mad-btn-primary mad-btn-sm';
     $noResultsQuickRegisterAction = $noResultsQuickRegisterAction ?? '';
-    $noResultsQuickRegisterLabel  = $noResultsQuickRegisterLabel  ?? 'Adicionar';
+    $noResultsQuickRegisterLabel  = $noResultsQuickRegisterLabel  ?? mad_t('mad.ui.add');
     $noResultsQuickRegisterIcon   = $noResultsQuickRegisterIcon   ?? 'check';
     $noResultsQuickRegisterClass  = $noResultsQuickRegisterClass  ?? 'mad-btn mad-btn-success mad-btn-sm';
     $noResultsQuickFields         = $noResultsQuickFields         ?? [];

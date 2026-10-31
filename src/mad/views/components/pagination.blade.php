@@ -21,7 +21,7 @@
         $pages[] = ['type' => 'page', 'n' => $total];
     }
 @endphp
-<nav class="mad-pagination {{ $class }}" aria-label="Paginação">
+<nav class="mad-pagination {{ $class }}" aria-label="{{ mad_t('mad.ui.pagination') }}">
     {{-- Prev --}}
     @if($slot ?? '')
         {{-- Custom content --}}

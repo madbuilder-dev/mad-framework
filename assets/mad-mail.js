@@ -64,7 +64,7 @@
             var el = compose();           // #madCompose vive no shell global (uma vez)
             if (!el) return;
 
-            var title = 'Nova mensagem';
+            var title = window.madT ? window.madT('mail_new_message', 'Nova mensagem') : 'Nova mensagem';
             var params = {};
             if (opts.forwardId) { title = 'Encaminhar'; params.forwardId = opts.forwardId; }
             else if (opts.draftId) { title = 'Rascunho'; params.draftId = opts.draftId; }
@@ -209,7 +209,7 @@
                 var self = this;
                 S.echo.private(channel).listen('.MensagemRecebida', function (e) {
                     self.bumpBadge();
-                    self.toast((e && e.fromName ? e.fromName + ': ' : '') + ((e && e.subject) || 'Nova mensagem'));
+                    self.toast((e && e.fromName ? e.fromName + ': ' : '') + ((e && e.subject) || (window.madT ? window.madT('mail_new_message', 'Nova mensagem') : 'Nova mensagem')));
                     if (!self.isComposeOpen()) self.refreshList();
                 });
                 S.echoBound = channel;

@@ -30,7 +30,7 @@
                 </button>
             </div>
             <div class="mad-drp-weekdays">
-                <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                @foreach(explode(',', mad_t('mad.ui.weekdays_min')) as $_madWd)<span>{{ $_madWd }}</span>@endforeach
             </div>
             <div class="mad-drp-days">
                 <template x-for="(day, di) in days" :key="di">
@@ -46,7 +46,7 @@
 
     @if(!empty($withTime))
     <div class="mad-dp-time">
-        <span class="mad-dp-time-label">Hora:</span>
+        <span class="mad-dp-time-label">{{ mad_t('mad.ui.time_label') }}</span>
         <input type="number" class="mad-dp-time-input" min="0" max="23" step="1"
                :value="String(hh).padStart(2,'0')"
                @input="setHour($event.target.value)"
@@ -62,23 +62,23 @@
     <div class="mad-dp-footer">
         <button type="button" class="mad-dp-footer-btn mad-dp-footer-btn--danger" @click="clear()">
             <i data-lucide="x" style="width:13px;height:13px;"></i>
-            Limpar
+            {{ mad_t('mad.ui.clear') }}
         </button>
         @if(!empty($withTime))
         <div style="display:flex;gap:6px;">
             <button type="button" class="mad-dp-footer-btn" @click="selectToday()">
                 <i data-lucide="calendar-check" style="width:13px;height:13px;"></i>
-                Agora
+                {{ mad_t('mad.ui.now') }}
             </button>
             <button type="button" class="mad-dp-footer-btn mad-dp-footer-btn--primary" @click="apply()">
                 <i data-lucide="check" style="width:13px;height:13px;"></i>
-                Aplicar
+                {{ mad_t('mad.ui.apply') }}
             </button>
         </div>
         @else
         <button type="button" class="mad-dp-footer-btn mad-dp-footer-btn--primary" @click="selectToday()">
             <i data-lucide="calendar-check" style="width:13px;height:13px;"></i>
-            Hoje
+            {{ mad_t('mad.ui.today') }}
         </button>
         @endif
     </div>

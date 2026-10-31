@@ -36,7 +36,7 @@
     $selected    = $selected    ?? [];
     $searchable  = !isset($searchable) || !empty($searchable);
     $height      = $height      ?? '320px';
-    $placeholder = $placeholder ?? 'Buscar...';
+    $placeholder = $placeholder ?? mad_t('mad.ui.search_dots');
     $hint        = $hint        ?? '';
     $error       = $error       ?? '';
     $required    = !empty($required);
@@ -141,7 +141,7 @@
             ['key' => $keyField, 'label' => 'ID', 'width' => '60px', 'align' => 'center'],
         ];
         $displayKey = str_contains($display, '{') ? '__display' : $display;
-        $displayLabel = str_contains($display, '{') ? 'Nome' : ucfirst($display);
+        $displayLabel = str_contains($display, '{') ? mad_t('mad.ui.name') : ucfirst($display);
         $columns[] = ['key' => $displayKey, 'label' => $displayLabel];
     }
 @endphp

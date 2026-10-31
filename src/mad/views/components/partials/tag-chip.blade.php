@@ -19,5 +19,5 @@
     <button type="button"
         data-mad-click="blockRemove({{ $id }}, '{{ $state }}')"
         @if(!empty($vars['confirmRemove'])) data-mad-confirm="{{ $vars['confirmRemove'] }}" @endif
-        aria-label="Remover">×</button>
+        aria-label="{{ mad_t('mad.ui.remove') }}">×</button>
 </span>

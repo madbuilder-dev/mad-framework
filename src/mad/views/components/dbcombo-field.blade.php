@@ -157,7 +157,7 @@
     $selected = (string) ($selected ?? '');
     // "Valor padrão" do Studio: só quando nem `selected` nem o registro trouxeram valor.
     $selected = \Mad\Support\MadFieldValue::withDefault((string) $name, $selected, $default ?? null);
-    $placeholder   = $placeholder   ?? 'Selecione...';
+    $placeholder   = $placeholder   ?? mad_t('mad.ui.select_placeholder');
     // `no-empty`: a lista sai sem a opção em branco e o navegador elege o
     // primeiro registro — o `setDefaultOption(false)` de quem vem do 4.0.
     $noEmpty       = !empty($noEmpty ?? false);
@@ -391,11 +391,11 @@
         'key'          => $keyField,
         'display'      => $display,
         'createAction' => $noResultsCreateAction        ?? '',
-        'createLabel'  => $noResultsCreateLabel         ?? 'Cadastrar novo',
+        'createLabel'  => $noResultsCreateLabel         ?? mad_t('mad.ui.create_new'),
         'createIcon'   => $noResultsCreateIcon          ?? 'plus',
         'createClass'  => $noResultsCreateClass         ?? 'mad-btn mad-btn-primary mad-btn-sm',
         'quickAction'  => $noResultsQuickRegisterAction ?? '',
-        'quickLabel'   => $noResultsQuickRegisterLabel  ?? 'Adicionar',
+        'quickLabel'   => $noResultsQuickRegisterLabel  ?? mad_t('mad.ui.add'),
         'quickIcon'    => $noResultsQuickRegisterIcon   ?? 'check',
         'quickClass'   => $noResultsQuickRegisterClass  ?? 'mad-btn mad-btn-success mad-btn-sm',
         'quickFields'  => $noResultsQuickFields         ?? [],

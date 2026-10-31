@@ -143,21 +143,21 @@
             <button type="button" class="mad-signature-pill"
                     :class="{ 'active': mode === 'draw' }"
                     @click="switchMode('draw')">
-                <i data-lucide="pen-line"></i> Desenhar
+                <i data-lucide="pen-line"></i> {{ mad_t('mad.ui.sig_draw') }}
             </button>
             @endif
             @if(in_array('type', $modesArray))
             <button type="button" class="mad-signature-pill"
                     :class="{ 'active': mode === 'type' }"
                     @click="switchMode('type')">
-                <i data-lucide="type"></i> Digitar
+                <i data-lucide="type"></i> {{ mad_t('mad.ui.sig_type') }}
             </button>
             @endif
             @if(in_array('upload', $modesArray))
             <button type="button" class="mad-signature-pill"
                     :class="{ 'active': mode === 'upload' }"
                     @click="switchMode('upload')">
-                <i data-lucide="upload"></i> Upload
+                <i data-lucide="upload"></i> {{ mad_t('mad.ui.sig_upload') }}
             </button>
             @endif
         </div>
@@ -167,15 +167,15 @@
         <div x-show="hasSignature && !editing" x-cloak>
             <div class="mad-signature-preview">
                 <div class="mad-signature-preview-img" style="height:{{ $height }};">
-                    <img :src="signatureData" alt="Assinatura">
+                    <img :src="signatureData" alt="{{ mad_t('mad.ui.signature') }}">
                 </div>
                 <div class="mad-signature-preview-actions">
-                    <button type="button" class="mad-signature-toolbar-btn" @click="edit()" title="Editar">
-                        <i data-lucide="pencil"></i> Editar
+                    <button type="button" class="mad-signature-toolbar-btn" @click="edit()" title="{{ mad_t('mad.ui.edit') }}">
+                        <i data-lucide="pencil"></i> {{ mad_t('mad.ui.edit') }}
                     </button>
                     <div class="mad-signature-sep"></div>
-                    <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clear()" title="Limpar">
-                        <i data-lucide="trash-2"></i> Limpar
+                    <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clear()" title="{{ mad_t('mad.ui.clear') }}">
+                        <i data-lucide="trash-2"></i> {{ mad_t('mad.ui.clear') }}
                     </button>
                 </div>
             </div>
@@ -186,7 +186,7 @@
         <div x-show="mode === 'draw' && (!hasSignature || editing)" x-cloak>
             <div class="mad-signature-canvas-wrap" style="height:{{ $height }};" x-ref="canvasWrap">
                 <canvas x-ref="canvas"></canvas>
-                <button type="button" class="mad-signature-expand-btn" @click="enterFullscreen()" title="Tela cheia">
+                <button type="button" class="mad-signature-expand-btn" @click="enterFullscreen()" title="{{ mad_t('mad.ui.fullscreen') }}">
                     <i data-lucide="maximize-2"></i>
                 </button>
             </div>
@@ -206,21 +206,21 @@
                     <button type="button" class="mad-signature-width"
                             :class="{ 'active': penWidth === {{ $w }} }"
                             @click="setPenWidth({{ $w }})"
-                            title="Espessura {{ $w }}">
+                            title="{{ mad_t('mad.ui.sig_thickness', ['w' => $w]) }}">
                         <span class="mad-signature-width-dot" style="width:{{ $w + 2 }}px;height:{{ $w + 2 }}px;"></span>
                     </button>
                     @endforeach
                 </div>
                 <div class="mad-signature-sep"></div>
-                <button type="button" class="mad-signature-toolbar-btn" @click="undo()" title="Desfazer">
-                    <i data-lucide="undo-2"></i> Desfazer
+                <button type="button" class="mad-signature-toolbar-btn" @click="undo()" title="{{ mad_t('mad.ui.undo') }}">
+                    <i data-lucide="undo-2"></i> {{ mad_t('mad.ui.undo') }}
                 </button>
-                <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clearPad()" title="Limpar">
-                    <i data-lucide="eraser"></i> Limpar
+                <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clearPad()" title="{{ mad_t('mad.ui.clear') }}">
+                    <i data-lucide="eraser"></i> {{ mad_t('mad.ui.clear') }}
                 </button>
                 <div style="flex:1;"></div>
                 <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="confirmDraw()">
-                    <i data-lucide="check"></i> Confirmar
+                    <i data-lucide="check"></i> {{ mad_t('mad.ui.confirm') }}
                 </button>
             </div>
         </div>
@@ -231,7 +231,7 @@
         <div x-show="mode === 'type' && (!hasSignature || editing)" x-cloak>
             <div class="mad-signature-type">
                 <input type="text" class="mad-signature-type-input"
-                       placeholder="Digite seu nome..."
+                       placeholder="{{ mad_t('mad.ui.type_your_name') }}"
                        x-model="typedText"
                        @input="onTextInput()">
 
@@ -261,7 +261,7 @@
                 <div style="margin-top:12px;text-align:right;">
                     <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="confirmType()"
                             :disabled="!typedText.trim()">
-                        <i data-lucide="check"></i> Confirmar
+                        <i data-lucide="check"></i> {{ mad_t('mad.ui.confirm') }}
                     </button>
                 </div>
             </div>
@@ -279,8 +279,8 @@
                  @drop.prevent="onUploadDrop($event)"
                  style="height:{{ $height }};">
                 <i data-lucide="upload"></i>
-                <div class="mad-signature-upload-text">Arraste uma imagem ou clique para selecionar</div>
-                <div class="mad-signature-upload-hint">{{ strtoupper(str_replace(['image/', ','], ['', ', '], $accept)) }} &bull; M&aacute;x {{ $max_size }}</div>
+                <div class="mad-signature-upload-text">{{ mad_t('mad.ui.drag_image_or_click') }}</div>
+                <div class="mad-signature-upload-hint">{{ strtoupper(str_replace(['image/', ','], ['', ', '], $accept)) }} &bull; {!! htmlentities(mad_t('mad.ui.max_size'), ENT_QUOTES, 'UTF-8') !!} {{ $max_size }}</div>
             </div>
         </div>
         @endif
@@ -289,7 +289,7 @@
         <div x-show="!hasSignature && !editing && !mode" x-cloak
              class="mad-signature-empty" @click="startEditing()">
             <i data-lucide="pen-line"></i>
-            <div class="mad-signature-empty-text">Clique para assinar</div>
+            <div class="mad-signature-empty-text">{{ mad_t('mad.ui.click_to_sign') }}</div>
         </div>
 
     </div>
@@ -298,7 +298,7 @@
     <template x-teleport="body">
         <div class="mad-signature-fullscreen" x-show="isFullscreen" x-cloak x-transition.opacity>
             <div class="mad-signature-fullscreen-header">
-                <div class="mad-signature-fullscreen-header-title">Assinatura</div>
+                <div class="mad-signature-fullscreen-header-title">{{ mad_t('mad.ui.signature') }}</div>
                 <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon" @click="exitFullscreen()">
                     <i data-lucide="x"></i>
                 </button>
@@ -320,21 +320,21 @@
                     <button type="button" class="mad-signature-width"
                             :class="{ 'active': penWidth === {{ $w }} }"
                             @click="setPenWidth({{ $w }})"
-                            title="Espessura {{ $w }}">
+                            title="{{ mad_t('mad.ui.sig_thickness', ['w' => $w]) }}">
                         <span class="mad-signature-width-dot" style="width:{{ $w + 2 }}px;height:{{ $w + 2 }}px;"></span>
                     </button>
                     @endforeach
                 </div>
                 <div class="mad-signature-sep"></div>
-                <button type="button" class="mad-signature-toolbar-btn" @click="undo()" title="Desfazer">
+                <button type="button" class="mad-signature-toolbar-btn" @click="undo()" title="{{ mad_t('mad.ui.undo') }}">
                     <i data-lucide="undo-2"></i>
                 </button>
-                <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clearPad()" title="Limpar">
+                <button type="button" class="mad-signature-toolbar-btn mad-signature-toolbar-btn--danger" @click="clearPad()" title="{{ mad_t('mad.ui.clear') }}">
                     <i data-lucide="eraser"></i>
                 </button>
                 <div style="flex:1;"></div>
                 <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="confirmFullscreen()">
-                    <i data-lucide="check"></i> Confirmar
+                    <i data-lucide="check"></i> {{ mad_t('mad.ui.confirm') }}
                 </button>
             </div>
         </div>

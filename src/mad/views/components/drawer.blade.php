@@ -62,7 +62,7 @@
                         @if($dismissible)
                             <button type="button"
                                     class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon"
-                                    aria-label="Fechar"
+                                    aria-label="{{ mad_t('mad.ui.close') }}"
                                     @if($confirmClose)
                                     @click="MadOverlayEsc.dismiss($el.closest('[data-mad-overlay]'))"
                                     @else

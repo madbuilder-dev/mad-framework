@@ -10,11 +10,11 @@
         <div class="mad-rt-toolbar-nav">
             <button type="button" class="mad-rt-btn" @click="prev()">&#9664;</button>
             <button type="button" class="mad-rt-btn" @click="next()">&#9654;</button>
-            <button type="button" class="mad-rt-btn" @click="goToday()">Hoje</button>
+            <button type="button" class="mad-rt-btn" @click="goToday()">{{ mad_t('mad.ui.today') }}</button>
         </div>
         <div class="mad-rt-toolbar-title" x-text="periodLabel"></div>
         <div class="mad-rt-toolbar-views">
-            <button type="button" class="mad-rt-btn" :class="numDays===1 && 'mad-rt-btn-active'" @click="switchView(1)">Dia</button>
+            <button type="button" class="mad-rt-btn" :class="numDays===1 && 'mad-rt-btn-active'" @click="switchView(1)">{{ mad_t('mad.ui.day') }}</button>
             <button type="button" class="mad-rt-btn" :class="numDays>1 && 'mad-rt-btn-active'" @click="switchView(defaultNumDays)">
                 <span x-text="defaultNumDays + ' dias'"></span>
             </button>

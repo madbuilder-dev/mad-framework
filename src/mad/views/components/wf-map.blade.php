@@ -82,37 +82,38 @@
         'condition' => '#0ea5c6', 'auto' => '#7a8699', 'notify' => '#7a8699',
         'fork' => '#8a63d2', 'join' => '#8a63d2', 'end' => '#3DA86F',
     ];
-    $__kindLabel = [
-        'start' => 'início', 'human' => 'pessoa', 'approval' => 'aprovação',
-        'condition' => 'condição', 'auto' => 'automático', 'notify' => 'aviso',
-        'fork' => 'paralelo', 'join' => 'junção', 'end' => 'fim',
-    ];
-    $__statusLabel = [
-        'running' => 'Em andamento', 'approved' => 'Aprovado',
-        'rejected' => 'Rejeitado', 'returned' => 'Devolvido', 'cancelled' => 'Cancelado',
-    ];
+    // Textos no idioma do app (catálogo mad.ui.wf_*).
+    $__t = fn (string $k, array $r = []) => mad_t('mad.ui.wf_' . $k, $r);
+    $__kindLabel = [];
+    foreach (['start', 'human', 'approval', 'condition', 'auto', 'notify', 'fork', 'join', 'end'] as $__k) {
+        $__kindLabel[$__k] = $__t('kind_' . $__k);
+    }
+    $__statusLabel = [];
+    foreach (['running', 'approved', 'rejected', 'returned', 'cancelled'] as $__k) {
+        $__statusLabel[$__k] = $__t('st_' . $__k);
+    }
 
     // ── De-para do histórico: evento técnico → linha humana ──────────────
     $__nodeName = fn (?string $key) => $__wfNodes[$key]['name'] ?? $key ?? '';
     $__userName = fn ($id) => $id !== null && isset($__wfActors[(int) $id])
-        ? $__wfActors[(int) $id] : ($id !== null ? "usuário #{$id}" : null);
+        ? $__wfActors[(int) $id] : ($id !== null ? $__t('user_n', ['id' => $id]) : null);
     $__roleName = fn ($code) => is_string($code) && $code !== ''
         ? ($__wfRoles[$code] ?? \Illuminate\Support\Str::headline($code)) : null;
     $__intentTone = ['success' => 'ok', 'danger' => 'danger', 'warning' => 'warn', 'default' => 'info'];
 
     // Retorna null (evento interno, some da linha do tempo) ou
     // {tone, title, detail} pro item já traduzido.
-    $__wfDescribe = function (array $h) use ($__nodeName, $__userName, $__roleName, $__wfOutcomeMeta, $__intentTone, $__statusLabel): ?array {
+    $__wfDescribe = function (array $h) use ($__t, $__nodeName, $__userName, $__roleName, $__wfOutcomeMeta, $__intentTone, $__statusLabel): ?array {
         $p = (array) ($h['payload'] ?? []);
         $node = is_string($p['node'] ?? null) ? $p['node'] : null;
         $step = (string) ($p['step'] ?? $__nodeName($node));
 
         return match ((string) $h['event']) {
-            'started' => ['tone' => 'info', 'title' => 'Solicitação enviada para aprovação', 'detail' => null],
-            'task_created' => ['tone' => 'info', 'title' => 'Tarefa criada — '.$__nodeName($node),
+            'started' => ['tone' => 'info', 'title' => $__t('ev_started'), 'detail' => null],
+            'task_created' => ['tone' => 'info', 'title' => $__t('ev_task_created', ['node' => $__nodeName($node)]),
                 'detail' => isset($p['user'])
-                    ? 'Responsável: '.$__userName($p['user'])
-                    : (($r = $__roleName($p['role'] ?? null)) ? "Responsável: perfil {$r}" : null)],
+                    ? $__t('owner', ['name' => $__userName($p['user'])])
+                    : (($r = $__roleName($p['role'] ?? null)) ? $__t('owner_role', ['role' => $r]) : null)],
             'decided' => (function () use ($p, $node, $step, $__wfOutcomeMeta, $__intentTone) {
                 $meta = $__wfOutcomeMeta[$node][$p['outcome'] ?? ''] ?? null;
                 $label = $meta['label'] ?? \Illuminate\Support\Str::headline((string) ($p['outcome'] ?? ''));
@@ -120,34 +121,34 @@
                     'title' => "{$step}: {$label}",
                     'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null];
             })(),
-            'record_changed' => ['tone' => 'danger', 'title' => 'Aprovação cancelada — o registro foi alterado depois do envio',
+            'record_changed' => ['tone' => 'danger', 'title' => $__t('ev_record_changed'),
                 'detail' => $step !== '' ? $step : null],
-            'record_rehashed' => ['tone' => 'info', 'title' => 'Nova versão do registro enviada — '.$__nodeName($node), 'detail' => null],
-            'approved' => ['tone' => 'ok', 'title' => "{$step}: Aprovado",
+            'record_rehashed' => ['tone' => 'info', 'title' => $__t('ev_record_rehashed', ['node' => $__nodeName($node)]), 'detail' => null],
+            'approved' => ['tone' => 'ok', 'title' => $__t('ev_approved', ['step' => $step]),
                 'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null],
-            'rejected' => ['tone' => 'danger', 'title' => "{$step}: Rejeitado",
+            'rejected' => ['tone' => 'danger', 'title' => $__t('ev_rejected', ['step' => $step]),
                 'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null],
-            'returned' => ['tone' => 'warn', 'title' => "{$step}: Devolvido para ajustes",
+            'returned' => ['tone' => 'warn', 'title' => $__t('ev_returned', ['step' => $step]),
                 'detail' => ! empty($p['comment']) ? '“'.$p['comment'].'”' : null],
-            'awaiting_peers' => ['tone' => 'muted', 'title' => 'Aguardando os demais responsáveis — '.$__nodeName($node), 'detail' => null],
-            'task_skipped' => ['tone' => 'muted', 'title' => 'Responsável dispensado — decisão do passo já fechada', 'detail' => $__nodeName($node)],
-            'skipped_by_condition' => ['tone' => 'muted', 'title' => 'Etapa pulada — condição não se aplica', 'detail' => $__nodeName($node)],
-            'forked' => ['tone' => 'branch', 'title' => 'Fluxo dividido em '.count((array) ($p['branches'] ?? [])).' frentes paralelas', 'detail' => null],
-            'join_fired' => ['tone' => 'branch', 'title' => 'Frentes paralelas concluídas — fluxo unificado', 'detail' => null],
-            'branch_cancelled' => ['tone' => 'muted', 'title' => 'Frente paralela cancelada', 'detail' => $__nodeName($node)],
-            'cancelled_by_end' => ['tone' => 'muted', 'title' => 'Tarefa cancelada — o fluxo foi encerrado', 'detail' => $__nodeName($node)],
-            'auto_applied' => ['tone' => 'info', 'title' => 'Atualização automática — '.$__nodeName($node),
-                'detail' => ! empty($p['fields']) ? 'Campos: '.implode(', ', (array) $p['fields']) : null],
-            'reassigned' => ['tone' => 'info', 'title' => 'Tarefa delegada — '.$__nodeName($node),
-                'detail' => isset($p['to_user']) ? 'Novo responsável: '.$__userName($p['to_user']) : null],
-            'escalated' => ['tone' => 'warn', 'title' => 'Prazo vencido — tarefa escalada',
-                'detail' => trim(($__nodeName($node) ? $__nodeName($node).' · ' : '').'Novo responsável: '
-                    .($__userName($p['to_user'] ?? null) ?? (($r = $__roleName($p['to_role'] ?? null)) ? "perfil {$r}" : '—')))],
-            'reminded' => ['tone' => 'warn', 'title' => 'Lembrete de prazo enviado — '.$__nodeName($node), 'detail' => null],
-            'assignee_unresolved' => ['tone' => 'danger', 'title' => 'Responsável não encontrado — '.$__nodeName($node), 'detail' => null],
+            'awaiting_peers' => ['tone' => 'muted', 'title' => $__t('ev_awaiting_peers', ['node' => $__nodeName($node)]), 'detail' => null],
+            'task_skipped' => ['tone' => 'muted', 'title' => $__t('ev_task_skipped'), 'detail' => $__nodeName($node)],
+            'skipped_by_condition' => ['tone' => 'muted', 'title' => $__t('ev_skipped_by_condition'), 'detail' => $__nodeName($node)],
+            'forked' => ['tone' => 'branch', 'title' => $__t('ev_forked', ['n' => count((array) ($p['branches'] ?? []))]), 'detail' => null],
+            'join_fired' => ['tone' => 'branch', 'title' => $__t('ev_join_fired'), 'detail' => null],
+            'branch_cancelled' => ['tone' => 'muted', 'title' => $__t('ev_branch_cancelled'), 'detail' => $__nodeName($node)],
+            'cancelled_by_end' => ['tone' => 'muted', 'title' => $__t('ev_cancelled_by_end'), 'detail' => $__nodeName($node)],
+            'auto_applied' => ['tone' => 'info', 'title' => $__t('ev_auto_applied', ['node' => $__nodeName($node)]),
+                'detail' => ! empty($p['fields']) ? $__t('fields', ['list' => implode(', ', (array) $p['fields'])]) : null],
+            'reassigned' => ['tone' => 'info', 'title' => $__t('ev_reassigned', ['node' => $__nodeName($node)]),
+                'detail' => isset($p['to_user']) ? $__t('new_owner', ['name' => $__userName($p['to_user'])]) : null],
+            'escalated' => ['tone' => 'warn', 'title' => $__t('ev_escalated'),
+                'detail' => trim(($__nodeName($node) ? $__nodeName($node).' · ' : '').$__t('new_owner', ['name' =>
+                    ($__userName($p['to_user'] ?? null) ?? (($r = $__roleName($p['to_role'] ?? null)) ? $__t('role', ['role' => $r]) : '—'))]))],
+            'reminded' => ['tone' => 'warn', 'title' => $__t('ev_reminded', ['node' => $__nodeName($node)]), 'detail' => null],
+            'assignee_unresolved' => ['tone' => 'danger', 'title' => $__t('ev_assignee_unresolved', ['node' => $__nodeName($node)]), 'detail' => null],
             'completed' => ['tone' => match ($p['status'] ?? '') {
                     'approved' => 'ok', 'rejected' => 'danger', 'returned' => 'warn', default => 'info',
-                }, 'title' => 'Fluxo finalizado — '.($__statusLabel[$p['status'] ?? ''] ?? ($p['status'] ?? '')), 'detail' => null],
+                }, 'title' => $__t('ev_completed', ['status' => $__statusLabel[$p['status'] ?? ''] ?? ($p['status'] ?? '')]), 'detail' => null],
             // Ruído interno: fora da linha do tempo.
             'join_arrival', 'notified', 'sla_skip_orphan' => null,
             default => ['tone' => 'muted', 'title' => \Illuminate\Support\Str::headline((string) $h['event']), 'detail' => null],
@@ -163,10 +164,10 @@
         }
         $__meta = [];
         if (($__actor = $__userName($__ev['actor_id'])) !== null) {
-            $__meta[] = 'por '.$__actor;
+            $__meta[] = $__t('by', ['name' => $__actor]);
         }
         if (! empty($__ev['at'])) {
-            $__meta[] = \Illuminate\Support\Carbon::parse($__ev['at'])->format('d/m/Y H:i');
+            $__meta[] = \Illuminate\Support\Carbon::parse($__ev['at'])->format(\Mad\Support\ValueFormatter::dateFormat(true));
         }
         // Prova da decisão: de onde veio e qual versão foi decidida.
         $__evp = (array) ($__ev['payload'] ?? []);
@@ -174,7 +175,7 @@
             $__meta[] = 'IP '.$__evp['ip'];
         }
         if (! empty($__evp['record_hash']) && in_array($__ev['event'], ['decided', 'approved', 'rejected', 'returned'], true)) {
-            $__meta[] = 'versão '.substr((string) $__evp['record_hash'], 0, 8);
+            $__meta[] = $__t('version', ['hash' => substr((string) $__evp['record_hash'], 0, 8)]);
         }
         $__d['meta'] = implode(' · ', $__meta);
         $__wfTimeline[] = $__d;
@@ -183,7 +184,7 @@
 
 <div class="mad-wf-map">
     @if(! $__wfInstance)
-        <p class="mad-wf-map-empty">Este registro ainda não foi enviado para aprovação.</p>
+        <p class="mad-wf-map-empty">{{ mad_t('mad.ui.wf_not_sent') }}</p>
     @elseif($__wfNodes === [])
         <p class="mad-wf-map-empty">Fluxo sem mapa publicado (republique o fluxo no MadBuilder).</p>
     @else
@@ -198,7 +199,7 @@
 
         <div class="mad-wf-map-layout">
             <div class="mad-wf-map-canvas">
-                <svg viewBox="0 0 {{ $__w }} {{ $__h }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa do fluxo de aprovação">
+                <svg viewBox="0 0 {{ $__w }} {{ $__h }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="{{ mad_t('mad.ui.wf_map') }}">
                     <defs>
                         <marker id="wfArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
                             <path d="M0,0 L7,3 L0,6 Z" fill="#9aa4b2" />
@@ -249,9 +250,9 @@
             </div>
 
             <div class="mad-wf-map-timeline">
-                <div class="mad-wf-map-timeline-title">Histórico</div>
+                <div class="mad-wf-map-timeline-title">{{ mad_t('mad.ui.history') }}</div>
                 @if($__wfTimeline === [])
-                    <p class="mad-wf-map-empty" style="padding: 0 14px;">Nenhum evento registrado ainda.</p>
+                    <p class="mad-wf-map-empty" style="padding: 0 14px;">{{ mad_t('mad.ui.wf_no_events') }}</p>
                 @else
                     <ul class="mad-wf-map-history">
                         @foreach($__wfTimeline as $__t)

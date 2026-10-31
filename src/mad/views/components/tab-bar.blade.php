@@ -49,8 +49,8 @@
                           tabindex="0"
                           @click.stop="close(t.id)"
                           @keydown.enter.stop.prevent="close(t.id)"
-                          title="Fechar"
-                          aria-label="Fechar aba">
+                          title="{{ mad_t('mad.ui.close') }}"
+                          aria-label="{{ mad_t('mad.ui.close_tab') }}">
                         <i data-lucide="x"></i>
                     </span>
                 </div>

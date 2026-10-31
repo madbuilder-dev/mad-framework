@@ -41,7 +41,7 @@
             class="mad-seek-btn"
             @click="$dispatch('mad:seek', { name: '{{ $name }}', onSeek: '{{ $onSeek }}', el: $el })"
             @if($disabled) disabled @endif
-            aria-label="Buscar"
+            aria-label="{{ mad_t('mad.ui.search') }}"
         >
             <i data-lucide="search"></i>
         </button>

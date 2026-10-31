@@ -1,5 +1,6 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => 'Digite e pressione Enter...', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
 @php
+    $placeholder = $placeholder ?? mad_t('mad.ui.type_enter');
     // alias: o editor visual grava :items — aceitar os dois nomes
     // (drift editor-runtime, auditoria 14/jul/2026)
     if (empty($options) && !empty($items)) { $options = $items; }

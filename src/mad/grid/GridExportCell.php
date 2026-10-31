@@ -336,11 +336,49 @@ final class GridExportCell
             $dt = ValueFormatter::toDateTime($value);
             return $dt === null
                 ? self::text(ValueFormatter::apply($value, $token))
-                : self::date($dt, ...self::BUILTIN_DATE_FORMATS[$token]);
+                : self::date($dt, ...self::builtinDateFormat($token));
         }
 
         // text, boolean, cpf, cnpj, cep, phone-br: a máscara é o dado.
         return self::text(ValueFormatter::apply($value, $token));
+    }
+
+    /**
+     * Formato Excel de um token de data no idioma do app. Em português é a
+     * tabela fixa; em inglês/espanhol a ordem da data e o idioma dos meses
+     * (`[$-409]`, `[$-C0A]`) vêm do catálogo, como na tela.
+     *
+     * @return array{0:string, 1:bool, 2:bool}
+     */
+    private static function builtinDateFormat(string $token): array
+    {
+        $spec = self::BUILTIN_DATE_FORMATS[$token];
+        $lang = \Mad\I18n\MadLang::t('mad.fmt.xls_lang');
+        if ($lang === 'mad.fmt.xls_lang') {
+            $lang = '[$-416]';
+        }
+
+        switch ($token) {
+            case 'date':
+            case 'datetime':
+            case 'datetime-seconds':
+                $php = ValueFormatter::dateFormat($token !== 'date') . ($token === 'datetime-seconds' ? ':s' : '');
+                $pt  = $token === 'date' ? 'd/m/Y' : ($token === 'datetime' ? 'd/m/Y H:i' : 'd/m/Y H:i:s');
+                if ($php !== $pt) {
+                    $spec = self::excelDateFormat($php) ?? $spec;
+                }
+                break;
+            case 'date-long':
+                $body = \Mad\I18n\MadLang::t('mad.fmt.xls_date_long');
+                $spec[0] = $lang . ($body === 'mad.fmt.xls_date_long' ? 'd "de" mmmm "de" yyyy' : $body);
+                break;
+            case 'date-month-year':
+            case 'date-weekday':
+                $spec[0] = $lang . substr($spec[0], strlen('[$-416]'));
+                break;
+        }
+
+        return $spec;
     }
 
     /** Mesmo parser do `renderValue` para colunas `date`. */
@@ -363,7 +401,7 @@ final class GridExportCell
     {
         // O Excel não representa data antes de 1900 — mostra o texto da tela.
         if ((int) $dt->format('Y') < 1900) {
-            return self::text($dt->format($hasTime && !$hasDate ? 'H:i:s' : 'd/m/Y'));
+            return self::text($dt->format($hasTime && !$hasDate ? 'H:i:s' : ValueFormatter::dateFormat()));
         }
 
         if ($hasDate && !$hasTime) {

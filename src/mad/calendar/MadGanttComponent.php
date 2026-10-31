@@ -238,20 +238,20 @@ abstract class MadGanttComponent extends MadComponent
             return $this->columns;
         }
         $cols = [
-            ['field' => 'name', 'label' => 'Tarefa', 'width' => 240, 'tree' => true],
+            ['field' => 'name', 'label' => mad_t('mad.ui.gantt_task'), 'width' => 240, 'tree' => true],
         ];
         if ($this->startField) {
-            $cols[] = ['field' => 'start', 'label' => 'Início', 'width' => 100, 'format' => 'date'];
+            $cols[] = ['field' => 'start', 'label' => mad_t('mad.ui.gantt_start'), 'width' => 100, 'format' => 'date'];
         }
         if ($this->endField) {
-            $cols[] = ['field' => 'end', 'label' => 'Fim', 'width' => 100, 'format' => 'date'];
+            $cols[] = ['field' => 'end', 'label' => mad_t('mad.ui.gantt_end'), 'width' => 100, 'format' => 'date'];
         }
-        $cols[] = ['field' => 'duration', 'label' => 'Dias', 'width' => 70, 'format' => 'days', 'align' => 'center'];
+        $cols[] = ['field' => 'duration', 'label' => mad_t('mad.ui.gantt_days'), 'width' => 70, 'format' => 'days', 'align' => 'center'];
         if ($this->ownerField) {
-            $cols[] = ['field' => 'owner', 'label' => 'Resp.', 'width' => 100];
+            $cols[] = ['field' => 'owner', 'label' => mad_t('mad.ui.gantt_owner'), 'width' => 100];
         }
         if ($this->progressField) {
-            $cols[] = ['field' => 'progress', 'label' => 'Prog.', 'width' => 80, 'format' => 'percent', 'align' => 'right'];
+            $cols[] = ['field' => 'progress', 'label' => mad_t('mad.ui.gantt_progress'), 'width' => 80, 'format' => 'percent', 'align' => 'right'];
         }
         return $cols;
     }
@@ -740,11 +740,11 @@ abstract class MadGanttComponent extends MadComponent
                 return MadToast::warning(mad_t('mad.gantt_update_refused'));
             }
 
-            return MadToast::success("Atualizado");
+            return MadToast::success(mad_t('mad.ui.updated'));
         } catch (\Throwable $e) {
             return MadToast::danger(\Mad\Ui\MadUserError::isTechnical($e)
                 ? \Mad\Ui\MadUserError::message($e, mad_t('mad.error.save_failed'), static::class . '::onTaskUpdate')
-                : "Erro: " . $e->getMessage());
+                : mad_t('mad.ui.error_prefix') . $e->getMessage());
         }
     }
 

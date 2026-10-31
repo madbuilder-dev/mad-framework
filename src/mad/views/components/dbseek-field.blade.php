@@ -11,7 +11,7 @@
     $disabled    = !empty($disabled ?? false);
     $placeholder = $placeholder ?? '';
     $hint        = $hint ?? '';
-    $modalTitle  = $modalTitle ?? ($label ?: 'Buscar');
+    $modalTitle  = $modalTitle ?? ($label ?: mad_t('mad.ui.search'));
     $modalSize   = $modalSize ?? 'xl';
     $auxiliaries = $auxiliaries ?? [];
     // "Novo" (`create` do <mad-seek>): {class, method, url, label, icon, token}
@@ -25,7 +25,7 @@
 
     $auxJson   = htmlspecialchars(json_encode($auxiliaries, JSON_UNESCAPED_UNICODE), ENT_QUOTES);
     $createJson = htmlspecialchars(json_encode($create ? array_intersect_key($create, array_flip(['class', 'method', 'url', 'token'])) : null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES);
-    $createLabel = $create ? (string) ($create['label'] ?? 'Novo') : '';
+    $createLabel = $create ? (string) ($create['label'] ?? mad_t('mad.ui.new')) : '';
     $createIcon  = $create ? ((string) ($create['icon'] ?? '') ?: 'plus') : '';
     $safeValue = htmlspecialchars(addslashes((string)$value), ENT_QUOTES);
     $safeText  = htmlspecialchars(addslashes((string)$text), ENT_QUOTES);
@@ -68,7 +68,7 @@
             :style="selectedId ? 'border-radius:0;border-right:none;' : ''"
             @click="openModal()"
             @if($disabled) disabled @endif
-            aria-label="Buscar"
+            aria-label="{{ mad_t('mad.ui.search') }}"
         >
             <i data-lucide="search"></i>
         </button>
@@ -79,7 +79,7 @@
             x-cloak
             @click="clear()"
             @if($disabled) disabled @endif
-            aria-label="Limpar"
+            aria-label="{{ mad_t('mad.ui.clear') }}"
         >
             <i data-lucide="x"></i>
         </button>

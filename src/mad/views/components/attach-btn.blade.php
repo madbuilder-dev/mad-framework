@@ -55,7 +55,7 @@
             return bytes + ' B';
         }
      }">
-    <label class="mad-attach-btn {{ $disabled ? 'disabled' : '' }}" title="Anexar arquivo">
+    <label class="mad-attach-btn {{ $disabled ? 'disabled' : '' }}" title="{{ mad_t('mad.ui.attach_file') }}">
         <i data-lucide="{{ $icon }}" style="width:18px;height:18px;"></i>
         <input type="file"
                name="{{ $inputName }}"

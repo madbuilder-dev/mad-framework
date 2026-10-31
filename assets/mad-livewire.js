@@ -18,6 +18,26 @@
  *   mad:loading                  → visível apenas durante requisição
  *   mad:loading.remove           → escondido durante requisição
  */
+
+/* ── Textos de interface (i18n) ─────────────────────────────────────────────
+ * Fora do pt-BR o framework injeta `window.MAD_I18N` (chave → texto no idioma
+ * do app) antes dos scripts. `madT(chave, textoPtBr, {n: 3})` devolve o texto
+ * traduzido ou, sem dicionário/chave, o texto pt-BR do próprio código: página
+ * antiga sem o dicionário continua igual. Placeholders `:nome`, passada única.
+ */
+if (typeof window.madT !== 'function') {
+    window.madT = function (key, fallback, rep) {
+        var d = window.MAD_I18N;
+        var s = (d && typeof d[key] === 'string') ? d[key] : String(fallback == null ? '' : fallback);
+        if (rep) {
+            s = s.replace(/:([A-Za-z_]+)/g, function (m, k) {
+                return Object.prototype.hasOwnProperty.call(rep, k) ? String(rep[k]) : m;
+            });
+        }
+        return s;
+    };
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * MadErrorModal — visualizador de erro de servidor.
  *
@@ -329,7 +349,7 @@ textarea.mad-errm-pane{outline:0}
         _info = info;
 
         const ex    = info.exception || {};
-        const type  = ex.type    || parsed.type    || 'Erro do servidor';
+        const type  = ex.type    || parsed.type    || madT('server_error', 'Erro do servidor');
         const msg   = ex.message || parsed.message || info.statusText || '';
         const file  = ex.file    || parsed.file    || '';
         const line  = ex.line    || parsed.line    || '';
@@ -414,7 +434,7 @@ textarea.mad-errm-pane{outline:0}
             if (kind === 'close') { close(); return; }
             if (kind === 'md') {
                 setTab('md');
-                _copy(_ensureMarkdown(back)).then(() => _toast('Markdown copiado — cole no agente de IA'));
+                _copy(_ensureMarkdown(back)).then(() => _toast(madT('md_copied', 'Markdown copiado — cole no agente de IA')));
                 return;
             }
             if (kind === 'copy') {
@@ -435,7 +455,7 @@ textarea.mad-errm-pane{outline:0}
                 document.body.appendChild(a);
                 a.click();
                 setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
-                _toast('Arquivo .md baixado');
+                _toast(madT('md_downloaded', 'Arquivo .md baixado'));
             }
         });
 
@@ -522,7 +542,7 @@ textarea.mad-errm-pane{outline:0}
                 showResponse(
                     (!res.ok || _isErrorPage(text))
                         ? res
-                        : { status: res.status, statusText: 'Resposta inesperada do servidor', url: res.url },
+                        : { status: res.status, statusText: madT('unexpected_response', 'Resposta inesperada do servidor'), url: res.url },
                     text, context);
                 return null;
             }
@@ -1669,8 +1689,8 @@ const MadWire = (() => {
                     const at = text.lastIndexOf('{"error"');
                     if (at !== -1) { try { notice = JSON.parse(text.slice(at)); } catch (_) {} }
                     const tooBig = (notice && notice.error)
-                        || 'O envio passou do limite que o servidor aceita de uma vez. Nada foi salvo: envie arquivos menores ou em menos arquivos por vez.';
-                    if (typeof __mad_warning === 'function') __mad_warning((notice && notice.title) || 'Envio acima do limite', tooBig);
+                        || madT('upload_post_too_big', 'O envio passou do limite que o servidor aceita de uma vez. Nada foi salvo: envie arquivos menores ou em menos arquivos por vez.');
+                    if (typeof __mad_warning === 'function') __mad_warning((notice && notice.title) || madT('upload_post_too_big_title', 'Envio acima do limite'), tooBig);
                     else alert(tooBig);
                     return { ok: false, reason: 'error' };
                 }
@@ -1701,12 +1721,12 @@ const MadWire = (() => {
                 // usuário ficava esperando um resultado que nunca aparecia.
                 if (window.MadErrorModal) {
                     window.MadErrorModal.showResponse(
-                        { status: res.status, statusText: 'Resposta inesperada do servidor', url: res.url || endpoint },
+                        { status: res.status, statusText: madT('unexpected_response', 'Resposta inesperada do servidor'), url: res.url || endpoint },
                         text, errCtx);
                 } else if (typeof __mad_error === 'function') {
-                    __mad_error('Exceção', 'Resposta inesperada do servidor.');
+                    __mad_error(madT('exception', 'Exceção'), madT('unexpected_response_dot', 'Resposta inesperada do servidor.'));
                 } else {
-                    alert('Resposta inesperada do servidor.');
+                    alert(madT('unexpected_response_dot', 'Resposta inesperada do servidor.'));
                 }
                 return { ok: false, reason: 'server' };
             }
@@ -1770,14 +1790,14 @@ const MadWire = (() => {
                     // manda os botões do próximo passo junto com o texto.
                     const next = (typeof _madDeniedButtons === 'function') ? _madDeniedButtons(data.actions) : null;
                     if (next && typeof MadDialog !== 'undefined') {
-                        MadDialog.show({ type: 'warning', title: data.title || 'Sem permissão', message: data.error, buttons: next });
+                        MadDialog.show({ type: 'warning', title: data.title || madT('no_permission', 'Sem permissão'), message: data.error, buttons: next });
                     } else {
-                        __mad_warning(data.title || 'Sem permissão', data.error);
+                        __mad_warning(data.title || madT('no_permission', 'Sem permissão'), data.error);
                     }
                 } else if (typeof __mad_error === 'function') {
-                    __mad_error('Exceção', data.error);
+                    __mad_error(madT('exception', 'Exceção'), data.error);
                 } else {
-                    alert('Erro: ' + data.error);
+                    alert(madT('error_prefix', 'Erro: ') + data.error);
                 }
                 return { ok: false, reason: 'error' };
             }

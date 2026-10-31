@@ -61,6 +61,121 @@ final class ValueFormatter
         return self::TOKENS;
     }
 
+    /** "Sim"/"Não" no idioma do app (catálogo `mad.field.yes`/`no`). */
+    public static function yesNo(bool $value): string
+    {
+        $key  = $value ? 'mad.field.yes' : 'mad.field.no';
+        $text = \Mad\I18n\MadLang::t($key);
+
+        return $text === $key ? ($value ? 'Sim' : 'Não') : $text;
+    }
+
+    /**
+     * Prefixo do `currency-usd` no idioma do app: "US$ " em português e
+     * espanhol (o símbolo $ sozinho é ambíguo lá), "$" em inglês.
+     */
+    public static function usdPrefix(): string
+    {
+        $text = \Mad\I18n\MadLang::t('mad.fmt.usd_prefix');
+
+        return $text === 'mad.fmt.usd_prefix' ? 'US$ ' : $text;
+    }
+
+    /**
+     * Separadores [decimal, milhar] do idioma do app — os das colunas `num` e
+     * `money` da listagem. pt-BR/es: [',', '.']; inglês: ['.', ','].
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function separators(): array
+    {
+        $dec = \Mad\I18n\MadLang::t('mad.fmt.decimal_sep');
+        $tho = \Mad\I18n\MadLang::t('mad.fmt.thousands_sep');
+
+        return [
+            $dec === 'mad.fmt.decimal_sep' ? ',' : $dec,
+            $tho === 'mad.fmt.thousands_sep' ? '.' : $tho,
+        ];
+    }
+
+    /**
+     * Espaço entre o símbolo e o valor do dinheiro: "R$ 1.234,56" em
+     * português/espanhol, "$1,234.56" em inglês.
+     */
+    public static function moneyGap(): string
+    {
+        $text = \Mad\I18n\MadLang::t('mad.fmt.money_gap');
+
+        return $text === 'mad.fmt.money_gap' ? ' ' : $text;
+    }
+
+    /**
+     * Nomes dos meses (1..12) no idioma do app — "janeiro" em português,
+     * "January" em inglês, "enero" em espanhol.
+     *
+     * @return array<int, string>
+     */
+    public static function monthNames(): array
+    {
+        $list = self::catalogList('mad.fmt.months', 12);
+
+        return $list === null ? self::MONTHS_PT : array_combine(range(1, 12), $list);
+    }
+
+    /**
+     * Nomes dos dias da semana (0 = domingo .. 6 = sábado) no idioma do app.
+     *
+     * @return array<int, string>
+     */
+    public static function weekdayNames(): array
+    {
+        return self::catalogList('mad.fmt.weekdays', 7) ?? self::WEEKDAYS_PT;
+    }
+
+    /** Mês abreviado com inicial maiúscula ("Mar", "Oct", "Ene"). */
+    public static function monthShort(int $month): string
+    {
+        $name = self::monthNames()[$month] ?? '';
+
+        return mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1, 2);
+    }
+
+    /** Data por extenso: "9 de março de 2026" / "March 9, 2026". */
+    public static function dateLong(\DateTimeInterface $dt): string
+    {
+        $tpl = \Mad\I18n\MadLang::t('mad.fmt.date_long');
+        if ($tpl === 'mad.fmt.date_long') {
+            $tpl = ':d de :month de :y';
+        }
+
+        return strtr($tpl, [
+            ':month' => self::monthNames()[(int) $dt->format('n')],
+            ':d'     => $dt->format('j'),
+            ':y'     => $dt->format('Y'),
+        ]);
+    }
+
+    /** Lista do catálogo separada por vírgula; null quando falta ou tem outro tamanho. */
+    private static function catalogList(string $key, int $size): ?array
+    {
+        $text = \Mad\I18n\MadLang::t($key);
+        if ($text === $key) {
+            return null;
+        }
+        $list = array_map('trim', explode(',', $text));
+
+        return count($list) === $size ? $list : null;
+    }
+
+    /** Formato PHP de data (`date`) ou data e hora (`datetime`) do idioma do app. */
+    public static function dateFormat(bool $withTime = false): string
+    {
+        $key  = $withTime ? 'mad.fmt.datetime' : 'mad.fmt.date';
+        $text = \Mad\I18n\MadLang::t($key);
+
+        return $text === $key ? ($withTime ? 'd/m/Y H:i' : 'd/m/Y') : $text;
+    }
+
     /** O token é um formatador built-in conhecido? (case-insensitive) */
     public static function supports(string $token): bool
     {
@@ -80,9 +195,9 @@ final class ValueFormatter
             // prefixos manuais tipo "Total: R$ " dependem disso). Os
             // currency-* carregam símbolo por serem autodescritivos.
             case 'money':
-                return number_format(self::num($value), 2, ',', '.');
+                return number_format(self::num($value), 2, ...self::separators());
             case 'currency-usd':
-                return 'US$ ' . number_format(self::num($value), 2, '.', ',');
+                return self::usdPrefix() . number_format(self::num($value), 2, '.', ',');
             case 'currency-eur':
                 return '€ ' . number_format(self::num($value), 2, ',', '.');
             case 'currency-gbp':
@@ -90,40 +205,42 @@ final class ValueFormatter
             case 'currency-jpy':
                 return '¥ ' . number_format(self::num($value), 0, '.', ',');
 
+            // number/integer/percent/decimal-4: separadores do idioma do app
+            // (pt-BR/es "1.234,56", inglês "1,234.56").
             case 'number':
-                return number_format(self::num($value), 2, ',', '.');
+                return number_format(self::num($value), 2, ...self::separators());
             case 'number-en':
                 return number_format(self::num($value), 2, '.', ',');
             case 'integer':
-                return number_format(self::num($value), 0, ',', '.');
+                return number_format(self::num($value), 0, ...self::separators());
             case 'percent':
-                return number_format(self::num($value), 1, ',', '.') . '%';
+                return number_format(self::num($value), 1, ...self::separators()) . '%';
             case 'decimal-4':
-                return number_format(self::num($value), 4, ',', '.');
+                return number_format(self::num($value), 4, ...self::separators());
 
             case 'date':
-                return self::formatDateAs($value, 'd/m/Y');
+                return self::formatDateAs($value, self::dateFormat());
             case 'date-iso':
                 return self::formatDateAs($value, 'Y-m-d');
             case 'date-long': {
                 $dt = self::toDateTime($value);
                 if ($dt === null) return self::scalarString($value);
-                return $dt->format('j') . ' de ' . self::MONTHS_PT[(int) $dt->format('n')] . ' de ' . $dt->format('Y');
+                return self::dateLong($dt);
             }
             case 'date-month-year': {
                 $dt = self::toDateTime($value);
                 if ($dt === null) return self::scalarString($value);
-                return ucfirst(substr(self::MONTHS_PT[(int) $dt->format('n')], 0, 3)) . '/' . $dt->format('Y');
+                return self::monthShort((int) $dt->format('n')) . '/' . $dt->format('Y');
             }
             case 'date-weekday': {
                 $dt = self::toDateTime($value);
                 if ($dt === null) return self::scalarString($value);
-                return self::WEEKDAYS_PT[(int) $dt->format('w')];
+                return self::weekdayNames()[(int) $dt->format('w')];
             }
             case 'datetime':
-                return self::formatDateAs($value, 'd/m/Y H:i');
+                return self::formatDateAs($value, self::dateFormat(true));
             case 'datetime-seconds':
-                return self::formatDateAs($value, 'd/m/Y H:i:s');
+                return self::formatDateAs($value, self::dateFormat(true) . ':s');
             case 'time':
                 return self::formatDateAs($value, 'H:i');
 
@@ -157,7 +274,7 @@ final class ValueFormatter
                 } else {
                     $truthy = (bool) $value;
                 }
-                return $truthy ? 'Sim' : 'Não';
+                return self::yesNo($truthy);
 
             case 'text':
             default:
@@ -165,7 +282,7 @@ final class ValueFormatter
                     return '';
                 }
                 if (is_bool($value)) {
-                    return $value ? 'Sim' : 'Não';
+                    return self::yesNo($value);
                 }
                 if (is_array($value)) {
                     return implode(', ', array_map('strval', $value));

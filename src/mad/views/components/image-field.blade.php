@@ -141,12 +141,12 @@
          @drop.prevent="onDrop($event)"
          style="height:{{ $height }};">
         <i data-lucide="{{ $placeholder_icon }}"></i>
-        <div class="mad-image-dropzone-text"><strong>Arraste uma imagem</strong><br>ou clique para selecionar</div>
-        <div class="mad-image-dropzone-formats">{{ $acceptDisplay }} &bull; M&aacute;x {{ $max_size }}</div>
+        <div class="mad-image-dropzone-text"><strong>{{ mad_t('mad.ui.drag_image') }}</strong><br>{{ mad_t('mad.ui.or_click_to_select') }}</div>
+        <div class="mad-image-dropzone-formats">{{ $acceptDisplay }} &bull; {!! htmlentities(mad_t('mad.ui.max_size'), ENT_QUOTES, 'UTF-8') !!} {{ $max_size }}</div>
         @if($camera)
         <div class="mad-image-dropzone-actions">
             <button type="button" class="mad-btn mad-btn-secondary mad-btn-sm" @click.stop="openCamera()">
-                <i data-lucide="camera" style="width:14px;height:14px;"></i> C&acirc;mera
+                <i data-lucide="camera" style="width:14px;height:14px;"></i> {!! htmlentities(mad_t('mad.ui.camera'), ENT_QUOTES, 'UTF-8') !!}
             </button>
         </div>
         @endif
@@ -159,18 +159,18 @@
         </div>
         <div class="mad-image-toolbar">
             @if($crop)
-                <button type="button" class="mad-image-toolbar-btn" title="Recortar" @click="startCrop()">
+                <button type="button" class="mad-image-toolbar-btn" title="{{ mad_t('mad.ui.crop') }}" @click="startCrop()">
                     <i data-lucide="crop"></i>
                 </button>
             @endif
-            <button type="button" class="mad-image-toolbar-btn" title="Girar esquerda" @click="rotateLeft()">
+            <button type="button" class="mad-image-toolbar-btn" title="{{ mad_t('mad.ui.rotate_left') }}" @click="rotateLeft()">
                 <i data-lucide="rotate-ccw"></i>
             </button>
-            <button type="button" class="mad-image-toolbar-btn" title="Girar direita" @click="rotateRight()">
+            <button type="button" class="mad-image-toolbar-btn" title="{{ mad_t('mad.ui.rotate_right') }}" @click="rotateRight()">
                 <i data-lucide="rotate-cw"></i>
             </button>
             <div class="mad-image-toolbar-sep"></div>
-            <button type="button" class="mad-image-toolbar-btn mad-image-toolbar-btn--danger" title="Remover" @click="remove()">
+            <button type="button" class="mad-image-toolbar-btn mad-image-toolbar-btn--danger" title="{{ mad_t('mad.ui.remove') }}" @click="remove()">
                 <i data-lucide="trash-2"></i>
             </button>
         </div>
@@ -183,7 +183,7 @@
          x-effect="$el.style.display = cropping ? '' : 'none'">
         <div class="mad-modal" style="max-width:700px;" @click.stop>
             <div class="mad-modal-header">
-                <div class="mad-modal-title">Recortar imagem</div>
+                <div class="mad-modal-title">{{ mad_t('mad.ui.crop_image') }}</div>
                 <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon" @click="cancelCrop()">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
@@ -194,10 +194,10 @@
                 </div>
             </div>
             <div class="mad-modal-footer">
-                <button type="button" class="mad-image-toolbar-btn" title="Girar esquerda" @click="if(_cropper)_cropper.rotate(-90)">
+                <button type="button" class="mad-image-toolbar-btn" title="{{ mad_t('mad.ui.rotate_left') }}" @click="if(_cropper)_cropper.rotate(-90)">
                     <i data-lucide="rotate-ccw"></i>
                 </button>
-                <button type="button" class="mad-image-toolbar-btn" title="Girar direita" @click="if(_cropper)_cropper.rotate(90)">
+                <button type="button" class="mad-image-toolbar-btn" title="{{ mad_t('mad.ui.rotate_right') }}" @click="if(_cropper)_cropper.rotate(90)">
                     <i data-lucide="rotate-cw"></i>
                 </button>
                 <button type="button" class="mad-image-toolbar-btn" title="Zoom +" @click="zoomIn()">
@@ -207,10 +207,10 @@
                     <i data-lucide="zoom-out"></i>
                 </button>
                 <div style="flex:1;"></div>
-                <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click="cancelCrop()">Cancelar</button>
+                <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm" @click="cancelCrop()">{{ mad_t('mad.ui.cancel') }}</button>
                 <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="confirmCrop()">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>
-                    Aplicar
+                    {{ mad_t('mad.ui.apply') }}
                 </button>
             </div>
         </div>

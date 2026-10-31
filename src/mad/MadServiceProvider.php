@@ -812,6 +812,16 @@ class MadServiceProvider extends ServiceProvider
         if (! defined('LANG')) {
             define('LANG', $lang);
         }
+
+        // Textos de interface do JS (combos, upload, avisos) no idioma do app:
+        // fora do pt-BR, toda página HTML ganha `window.MAD_I18N` no <head>.
+        // Em pt-BR nada é injetado (o JS já traz o texto pt-BR).
+        if ($this->app->bound(\Illuminate\Contracts\Http\Kernel::class)) {
+            $kernel = $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+            if (method_exists($kernel, 'pushMiddleware')) {
+                $kernel->pushMiddleware(\Mad\Http\Middleware\InjectMadI18n::class);
+            }
+        }
     }
 
     /** Endpoint reativo do MadWire — mesmo path do RoutingDriver::wireEndpoint(). */

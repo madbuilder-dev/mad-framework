@@ -109,7 +109,7 @@ class MadNoResultsHelper
             $quickEndpoint = \Mad\Routing\MadRoutes::urlFor('MadQuickRegisterService', 'onRun', ['static' => 1]);
 
             $data['quick'] = [
-                'label'    => (string)($cfg['quickLabel']  ?? 'Adicionar'),
+                'label'    => (string)($cfg['quickLabel']  ?? mad_t('mad.ui.add')),
                 'icon'     => (string)($cfg['quickIcon']   ?? 'check'),
                 'btnClass' => (string)($cfg['quickClass']  ?? 'mad-btn mad-btn-success mad-btn-sm'),
                 'endpoint' => $quickEndpoint,

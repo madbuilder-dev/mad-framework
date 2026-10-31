@@ -1252,7 +1252,7 @@ class MadGridCompiler
 
         // form-title e add-label suportam expressões PHP (:form-title="__('key')")
         $formTitleExpr = isset($attrs['form-title']) ? static::emit($attrs['form-title']) : "''";
-        $addLabelExpr  = isset($attrs['add-label'])  ? static::emit($attrs['add-label'])  : "'Adicionar'";
+        $addLabelExpr  = isset($attrs['add-label'])  ? static::emit($attrs['add-label'])  : "mad_t('mad.ui.add')";
         $beforeAdd     = static::str($attrs, 'before-add', '');
         $beforeDelete  = static::str($attrs, 'before-delete', '');
         $model         = static::str($attrs, 'model', '');
@@ -2965,9 +2965,9 @@ class MadGridCompiler
         $c = [
             "'method'  => 'onMadGridDelete'",
             "'danger'  => true",
-            static::kv('confirm', static::strExpr($a, 'confirm', static::qs('Excluir este registro?'))),
+            static::kv('confirm', static::strExpr($a, 'confirm', "mad_t('mad.ui.confirm_delete_record')")),
             static::kv('icon',    static::strExpr($a, 'icon',    static::qs('trash-2'))),
-            static::kv('label',   static::strExpr($a, 'label',   static::qs('Excluir'))),
+            static::kv('label',   static::strExpr($a, 'label',   "mad_t('mad.ui.delete')")),
         ];
         // Pergunta em popover (ao lado do botão) no lugar do diálogo.
         if (isset($a['confirm-popover']) && static::str($a, 'confirm-popover') !== '') {

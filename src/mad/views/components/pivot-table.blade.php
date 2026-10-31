@@ -65,7 +65,7 @@
     $width       = \Mad\Support\CssUnits::length((string) ($width ?? ''), '100%');
     $noPanel     = $no_panel    ?? $noPanel ?? false;
     $class       = $class       ?? '';
-    $noDataLabel = $no_data_label ?? $noDataLabel ?? 'Sem dados para exibir';
+    $noDataLabel = $no_data_label ?? $noDataLabel ?? mad_t('mad.ui.no_data');
 
     // ── Config ─────────────────────────────────────────────────────────────
     $fieldList        = $field_list        ?? $fieldList        ?? false;

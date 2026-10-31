@@ -47,7 +47,8 @@ class MadGantt
     protected string $interval    = '15 days';
     protected string $title       = '';
     protected string $chartId     = ''; // chave de persistência client (vazio = derivada)
-    protected string $locale      = 'pt-br';
+    /** '' = idioma do app (pt-br / en / es). */
+    protected string $locale      = '';
     protected string $progressScale = 'auto'; // auto | fraction (0..1) | percent (0-100)
     protected int    $minutesStep = 1440;
     protected bool   $striped     = false;
@@ -370,22 +371,30 @@ class MadGantt
         return $database ? $cls::on($database) : $cls::query();
     }
 
+    /** Idioma do app no formato das tabelas do mad-gantt.js. */
+    protected static function appLocale(): string
+    {
+        $l = \Mad\I18n\MadLang::getLocale();
+
+        return str_starts_with($l, 'pt') ? 'pt-br' : (str_starts_with($l, 'es') ? 'es' : 'en');
+    }
+
     /** Gera colunas default conforme campos disponiveis no config. */
     protected static function defaultColumnsFor(array $cfg): array
     {
-        $cols = [['field' => 'name', 'label' => 'Tarefa', 'width' => 240, 'tree' => true]];
+        $cols = [['field' => 'name', 'label' => mad_t('mad.ui.gantt_task'), 'width' => 240, 'tree' => true]];
         if (!empty($cfg['start_field'])) {
-            $cols[] = ['field' => 'start', 'label' => 'Início', 'width' => 100, 'format' => 'date'];
+            $cols[] = ['field' => 'start', 'label' => mad_t('mad.ui.gantt_start'), 'width' => 100, 'format' => 'date'];
         }
         if (!empty($cfg['end_field'])) {
-            $cols[] = ['field' => 'end', 'label' => 'Fim', 'width' => 100, 'format' => 'date'];
+            $cols[] = ['field' => 'end', 'label' => mad_t('mad.ui.gantt_end'), 'width' => 100, 'format' => 'date'];
         }
-        $cols[] = ['field' => 'duration', 'label' => 'Dias', 'width' => 70, 'format' => 'days', 'align' => 'center'];
+        $cols[] = ['field' => 'duration', 'label' => mad_t('mad.ui.gantt_days'), 'width' => 70, 'format' => 'days', 'align' => 'center'];
         if (!empty($cfg['owner_field'])) {
-            $cols[] = ['field' => 'owner', 'label' => 'Resp.', 'width' => 100];
+            $cols[] = ['field' => 'owner', 'label' => mad_t('mad.ui.gantt_owner'), 'width' => 100];
         }
         if (!empty($cfg['progress_field'])) {
-            $cols[] = ['field' => 'progress', 'label' => 'Prog.', 'width' => 80, 'format' => 'percent', 'align' => 'right'];
+            $cols[] = ['field' => 'progress', 'label' => mad_t('mad.ui.gantt_progress'), 'width' => 80, 'format' => 'percent', 'align' => 'right'];
         }
         return $cols;
     }
@@ -478,8 +487,9 @@ class MadGantt
     }
 
     /**
-     * Locale para formatação de datas. Tabelas client: pt-br e en; qualquer
-     * outro valor cai no fallback (pt* → pt-br, resto → en).
+     * Locale para formatação de datas. Tabelas client: pt-br, en e es; qualquer
+     * outro valor cai no fallback (pt* → pt-br, resto → en). Sem locale vale o
+     * idioma do app.
      */
     public function locale(string $locale): static
     {
@@ -1430,7 +1440,7 @@ class MadGantt
             'hours'             => $hours,
             'title'             => $this->title,
             'id'                => $this->chartId,
-            'locale'            => $this->locale,
+            'locale'            => $this->locale !== '' ? $this->locale : self::appLocale(),
             'progressScale'     => $this->progressScale,
             // Strings do client (stats/tooltip/bucket sem-fase) — i18n via lang/
             'labels'            => [

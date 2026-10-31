@@ -2689,7 +2689,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
             return \Mad\Ui\MadUserError::isTechnical($e)
                 ? \Mad\Ui\MadToast::danger(\Mad\Ui\MadUserError::message($e, $inUse ?? mad_t('mad.error.delete_failed'), static::class . '::onMadGridDelete'))
-                : \Mad\Ui\MadToast::danger($inUse ?? 'Erro ao excluir: ' . $e->getMessage());
+                : \Mad\Ui\MadToast::danger($inUse ?? mad_t('mad.ui.delete_error') . $e->getMessage());
         }
 
         if ($ask !== null) {
@@ -2722,7 +2722,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadToast::warning(mad_t('mad.error.delete_refused'));
         }
 
-        return \Mad\Ui\MadToast::success('Registro excluído com sucesso.');
+        return \Mad\Ui\MadToast::success(mad_t('mad.ui.deleted_ok'));
     }
 
     /**
@@ -9468,11 +9468,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if (! is_numeric($v)) {
                 return $value;
             }
+            [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
             if ($col->isMoney) {
-                return trim($col->moneyPrefix . ' ' . number_format((float) $v, 2, ',', '.'));
+                return trim($col->moneyPrefix . ' ' . number_format((float) $v, 2, $dec, $tho));
             }
             if ($col->isNumber) {
-                return number_format((float) $v, $col->numberDecimals, ',', '.');
+                return number_format((float) $v, $col->numberDecimals, $dec, $tho);
             }
             if (in_array($col->builtinFormat, [
                 'money', 'currency-usd', 'currency-eur', 'currency-gbp', 'currency-jpy',

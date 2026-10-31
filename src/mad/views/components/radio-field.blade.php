@@ -41,7 +41,7 @@
 
     // Boolean mode — atalho para Sim/Não com visual button + inline
     if ($boolean && empty($options)) {
-        $options = ['1' => 'Sim', '2' => 'Não'];
+        $options = ['1' => mad_t('mad.ui.yes'), '2' => mad_t('mad.ui.no')];
         if (!$as)     $as = 'button';
         $inline = true;
     }

@@ -16,8 +16,8 @@
     $_acceptDeclared = trim((string) ($accept ?? ''));
     $accept     = $_acceptDeclared !== '' ? $_acceptDeclared : 'image/png,image/jpeg';
     $maxSize    = $_maxDeclared !== '' ? $_maxDeclared : '5MB';
-    $btnText    = $btnText    ?? 'Trocar foto';
-    $btnRemove  = $btnRemove  ?? 'Remover';
+    $btnText    = $btnText    ?? mad_t('mad.ui.change_photo');
+    $btnRemove  = $btnRemove  ?? mad_t('mad.ui.remove');
     $removable  = !empty($removable ?? true);
     $storage    = $storage    ?? '';
     $folder     = $folder     ?? 'uploads';
@@ -152,7 +152,7 @@
             </button>
         </template>
     </div>
-    <div class="mad-avatar-field-hint">{{ $acceptHint }}@if($acceptHint) · @endif máx. {{ $maxSize }}</div>
+    <div class="mad-avatar-field-hint">{{ $acceptHint }}@if($acceptHint) · @endif {{ mad_t('mad.ui.max_size_lc') }} {{ $maxSize }}</div>
 
     {{-- Hidden file input --}}
     <input type="file" id="{{ $id }}_input" name="{{ $name }}" accept="{{ $accept }}"

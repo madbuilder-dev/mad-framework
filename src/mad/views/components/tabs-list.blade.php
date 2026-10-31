@@ -14,7 +14,7 @@
 
     <button type="button" class="mad-tabs-nav mad-tabs-nav-left"
             x-show="canLeft" x-cloak
-            @click="page(-1)" tabindex="-1" aria-label="Rolar abas para a esquerda">
+            @click="page(-1)" tabindex="-1" aria-label="{{ mad_t('mad.ui.scroll_tabs_left') }}">
         <i data-lucide="chevron-left"></i>
     </button>
 
@@ -28,7 +28,7 @@
 
     <button type="button" class="mad-tabs-nav mad-tabs-nav-right"
             x-show="canRight" x-cloak
-            @click="page(1)" tabindex="-1" aria-label="Rolar abas para a direita">
+            @click="page(1)" tabindex="-1" aria-label="{{ mad_t('mad.ui.scroll_tabs_right') }}">
         <i data-lucide="chevron-right"></i>
     </button>
 </div>

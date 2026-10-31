@@ -39,7 +39,7 @@
             data-mad-dbsearch data-mad-dg-edit
             data-mad-search-token="{{ $tok }}"
             data-min-length="{{ $col->editMinLength }}"
-            data-placeholder="Digite para buscar..."
+            data-placeholder="{{ mad_t('mad.ui.type_to_search') }}"
             x-model="editValue"
             @change="commitEdit()" @keydown.escape="cancelEdit()">
         <option value=""></option>
@@ -77,7 +77,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-cell-input mad-dg-datepicker"
-               placeholder="dd/mm/aaaa"
+               placeholder="{{ mad_t('mad.ui.date_placeholder') }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar" style="width:14px;height:14px;"></i>
@@ -113,7 +113,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-cell-input mad-dg-datetimepicker"
-               placeholder="dd/mm/aaaa hh:mm"
+               placeholder="{{ mad_t('mad.ui.datetime_placeholder') }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar-clock" style="width:14px;height:14px;"></i>

@@ -95,6 +95,37 @@ final class MadLang
         return $replace ? self::interpolate($value, $replace) : $value;
     }
 
+    /**
+     * Todas as folhas de texto de um grupo (ex.: 'mad.js') no idioma ativo,
+     * com o mesmo fallback do t(): o que falta no regional vem do base e o que
+     * falta no base vem do inglês. Chave = nome da folha.
+     *
+     * @return array<string, string>
+     */
+    public static function group(string $key): array
+    {
+        $locale = self::getLocale();
+        $chain  = [self::FALLBACK];
+        if (str_contains($locale, '-')) {
+            $chain[] = explode('-', $locale)[0];
+        }
+        $chain[] = $locale;
+
+        $out = [];
+        foreach (array_unique($chain) as $loc) {
+            $node = self::node($key, $loc);
+            if (!is_array($node)) {
+                continue;
+            }
+            foreach ($node as $k => $v) {
+                if (is_string($v)) {
+                    $out[(string) $k] = $v;
+                }
+            }
+        }
+        return $out;
+    }
+
     /** Bulk-set or override a catalog (useful for tests). */
     public static function override(string $locale, array $messages): void
     {
@@ -118,6 +149,13 @@ final class MadLang
 
     private static function resolve(string $key, string $locale): ?string
     {
+        $cursor = self::node($key, $locale);
+        return is_string($cursor) ? $cursor : null;
+    }
+
+    /** Nó do catálogo (texto ou grupo) num idioma; null quando não existe. */
+    private static function node(string $key, string $locale): mixed
+    {
         self::loadLocale($locale);
         $parts   = explode('.', $key);
         $cursor  = self::$catalogs[$locale] ?? null;
@@ -127,7 +165,7 @@ final class MadLang
             }
             $cursor = $cursor[$p];
         }
-        return is_string($cursor) ? $cursor : null;
+        return $cursor;
     }
 
     private static function loadLocale(string $locale): void

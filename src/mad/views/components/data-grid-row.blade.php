@@ -109,7 +109,7 @@
              x-show="!isEditing({{ $rowIdJs }},'{{ $col->field }}')"
              @dblclick="startEdit({{ $rowIdJs }},'{{ $col->field }}',{{ json_encode($editInitVal) }})"
              title="{{ __('grid.edit') }}"
-             style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">duplo-clique p/ editar</span>' !!}</div>
+             style="min-height:18px;cursor:text;">{!! $rendered !== '' ? $rendered : '<span style="color:var(--mad-muted-fg);opacity:.5;font-size:11px;">' . e(mad_t('mad.ui.dblclick_to_edit')) . '</span>' !!}</div>
         <div x-show="isEditing({{ $rowIdJs }},'{{ $col->field }}')" x-cloak>
             @include('components.data-grid-edit-cell', [
                 'col'                 => $col,

@@ -4,7 +4,7 @@
     $mode       = $mode       ?? 'inline';    // inline | modal | drawer
     $formTitle  = $formTitle  ?? '';
     $formCols   = (int)($formCols ?? 2);
-    $addLabel   = $addLabel   ?? 'Adicionar';
+    $addLabel   = $addLabel   ?? mad_t('mad.ui.add');
     $beforeAdd    = $beforeAdd    ?? '';         // método PHP para validação server-side ao adicionar
     $beforeDelete = $beforeDelete ?? '';         // método PHP para validação server-side ao deletar
     $model        = $model        ?? '';         // classe do model Eloquent (ex: 'DocReceitaItem')
@@ -342,7 +342,7 @@
         </div>
         <div class="mad-df-form-actions">
             <button type="button" class="mad-btn mad-btn-primary" @click="addOrUpdate()">
-                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? 'Atualizar' : '{{ $btnLabelJs }}'"></span>
+                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? '{{ addslashes(mad_t('mad.ui.update')) }}' : '{{ $btnLabelJs }}'"></span>
             </button>
             <button type="button" class="mad-btn mad-btn-ghost" @click="cancelEdit()">{!! __('mad.cancel') !!}</button>
         </div>
@@ -365,7 +365,7 @@
         </div>
         <div class="mad-df-form-actions">
             <button type="button" class="mad-btn mad-btn-primary" @click="addOrUpdate()">
-                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? 'Atualizar' : '{{ $btnLabelJs }}'"></span>
+                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? '{{ addslashes(mad_t('mad.ui.update')) }}' : '{{ $btnLabelJs }}'"></span>
             </button>
             <button type="button" class="mad-btn mad-btn-ghost" @click="cancelEdit()">{!! __('mad.cancel') !!}</button>
         </div>
@@ -382,11 +382,11 @@
                     style="display:inline-flex;align-items:center;gap:6px;">
                 <i data-lucide="plus" style="width:14px;height:14px;" x-show="(typeof editIndex!=='undefined' && editIndex < 0)"></i>
                 <i data-lucide="check" style="width:14px;height:14px;" x-show="(typeof editIndex!=='undefined' && editIndex >= 0)" x-cloak></i>
-                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? 'Atualizar' : '{{ $addLabel }}'"></span>
+                <span x-text="(typeof editIndex!=='undefined' && editIndex >= 0) ? '{{ addslashes(mad_t('mad.ui.update')) }}' : '{{ $addLabel }}'"></span>
             </button>
             <button type="button" class="mad-btn mad-btn-ghost" x-show="(typeof editIndex!=='undefined' && editIndex >= 0)" x-cloak
                     @click="cancelEdit()" style="display:inline-flex;align-items:center;gap:6px;">
-                <i data-lucide="x" style="width:14px;height:14px;"></i> Cancelar
+                <i data-lucide="x" style="width:14px;height:14px;"></i> {{ mad_t('mad.ui.cancel') }}
             </button>
         </div>
     </div>
@@ -412,7 +412,7 @@
                             {{ $col->label }}
                         </th>
                         @endforeach
-                        <th class="mad-dg-th" style="width:80px;text-align:center;">Ações</th>
+                        <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -498,7 +498,7 @@
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $col->numberDecimals }})"></span>
                                 @elseif($col->isDate && $col->dateFormat)
-                                <span x-text="(() => { let v = {!! $_cv !!}; if (!v) return ''; try { let d = new Date(v); return d.toLocaleDateString('pt-BR'); } catch(e) { return v; } })()"></span>
+                                <span x-text="(() => { let v = {!! $_cv !!}; if (!v) return ''; try { let d = new Date(v); return d.toLocaleDateString('{{ \Mad\I18n\MadLang::t('mad.fmt.js_locale') }}'); } catch(e) { return v; } })()"></span>
                                 @elseif($_cFmtJs !== '')
                                 {{-- Token built-in do formatter-select (money/cpf/date-long/…):
                                      gêmeo JS do ValueFormatter, emitido inline. FALLBACK de
@@ -514,12 +514,12 @@
                             @endforeach
                             <td class="mad-dg-cell mad-dg-actions-cell" style="text-align:center;">
                                 <div class="mad-dg-actions">
-                                    <button type="button" class="mad-dg-action-btn" title="Editar"
+                                    <button type="button" class="mad-dg-action-btn" title="{{ mad_t('mad.ui.edit') }}"
                                             @click="editRow(idx)">
                                         <i data-lucide="pencil" style="width:14px;height:14px;"></i>
                                     </button>
                                     <button type="button" class="mad-dg-action-btn mad-dg-action-danger"
-                                            title="Remover" @click="madDeletePopover($event, () => deleteRow(idx))">
+                                            title="{{ mad_t('mad.ui.remove') }}" @click="madDeletePopover($event, () => deleteRow(idx))">
                                         <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                     </button>
                                     @foreach($actions as $act)
@@ -547,7 +547,7 @@
                     <tr>
                         <td colspan="{{ count($columns) + 1 }}" class="mad-dg-cell" style="text-align:center;padding:24px;color:var(--mad-muted-fg);">
                             <i data-lucide="inbox" style="width:24px;height:24px;margin-bottom:8px;opacity:.5;"></i>
-                            <div>Nenhum item adicionado</div>
+                            <div>{{ mad_t('mad.ui.no_items_added') }}</div>
                         </td>
                     </tr>
                 </tbody>

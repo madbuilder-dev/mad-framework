@@ -23,7 +23,7 @@
     $autor    = $item->{$autorCol} ?? null;
     if ($autor === null || trim((string) $autor) === '') {
         $_uid  = $item->{$userCol} ?? null;
-        $autor = empty($_uid) ? 'Sistema' : (\Mad\Support\UserNames::of($_uid) ?? ('Usuário #' . $_uid));
+        $autor = empty($_uid) ? mad_t('mad.ui.system') : (\Mad\Support\UserNames::of($_uid) ?? (mad_t('mad.ui.user_n') . $_uid));
     }
     // Data no fuso do app e no formato do idioma, ou no `date-format` da tag
     // (fw#478). Antes saía como o banco devolve: "2026-10-21 13:28:44".
@@ -58,9 +58,9 @@
                 <span style="font-weight:600;color:#1f2937;">{{ $autor }}</span>
                 @if($fInt !== '')
                     @if($isInt)
-                        <mad-badge variant="secondary" icon="lock" size="sm">Interno</mad-badge>
+                        <mad-badge variant="secondary" icon="lock" size="sm">{{ mad_t('mad.ui.internal') }}</mad-badge>
                     @else
-                        <mad-badge variant="primary" icon="message-square" size="sm">Público</mad-badge>
+                        <mad-badge variant="primary" icon="message-square" size="sm">{{ mad_t('mad.ui.public') }}</mad-badge>
                     @endif
                 @endif
             </div>
@@ -78,7 +78,7 @@
             <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm"
                     data-mad-click="blockRemove({{ $id }}, '{{ $state }}')"
                     @if(!empty($vars['confirmRemove'])) data-mad-confirm="{{ $vars['confirmRemove'] }}" @endif
-                    aria-label="Excluir comentário">
+                    aria-label="{{ mad_t('mad.ui.delete_comment') }}">
                 <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
             </button>
         @endif

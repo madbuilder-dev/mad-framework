@@ -147,7 +147,7 @@
         <div class="mad-file-body" x-show="!file" @click="$refs.fileInput.click()" style="cursor:pointer;">
             <i data-lucide="upload-cloud" style="width:24px;height:24px;color:var(--mad-text-subtle);"></i>
             <span class="mad-file-text">
-                <strong>Clique para enviar</strong> ou arraste aqui
+                <strong>{{ mad_t('mad.ui.click_to_upload') }}</strong> {{ mad_t('mad.ui.or_drag_here') }}
             </span>
             <span class="mad-file-text-touch"><strong>{{ mad_t('mad.field.tap_to_choose') }}</strong></span>
             @if($acceptHint)
@@ -179,21 +179,21 @@
             </div>
             {{-- Toolbar --}}
             <div class="mad-file-card-toolbar">
-                <button type="button" @click="openPreview()" title="Visualizar">
-                    <i data-lucide="eye"></i> <span>Visualizar</span>
+                <button type="button" @click="openPreview()" title="{{ mad_t('mad.ui.view') }}">
+                    <i data-lucide="eye"></i> <span>{{ mad_t('mad.ui.view') }}</span>
                 </button>
                 <a x-show="file && file.existing && file.existingUrl"
-                    :href="file?.existingUrl" target="_blank" download title="Baixar" x-cloak>
-                    <i data-lucide="download"></i> <span>Baixar</span>
+                    :href="file?.existingUrl" target="_blank" download title="{{ mad_t('mad.ui.download') }}" x-cloak>
+                    <i data-lucide="download"></i> <span>{{ mad_t('mad.ui.download') }}</span>
                 </a>
-                <button type="button" @click="$refs.fileInput.click()" title="Trocar"
+                <button type="button" @click="$refs.fileInput.click()" title="{{ mad_t('mad.ui.replace') }}"
                     @if($disabled) disabled @endif>
-                    <i data-lucide="refresh-cw"></i> <span>Trocar</span>
+                    <i data-lucide="refresh-cw"></i> <span>{{ mad_t('mad.ui.replace') }}</span>
                 </button>
                 <button type="button" class="mad-file-card-toolbar-danger"
-                    @click="removeFile($refs.fileInput)" title="Remover"
+                    @click="removeFile($refs.fileInput)" title="{{ mad_t('mad.ui.remove') }}"
                     @if($disabled) disabled @endif>
-                    <i data-lucide="trash-2"></i> <span>Remover</span>
+                    <i data-lucide="trash-2"></i> <span>{{ mad_t('mad.ui.remove') }}</span>
                 </button>
             </div>
         </div>
@@ -218,11 +218,11 @@
                 <iframe x-show="ftype === 'pdf'" :src="src" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>
                 <div x-show="ftype === 'other'" style="padding:60px 20px;color:var(--mad-text-muted);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
-                    <p>Preview não disponível para este tipo de arquivo.</p>
+                    <p>{{ mad_t('mad.ui.preview_unavailable') }}</p>
                     <a x-show="downloadUrl" :href="downloadUrl" target="_blank" download
                         class="mad-btn mad-btn-primary mad-btn-sm" style="margin-top:12px;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                        Baixar arquivo
+                        {{ mad_t('mad.ui.download_file') }}
                     </a>
                 </div>
             </div>

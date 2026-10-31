@@ -1,5 +1,6 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'placeholder' => 'Pesquisar...', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
 @php
+    $placeholder = $placeholder ?? mad_t('mad.ui.search_long_dots');
     $required = !empty($required);
     $disabled = !empty($disabled);
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);

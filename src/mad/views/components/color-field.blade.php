@@ -44,7 +44,7 @@
                 :style="'background:' + color"
                 @click.prevent="pickr && pickr.show()"
                 @if($disabled) disabled @endif
-                aria-label="Abrir seletor de cor"></button>
+                aria-label="{{ mad_t('mad.ui.open_color_picker') }}"></button>
     </div>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

@@ -42,5 +42,5 @@
 @elseif($srcStr !== '' && $isSafe && trim((string) $alt) !== '')
 <div style="text-align:{{ $alignSafe }};margin:2pt 0;font-size:9pt;color:#6b7280;">{{ $alt }}</div>
 @else
-<div style="font-size:9pt;color:#9ca3af;font-style:italic;">[Imagem sem origem válida]</div>
+<div style="font-size:9pt;color:#9ca3af;font-style:italic;">{{ mad_t('mad.ui.image_no_source') }}</div>
 @endif

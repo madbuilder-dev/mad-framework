@@ -66,13 +66,13 @@
         @endif
     </div>
     <a href="{{ $urlDl }}" class="mad-btn mad-btn-outline mad-btn-sm" style="text-decoration:none;">
-        <i data-lucide="download" style="width:14px;height:14px;"></i> Baixar
+        <i data-lucide="download" style="width:14px;height:14px;"></i> {{ mad_t('mad.ui.download') }}
     </a>
     @if(!empty($vars['deletable']))
         <button type="button" class="mad-btn mad-btn-danger mad-btn-sm"
                 data-mad-click="blockRemove({{ $id }}, '{{ $state }}')"
                 @if(!empty($vars['confirmRemove'])) data-mad-confirm="{{ $vars['confirmRemove'] }}" @endif
-                aria-label="Excluir anexo">
+                aria-label="{{ mad_t('mad.ui.delete_attachment') }}">
             <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
         </button>
     @endif

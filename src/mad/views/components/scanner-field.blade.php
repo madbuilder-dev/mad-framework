@@ -76,15 +76,15 @@
     {{-- Camera viewfinder (hidden by default) --}}
     <div class="mad-scanner-viewfinder" x-show="scanning" x-transition x-cloak>
         <div class="mad-scanner-camera-header">
-            <span>Scanner ativo</span>
+            <span>{{ mad_t('mad.ui.scanner_active') }}</span>
             <button type="button" class="mad-scanner-close-btn" @click="close()">&#10005;</button>
         </div>
         <div class="mad-scanner-camera" x-ref="camera"></div>
         <div class="mad-scanner-camera-footer">
-            <span x-text="scanning ? 'Aponte para o código' : ''"></span>
+            <span x-text="scanning ? '{{ addslashes(mad_t('mad.ui.scan_aim')) }}' : ''"></span>
             @if($type === 'both')
             <div class="mad-scanner-type-toggle">
-                <button type="button" :class="{ 'active': _activeFilter === 'all' }" @click="setFilter('all')">Todos</button>
+                <button type="button" :class="{ 'active': _activeFilter === 'all' }" @click="setFilter('all')">{{ mad_t('mad.ui.all') }}</button>
                 <button type="button" :class="{ 'active': _activeFilter === 'qr' }" @click="setFilter('qr')">QR</button>
                 <button type="button" :class="{ 'active': _activeFilter === 'barcode' }" @click="setFilter('barcode')">Barcode</button>
             </div>

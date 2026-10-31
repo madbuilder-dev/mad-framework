@@ -16,20 +16,25 @@
     const DAY_NAMES = {
         'pt-br': ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
         'en':    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        'es':    ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
     };
     const DAY_NAMES_SHORT = {
         'pt-br': ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'],
         'en':    ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
+        'es':    ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
     };
     const MONTH_NAMES = {
         'pt-br': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
         'en':    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+        'es':    ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
     };
     const MONTH_FULL = {
         'pt-br': ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
         'en':    ['January', 'February', 'March', 'April', 'May', 'June',
                   'July', 'August', 'September', 'October', 'November', 'December'],
+        'es':    ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
     };
 
     function parseDate(input) {

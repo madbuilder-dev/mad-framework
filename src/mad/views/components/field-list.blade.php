@@ -29,7 +29,7 @@
     $label     = $label     ?? '';
     $hint      = $hint      ?? '';
     $error     = $error     ?? '';
-    $addLabel   = $addLabel   ?? 'Adicionar linha';
+    $addLabel   = $addLabel   ?? mad_t('mad.ui.add_row');
     $class      = $class      ?? '';
     $model      = $model      ?? '';
     $foreignKey = $foreignKey ?? '';
@@ -542,7 +542,7 @@
             {{-- Empty state -------------------------------------------------- --}}
             <div class="mad-fl-empty" x-show="rows.length === 0" x-cloak>
                 <i data-lucide="inbox" style="width:18px;height:18px;flex-shrink:0;"></i>
-                <span>Nenhum item adicionado</span>
+                <span>{{ mad_t('mad.ui.no_items_added') }}</span>
             </div>
 
             @php $__flMasterDeps = []; @endphp
@@ -569,7 +569,7 @@
 
                     {{-- Drag handle (somente quando sortable) ---------------- --}}
                     @if($sortable)
-                        <div class="mad-fl-handle" title="Arrastar para reordenar">
+                        <div class="mad-fl-handle" title="{{ mad_t('mad.ui.drag_to_reorder') }}">
                             <i data-lucide="grip-vertical" style="width:13px;height:13px;"></i>
                         </div>
                     @endif
@@ -748,7 +748,7 @@
                                         data-mad-fl-dep-token="{{ $depToken }}"
                                     @endif
                                     @if($col->attrs) {!! $col->attrs !!} @endif>
-                                <option value="">{{ $col->placeholder !== '' ? $col->placeholder : 'Selecione...' }}</option>
+                                <option value="">{{ $col->placeholder !== '' ? $col->placeholder : mad_t('mad.ui.select_placeholder') }}</option>
                                 @foreach($col->options as $optVal => $optLabel)
                                     <option value="{{ $optVal }}"
                                             :selected="row['{{ $fld }}'] == '{{ $optVal }}'">{{ is_scalar($optLabel) ? $optLabel : $optVal }}</option>
@@ -900,7 +900,7 @@
                                         <i data-lucide="file" style="width:11px;height:11px;flex-shrink:0;"></i>
                                         <span x-text="fname" class="mad-fl-file-tag-name"></span>
                                         <button type="button" class="mad-fl-file-tag-x"
-                                                @click="removeFile(fi)" title="Remover"
+                                                @click="removeFile(fi)" title="{{ mad_t('mad.ui.remove') }}"
                                                 @if($col->disabled) disabled @endif>&times;</button>
                                     </span>
                                 </template>
@@ -983,9 +983,9 @@
                                     <div class="mad-modal mad-flm-modal" @click.stop>
                                         <div class="mad-modal-header">
                                             <div class="mad-modal-title">
-                                                Arquivos da linha
-                                                <span x-show="storage==='db'" style="font-size:11px;color:var(--mad-text-muted);">(banco / base64)</span>
-                                                <span x-show="storage!=='db'" style="font-size:11px;color:var(--mad-text-muted);">(disco)</span>
+                                                {{ mad_t('mad.ui.row_files') }}
+                                                <span x-show="storage==='db'" style="font-size:11px;color:var(--mad-text-muted);">{{ mad_t('mad.ui.storage_db') }}</span>
+                                                <span x-show="storage!=='db'" style="font-size:11px;color:var(--mad-text-muted);">{{ mad_t('mad.ui.storage_disk') }}</span>
                                                 <span class="mad-badge mad-badge-secondary" x-show="count()>0" x-text="count()" style="margin-left:6px;"></span>
                                             </div>
                                             <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon" @click="open=false">&times;</button>
@@ -994,7 +994,7 @@
                                             <div class="mad-file-body" @click="$refs.flmInput.click()"
                                                  style="cursor:pointer;border:1px dashed var(--mad-border);border-radius:8px;padding:22px;text-align:center;">
                                                 <i data-lucide="upload-cloud" style="width:28px;height:28px;color:var(--mad-text-subtle);"></i>
-                                                <div><strong>Clique para enviar</strong> ou arraste vários</div>
+                                                <div><strong>{{ mad_t('mad.ui.click_to_upload') }}</strong> {{ mad_t('mad.ui.or_drag_many') }}</div>
                                                 @if($fAccept)<small style="color:var(--mad-text-muted);">{{ $fAccept }}</small>@endif
                                             </div>
                                             <input type="file" x-ref="flmInput" style="display:none" multiple
@@ -1017,12 +1017,12 @@
                                                             <span class="mad-multi-file-card-name" x-text="ef.name" :title="ef.name"></span>
                                                             <span class="mad-multi-file-card-size">
                                                                 <a x-show="ef.url" :href="ef.url" target="_blank" style="display:inline-flex;align-items:center;gap:3px;">
-                                                                    <i data-lucide="download" style="width:11px;height:11px;"></i> baixar
+                                                                    <i data-lucide="download" style="width:11px;height:11px;"></i> {{ mad_t('mad.ui.download_lc') }}
                                                                 </a>
-                                                                <span x-show="!ef.url">existente</span>
+                                                                <span x-show="!ef.url">{{ mad_t('mad.ui.existing') }}</span>
                                                             </span>
                                                         </div>
-                                                        <button type="button" class="mad-multi-file-card-remove" @click="removeExisting(i)" title="Remover">&times;</button>
+                                                        <button type="button" class="mad-multi-file-card-remove" @click="removeExisting(i)" title="{{ mad_t('mad.ui.remove') }}">&times;</button>
                                                     </div>
                                                 </template>
                                                 <template x-for="(f, i) in files" :key="'n'+i">
@@ -1038,16 +1038,16 @@
                                                         </template>
                                                         <div class="mad-multi-file-card-info">
                                                             <span class="mad-multi-file-card-name" x-text="f.name" :title="f.name"></span>
-                                                            <span class="mad-multi-file-card-size" style="color:var(--mad-success);"><span x-text="f.sizeText"></span> · novo</span>
+                                                            <span class="mad-multi-file-card-size" style="color:var(--mad-success);"><span x-text="f.sizeText"></span> {{ mad_t('mad.ui.new_suffix') }}</span>
                                                         </div>
-                                                        <button type="button" class="mad-multi-file-card-remove" @click="removeNew(i)" title="Remover">&times;</button>
+                                                        <button type="button" class="mad-multi-file-card-remove" @click="removeNew(i)" title="{{ mad_t('mad.ui.remove') }}">&times;</button>
                                                     </div>
                                                 </template>
                                             </div>
-                                            <div x-show="count() === 0" style="color:var(--mad-text-muted);font-size:13px;text-align:center;padding:18px;">Nenhum arquivo nesta linha</div>
+                                            <div x-show="count() === 0" style="color:var(--mad-text-muted);font-size:13px;text-align:center;padding:18px;">{{ mad_t('mad.ui.no_files_in_row') }}</div>
                                         </div>
                                         <div class="mad-modal-footer" style="padding:10px 16px;text-align:right;border-top:1px solid var(--mad-border);">
-                                            <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="open=false">Concluir</button>
+                                            <button type="button" class="mad-btn mad-btn-primary mad-btn-sm" @click="open=false">{{ mad_t('mad.ui.done') }}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1159,7 +1159,7 @@
                                  @click.outside="close()">
                                 <input type="text"
                                        class="mad-input mad-input-sm"
-                                       placeholder="{{ $ph ?: 'dd/mm/aaaa' }}"
+                                       placeholder="{{ $ph ?: mad_t('mad.ui.date_placeholder') }}"
                                        autocomplete="off"
                                        inputmode="numeric"
                                        @if($col->required) required @endif
@@ -1378,7 +1378,7 @@
                             <button type="button"
                                     class="mad-fl-remove-btn"
                                     @click="removeRow(rowIndex)"
-                                    title="Remover linha">
+                                    title="{{ mad_t('mad.ui.remove_row') }}">
                                 <i data-lucide="x" style="width:13px;height:13px;"></i>
                             </button>
                         </div>
