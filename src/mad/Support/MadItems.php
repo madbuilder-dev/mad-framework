@@ -47,6 +47,28 @@ final class MadItems
     private const LABEL_KEYS = ['label', 'text', 'name', 'title', 'nome'];
 
     /**
+     * Lista vinda de consulta → array; o resto volta como veio.
+     *
+     * `:items="Grupo::pluck('nome', 'id')"` entrega uma Collection, não um
+     * array: o Select descartava (`is_array`) e o Multi Search desenhava as
+     * opções mas o `(array)` da lista para o Salvar virava lixo. `Arrayable`
+     * (Collection, inclusive de Models, que viram listas de arrays e o
+     * {@see normalize()} transforma em mapa) e qualquer `Traversable` viram
+     * array aqui.
+     */
+    public static function plain(mixed $items): mixed
+    {
+        if ($items instanceof \Illuminate\Contracts\Support\Arrayable) {
+            return $items->toArray();
+        }
+        if ($items instanceof \Traversable) {
+            return iterator_to_array($items);
+        }
+
+        return $items;
+    }
+
+    /**
      * Lista de objetos `{valor, rótulo}` → mapa `[valor => rótulo]`; o resto
      * volta como veio.
      *

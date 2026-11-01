@@ -57,7 +57,11 @@
     $width         = $width         ?? '';
     $maxWidth      = $maxWidth      ?? '';
     $label         = $label         ?? '';
-    $database      = $database      ?? (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
+    // `database` omitido (forma do Studio quando o banco é o padrão do
+    // projeto): a busca roda na conexão do PRÓPRIO Model, abaixo. O
+    // fallback daqui só vale quando não há Model que diga a conexão.
+    $__dbGiven     = isset($database) && (string) $database !== '';
+    $database      = $__dbGiven ? $database : (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
     $model         = $model         ?? '';
     $keyField      = $key           ?? 'id';
     $display       = $display       ?? 'nome';
@@ -182,6 +186,13 @@
                 \Mad\Database\QuerySource::applyArrayFilters($__qb, $filters);
             }
             [$querySql, $queryBindings] = \Mad\Database\QuerySource::compileSql($__qb);
+            // Sem `database` na tag, a SQL do Model roda na conexão dele — a
+            // mesma dos itens já escolhidos. Antes ia para a conexão padrão
+            // ('business'): com o Model em outro banco a busca não achava
+            // a tabela e a lista abria vazia (fórum #212).
+            if (!$__dbGiven) {
+                $database = \Mad\Database\QuerySource::connectionName($__qb) ?: $database;
+            }
         } catch (\Throwable $e) {
             $querySql = '';
             $queryBindings = [];

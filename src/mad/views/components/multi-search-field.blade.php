@@ -1,5 +1,12 @@
 @props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'selected' => [], 'placeholder' => mad_t('mad.ui.select_placeholder'), 'min-length' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'noResultsCreateAction' => '', 'noResultsCreateLabel' => mad_t('mad.ui.create_new'), 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => mad_t('mad.ui.add'), 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => ''])
 @php
+    // O Studio grava a lista em `:items` (como no Select) e o campo só lia
+    // `options`: abria sem opção nenhuma e sem os itens já escolhidos
+    // (fórum #212). Os dois nomes valem; com os dois, `options` vence.
+    if (empty($options) && !empty($items)) { $options = $items; }
+    // `Model::pluck('nome', 'id')` chega como Collection: vira array, senão as
+    // chaves que o Salvar confere saíam erradas do `(array)` mais abaixo.
+    $options = \Mad\Support\MadItems::plain($options);
     // Lista de objetos [['value' => …, 'label' => …]] vira [valor => rótulo] (\Mad\Support\MadItems).
     if (is_array($options)) { $options = \Mad\Support\MadItems::normalize($options); }
     $required  = !empty($required);

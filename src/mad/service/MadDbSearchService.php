@@ -138,20 +138,48 @@ class MadDbSearchService extends MadComponent
                             // não resolve nem no label nem na busca — o :query precisa
                             // trazer a coluna já achatada no SELECT (alias 'estado_sigla'
                             // ou 'estado->sigla', que o ModelOptionsLoader aceita).
-                            $qb = DB::connection($database)->query()
-                                ->fromRaw("({$querySql}) as mad_q", $queryBindings);
+                            //
+                            // Com `model` no token (o campo com `model=` também chega
+                            // aqui: a tag compila a consulta do Model) e relação no
+                            // texto ou na busca, a derived table ganha o NOME da
+                            // tabela do Model e é lida pelo Eloquent: o whereHas e o
+                            // eager load da relação qualificam a coluna pelo nome da
+                            // tabela, que agora existe. Os escopos já valeram na SQL
+                            // compilada — não se aplicam de novo. Antes as linhas
+                            // eram stdClass: `{grupo->nome} - {nome}` saía " - S2" e
+                            // buscar pelo grupo não achava nada (fórum #212).
+                            $useModels = $proto !== null
+                                && ($displayChains || $chainColumns)
+                                && self::aliasableTable($proto);
+
+                            if ($useModels) {
+                                $qb = $proto::on($database)->withoutGlobalScopes();
+                                $qb->fromRaw(
+                                    '(' . $querySql . ') as ' . $qb->getQuery()->getGrammar()->wrapTable($proto->getTable()),
+                                    $queryBindings
+                                );
+                                if ($with = ModelOptionsLoader::eagerPathsFor($proto, $displayChains)) {
+                                    $qb->with($with); // sem N+1 no label
+                                }
+                            } else {
+                                $qb = DB::connection($database)->query()
+                                    ->fromRaw("({$querySql}) as mad_q", $queryBindings);
+                            }
 
                             if ($depValue !== '' && $column !== '') {
                                 $qb->where($column, $depValue);
                             }
-                            if ($q !== '' && $searchColumns) {
-                                $qb->where(function ($w) use ($searchColumns, $terms, $useILike, $useLowerFn) {
+                            if ($q !== '' && ($searchColumns || ($useModels && $chainColumns))) {
+                                $qb->where(function ($w) use ($searchColumns, $chainColumns, $terms, $useILike, $useLowerFn, $useModels) {
                                     $first = true;
                                     foreach ($searchColumns as $col) {
                                         foreach ($terms as $t) {
                                             self::applyLike($w, $col, $t, $useILike, $useLowerFn, $first);
                                             $first = false;
                                         }
+                                    }
+                                    if ($useModels) {
+                                        self::applyChainLike($w, $chainColumns, $terms, $useILike, $useLowerFn, $first);
                                     }
                                 });
                             }
@@ -160,10 +188,11 @@ class MadDbSearchService extends MadComponent
                             }
                             $collection = $qb->limit($limit)->get();
 
-                            // Campo calculado no texto: a linha da derived table vira o
-                            // Model do campo (sem consulta nova), e a relação do chain
-                            // é carregada de uma vez — o accessor roda no mask().
-                            if ($displayVirtual) {
+                            // Campo calculado no texto (ou relação numa tabela que não
+                            // dá para apelidar): a linha da derived table vira o Model
+                            // do campo (sem consulta nova), e a relação do chain é
+                            // carregada de uma vez — o accessor roda no mask().
+                            if (! $useModels && $proto !== null && ($displayVirtual || $displayChains)) {
                                 $collection = self::asModels($proto, $database, $collection->all(), $displayChains);
                             }
                         } else {
@@ -260,6 +289,16 @@ class MadDbSearchService extends MadComponent
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * A derived table pode levar o nome da tabela do Model? Só nome simples:
+     * `schema.tabela` não serve de apelido, e a coluna qualificada pela relação
+     * (`schema.tabela.coluna`) não acharia a derived table.
+     */
+    private static function aliasableTable(Model $proto): bool
+    {
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $proto->getTable()) === 1;
     }
 
     /**

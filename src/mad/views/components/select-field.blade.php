@@ -2,6 +2,9 @@
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
+    // `:items="Model::pluck('nome', 'id')"` chega como Collection: vira array
+    // (antes caía no `[]` e o combo abria sem opção nenhuma).
+    $items    = \Mad\Support\MadItems::plain($items);
     $items    = is_array($items) ? $items : [];
     // Fallback: se prop items veio vazia, tenta MadForm->items[$name] —
     // permite que onEdit/mount populem options via $form->setItems(...) e o

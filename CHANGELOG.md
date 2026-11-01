@@ -12,6 +12,15 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.251.3] — 2026-11-01
+
+### Correções
+
+- **Multi Search:** a lista montada no Studio não aparecia no app. O campo abria vazio, sem as opções e sem os itens já escolhidos. Agora a lista aparece, inclusive quando vem de uma consulta como `:items="Grupo::pluck('nome', 'id')"`.
+- **DB Multi Search e DB Unique Search:** com a tabela num banco que não é o padrão do projeto e sem `database` na tag, digitar não trazia resultado nenhum. Agora a busca procura no banco da própria tabela.
+- **DB Multi Search e DB Unique Search:** com um campo de outra tabela no texto, como `display="{grupo->nome} - {nome}"`, os resultados da busca saíam sem essa parte (" - Suco"). Agora aparecem completos ("Bebidas - Suco"), e digitar o nome do grupo também acha os itens dele.
+- **Select:** a lista vinda de uma consulta, como `:items="Grupo::pluck('nome', 'id')"`, deixava o combo sem opção nenhuma. Agora as opções aparecem.
+
 ## [5.251.2] — 2026-11-01
 
 ### Correções
