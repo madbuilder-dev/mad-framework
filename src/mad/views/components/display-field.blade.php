@@ -50,6 +50,27 @@
     $isEmpty   = ($rawValue === '' || $rawValue === null);
     // `hide-empty`: campo vazio não aparece (a ficha mostra só o preenchido).
     $hideEmpty = !empty($hideEmpty) && $hideEmpty !== 'false';
+    // `compute="{valor} * {qtde}"` (fórum #203): o compilador põe a diretiva
+    // `x-mad-compute` no `attrs` e a conta é feita no navegador (mad-ui.js),
+    // que escreve o resultado no lugar do valor com o formato daqui: moeda
+    // (prefixo do `format="money:US$"`) ou número; outro formato (data, CPF…)
+    // mostra o número sem formato especial. O valor só existe no navegador:
+    // o `hide-empty` não pula o campo.
+    $_computeFmt = '';
+    if (str_contains((string) $attrs, 'x-mad-compute=')) {
+        $hideEmpty = false;
+        $_cParts = explode(':', (string) $format, 2);
+        $_cType  = $_cParts[0] === 'money' ? 'money' : (in_array($_cParts[0], ['number', 'numeric', 'decimal'], true) ? 'number' : '');
+        [$_cDec, $_cTho] = \Mad\Support\ValueFormatter::separators();
+        $_computeFmt = ' data-mad-compute-fmt="' . htmlspecialchars((string) json_encode([
+            'type'   => $_cType,
+            'prefix' => $_cType === 'money' ? (($_cParts[1] ?? '') ?: 'R$') : '',
+            'gap'    => \Mad\Support\ValueFormatter::moneyGap(),
+            'dec'    => $_cDec,
+            'tho'    => $_cTho,
+            'empty'  => (string) $empty,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') . '"';
+    }
     $displayHtml = '';
 
     if ($isEmpty) {
@@ -180,7 +201,7 @@
 @if($hideEmpty && $isEmpty)
 <div class="mad-field-read-skip" hidden></div>
 @else
-<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif {!! $attrs !!}>
+<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif {!! $attrs !!}{!! $_computeFmt !!}>
     @if($label)
     <div class="mad-display-field-header">
         @if($icon)

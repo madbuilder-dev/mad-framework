@@ -3791,8 +3791,9 @@ document.addEventListener('alpine:initialized', function () { _madWhenMountOrpha
    <mad-money-field name="total" compute="{preco} * {quantidade}" readonly />
 
    O compilador MAD (MadBlade::parseParams) troca o `compute` de
-   <mad-money-field>, <mad-numeric-field> e <mad-number-field> pela diretiva
-   `x-mad-compute="expr"` no `attrs` do campo. A fórmula é a mesma do
+   <mad-money-field>, <mad-numeric-field>, <mad-number-field> e
+   <mad-display-field> pela diretiva `x-mad-compute="expr"` no `attrs` do
+   campo. A fórmula é a mesma do
    `compute` da coluna da Lista de itens (FieldListColumn::compileFormula):
    `{campo}` vira o NÚMERO do campo `name="campo"` do mesmo formulário (vazio
    = 0; no sub-form do Detail Form, o campo DELE antes do de mesmo nome do
@@ -3804,7 +3805,9 @@ document.addEventListener('alpine:initialized', function () { _madWhenMountOrpha
    `_madWhen.readValue` (valor atual, hidden do campo com máscara).
    O resultado entra pelo `setValue()` do componente do campo (moeda,
    decimal: máscara e casas decimais dele) ou, no campo de número sem
-   componente, direto no input. Só escreve quando o valor muda; o evento que
+   componente, direto no input. No Display (fórum #203), o texto formatado
+   (moeda ou número, `data-mad-compute-fmt` do servidor) vai no lugar do
+   valor, sem evento: ele só mostra. Só escreve quando o valor muda; o evento que
    ele dispara leva a profundidade, e uma corrente de cálculos que não para
    (ciclo `{a}` ← `{b}` ← `{a}`) é cortada em MAX_DEPTH. Fórmula inválida ou
    que lança = sem efeito (o campo fica como está).
@@ -3944,8 +3947,66 @@ var _madCompute = (function () {
         } catch (e) { return null; }
     }
 
+    // Formato da conta no Display: o JSON que o display-field.blade.php põe
+    // em `data-mad-compute-fmt` (tipo, prefixo, separadores e texto de vazio
+    // do idioma do app). Sem ele: número, com os separadores do _madNumSeps.
+    function displayFmt(el) {
+        var f = null;
+        try { f = JSON.parse(el.getAttribute('data-mad-compute-fmt') || 'null'); } catch (e) { f = null; }
+        return f && typeof f === 'object' ? f : {};
+    }
+
+    // "-1234.5" → "-1.234,5": milhar no inteiro, separador decimal do idioma.
+    function groupNum(s, dec, tho) {
+        if (/e/i.test(s)) return s.replace('.', dec);
+        var neg = s.charAt(0) === '-';
+        if (neg) s = s.slice(1);
+        var p = s.split('.');
+        return (neg ? '-' : '') + p[0].replace(/\B(?=(\d{3})+(?!\d))/g, tho) + (p.length > 1 ? dec + p[1] : '');
+    }
+
+    // Texto do Display: moeda = prefixo + espaço + 2 casas (como o
+    // `format="money"` do servidor); número (ou outro formato) = o número
+    // limpo, sem casas fixas.
+    function displayText(value, f) {
+        var seps = typeof window._madNumSeps === 'function' ? window._madNumSeps() : [',', '.'];
+        var dec = typeof f.dec === 'string' ? f.dec : seps[0];
+        var tho = typeof f.tho === 'string' ? f.tho : seps[1];
+        if (f.type === 'money') {
+            return (typeof f.prefix === 'string' ? f.prefix : 'R$')
+                + (typeof f.gap === 'string' ? f.gap : ' ')
+                + groupNum(round(value, 2).toFixed(2), dec, tho);
+        }
+        return groupNum(String(clean(value)), dec, tho);
+    }
+
+    // <mad-display-field compute> (fórum #203): só mostra a conta. Escreve o
+    // texto (textContent, nunca HTML) no lugar do valor; '' = o texto de
+    // vazio, com a classe de vazio. Não dispara evento: o Display não tem
+    // `name`, não vai no Salvar e não entra em outra fórmula.
+    function writeDisplay(el, value) {
+        var box = el.querySelector('.mad-display-field-value');
+        if (!box) return false;
+        var f = displayFmt(el);
+        var blank = value === '';
+        var text = blank ? (typeof f.empty === 'string' ? f.empty : '—') : displayText(value, f);
+        var wasBlank = !!box.querySelector('.mad-display-field-empty');
+        if (wasBlank === blank && String(box.textContent || '').trim() === text.trim()) return false;
+        if (blank) {
+            var span = document.createElement('span');
+            span.className = 'mad-display-field-empty';
+            span.textContent = text;
+            box.textContent = '';
+            box.appendChild(span);
+        } else {
+            box.textContent = text;
+        }
+        return true;
+    }
+
     // Escreve o resultado no campo. true = valor mudou.
     function write(el, root, value, depth) {
+        if (el.classList && el.classList.contains('mad-display-field')) return writeDisplay(el, value);
         var ad = componentOf(root);
         if (ad) {
             var dec = typeof ad._madDecimals === 'number' ? ad._madDecimals : null;

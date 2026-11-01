@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.251.0] — 2026-11-01
+
+### Novidades
+
+- **Formulário:** o `<mad-display-field>` aceita `compute`, como os campos de moeda e de número: `<mad-display-field label="Total" format="money" compute="{valor} * {quantidade}" />` mostra a conta na hora, enquanto o usuário digita, formatada em moeda (`format="money"`, `format="money:US$"`) ou como número. Funciona também dentro do `<mad-detail-form>`, lendo os campos do próprio item. O Display só mostra: o valor não é gravado.
+
 ## [5.250.2] — 2026-10-31
 
 ### Correções

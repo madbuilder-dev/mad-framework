@@ -568,12 +568,12 @@ class MadBladeCompiler extends BladeCompiler
 
     /**
      * Campos em que `compute="{a} * {b}"` vira cálculo no navegador (diretiva
-     * `x-mad-compute`, mad-ui.js). Só os numéricos do formulário: na coluna da
-     * Lista de itens (`field-list-column`), na planilha (`sheet-col`) e nos
-     * cards de indicador o `compute` é outra prop, lida pelo próprio
-     * componente.
+     * `x-mad-compute`, mad-ui.js). Só os numéricos do formulário e o Display
+     * (só mostra a conta, não grava — fórum #203): na coluna da Lista de itens
+     * (`field-list-column`), na planilha (`sheet-col`) e nos cards de
+     * indicador o `compute` é outra prop, lida pelo próprio componente.
      */
-    private const COMPUTE_TAGS = ['money-field', 'numeric-field', 'number-field'];
+    private const COMPUTE_TAGS = ['money-field', 'numeric-field', 'number-field', 'display-field'];
 
     /**
      * Campos em que o "Valor padrão" (`default` / `:default`) é o `value` da tag.
