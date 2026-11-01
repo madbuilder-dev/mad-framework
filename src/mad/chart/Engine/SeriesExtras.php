@@ -705,14 +705,14 @@ trait SeriesExtras
     {
         $p = $this->displayPrecision();
 
-        return ($this->prefix ?? '') . number_format($v, $p, $this->decimalSeparator ?? ',', $this->thousandSeparator ?? '.') . ($this->sufix ?? '');
+        return ($this->prefix ?? '') . number_format($v, $p, $this->decimalSeparator ?? \Mad\Support\ValueFormatter::separators()[0], $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1]) . ($this->sufix ?? '');
     }
 
     private function jsAxisTooltip(bool $hasTransformer): string
     {
         $p = $this->displayPrecision();
-        $dec = $this->decimalSeparator ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix ?? '';
         $suf = $this->sufix ?? '';
         $n = $this->name;
@@ -726,8 +726,8 @@ trait SeriesExtras
     private function jsValueLabelFormatter(bool $hasTransformer): string
     {
         $p = $this->displayPrecision();
-        $dec = $this->decimalSeparator ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix ?? '';
         $suf = $this->sufix ?? '';
         $n = $this->name;

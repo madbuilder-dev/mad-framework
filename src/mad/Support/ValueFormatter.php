@@ -82,6 +82,18 @@ final class ValueFormatter
     }
 
     /**
+     * Símbolo da moeda do idioma do app, o padrão do `currency`/`money` sem
+     * símbolo no gráfico e no card de indicador: "R$" em português, "$" em
+     * inglês e espanhol.
+     */
+    public static function currencyPrefix(): string
+    {
+        $text = \Mad\I18n\MadLang::t('mad.fmt.currency');
+
+        return ($text === 'mad.fmt.currency' ? 'R$' : $text) . self::moneyGap();
+    }
+
+    /**
      * Separadores [decimal, milhar] do idioma do app — os das colunas `num` e
      * `money` da listagem. pt-BR/es: [',', '.']; inglês: ['.', ','].
      *

@@ -330,17 +330,19 @@
     if ($format) {
         $parts   = explode(':', $format);
         $fmtType = strtolower($parts[0]);
+        // Sem símbolo/separadores no format: os do idioma do app.
+        [$fmtDecDefault, $fmtThoDefault] = \Mad\Support\ValueFormatter::separators();
         if ($fmtType === 'currency' || $fmtType === 'money') {
-            $fmtPrefix    = $parts[1] ?? 'R$ ';
+            $fmtPrefix    = $parts[1] ?? \Mad\Support\ValueFormatter::currencyPrefix();
             $fmtPrecision = (int)($parts[2] ?? 2);
-            $fmtDecimal   = $parts[3] ?? ',';
-            $fmtThousand  = $parts[4] ?? '.';
+            $fmtDecimal   = $parts[3] ?? $fmtDecDefault;
+            $fmtThousand  = $parts[4] ?? $fmtThoDefault;
             $chart->currency($fmtPrecision, $fmtPrefix, $fmtDecimal, $fmtThousand);
             $fmtNativo = true;
         } elseif ($fmtType === 'numeric' || $fmtType === 'number') {
             $fmtPrecision = (int)($parts[1] ?? 2);
-            $fmtDecimal   = $parts[2] ?? ',';
-            $fmtThousand  = $parts[3] ?? '.';
+            $fmtDecimal   = $parts[2] ?? $fmtDecDefault;
+            $fmtThousand  = $parts[3] ?? $fmtThoDefault;
             $chart->numeric($fmtPrecision, $fmtDecimal, $fmtThousand);
             $fmtNativo = true;
         }

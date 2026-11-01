@@ -48,8 +48,8 @@ abstract class EChart extends BaseChart
     private function jsNumberFormatter(): string
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
 
@@ -65,8 +65,8 @@ abstract class EChart extends BaseChart
     private function jsAbbreviateFormatter(): string
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
 
@@ -181,8 +181,8 @@ abstract class EChart extends BaseChart
     private function buildPieLikeFormatters(bool $hasTransformer): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
         $n   = $this->name;
@@ -255,8 +255,8 @@ abstract class EChart extends BaseChart
     private function buildBarOptions(): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
 
@@ -523,8 +523,8 @@ abstract class EChart extends BaseChart
     private function buildLineOptions(): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
 
@@ -706,8 +706,8 @@ abstract class EChart extends BaseChart
     private function buildFunnelOptions(): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
         $n   = $this->name;
@@ -777,8 +777,8 @@ abstract class EChart extends BaseChart
     private function buildTreemapOptions(): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
         $n   = $this->name;
@@ -837,8 +837,8 @@ abstract class EChart extends BaseChart
     private function buildRadarOptions(): array
     {
         $p   = $this->displayPrecision();
-        $dec = $this->decimalSeparator  ?? ',';
-        $tho = $this->thousandSeparator ?? '.';
+        $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre = $this->prefix            ?? '';
         $suf = $this->sufix             ?? '';
 
@@ -1053,8 +1053,8 @@ abstract class EChart extends BaseChart
 
             // Tooltip do bar single só lê params[0]; com 2 séries usa o multi.
             $p   = $this->displayPrecision();
-            $dec = $this->decimalSeparator  ?? ',';
-            $tho = $this->thousandSeparator ?? '.';
+            $dec = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+            $tho = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
             $pre = $this->prefix            ?? '';
             $suf = $this->sufix             ?? '';
             $n   = $this->name;

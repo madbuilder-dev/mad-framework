@@ -287,27 +287,30 @@ class MadChart
 
     // ── Formatação numérica ──────────────────────────────────────────────────────
 
+    /** Sem prefixo/separadores: os do idioma do app (R$ 1.234,56 · $1,234.56). */
     public function currency(
-        int    $precision = 2,
-        string $prefix    = 'R$ ',
-        string $decimal   = ',',
-        string $thousand  = '.'
+        int     $precision = 2,
+        ?string $prefix    = null,
+        ?string $decimal   = null,
+        ?string $thousand  = null
     ): self {
+        [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
         $this->precision = $precision;
-        $this->prefix    = $prefix;
-        $this->decimal   = $decimal;
-        $this->thousand  = $thousand;
+        $this->prefix    = $prefix ?? \Mad\Support\ValueFormatter::currencyPrefix();
+        $this->decimal   = $decimal ?? $dec;
+        $this->thousand  = $thousand ?? $tho;
         return $this;
     }
 
     public function numeric(
-        int    $precision = 2,
-        string $decimal   = ',',
-        string $thousand  = '.'
+        int     $precision = 2,
+        ?string $decimal   = null,
+        ?string $thousand  = null
     ): self {
+        [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
         $this->precision = $precision;
-        $this->decimal   = $decimal;
-        $this->thousand  = $thousand;
+        $this->decimal   = $decimal ?? $dec;
+        $this->thousand  = $thousand ?? $tho;
         return $this;
     }
 

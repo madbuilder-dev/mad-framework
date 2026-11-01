@@ -69,6 +69,8 @@ final class MadChartFormatter
     {
         $parts = explode(':', $format);
         $type  = strtolower(trim($parts[0]));
+        // Sem símbolo/separadores no formato: os do idioma do app.
+        [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
 
         return match ($type) {
             'integer', 'int' => static fn($v) => self::fmtInteger($v),
@@ -76,17 +78,17 @@ final class MadChartFormatter
             'numeric', 'number' => static fn($v) => self::fmtNumeric(
                 $v,
                 (int)($parts[1] ?? 2),
-                $parts[2] ?? ',',
-                $parts[3] ?? '.',
+                $parts[2] ?? $dec,
+                $parts[3] ?? $tho,
                 $parts[4] ?? ''
             ),
 
             'currency', 'money' => static fn($v) => self::fmtCurrency(
                 $v,
-                $parts[1] ?? 'R$ ',
+                $parts[1] ?? \Mad\Support\ValueFormatter::currencyPrefix(),
                 (int)($parts[2] ?? 2),
-                $parts[3] ?? ',',
-                $parts[4] ?? '.'
+                $parts[3] ?? $dec,
+                $parts[4] ?? $tho
             ),
 
             'percent', 'pct' => static fn($v) => self::fmtPercent(
@@ -99,10 +101,10 @@ final class MadChartFormatter
                 (int)($parts[1] ?? 1)
             ),
 
-            'date'             => static fn($v) => self::fmtDate($v, 'd/m/Y'),
-            'date-short'       => static fn($v) => self::fmtDate($v, 'd/m'),
+            'date'             => static fn($v) => self::fmtDate($v, \Mad\Support\ValueFormatter::dateFormat()),
+            'date-short'       => static fn($v) => self::fmtDate($v, str_starts_with(\Mad\Support\ValueFormatter::dateFormat(), 'm') ? 'm/d' : 'd/m'),
             'date-long'        => static fn($v) => self::fmtDateLong($v),
-            'datetime'         => static fn($v) => self::fmtDate($v, 'd/m/Y H:i'),
+            'datetime'         => static fn($v) => self::fmtDate($v, \Mad\Support\ValueFormatter::dateFormat(true)),
             'time'             => static fn($v) => self::fmtDate($v, 'H:i'),
             'year'             => static fn($v) => self::fmtYear($v),
             'month'            => static fn($v) => self::fmtMonth($v, false),
@@ -123,7 +125,7 @@ final class MadChartFormatter
     private static function fmtInteger(mixed $v): string
     {
         if ($v === null || $v === '') return '';
-        return number_format((float) $v, 0, ',', '.');
+        return number_format((float) $v, 0, ...\Mad\Support\ValueFormatter::separators());
     }
 
     private static function fmtNumeric(mixed $v, int $dec, string $decSep, string $thouSep, string $suffix): string
@@ -136,14 +138,14 @@ final class MadChartFormatter
     private static function fmtCurrency(mixed $v, string $prefix, int $dec, string $decSep, string $thouSep): string
     {
         if ($v === null || $v === '') return '';
-        $prefix = rtrim($prefix) . ' ';
+        $prefix = rtrim($prefix) . \Mad\Support\ValueFormatter::moneyGap();
         return $prefix . number_format((float) $v, $dec, $decSep, $thouSep);
     }
 
     private static function fmtPercent(mixed $v, int $dec): string
     {
         if ($v === null || $v === '') return '';
-        return number_format((float) $v, $dec, ',', '.') . '%';
+        return number_format((float) $v, $dec, ...\Mad\Support\ValueFormatter::separators()) . '%';
     }
 
     private static function fmtAbbreviate(mixed $v, int $dec): string
@@ -151,18 +153,19 @@ final class MadChartFormatter
         if ($v === null || $v === '') return '';
         $n = (float) $v;
         $abs = abs($n);
+        [$ds, $ts] = \Mad\Support\ValueFormatter::separators();
 
-        if ($abs >= 1_000_000_000) return self::trimZero(number_format($n / 1_000_000_000, $dec, ',', '.')) . 'B';
-        if ($abs >= 1_000_000)     return self::trimZero(number_format($n / 1_000_000, $dec, ',', '.'))     . 'M';
-        if ($abs >= 1_000)         return self::trimZero(number_format($n / 1_000, $dec, ',', '.'))         . 'K';
+        if ($abs >= 1_000_000_000) return self::trimZero(number_format($n / 1_000_000_000, $dec, $ds, $ts), $ds) . 'B';
+        if ($abs >= 1_000_000)     return self::trimZero(number_format($n / 1_000_000, $dec, $ds, $ts), $ds)     . 'M';
+        if ($abs >= 1_000)         return self::trimZero(number_format($n / 1_000, $dec, $ds, $ts), $ds)         . 'K';
 
-        return number_format($n, 0, ',', '.');
+        return number_format($n, 0, $ds, $ts);
     }
 
-    private static function trimZero(string $s): string
+    private static function trimZero(string $s, string $decSep = ','): string
     {
-        if (!str_contains($s, ',')) return $s;
-        return rtrim(rtrim($s, '0'), ',');
+        if (!str_contains($s, $decSep)) return $s;
+        return rtrim(rtrim($s, '0'), $decSep);
     }
 
     // ── Datas ───────────────────────────────────────────────────────────────
@@ -233,10 +236,32 @@ final class MadChartFormatter
         return date($php, $ts);
     }
 
+    /**
+     * Nomes de mês/dia fora do português vêm do catálogo do idioma do app
+     * (`mad.fmt.months`/`weekdays`); em português ficam os de sempre.
+     */
+    private static function localNames(): bool
+    {
+        return !str_starts_with(\Mad\I18n\MadLang::getLocale(), 'pt');
+    }
+
+    private static function monthName(int $m, bool $short): string
+    {
+        if (self::localNames()) {
+            return $short
+                ? \Mad\Support\ValueFormatter::monthShort($m)
+                : mb_convert_case(\Mad\Support\ValueFormatter::monthNames()[$m] ?? '', MB_CASE_TITLE);
+        }
+        return $short ? (self::MESES_CURTO[$m] ?? '') : (self::MESES[$m] ?? '');
+    }
+
     private static function fmtDateLong(mixed $v): string
     {
         $p = self::parse($v);
         if (!$p) return (string) $v;
+        if (self::localNames()) {
+            return \Mad\Support\ValueFormatter::dateLong((new \DateTimeImmutable())->setDate($p[0], $p[1], $p[2]));
+        }
         $mes = strtolower(self::MESES[$p[1]] ?? '');
         return sprintf('%d de %s de %d', $p[2], $mes, $p[0]);
     }
@@ -251,7 +276,7 @@ final class MadChartFormatter
     {
         $p = self::parse($v);
         if (!$p) return (string) $v;
-        return $short ? (self::MESES_CURTO[$p[1]] ?? '') : (self::MESES[$p[1]] ?? '');
+        return self::monthName($p[1], $short);
     }
 
     private static function fmtMonthYear(mixed $v, bool $short): string
@@ -259,9 +284,9 @@ final class MadChartFormatter
         $p = self::parse($v);
         if (!$p) return (string) $v;
         if ($short) {
-            return (self::MESES_CURTO[$p[1]] ?? '') . '/' . substr((string) $p[0], -2);
+            return self::monthName($p[1], true) . '/' . substr((string) $p[0], -2);
         }
-        return (self::MESES[$p[1]] ?? '') . '/' . $p[0];
+        return self::monthName($p[1], false) . '/' . $p[0];
     }
 
     private static function fmtWeekday(mixed $v, bool $short): string
@@ -270,6 +295,10 @@ final class MadChartFormatter
         if (!$p) return (string) $v;
         $ts = mktime(0, 0, 0, $p[1], $p[2], $p[0]);
         $dow = (int) date('w', $ts);
+        if (self::localNames()) {
+            $name = mb_convert_case(\Mad\Support\ValueFormatter::weekdayNames()[$dow] ?? '', MB_CASE_TITLE);
+            return $short ? mb_substr($name, 0, 3) : $name;
+        }
         return $short ? (self::DIAS_CURTO[$dow] ?? '') : (self::DIAS[$dow] ?? '');
     }
 
@@ -278,6 +307,6 @@ final class MadChartFormatter
         $p = self::parse($v);
         if (!$p) return (string) $v;
         $q = (int) ceil($p[1] / 3);
-        return $withYear ? "Q{$q}/{$p[0]}" : "{$q}º tri";
+        return $withYear ? "Q{$q}/{$p[0]}" : (self::localNames() ? "Q{$q}" : "{$q}º tri");
     }
 }

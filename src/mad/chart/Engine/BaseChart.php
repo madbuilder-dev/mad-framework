@@ -448,8 +448,8 @@ abstract class BaseChart
      */
     protected function abbreviateNumber(float $value): string
     {
-        $dec  = $this->decimalSeparator  ?? ',';
-        $tho  = $this->thousandSeparator ?? '.';
+        $dec  = $this->decimalSeparator  ?? \Mad\Support\ValueFormatter::separators()[0];
+        $tho  = $this->thousandSeparator ?? \Mad\Support\ValueFormatter::separators()[1];
         $pre  = $this->prefix            ?? '';
         $suf  = $this->sufix             ?? '';
         $sign = $value < 0 ? '-' : '';

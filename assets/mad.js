@@ -489,7 +489,8 @@ const Mad = {
     onlineTarget  : '#mad_partial',
     debug         : false,
     language      : 'pt',
-    waitMessage   : 'Aguarde...',
+    // Texto do MadLoader no idioma do app (MAD_I18N vem no <head>, antes deste script).
+    waitMessage   : madT('wait', 'Aguarde...'),
 
     // ── Abas internas (<mad-tab-bar>) ─────────────────────────────────────────
     // Com use_tabs ligado, TODA tela vai pro MadTabs: link de menu/boot abre
@@ -3816,6 +3817,10 @@ const MadLoader = {
                     <span>${message || Mad.waitMessage}</span>
                 </div>`;
             document.body.appendChild(this._el);
+        } else {
+            // O overlay é criado uma vez só: sem isto, a 1ª mensagem ficava para sempre.
+            const span = this._el.querySelector('.mad-loader-box > span');
+            if (span) span.innerHTML = message || Mad.waitMessage;
         }
         this._el.classList.add('mad-loader-visible');
     },

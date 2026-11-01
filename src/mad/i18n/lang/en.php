@@ -998,6 +998,7 @@ return [
             'money_gap'     => '',
             'decimal_sep'   => '.',
             'thousands_sep' => ',',
+            'currency'      => '$',
             'usd_prefix'    => '$',
             // Datas por extenso dos formatadores date-long/date-weekday/date-month-year (lista separada por vírgula).
             'months'        => 'January,February,March,April,May,June,July,August,September,October,November,December',
@@ -1117,6 +1118,7 @@ return [
             'upload_too_big'            => 'The file ":name" is :size; the limit for this field is :max.',
             'upload_type'               => 'The file ":name" is not a type accepted by this field (:types).',
             'upload_video'              => 'video',
+            'wait'                      => 'Please wait...',
             'weekdays_min'              => 'S,M,T,W,T,F,S',
             'weekdays_short'            => 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
             'year_letter'               => 'y',

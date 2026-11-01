@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.251.2] — 2026-11-01
+
+### Correções
+
+- **App em inglês ou espanhol:** o aviso de carregamento ao abrir uma tela ou um formulário aparecia como "Aguarde..." em qualquer idioma. Agora sai no idioma do app ("Please wait...", "Espere...").
+- **Gráficos e indicadores:** num app em inglês, `<mad-db-chart>` e `<mad-db-metric-card>` mostravam o dinheiro como "R$ 1.234,56" e os números com vírgula decimal quando o `format` não trazia símbolo nem separadores (`format="money"`, `format="currency"`, `numeric`, `integer`, `percent`, `abbreviate`, e o gráfico sem `format`). Agora o símbolo e os separadores seguem o idioma do app: "$1,234.56" em inglês, "$ 1.234,56" em espanhol; em português nada muda. Os formatos de data do gráfico (`date`, `month-year`, `weekday`…) também saem no idioma do app.
+
 ## [5.251.1] — 2026-11-01
 
 ### Correções
