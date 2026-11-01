@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.251.1] — 2026-11-01
+
+### Correções
+
+- **Formulário:** o **Calcular** (`compute`) com uma função de dois argumentos dentro de um `if`, como `if({preco} >= 100, round({preco} * 1.3, 2), {preco})`, deixava o campo sem calcular no app. Agora a conta sai certa, e `if` dentro de `if` também funciona.
+
 ## [5.251.0] — 2026-11-01
 
 ### Novidades

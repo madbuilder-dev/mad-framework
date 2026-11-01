@@ -3849,6 +3849,58 @@ var _madCompute = (function () {
         return Math.max(subtotal - desconto, 0);
     }
 
+    // Fim do parêntese aberto antes de `from` (-1 = não fecha). Texto entre
+    // aspas não conta: `if({tipo} == '(', …)`.
+    function closeOf(s, from) {
+        var depth = 1, quote = '';
+        for (var i = from; i < s.length; i++) {
+            var c = s.charAt(i);
+            if (quote) { if (c === quote) quote = ''; continue; }
+            if (c === "'" || c === '"') quote = c;
+            else if (c === '(') depth++;
+            else if (c === ')' && --depth === 0) return i;
+        }
+        return -1;
+    }
+
+    // Argumentos separados só nas vírgulas de nível 0 (fora de parênteses e
+    // de aspas), como o splitTopLevelCommas do compileFormula.ts do Studio.
+    function splitArgs(s) {
+        var out = [], depth = 0, start = 0, quote = '';
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charAt(i);
+            if (quote) { if (c === quote) quote = ''; continue; }
+            if (c === "'" || c === '"') quote = c;
+            else if (c === '(') depth++;
+            else if (c === ')') depth--;
+            else if (c === ',' && depth === 0) { out.push(s.slice(start, i)); start = i + 1; }
+        }
+        out.push(s.slice(start));
+        return out;
+    }
+
+    // `if(cond, então, senão)` → ternário, contando parênteses: a vírgula do
+    // `round(x, 2)` dentro de um resultado não corta mais o if (fw#572; a
+    // regex antiga partia ali e a fórmula inteira era descartada). if dentro
+    // de if também vira ternário. Sem 3 argumentos ou sem fechar: fica como
+    // está (a fórmula não compila, como antes).
+    function ifToTernary(s) {
+        var re = /\bif\s*\(/gi, out = '', last = 0, m;
+        while ((m = re.exec(s)) !== null) {
+            var open = m.index + m[0].length;
+            var close = closeOf(s, open);
+            if (close === -1) break;
+            var args = splitArgs(s.slice(open, close));
+            if (args.length !== 3) continue;
+            out += s.slice(last, m.index)
+                + '((' + ifToTernary(args[0].trim()) + ') ? (' + ifToTernary(args[1].trim())
+                + ') : (' + ifToTernary(args[2].trim()) + '))';
+            last = close + 1;
+            re.lastIndex = last;
+        }
+        return out + s.slice(last);
+    }
+
     // Funções da fórmula → JS. O 3º argumento do discount é o TIPO (texto,
     // '%' ou 'R$'): não pode virar número.
     function translate(expr) {
@@ -3863,8 +3915,7 @@ var _madCompute = (function () {
             .replace(/\babs\s*\(/gi, 'Math.abs(')
             .replace(/\bfloor\s*\(/gi, 'Math.floor(')
             .replace(/\bceil\s*\(/gi, 'Math.ceil(');
-        js = js.replace(/\bif\s*\(\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)/gi, '(($1) ? ($2) : ($3))');
-        return js;
+        return ifToTernary(js);
     }
 
     function compile(expr) {
