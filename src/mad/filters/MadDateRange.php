@@ -41,7 +41,8 @@ final class MadDateRange
         if (preg_match(self::ISO_RE, $value, $m)) {
             $date = self::exactDate('Y-m-d', $m[1]);
         } elseif (preg_match(self::BR_RE, $value, $m)) {
-            $date = self::exactDate('d/m/Y', $m[1] . '/' . $m[3] . '/' . $m[4]);
+            // Ordem do idioma: mês/dia em inglês, como a tela mostra (fw#586).
+            $date = self::exactDate(\Mad\Support\DateMask::monthFirst() ? 'm/d/Y' : 'd/m/Y', $m[1] . '/' . $m[3] . '/' . $m[4]);
         }
         if ($date !== null) return $date;
         throw new \InvalidArgumentException('Informe duas datas válidas no formato AAAA-MM-DD ou DD/MM/AAAA (a hora, se houver, é ignorada).');

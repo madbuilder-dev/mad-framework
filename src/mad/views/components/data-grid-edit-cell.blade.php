@@ -54,7 +54,7 @@
         $dpRowJs = $rowIdJs ?? \Mad\Grid\MadDataGrid::rowIdJs($rowId ?? '');
         $iso = !empty($cellVal) ? (string)$cellVal : '';
         $dpCfg = [
-            'displayMask'  => 'dd/mm/yyyy',
+            'displayMask'  => \Mad\Support\DateMask::date(),
             'databaseMask' => 'yyyy-mm-dd',
             'initialValue' => $iso,
         ];
@@ -77,7 +77,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-cell-input mad-dg-datepicker"
-               placeholder="{{ mad_t('mad.ui.date_placeholder') }}"
+               placeholder="{{ \Mad\Support\DateMask::placeholder() }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar" style="width:14px;height:14px;"></i>
@@ -90,7 +90,7 @@
         $dpRowJs = $rowIdJs ?? \Mad\Grid\MadDataGrid::rowIdJs($rowId ?? '');
         $iso = !empty($cellVal) ? (string)$cellVal : '';
         $dpCfg = [
-            'displayMask'  => 'dd/mm/yyyy hh:ii',
+            'displayMask'  => \Mad\Support\DateMask::datetime(),
             'databaseMask' => 'yyyy-mm-dd hh:ii',
             'initialValue' => $iso,
         ];
@@ -113,7 +113,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-cell-input mad-dg-datetimepicker"
-               placeholder="{{ mad_t('mad.ui.datetime_placeholder') }}"
+               placeholder="{{ \Mad\Support\DateMask::placeholder(\Mad\Support\DateMask::datetime()) }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar-clock" style="width:14px;height:14px;"></i>

@@ -58,7 +58,7 @@
         // quando a data muda (o seletor avisa a cada tecla com a data completa).
         $isoShown = ($__t = strtotime($iso)) ? date('Y-m-d', $__t) : '';
         $dpCfg = [
-            'displayMask'  => 'dd/mm/yyyy',
+            'displayMask'  => \Mad\Support\DateMask::date(),
             'databaseMask' => 'yyyy-mm-dd',
             'initialValue' => $iso,
         ];
@@ -72,9 +72,11 @@
                 // 03/03/2026 e a célula gravaria outra data calada. Vai a
                 // digitada, e o servidor a recusa com o erro da célula.
                 var typed = box.querySelector ? box.querySelector('input.mad-dg-inline-input') : null;
+                // Na ordem da máscara do seletor: em inglês o texto é mês/dia (fw#586).
+                var monthFirst = String(this._displayMask || '').indexOf('mm') === 0;
                 var tm = typed ? /^(\d{2})\/(\d{2})\/(\d{4})(?: (\d{2}):(\d{2}))?$/.exec(typed.value || '') : null;
                 if (tm && iso) {
-                    var asTyped = tm[3] + '-' + tm[2] + '-' + tm[1] + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
+                    var asTyped = tm[3] + '-' + (monthFirst ? tm[1] + '-' + tm[2] : tm[2] + '-' + tm[1]) + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
                     if (asTyped !== iso) iso = asTyped;
                 }
                 if (box._dgLast === undefined) box._dgLast = {{ json_encode($isoShown) }};
@@ -94,7 +96,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-inline-input mad-dg-datepicker"
-               placeholder="{{ mad_t('mad.ui.date_placeholder') }}"
+               placeholder="{{ \Mad\Support\DateMask::placeholder() }}"
                @keydown.enter="$event.target.blur()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar" style="width:14px;height:14px;"></i>
@@ -109,7 +111,7 @@
         // quando a data muda (o seletor avisa a cada tecla com a data completa).
         $isoShown = ($__t = strtotime($iso)) ? date('Y-m-d H:i', $__t) : '';
         $dpCfg = [
-            'displayMask'  => 'dd/mm/yyyy hh:ii',
+            'displayMask'  => \Mad\Support\DateMask::datetime(),
             'databaseMask' => 'yyyy-mm-dd hh:ii',
             'initialValue' => $iso,
         ];
@@ -123,9 +125,11 @@
                 // 03/03/2026 e a célula gravaria outra data calada. Vai a
                 // digitada, e o servidor a recusa com o erro da célula.
                 var typed = box.querySelector ? box.querySelector('input.mad-dg-inline-input') : null;
+                // Na ordem da máscara do seletor: em inglês o texto é mês/dia (fw#586).
+                var monthFirst = String(this._displayMask || '').indexOf('mm') === 0;
                 var tm = typed ? /^(\d{2})\/(\d{2})\/(\d{4})(?: (\d{2}):(\d{2}))?$/.exec(typed.value || '') : null;
                 if (tm && iso) {
-                    var asTyped = tm[3] + '-' + tm[2] + '-' + tm[1] + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
+                    var asTyped = tm[3] + '-' + (monthFirst ? tm[1] + '-' + tm[2] : tm[2] + '-' + tm[1]) + (tm[4] ? ' ' + tm[4] + ':' + tm[5] : '');
                     if (asTyped !== iso) iso = asTyped;
                 }
                 if (box._dgLast === undefined) box._dgLast = {{ json_encode($isoShown) }};
@@ -145,7 +149,7 @@
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
                class="mad-input mad-dg-inline-input mad-dg-datetimepicker"
-               placeholder="{{ mad_t('mad.ui.datetime_placeholder') }}"
+               placeholder="{{ \Mad\Support\DateMask::placeholder(\Mad\Support\DateMask::datetime()) }}"
                @keydown.enter="$event.target.blur()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
             <i data-lucide="calendar-clock" style="width:14px;height:14px;"></i>

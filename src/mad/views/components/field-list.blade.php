@@ -1145,7 +1145,7 @@
                             if ($col->min !== null) { $ts = strtotime((string)$col->min); if ($ts) $minIso = date('Y-m-d', $ts); }
                             if ($col->max !== null) { $ts = strtotime((string)$col->max); if ($ts) $maxIso = date('Y-m-d', $ts); }
                             $dpCfg = [
-                                'displayMask'  => 'dd/mm/yyyy',
+                                'displayMask'  => \Mad\Support\DateMask::date(),
                                 'databaseMask' => 'yyyy-mm-dd',
                                 'min'          => $minIso,
                                 'max'          => $maxIso,
@@ -1161,7 +1161,7 @@
                                  @click.outside="close()">
                                 <input type="text"
                                        class="mad-input mad-input-sm"
-                                       placeholder="{{ $ph ?: mad_t('mad.ui.date_placeholder') }}"
+                                       placeholder="{{ $ph ?: \Mad\Support\DateMask::placeholder() }}"
                                        autocomplete="off"
                                        inputmode="numeric"
                                        @if($col->required) required @endif

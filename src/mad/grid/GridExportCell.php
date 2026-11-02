@@ -177,8 +177,8 @@ final class GridExportCell
         // a planilha recebe data de verdade — não o ISO cru.
         if (GridColumn::isSerializedDate($value) && ($dt = self::parseDate($value)) !== null) {
             return $dt->format('H:i:s') === '00:00:00'
-                ? self::date($dt, 'dd/mm/yyyy', true, false)
-                : self::date($dt, 'dd/mm/yyyy hh:mm', true, true);
+                ? self::date($dt, ...self::builtinDateFormat('date'))
+                : self::date($dt, ...self::builtinDateFormat('datetime'));
         }
 
         return self::text(self::scalar($value));

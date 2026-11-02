@@ -1208,10 +1208,10 @@ class MadFormRegistry
 
         $transformed = match ($type) {
             // A data é lida com a MESMA máscara que o campo exibiu: num app em
-            // inglês ela é mm/dd/yyyy, e ler dd/mm trocava dia e mês. Token
-            // antigo (sem display_mask) segue em dd/mm/yyyy.
-            'date'      => self::_convertDate((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd', (string) ($props['display_mask'] ?? '') ?: 'dd/mm/yyyy'),
-            'datetime'  => self::_convertDatetime((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd HH:MM:SS', (string) ($props['display_mask'] ?? '') ?: 'dd/mm/yyyy hh:ii'),
+            // inglês ela é mm/dd/yyyy, e ler dd/mm trocava dia e mês. Sem
+            // display_mask vale a máscara do idioma (fw#586).
+            'date'      => self::_convertDate((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd', (string) ($props['display_mask'] ?? '') ?: \Mad\Support\DateMask::date()),
+            'datetime'  => self::_convertDatetime((string) $value, $props['database_mask'] ?? 'yyyy-mm-dd HH:MM:SS', (string) ($props['display_mask'] ?? '') ?: \Mad\Support\DateMask::datetime()),
             // time nao converte formato (display == banco), mas o campo vazio
             // precisa do mesmo NULL que date/datetime — '' nao e TIME valido.
             'time'      => ((string) $value === '') ? null : $value,
@@ -1438,12 +1438,12 @@ class MadFormRegistry
      * estrito grava o lixo '0000-00-00'. NULL é a representação correta de
      * "sem data" nos dois casos.
      */
-    private static function _convertDate(string $value, string $dbMask, string $displayMask = 'dd/mm/yyyy'): ?string
+    private static function _convertDate(string $value, string $dbMask, string $displayMask = ''): ?string
     {
         if ($value === '') {
             return null;
         }
-        $fmt = \Mad\Support\DateMask::toPhp($displayMask);
+        $fmt = \Mad\Support\DateMask::toPhp($displayMask ?: \Mad\Support\DateMask::date());
         $dt = \DateTime::createFromFormat('!' . $fmt, $value);
         // O PHP aceita 31/02 e devolve 03/03: data que não volta igual não
         // existe e passa crua — quem grava a recusa (MadForm::fillRecord).
@@ -1459,12 +1459,12 @@ class MadFormRegistry
      * formato do banco via form->set) passa cru. Vazio vira NULL — ver
      * _convertDate().
      */
-    private static function _convertDatetime(string $value, string $dbMask, string $displayMask = 'dd/mm/yyyy hh:ii'): ?string
+    private static function _convertDatetime(string $value, string $dbMask, string $displayMask = ''): ?string
     {
         if ($value === '') {
             return null;
         }
-        $fmt = \Mad\Support\DateMask::toPhp($displayMask);
+        $fmt = \Mad\Support\DateMask::toPhp($displayMask ?: \Mad\Support\DateMask::datetime());
         // A máscara sem segundos também aceita o texto com segundos (o valor
         // que volta do banco/servidor já formatado).
         $formats = [$fmt];

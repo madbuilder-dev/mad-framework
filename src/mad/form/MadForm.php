@@ -8133,8 +8133,9 @@ class MadForm
             return null;
         }
 
+        // Texto da tela na ordem do idioma: mês/dia em inglês (fw#586).
         $formats = ($value[2] ?? '') === '/'
-            ? ['d/m/Y', 'd/m/Y H:i', 'd/m/Y H:i:s']
+            ? (\Mad\Support\DateMask::monthFirst() ? ['m/d/Y', 'm/d/Y H:i', 'm/d/Y H:i:s'] : ['d/m/Y', 'd/m/Y H:i', 'd/m/Y H:i:s'])
             : ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'];
         foreach ($formats as $format) {
             $date = \DateTime::createFromFormat('!' . $format, $value);

@@ -25,6 +25,21 @@ final class DateMask
         return self::date($locale) . ' hh:ii';
     }
 
+    /**
+     * Placeholder de um campo com a máscara (padrão: a de data do idioma):
+     * `mm/dd/yyyy` em inglês, `dd/mm/aaaa` em português, `dd/mm/aaaa hh:mm`
+     * com hora. Sai da própria máscara, então nunca diverge do que o campo lê.
+     */
+    public static function placeholder(?string $mask = null): string
+    {
+        $year = MadLang::t('mad.ui.year_letter');
+
+        return strtr($mask ?? self::date(), [
+            'ii' => 'mm',
+            'y'  => $year === 'mad.ui.year_letter' ? 'y' : $year,
+        ]);
+    }
+
     /** O idioma escreve o mês antes do dia? (só o inglês, entre os do framework). */
     public static function monthFirst(?string $locale = null): bool
     {

@@ -45,7 +45,7 @@
         if (isset($meta['options'][$valor])) {
             $valor = (string) $meta['options'][$valor];
         } elseif (($meta['type'] ?? '') === 'date' && preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $valor, $d)) {
-            $mask  = (string) ($meta['mask'] ?? '') ?: 'dd/mm/yyyy';
+            $mask  = (string) ($meta['mask'] ?? '') ?: \Mad\Support\DateMask::date();
             $valor = strtr($mask, ['yyyy' => $d[1], 'mm' => $d[2], 'dd' => $d[3]]);
         }
         $rotulo   = trim((string) ($meta['label'] ?? ''));

@@ -258,10 +258,10 @@ class SheetColumn
         $case           = strtolower((string) ($cfg['forceCase'] ?? ''));
         $col->forceCase = in_array($case, ['upper', 'lower', 'title'], true) ? $case : '';
 
-        // Data.
-        if (!empty($cfg['displayMask'])) {
-            $col->displayMask = (string) $cfg['displayMask'];
-        }
+        // Data. Sem `display-mask`: a máscara de data do idioma (mm/dd em inglês, fw#586).
+        $col->displayMask = !empty($cfg['displayMask'])
+            ? (string) $cfg['displayMask']
+            : \Mad\Support\DateMask::date();
         if (!empty($cfg['databaseMask'])) {
             $col->databaseMask = (string) $cfg['databaseMask'];
         }

@@ -1393,8 +1393,8 @@ trait MadFiltersTrait
             return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? substr($v, 0, 10) : '';
         }
         // d/m/Y e d-m-Y estritos: getLastErrors barra rollover (31/02→03/03)
-        // e parciais ('04/07').
-        foreach (['d/m/Y', 'd-m-Y'] as $fmt) {
+        // e parciais ('04/07'). Em inglês a tela mostra mês/dia (fw#586).
+        foreach (\Mad\Support\DateMask::monthFirst() ? ['m/d/Y', 'm-d-Y'] : ['d/m/Y', 'd-m-Y'] as $fmt) {
             $dt  = \DateTime::createFromFormat('!' . $fmt, substr($v, 0, 10));
             $err = \DateTime::getLastErrors();
             $clean = $err === false || (($err['warning_count'] ?? 0) === 0 && ($err['error_count'] ?? 0) === 0);

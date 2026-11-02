@@ -20,7 +20,7 @@
     'attrs_end' => '',
     'default_start' => '',
     'default_end' => '',
-    'display_mask' => 'dd/mm/yyyy',
+    'display_mask' => '',
     'database_mask' => 'yyyy-mm-dd',
 ])
 @php
@@ -34,7 +34,8 @@
     $custom_presets = $customPresets ?? $custom_presets;
     $default_start  = $defaultStart  ?? $default_start;
     $default_end    = $defaultEnd    ?? $default_end;
-    $display_mask   = $displayMask   ?? $display_mask;
+    // Sem `display-mask`: a máscara de data do idioma (mm/dd em inglês, fw#586).
+    $display_mask   = ($displayMask   ?? $display_mask) ?: \Mad\Support\DateMask::date();
     $database_mask  = $databaseMask  ?? $database_mask;
     $attrs_start    = $attrsStart    ?? $attrs_start;
     $attrs_end      = $attrsEnd      ?? $attrs_end;

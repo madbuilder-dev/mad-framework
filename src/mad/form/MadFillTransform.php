@@ -104,7 +104,7 @@ class MadFillTransform
                 return trim($value);
 
             case 'date':
-                $fmt = $arg !== '' ? $arg : 'd/m/Y';
+                $fmt = $arg !== '' ? $arg : \Mad\Support\ValueFormatter::dateFormat();
                 try {
                     return Carbon::parse($value)->format($fmt);
                 } catch (\Throwable $e) {

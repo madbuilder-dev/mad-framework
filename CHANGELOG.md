@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.255.2] — 2026-11-02
+
+### Correções
+
+- **Datas em app em inglês:** a data digitada na Lista de itens, na célula editável da listagem, no período, na planilha e nos campos do anexo trocava dia e mês (`11/02/2026` gravava 11 de fevereiro). Agora todos seguem a ordem de data do app, como o campo de data, e a dica do campo mostra o formato certo (`mm/dd/yyyy`). Apps em português não mudam.
+- **Exportação da listagem em inglês:** datas sem formato definido saíam em dia/mês na planilha; agora saem em mês/dia, como na tela.
+
 ## [5.255.1] — 2026-11-02
 
 ### Correções
