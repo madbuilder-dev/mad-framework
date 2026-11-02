@@ -86,7 +86,7 @@ final class MadChartFormatter
             'currency', 'money' => static fn($v) => self::fmtCurrency(
                 $v,
                 $parts[1] ?? \Mad\Support\ValueFormatter::currencyPrefix(),
-                (int)($parts[2] ?? 2),
+                (int)($parts[2] ?? \Mad\Support\ValueFormatter::moneyDecimals()),
                 $parts[3] ?? $dec,
                 $parts[4] ?? $tho
             ),
@@ -138,7 +138,11 @@ final class MadChartFormatter
     private static function fmtCurrency(mixed $v, string $prefix, int $dec, string $decSep, string $thouSep): string
     {
         if ($v === null || $v === '') return '';
-        $prefix = rtrim($prefix) . \Mad\Support\ValueFormatter::moneyGap();
+        // Moeda do app definida: símbolo com letra ("CHF", "kr") ganha espaço.
+        $prefix = rtrim($prefix);
+        $prefix .= \Mad\Support\AppCurrency::isConfigured()
+            ? \Mad\Support\AppCurrency::gap($prefix)
+            : \Mad\Support\ValueFormatter::moneyGap();
         return $prefix . number_format((float) $v, $dec, $decSep, $thouSep);
     }
 

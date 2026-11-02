@@ -4024,9 +4024,11 @@ var _madCompute = (function () {
         var dec = typeof f.dec === 'string' ? f.dec : seps[0];
         var tho = typeof f.tho === 'string' ? f.tho : seps[1];
         if (f.type === 'money') {
+            // Casas: as da moeda do app vindas do servidor (JPY: 0) ou 2.
+            var cd = typeof f.decimals === 'number' ? f.decimals : 2;
             return (typeof f.prefix === 'string' ? f.prefix : 'R$')
                 + (typeof f.gap === 'string' ? f.gap : ' ')
-                + groupNum(round(value, 2).toFixed(2), dec, tho);
+                + groupNum(round(value, cd).toFixed(cd), dec, tho);
         }
         return groupNum(String(clean(value)), dec, tho);
     }

@@ -269,12 +269,63 @@ abstract class MadPdvComponent extends MadComponent
     /** Teto de linhas filhas de UMA linha montada. */
     protected const COMPOSE_CHILD_ROWS_MAX = 200;
 
+    // ── Imposto por linha ─────────────────────────────────────────────────
+    //
+    // Desligado (`tax-field` vazio) = PDV de sempre: nenhuma linha de imposto,
+    // mesmo payload, mesmos totais. Ligado, o total da venda passa a ser
+    // calculado em centavos por PdvTax (o navegador usa o gêmeo MadPdvTax e o
+    // servidor RECALCULA na finalização — o do servidor é o que vale).
+
+    /** Coluna do produto com a alíquota em % (até 4 casas; vazio/NULL = isento). */
+    protected string $taxField = '';
+
+    /** true = preço já tem o imposto (VAT/IVA); false = imposto por fora (sales tax). */
+    protected bool $pricesIncludeTax = false;
+
+    /** Nome do imposto no cupom ("VAT", "IVA", "GST"). Vazio = `pdv.tax`. */
+    protected string $taxLabel = '';
+
+    /** Colunas opcionais onde gravar o imposto/gorjeta (vazio = não grava). */
+    protected string $saleTaxField     = '';
+    protected string $saleTipField     = '';
+    protected string $itemTaxRateField = '';
+    protected string $itemTaxField     = '';
+
+    // ── Gorjeta ───────────────────────────────────────────────────────────
+    //
+    // Base da gorjeta em %: subtotal SEM imposto e DEPOIS do desconto (o
+    // líquido da venda). Gorjeta não paga imposto e entra no total a pagar.
+
+    protected bool   $tips       = false;
+    /** Atalhos de % ("15,18,20"); o caixa também pode digitar um valor livre. */
+    protected string $tipPresets = '15,18,20';
+
+    // ── Opções do item (modificadores e combos) ───────────────────────────
+    //
+    // Produto marcado em `options-field` abre o modal de opções do PDV; os
+    // grupos (min/max, preço por opção) vêm do método `on-options` da tela —
+    // chamado ao abrir o modal e DE NOVO ao finalizar, porque o preço das
+    // opções nunca vem do navegador.
+
+    /** Coluna do produto que marca "tem opções" (leitura tolerante; pode vir do :where). */
+    protected string $optionsField = '';
+
+    /** Método da tela: `opcoes(object $produto): array` (grupos — ver MadPdvCompiler). */
+    protected string $onOptions = '';
+
+    /** Coluna do item onde gravar as opções escolhidas (JSON). Vazio = não grava. */
+    protected string $itemOptionsField = '';
+
+    protected const OPTION_GROUPS_MAX     = 20;
+    protected const OPTIONS_PER_GROUP_MAX = 100;
+
     // ── Visual ────────────────────────────────────────────────────────────
 
     /** Attr `title` da tag (MadComponent::$title é static — nome próprio aqui). */
     protected string $pdvTitle         = '';
     protected bool   $fullscreenToggle = true;
-    protected string $currencySymbol   = 'R$';
+    /** '' = o símbolo da moeda do app (AppCurrency) ou, sem ela, R$. */
+    protected string $currencySymbol   = '';
     protected string $locale           = '';
     protected string $density          = 'normal';
 
@@ -318,7 +369,7 @@ abstract class MadPdvComponent extends MadComponent
      * comum elas chegam à TELA, que não as tem: o PDV as atende a partir dela
      * ({@see _embeddedFor()}).
      */
-    public const WIRE_ACTIONS = ['onProductLookup', 'onComposeItem', 'onFinalizeSale'];
+    public const WIRE_ACTIONS = ['onProductLookup', 'onComposeItem', 'onItemOptions', 'onFinalizeSale'];
 
     /** PDV embutido esperando a tela dona entregar a config ({@see _embeddedFor()}). */
     private static ?self $_hostProbe = null;
@@ -578,11 +629,13 @@ abstract class MadPdvComponent extends MadComponent
             'receiptFooter', 'onFinalized', 'currencySymbol',
             'locale', 'density',
             'compositeField', 'onCompose', 'itemDescriptionField', 'compositePriceLabel',
+            'taxField', 'taxLabel', 'saleTaxField', 'saleTipField', 'itemTaxRateField', 'itemTaxField',
+            'tipPresets', 'optionsField', 'onOptions', 'itemOptionsField',
         ];
         static $bools = [
             'customerRequired', 'allowPriceOverride', 'allowFraction',
             'askDocument', 'holdSales', 'autoPrint', 'fullscreenToggle',
-            'productPicker',
+            'productPicker', 'pricesIncludeTax', 'tips',
         ];
         static $ints = ['searchMinLength', 'searchLimit', 'holdLimit', 'receiptWidth', 'productPickerPageSize'];
 
@@ -1069,6 +1122,24 @@ abstract class MadPdvComponent extends MadComponent
             $e[] = 'on-compose sem composite-field: informe a coluna do produto que marca o item montável';
         }
 
+        // ── Opções do item (modificadores / combos) ──
+        if ($this->optionsField !== '') {
+            if ($this->onOptions === '') {
+                $e[] = 'options-field exige on-options (o método da tela que devolve os grupos de opções)';
+            } elseif (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $this->onOptions)) {
+                $e[] = "on-options '{$this->onOptions}' não é um nome de método válido";
+            } elseif ($this->_optionsTarget() === null && !$this instanceof MadPdvStandalone) {
+                $e[] = "on-options: o método '{$this->onOptions}' não existe em " . static::class;
+            }
+        } elseif ($this->onOptions !== '') {
+            $e[] = 'on-options sem options-field: informe a coluna do produto que marca o item com opções';
+        }
+
+        // ── Gorjeta ──
+        if ($this->tips && $this->tipPresetList() === [] && trim($this->tipPresets) !== '') {
+            $e[] = "tip-presets '{$this->tipPresets}' inválido: use percentuais separados por vírgula (\"15,18,20\")";
+        }
+
         // ── Contas a receber (Rev. 5) ──
         if ($this->receivableEnabled()) {
             foreach ([
@@ -1231,7 +1302,7 @@ abstract class MadPdvComponent extends MadComponent
                     // Marcador do item montável pode ser calculado na própria
                     // consulta do PDV (`:where` com `addSelect`): vale a coluna
                     // que a consulta traz, não só a da tabela.
-                    if ($attr === 'composite-field' && $prop === 'model') {
+                    if (in_array($attr, ['composite-field', 'options-field', 'tax-field'], true) && $prop === 'model') {
                         if ($this->_productQuerySelects($field)) {
                             continue;
                         }
@@ -1268,6 +1339,8 @@ abstract class MadPdvComponent extends MadComponent
                 'image-field'   => $this->imageField,
                 'active-field'  => $this->activeField,
                 'composite-field' => $this->compositeField,
+                'options-field'   => $this->optionsField,
+                'tax-field'       => $this->taxField,
             ]),
             'priceModel' => $this->priceIsRelated() ? array_filter([
                 'price-field' => $this->priceField,
@@ -1288,6 +1361,8 @@ abstract class MadPdvComponent extends MadComponent
                 'sale-document-field' => $this->askDocumentEffective() ? $this->saleDocumentField : '',
                 'sale-change-field'   => $this->saleChangeField,
                 'sale-uuid-field'     => $this->saleUuidField,
+                'sale-tax-field'      => $this->taxEnabled() ? $this->saleTaxField : '',
+                'sale-tip-field'      => $this->tips ? $this->saleTipField : '',
             ]),
             'itemModel' => array_filter(array_merge([
                 'item-sale-field'     => $this->itemSaleField,
@@ -1297,6 +1372,9 @@ abstract class MadPdvComponent extends MadComponent
                 'item-discount-field' => $this->itemDiscountField,
                 'item-total-field'    => $this->itemTotalField,
                 'item-description-field' => $this->itemDescriptionField,
+                'item-tax-rate-field'    => $this->taxEnabled() ? $this->itemTaxRateField : '',
+                'item-tax-field'         => $this->taxEnabled() ? $this->itemTaxField : '',
+                'item-options-field'     => $this->optionsEnabled() ? $this->itemOptionsField : '',
             ], $this->_columnItemFields())),
             'receivableModel' => $this->receivableEnabled() ? array_filter([
                 'receivable-sale-field'     => $this->receivableSaleField,
@@ -1395,8 +1473,72 @@ abstract class MadPdvComponent extends MadComponent
             'compose_edit'    => 'Montar de novo',
             'compose_failed'  => 'Não foi possível montar o item.',
             'compose_price'   => 'Monte o seu',
+            'tax'              => 'Tax',
+            'tax_included'     => '(incl.)',
+            'tip'              => 'Tip',
+            'tip_none'         => 'No tip',
+            'tip_custom'       => 'Other amount',
+            'tip_hint'         => 'Percent of the subtotal before tax, after discount',
+            'options_title'    => 'Choose options',
+            'options_required' => 'Required',
+            'options_one'      => 'Choose 1',
+            'options_up_to'    => 'Up to :max',
+            'options_range'    => 'Choose :min to :max',
+            'options_exact'    => 'Choose :min',
+            'options_confirm'  => 'Add',
+            'options_save'     => 'Save',
+            'options_edit'     => 'Change options',
+            'options_failed'   => 'Could not load the item options.',
+            'options_min'      => 'Choose at least :min in “:group”.',
+            'options_max'      => 'Choose at most :max in “:group”.',
         ];
         $flags = $this->discountFlags();
+
+        $behavior = [
+            'discountItem'       => $flags['item'],
+            'discountTotal'      => $flags['total'],
+            'discountInput'      => $this->discountInputEffective(),
+            'maxDiscountPercent' => $this->maxDiscountPercent,
+            'allowPriceOverride' => $this->allowPriceOverride,
+            'allowFraction'      => $this->allowFraction,
+            'stockMode'          => $this->stockModeEffective(),
+            'askDocument'        => $this->askDocumentEffective(),
+            'holdSales'          => $this->holdSales,
+            'holdLimit'          => max(1, $this->holdLimit),
+            'printMode'          => $this->printMode === 'off' ? 'off' : 'browser',
+            'receiptWidth'       => $this->receiptWidthEffective(),
+            'autoPrint'          => $this->autoPrint,
+            'customerRequired'   => $this->customerModel !== '' && $this->customerRequired,
+            'mergeLines'         => $this->mergeLines === 'off' ? 'off' : 'auto',
+            'productPicker'      => $this->productPicker,
+            'productPickerHotkey'=> $this->productPickerHotkey,
+            'productPickerSize'  => min(max(1, $this->productPickerPageSize), self::BROWSE_LIMIT_CAP),
+            'fullscreenToggle'   => $this->fullscreenToggle,
+            'density'            => $this->density === 'compact' ? 'compact' : 'normal',
+            'showImages'         => $this->showImagesEffective(),
+            'searchMinLength'    => max(1, $this->searchMinLength),
+            'searchDebounceMs'   => 300,
+            'composite'          => $this->compositeEnabled(),
+            'compositePriceLabel'=> $this->compositePriceLabel,
+        ];
+        // Recursos novos só entram no x-data quando LIGADOS: PDV sem eles
+        // segue com a mesma config (e o mesmo carrinho) de antes.
+        if ($this->taxEnabled()) {
+            $behavior['tax'] = [
+                'inclusive' => $this->pricesIncludeTax,
+                'label'     => $this->taxLabel !== '' ? $this->taxLabel : (string) ($labels['tax'] ?? 'Tax'),
+            ];
+        }
+        if ($this->tips) {
+            $behavior['tips'] = ['presets' => $this->tipPresetList()];
+        }
+        if ($this->optionsEnabled()) {
+            $behavior['options'] = true;
+        }
+        $wire = ['lookup' => 'onProductLookup', 'finalize' => 'onFinalizeSale', 'compose' => 'onComposeItem'];
+        if ($this->optionsEnabled()) {
+            $wire['options'] = 'onItemOptions';
+        }
 
         return [
             'id'       => $this->pdvCfgKey,
@@ -1407,33 +1549,7 @@ abstract class MadPdvComponent extends MadComponent
             'locale'   => $this->locale !== '' ? $this->locale : (string) app()->getLocale(),
             'i18n'     => $labels,
             'currency' => $this->_currencyConfig(),
-            'behavior' => [
-                'discountItem'       => $flags['item'],
-                'discountTotal'      => $flags['total'],
-                'discountInput'      => $this->discountInputEffective(),
-                'maxDiscountPercent' => $this->maxDiscountPercent,
-                'allowPriceOverride' => $this->allowPriceOverride,
-                'allowFraction'      => $this->allowFraction,
-                'stockMode'          => $this->stockModeEffective(),
-                'askDocument'        => $this->askDocumentEffective(),
-                'holdSales'          => $this->holdSales,
-                'holdLimit'          => max(1, $this->holdLimit),
-                'printMode'          => $this->printMode === 'off' ? 'off' : 'browser',
-                'receiptWidth'       => $this->receiptWidthEffective(),
-                'autoPrint'          => $this->autoPrint,
-                'customerRequired'   => $this->customerModel !== '' && $this->customerRequired,
-                'mergeLines'         => $this->mergeLines === 'off' ? 'off' : 'auto',
-                'productPicker'      => $this->productPicker,
-                'productPickerHotkey'=> $this->productPickerHotkey,
-                'productPickerSize'  => min(max(1, $this->productPickerPageSize), self::BROWSE_LIMIT_CAP),
-                'fullscreenToggle'   => $this->fullscreenToggle,
-                'density'            => $this->density === 'compact' ? 'compact' : 'normal',
-                'showImages'         => $this->showImagesEffective(),
-                'searchMinLength'    => max(1, $this->searchMinLength),
-                'searchDebounceMs'   => 300,
-                'composite'          => $this->compositeEnabled(),
-                'compositePriceLabel'=> $this->compositePriceLabel,
-            ],
+            'behavior' => $behavior,
             'payments' => array_values(array_map(
                 fn (PdvPayment $p) => $p->toClientConfig(),
                 $this->getPayments()
@@ -1449,7 +1565,7 @@ abstract class MadPdvComponent extends MadComponent
                 'footer' => $this->receiptFooter !== '' ? $this->receiptFooter : ($labels['thanks'] ?? ''),
                 'width'  => $this->receiptWidthEffective(),
             ],
-            'wire' => ['lookup' => 'onProductLookup', 'finalize' => 'onFinalizeSale', 'compose' => 'onComposeItem'],
+            'wire' => $wire,
         ];
     }
 
@@ -1457,10 +1573,17 @@ abstract class MadPdvComponent extends MadComponent
     {
         $loc   = $this->locale !== '' ? $this->locale : (string) app()->getLocale();
         $comma = (bool) preg_match('/^(pt|es)/i', $loc);
+        // currency-symbol do autor vence; sem ele, o da moeda do app ou R$.
+        $symbol = $this->currencySymbol !== '' ? $this->currencySymbol : (string) \Mad\Support\AppCurrency::symbol('R$');
         return [
-            'symbol'   => $this->currencySymbol,
+            'symbol'   => $symbol,
             'decimal'  => $comma ? ',' : '.',
             'thousand' => $comma ? '.' : ',',
+            // Espaço símbolo→valor: o de sempre (' '), ou o do idioma com a moeda do app.
+            'gap'      => $this->currencySymbol === '' && \Mad\Support\AppCurrency::isConfigured()
+                ? \Mad\Support\AppCurrency::gap($symbol) : ' ',
+            // Casas exibidas (JPY: 0). O carrinho segue em centavos inteiros.
+            'decimals' => \Mad\Support\AppCurrency::decimals(2),
         ];
     }
 
@@ -1808,6 +1931,260 @@ abstract class MadPdvComponent extends MadComponent
         ]));
     }
 
+    // ── Imposto / gorjeta ─────────────────────────────────────────────────
+
+    /** Imposto por linha ligado (`tax-field`)? */
+    public function taxEnabled(): bool
+    {
+        return $this->taxField !== '';
+    }
+
+    /** Alíquota do produto, canônica ("8.25", "20", "0"). Lida SEMPRE do banco. */
+    protected function _taxRateOf(object $rec): string
+    {
+        return PdvTax::normalizeRate($rec->{$this->taxField} ?? null);
+    }
+
+    /**
+     * Atalhos de gorjeta (`tip-presets="15,18,20"`) já normalizados. Qualquer
+     * entrada inválida (texto, negativa, acima de 100) zera a lista — o painel
+     * de configuração aponta o erro em vez de mostrar meio-atalho.
+     *
+     * @return list<string>
+     */
+    public function tipPresetList(): array
+    {
+        $out = [];
+        foreach (preg_split('/\s*,\s*/', trim($this->tipPresets), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $raw) {
+            try {
+                $u = PdvTax::rateUnits($raw);
+            } catch (\Throwable $e) {
+                return [];
+            }
+            if ($u <= 0 || $u > 100 * PdvTax::RATE_SCALE) {
+                return [];
+            }
+            $out[] = PdvTax::rateString($u);
+        }
+        return array_values(array_unique($out));
+    }
+
+    /** Rótulo da alíquota no cupom: "Tax 8.25%" / "VAT 20% (incl.)". */
+    protected function _taxRateLabel(string $rate): string
+    {
+        $name = $this->taxLabel !== '' ? $this->taxLabel : $this->_t('tax', 'Tax');
+        $loc  = $this->locale !== '' ? $this->locale : (string) app()->getLocale();
+        $txt  = preg_match('/^(pt|es)/i', $loc) ? str_replace('.', ',', $rate) : $rate;
+        return $name . ' ' . $txt . '%' . ($this->pricesIncludeTax ? ' ' . $this->_t('tax_included', '(incl.)') : '');
+    }
+
+    // ── Opções do item (modificadores / combos) ───────────────────────────
+
+    public function optionsEnabled(): bool
+    {
+        return $this->optionsField !== '' && $this->onOptions !== '';
+    }
+
+    /** O produto tem opções (marcador tolerante: 1/true/T/S)? */
+    protected function _hasOptions(object $rec): bool
+    {
+        return $this->optionsEnabled() && $this->_isTruthyMarker($rec->{$this->optionsField} ?? null);
+    }
+
+    /** Quem tem o método do `on-options`: a tela (ou o host externo). */
+    protected function _optionsTarget(): ?object
+    {
+        $m = $this->onOptions;
+        if ($m === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $m)) {
+            return null;
+        }
+        if (method_exists($this, $m)) {
+            return $this;
+        }
+        return ($this->_externalHost && method_exists($this->_externalHost, $m)) ? $this->_externalHost : null;
+    }
+
+    /**
+     * Pede à tela os grupos de opções do produto e normaliza.
+     *
+     * Devolve `['groups' => [...]]` ou `['error' => 'mensagem']` — nunca lança.
+     * Grupo normalizado: key, label, min, max, options[] (key, label, price,
+     * productId|null, default). Erro de forma (grupo sem opção, chave
+     * repetida, min impossível) vira a mensagem genérica e o detalhe vai ao log.
+     */
+    protected function _optionGroups(object $rec): array
+    {
+        $generic = ['error' => $this->_t('options_failed', 'Could not load the item options.')];
+        $target  = $this->_optionsTarget();
+        $where   = static::class . ' (on-options=' . $this->onOptions . ')';
+        if ($target === null) {
+            error_log("[MadPdv] on-options: método não encontrado em {$where}");
+            return $generic;
+        }
+        try {
+            $raw = $target->{$this->onOptions}($rec);
+        } catch (\Throwable $e) {
+            error_log("[MadPdv] on-options falhou em {$where}: " . $e->getMessage());
+            return $generic;
+        }
+        if (!is_array($raw)) {
+            error_log("[MadPdv] on-options de {$where} precisa devolver um array de grupos");
+            return $generic;
+        }
+        if (isset($raw['error']) && is_string($raw['error']) && trim($raw['error']) !== '') {
+            return ['error' => mb_substr(trim($raw['error']), 0, 300)];
+        }
+
+        $groups = [];
+        $gKeys  = [];
+        foreach (array_values($raw) as $gi => $g) {
+            if (!is_array($g)) {
+                continue;
+            }
+            $gKey = trim((string) ($g['key'] ?? $g['id'] ?? $gi));
+            $opts = [];
+            $oKeys = [];
+            foreach (array_values((array) ($g['options'] ?? [])) as $oi => $o) {
+                if (!is_array($o)) {
+                    continue;
+                }
+                $pid  = $o['product_id'] ?? $o['productId'] ?? null;
+                $oKey = trim((string) ($o['key'] ?? $o['id'] ?? ($pid ?? $oi)));
+                $price = $o['price'] ?? 0;
+                if ($oKey === '' || isset($oKeys[$oKey]) || !is_numeric($price)) {
+                    error_log("[MadPdv] on-options de {$where}: opção '{$oKey}' do grupo '{$gKey}' sem chave única ou com preço inválido");
+                    return $generic;
+                }
+                $oKeys[$oKey] = true;
+                $opts[] = [
+                    'key'       => $oKey,
+                    'label'     => mb_substr(trim((string) ($o['label'] ?? $o['name'] ?? $oKey)), 0, 120),
+                    'price'     => $this->_r($price),
+                    'productId' => ($pid === null || $pid === '') ? null : (ctype_digit((string) $pid) ? (int) $pid : (string) $pid),
+                    'default'   => !empty($o['default']),
+                ];
+            }
+            $n   = count($opts);
+            $min = max(0, (int) ($g['min'] ?? 0));
+            if (!empty($g['required'])) {
+                $min = max(1, $min);
+            }
+            $max = isset($g['max']) ? (int) $g['max'] : $n;
+            $max = min(max($max, $min, 1), max($n, 1));
+            if ($gKey === '' || isset($gKeys[$gKey]) || $n === 0 || $n > self::OPTIONS_PER_GROUP_MAX || $min > $n) {
+                error_log("[MadPdv] on-options de {$where}: grupo '{$gKey}' inválido (chave repetida/vazia, sem opções, opções demais ou min > opções)");
+                return $generic;
+            }
+            $gKeys[$gKey] = true;
+            $groups[] = [
+                'key'     => $gKey,
+                'label'   => mb_substr(trim((string) ($g['label'] ?? $g['name'] ?? $gKey)), 0, 120),
+                'min'     => $min,
+                'max'     => $max,
+                'options' => $opts,
+            ];
+        }
+        if (count($groups) > self::OPTION_GROUPS_MAX) {
+            error_log("[MadPdv] on-options de {$where}: grupos demais (" . count($groups) . ')');
+            return $generic;
+        }
+        return ['groups' => $groups];
+    }
+
+    /**
+     * Confere as escolhas do navegador contra os grupos da tela e precifica.
+     *
+     * `$choices` = `{grupo: [opção, …]}` (chaves). Chave de opção que não
+     * existe é recusada; grupo desconhecido é ignorado (o preço é refeito aqui,
+     * então nada do navegador entra na conta).
+     *
+     * @return array{error: string}|array{list: list<array>, sumC: int}
+     */
+    protected function _resolveOptions(array $groups, array $choices): array
+    {
+        $list = [];
+        $sumC = 0;
+        foreach ($groups as $g) {
+            $picked = $choices[$g['key']] ?? [];
+            $picked = is_array($picked) ? $picked : [$picked];
+            $picked = array_values(array_unique(array_map(fn ($k) => trim((string) (is_scalar($k) ? $k : '')), $picked)));
+            $picked = array_values(array_filter($picked, fn ($k) => $k !== ''));
+            $byKey  = array_column($g['options'], null, 'key');
+            foreach ($picked as $k) {
+                if (!isset($byKey[$k])) {
+                    return ['error' => $this->_t('options_failed', 'Could not load the item options.')];
+                }
+            }
+            $n = count($picked);
+            if ($n < $g['min']) {
+                return ['error' => strtr($this->_t('options_min', 'Choose at least :min in “:group”.'),
+                    [':min' => (string) $g['min'], ':group' => $g['label']])];
+            }
+            if ($n > $g['max']) {
+                return ['error' => strtr($this->_t('options_max', 'Choose at most :max in “:group”.'),
+                    [':max' => (string) $g['max'], ':group' => $g['label']])];
+            }
+            // Ordem do cadastro (não a do clique): mesma escolha = mesma linha.
+            foreach ($g['options'] as $o) {
+                if (!in_array($o['key'], $picked, true)) {
+                    continue;
+                }
+                $sumC  += PdvTax::fromDecimal($o['price']);
+                $list[] = [
+                    'group'      => $g['label'],
+                    'group_key'  => $g['key'],
+                    'option'     => $o['label'],
+                    'option_key' => $o['key'],
+                    'price'      => $o['price'],
+                    'product_id' => $o['productId'],
+                ];
+            }
+        }
+        return ['list' => $list, 'sumC' => $sumC];
+    }
+
+    /**
+     * Grupos de opções do produto para o modal do PDV (`mad-pdv:options-result`).
+     * O preço da opção vai para EXIBIÇÃO; na finalização ele é refeito aqui.
+     */
+    public function onItemOptions(string $productId, int $requestId = 0): MadResponse
+    {
+        $fail = fn (string $msg) => (new MadResponse())
+            ->toast($msg, 'error')
+            ->script($this->_pdvEvent('mad-pdv:options-result', [
+                'requestId' => $requestId,
+                'ok'        => false,
+                'productId' => ctype_digit($productId) ? (int) $productId : $productId,
+                'error'     => $msg,
+            ]));
+        $generic = $this->_t('options_failed', 'Could not load the item options.');
+
+        if ($this->configErrors() !== [] || !$this->optionsEnabled()) {
+            return $fail($generic);
+        }
+        $fqcn = $this->_resolveModelFqcn($this->model);
+        if ($fqcn === '') {
+            return $fail($generic);
+        }
+        $q = $fqcn::query();
+        $this->_applyProductWhere($q);
+        $rec = $q->where((new $fqcn())->getKeyName(), $productId)->first();
+        if (!$rec || !$this->_isActive($rec) || !$this->_hasOptions($rec) || $this->_isComposite($rec)) {
+            return $fail((string) __('pdv.err_product_not_found'));
+        }
+        $res = $this->_optionGroups($rec);
+        if (isset($res['error'])) {
+            return $fail($res['error']);
+        }
+
+        return (new MadResponse())->script($this->_pdvEvent('mad-pdv:options-result', [
+            'requestId' => $requestId,
+            'ok'        => true,
+            'productId' => $rec->getKey(),
+            'groups'    => $res['groups'],
+        ]));
+    }
+
     /** Texto de `lang/…/pdv.php`; app publicado antes da chave existir usa o padrão. */
     protected function _t(string $key, string $default): string
     {
@@ -1882,7 +2259,7 @@ abstract class MadPdvComponent extends MadComponent
             ->keyBy(fn ($r) => (string) $r->getKey());
 
         $flags = $this->discountFlags();
-        $notFound = $inactive = $noPrice = $priceChanged = $fieldErrors = $composeFailed = [];
+        $notFound = $inactive = $noPrice = $priceChanged = $fieldErrors = $composeFailed = $optionsFailed = [];
         $clean        = [];
         $qtyByProduct = [];
 
@@ -1917,7 +2294,8 @@ abstract class MadPdvComponent extends MadComponent
             // Item montado: o preço é o que a TELA calcula a partir das
             // escolhas — as mesmas que ela precificou ao montar. Nunca o do
             // payload, nem com "alterar preço" liberado.
-            $compose = null;
+            $compose  = null;
+            $lineOpts = null;
             if ($this->_isComposite($rec)) {
                 $choices = $this->_composeChoices($it['choices'] ?? null);
                 $compose = $choices === null
@@ -1953,11 +2331,39 @@ abstract class MadPdvComponent extends MadComponent
                 }
                 // MESMA função do lookup — ver o docblock de _effectiveUnitPrice.
                 $current = $this->_effectiveUnitPrice($rec, $current);
-                if (!$this->allowPriceOverride && abs($price - $current) > 0.005) {
-                    $priceChanged[] = ['productId' => $pid, 'oldPrice' => $price, 'newPrice' => $current];
-                    continue;
+                if ($this->_hasOptions($rec)) {
+                    // Item com opções: preço = cadastro + opções, refeito com os
+                    // grupos da TELA. Nunca o do payload (nem com "alterar preço").
+                    $choices = $this->_composeChoices($it['options'] ?? []);
+                    $groups  = $choices === null ? ['error' => $this->_t('options_failed', 'Could not load the item options.')]
+                        : $this->_optionGroups($rec);
+                    $res = isset($groups['error']) ? $groups : $this->_resolveOptions($groups['groups'], $choices);
+                    if (isset($res['error'])) {
+                        $optionsFailed[] = [
+                            'productId' => $pid, 'line' => $lineId,
+                            'name' => (string) $rec->{$this->nameField}, 'msg' => $res['error'],
+                        ];
+                        continue;
+                    }
+                    $unitC = PdvTax::fromDecimal($current) + $res['sumC'];
+                    if ($unitC < 0) {
+                        $fieldErrors[] = ['field' => "items.{$pid}.options", 'msg' => 'preço com opções negativo'];
+                        continue;
+                    }
+                    $current = PdvTax::toFloat($unitC);
+                    if (abs($price - $current) > 0.005) {
+                        $priceChanged[] = ['productId' => $pid, 'line' => $lineId, 'oldPrice' => $price, 'newPrice' => $current];
+                        continue;
+                    }
+                    $effPrice = $current;
+                    $lineOpts = $res['list'];
+                } else {
+                    if (!$this->allowPriceOverride && abs($price - $current) > 0.005) {
+                        $priceChanged[] = ['productId' => $pid, 'oldPrice' => $price, 'newPrice' => $current];
+                        continue;
+                    }
+                    $effPrice = $this->allowPriceOverride ? $price : $current;
                 }
-                $effPrice = $this->allowPriceOverride ? $price : $current;
             }
 
             if ($qty <= 0) {
@@ -2026,6 +2432,8 @@ abstract class MadPdvComponent extends MadComponent
                 'cols'      => $lineCols,
                 'rec'       => $rec,
                 'compose'   => $compose,
+                'options'   => $lineOpts,
+                'taxRate'   => $this->taxEnabled() ? $this->_taxRateOf($rec) : null,
             ];
         }
 
@@ -2035,6 +2443,9 @@ abstract class MadPdvComponent extends MadComponent
         if ($composeFailed !== []) {
             // A frase da tela ("Escolha no máximo 2 sabores.") é a que o caixa lê.
             return $this->_saleError('compose-failed', ['items' => $composeFailed], true, $composeFailed[0]['msg']);
+        }
+        if ($optionsFailed !== []) {
+            return $this->_saleError('options-invalid', ['items' => $optionsFailed], true, $optionsFailed[0]['msg']);
         }
         if ($priceChanged !== []) return $this->_saleError('price-changed', ['items' => $priceChanged]);
         if ($fieldErrors !== [])  return $this->_saleError('validation', ['fields' => $fieldErrors]);
@@ -2077,6 +2488,63 @@ abstract class MadPdvComponent extends MadComponent
                     'attemptedPercent' => round($pct, 2),
                 ]);
             }
+        }
+
+        // Gorjeta desligada: payload que traz gorjeta é recusado (nunca some calada).
+        if (!$this->tips && ((isset($p['tipPercent']) && $p['tipPercent'] !== '')
+            || (is_numeric($p['tip'] ?? null) && (float) $p['tip'] > 0))) {
+            return $this->_saleError('validation', ['fields' => [
+                ['field' => 'tip', 'msg' => 'gorjeta não habilitada'],
+            ]]);
+        }
+
+        // ── Imposto por linha + gorjeta (em centavos; o servidor é a verdade) ──
+        // Desligados, nada daqui roda: total = subtotal − desconto, como sempre.
+        $taxCalc = null;
+        $tipC    = 0;
+        $tipPct  = null;
+        if ($this->taxEnabled() || $this->tips) {
+            $discC = PdvTax::fromDecimal($saleDiscount);
+            if ($this->taxEnabled()) {
+                $taxLines = [];
+                foreach ($clean as $k => $l) {
+                    $taxLines[$k] = ['amount' => PdvTax::fromDecimal($l['total']), 'rate' => $l['taxRate']];
+                }
+                $taxCalc = PdvTax::lines($taxLines, $this->pricesIncludeTax, $discC);
+                foreach ($clean as $k => &$l) {
+                    $l['tax'] = $taxCalc['lines'][$k];
+                }
+                unset($l);
+                $netC   = $taxCalc['net'];
+                $grossC = $taxCalc['total'];
+            } else {
+                $netC   = max(0, PdvTax::fromDecimal($subtotal) - $discC);
+                $grossC = $netC;
+            }
+
+            $rawTip = $p['tip'] ?? 0;
+            $rawPct = $p['tipPercent'] ?? null;
+            if (!$this->tips) {
+                // recusado lá em cima (gorjeta desligada)
+            } elseif ($rawPct !== null && $rawPct !== '') {
+                // Gorjeta em %: refeita AQUI sobre o líquido (sem imposto, depois do desconto).
+                try {
+                    $tipPct = PdvTax::rateString(PdvTax::rateUnits(str_replace(',', '.', trim((string) $rawPct))));
+                    $tipC   = PdvTax::tip($netC, $tipPct);
+                } catch (\Throwable $e) {
+                    return $this->_saleError('validation', ['fields' => [
+                        ['field' => 'tipPercent', 'msg' => 'percentual de gorjeta inválido'],
+                    ]]);
+                }
+            } else {
+                if (!is_numeric($rawTip) || (float) $rawTip < 0) {
+                    return $this->_saleError('validation', ['fields' => [
+                        ['field' => 'tip', 'msg' => 'valor de gorjeta inválido'],
+                    ]]);
+                }
+                $tipC = PdvTax::fromDecimal((float) $rawTip);
+            }
+            $total = PdvTax::toFloat($grossC + $tipC);
         }
 
         // ── Cliente + documento ──
@@ -2205,6 +2673,12 @@ abstract class MadPdvComponent extends MadComponent
         if ($this->saleUuidField !== '' && $clientSaleId !== '') {
             $saleData[$this->saleUuidField] = $clientSaleId;
         }
+        if ($taxCalc !== null && $this->saleTaxField !== '') {
+            $saleData[$this->saleTaxField] = PdvTax::toFloat($taxCalc['tax']);
+        }
+        if ($this->tips && $this->saleTipField !== '') {
+            $saleData[$this->saleTipField] = PdvTax::toFloat($tipC);
+        }
 
         // ── Transação na conexão REAL do sale-model (padrão gantt — NÃO o
         //    `_db()` do sheet, que deixa o save fora quando divergem) ──
@@ -2310,6 +2784,17 @@ abstract class MadPdvComponent extends MadComponent
                     ];
                     if ($this->itemDiscountField !== '') {
                         $idata[$this->itemDiscountField] = $l['disc'];
+                    }
+                    if (isset($l['tax'])) {
+                        if ($this->itemTaxRateField !== '') {
+                            $idata[$this->itemTaxRateField] = $l['tax']['rate'];
+                        }
+                        if ($this->itemTaxField !== '') {
+                            $idata[$this->itemTaxField] = PdvTax::toFloat($l['tax']['tax']);
+                        }
+                    }
+                    if ($l['options'] !== null && $this->itemOptionsField !== '') {
+                        $idata[$this->itemOptionsField] = json_encode($l['options'], JSON_UNESCAPED_UNICODE);
                     }
                     // Colunas de entrada mapeadas: o NOME da coluna vem da
                     // config do servidor, nunca do payload. Continua passando
@@ -2455,12 +2940,13 @@ abstract class MadPdvComponent extends MadComponent
                 'total'     => $l['total'],
                 'cols'      => $this->_receiptCols($l),
                 'description' => $l['compose']['description'] ?? '',
-            ], $clean),
+            ] + ($l['options'] !== null ? ['options' => $this->_receiptOptions($l['options'])] : [])
+              + (isset($l['tax']) ? ['taxRate' => $l['tax']['rate']] : []), $clean),
             'totals'   => [
                 'subtotal' => $subtotal,
                 'discount' => $this->_r($itemDiscSum + $saleDiscount),
                 'total'    => $total,
-            ],
+            ] + $this->_receiptTaxTotals($taxCalc, $tipC),
             'payments' => array_map(fn ($pm) => [
                 'label'    => $pm['label'],
                 'amount'   => $pm['amount'],
@@ -2470,10 +2956,60 @@ abstract class MadPdvComponent extends MadComponent
             'width'  => $this->receiptWidthEffective(),
         ];
 
+        // Resumo da venda para o `on-finalized` de 2 parâmetros (contrato na
+        // docblock do MadPdvCompiler). O de 1 parâmetro segue recebendo só o id.
+        $summary = [
+            'sale_id' => $venda->getKey(),
+            'items'   => array_map(function ($l) {
+                $row = [
+                    'product_id' => $l['productId'],
+                    'name'       => $l['name'],
+                    'qty'        => $l['qty'],
+                    'unit_price' => $l['price'],
+                    'discount'   => $l['disc'],
+                    'total'      => $l['total'],
+                ];
+                if (isset($l['tax'])) {
+                    $row += [
+                        'sale_discount' => PdvTax::toFloat($l['tax']['discount']),
+                        'net'           => PdvTax::toFloat($l['tax']['net']),
+                        'tax_rate'      => $l['tax']['rate'],
+                        'tax_amount'    => PdvTax::toFloat($l['tax']['tax']),
+                        'gross'         => PdvTax::toFloat($l['tax']['gross']),
+                    ];
+                }
+                if ($l['options'] !== null) {
+                    $row['options'] = $l['options'];
+                }
+                return $row;
+            }, $clean),
+            'subtotal' => $subtotal,
+            'discount' => $saleDiscount,
+            'item_discount' => $itemDiscSum,
+        ];
+        if ($taxCalc !== null) {
+            $summary += [
+                'prices_include_tax' => $this->pricesIncludeTax,
+                'net'       => PdvTax::toFloat($taxCalc['net']),
+                'tax_total' => PdvTax::toFloat($taxCalc['tax']),
+                'taxes'     => $receipt['totals']['taxes'],
+            ];
+        }
+        if ($this->tips) {
+            $summary += ['tip' => PdvTax::toFloat($tipC), 'tip_percent' => $tipPct];
+        }
+        $summary += [
+            'total'    => $total,
+            'payments' => array_map(fn ($pm) => [
+                'method' => $pm['method'], 'amount' => $pm['amount'], 'tendered' => $pm['tendered'],
+            ], $payClean),
+            'change'   => $changeSum,
+        ];
+
         $warn = false;
         try {
             $this->afterSale($venda, $savedItems, $savedPayments);
-            $this->_fireOnFinalized($venda);
+            $this->_fireOnFinalized($venda, $summary);
         } catch (\Throwable $e) {
             $warn = true;
             error_log('[MadPdv] afterSale/onFinalized falhou (venda mantida): ' . $e->getMessage());
@@ -2545,8 +3081,14 @@ abstract class MadPdvComponent extends MadComponent
     {
     }
 
-    /** Callback declarativo on-finalized="metodo" (host ou externo). */
-    protected function _fireOnFinalized(object $venda): void
+    /**
+     * Callback declarativo on-finalized="metodo" (host ou externo).
+     *
+     * Método de 1 parâmetro recebe só o id da venda (contrato antigo). Com 2
+     * ou mais parâmetros (ou variádico) recebe também o resumo da venda:
+     * itens com imposto/opções, totais, gorjeta e pagamentos.
+     */
+    protected function _fireOnFinalized(object $venda, array $summary = []): void
     {
         $m = $this->onFinalized;
         if ($m === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $m)) {
@@ -2555,9 +3097,57 @@ abstract class MadPdvComponent extends MadComponent
         $target = method_exists($this, $m)
             ? $this
             : (($this->_externalHost && method_exists($this->_externalHost, $m)) ? $this->_externalHost : null);
-        if ($target) {
-            $target->{$m}($venda->getKey());
+        if (!$target) {
+            return;
         }
+        $wantsSummary = false;
+        try {
+            $ref = new \ReflectionMethod($target, $m);
+            $wantsSummary = $ref->getNumberOfParameters() >= 2 || $ref->isVariadic();
+        } catch (\Throwable $e) {
+        }
+        $wantsSummary
+            ? $target->{$m}($venda->getKey(), $summary)
+            : $target->{$m}($venda->getKey());
+    }
+
+    /** Opções da linha no formato do cupom (rótulo + acréscimo). */
+    protected function _receiptOptions(array $options): array
+    {
+        return array_map(fn ($o) => [
+            'group'  => (string) ($o['group'] ?? ''),
+            'option' => (string) ($o['option'] ?? ''),
+            'price'  => (float) ($o['price'] ?? 0),
+        ], $options);
+    }
+
+    /**
+     * Linhas a mais no rodapé do cupom: imposto agrupado por alíquota e
+     * gorjeta. Vazio quando os dois estão desligados (cupom de sempre).
+     */
+    protected function _receiptTaxTotals(?array $taxCalc, int $tipC): array
+    {
+        $out = [];
+        if ($taxCalc !== null) {
+            $taxes = [];
+            foreach (PdvTax::byRate($taxCalc) as $g) {
+                $taxes[] = [
+                    'rate'  => $g['rate'],
+                    'label' => $this->_taxRateLabel($g['rate']),
+                    'net'   => PdvTax::toFloat($g['net']),
+                    'tax'   => PdvTax::toFloat($g['tax']),
+                ];
+            }
+            $out += [
+                'tax'       => PdvTax::toFloat($taxCalc['tax']),
+                'taxes'     => $taxes,
+                'inclusive' => $this->pricesIncludeTax,
+            ];
+        }
+        if ($this->tips) {
+            $out['tip'] = PdvTax::toFloat($tipC);
+        }
+        return $out;
     }
 
     // ── Lookup internals ──────────────────────────────────────────────────
@@ -2811,7 +3401,11 @@ abstract class MadPdvComponent extends MadComponent
             'unit'    => $this->unitField !== '' ? (string) $rec->{$this->unitField} : null,
             'image'   => $this->imageField !== '' ? (string) $rec->{$this->imageField} : null,
             // Só quando é: PDV sem item montável não ganha chave nova no fio.
-        ] + ($this->_isComposite($rec) ? ['composite' => true] : []) + $this->_columnValuesFor($rec);
+        ] + ($this->_isComposite($rec) ? ['composite' => true] : [])
+          // Item montado não abre o modal de opções: o montador da tela manda.
+          + (!$this->_isComposite($rec) && $this->_hasOptions($rec) ? ['options' => true] : [])
+          + ($this->taxEnabled() ? ['taxRate' => $this->_taxRateOf($rec)] : [])
+          + $this->_columnValuesFor($rec);
     }
 
     /**
@@ -3092,6 +3686,7 @@ abstract class MadPdvComponent extends MadComponent
     {
         $lines = [];
         $payments = [];
+        $taxByRate = [];
         $change = $this->saleChangeField !== '' ? (float) $venda->{$this->saleChangeField} : 0.0;
 
         try {
@@ -3118,6 +3713,19 @@ abstract class MadPdvComponent extends MadComponent
                     'description' => $this->itemDescriptionField !== ''
                         ? (string) ($it->{$this->itemDescriptionField} ?? '') : '',
                 ];
+                if ($this->optionsEnabled() && $this->itemOptionsField !== '') {
+                    $opts = json_decode((string) ($it->{$this->itemOptionsField} ?? ''), true);
+                    if (is_array($opts)) {
+                        $lines[count($lines) - 1]['options'] = $this->_receiptOptions(array_filter($opts, 'is_array'));
+                    }
+                }
+                if ($this->taxEnabled() && $this->itemTaxRateField !== '' && $this->itemTaxField !== '') {
+                    $rate = PdvTax::normalizeRate($it->{$this->itemTaxRateField} ?? null);
+                    $lines[count($lines) - 1]['taxRate'] = $rate;
+                    if ($rate !== '0') {
+                        $taxByRate[$rate] = ($taxByRate[$rate] ?? 0) + PdvTax::fromDecimal((float) ($it->{$this->itemTaxField} ?? 0));
+                    }
+                }
             }
 
             $methods = $this->getPayments();
@@ -3139,6 +3747,25 @@ abstract class MadPdvComponent extends MadComponent
             : $this->_r(array_sum(array_column($lines, 'total')));
         $discount = $this->saleDiscountField !== '' ? (float) $venda->{$this->saleDiscountField} : 0.0;
 
+        // Imposto/gorjeta só voltam no reenvio se foram GRAVADOS (colunas mapeadas).
+        $extra = [];
+        if ($this->taxEnabled() && ($this->saleTaxField !== '' || $taxByRate !== [])) {
+            $taxes = [];
+            foreach ($taxByRate as $rate => $c) {
+                $taxes[] = ['rate' => (string) $rate, 'label' => $this->_taxRateLabel((string) $rate), 'tax' => PdvTax::toFloat($c)];
+            }
+            $extra += [
+                'tax'       => $this->saleTaxField !== ''
+                    ? (float) $venda->{$this->saleTaxField}
+                    : PdvTax::toFloat(array_sum($taxByRate)),
+                'taxes'     => $taxes,
+                'inclusive' => $this->pricesIncludeTax,
+            ];
+        }
+        if ($this->tips && $this->saleTipField !== '') {
+            $extra['tip'] = (float) $venda->{$this->saleTipField};
+        }
+
         return [
             'header'   => $this->receiptHeader,
             'footer'   => $this->receiptFooter !== '' ? $this->receiptFooter : (string) __('pdv.thanks'),
@@ -3151,7 +3778,7 @@ abstract class MadPdvComponent extends MadComponent
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'total'    => (float) $venda->{$this->saleTotalField},
-            ],
+            ] + $extra,
             'payments' => $payments,
             'change'   => $change,
             'width'    => $this->receiptWidthEffective(),

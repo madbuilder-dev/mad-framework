@@ -875,7 +875,7 @@ abstract class MadKanban extends MadComponent implements MadFilterable
 
         // Resto via MadChartFormatter
         $spec = match ($type) {
-            'money', 'currency' => 'currency:' . ($cfg['prefix'] ?? 'R$ ') . ':' . ((int) ($cfg['decimals'] ?? 2)),
+            'money', 'currency' => 'currency:' . ($cfg['prefix'] ?? \Mad\Support\AppCurrency::symbol('R$ ')) . ':' . ((int) ($cfg['decimals'] ?? \Mad\Support\AppCurrency::decimals(2))),
             'integer', 'int'    => 'integer',
             'numeric', 'number' => 'numeric:' . ((int) ($cfg['decimals'] ?? 2)),
             'percent', 'pct'    => 'percent:' . ((int) ($cfg['decimals'] ?? 1)),
@@ -896,10 +896,16 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         $display = (string) $val;
 
         if ($type === 'money') {
-            $prefix = $cfg['prefix'] ?? 'R$';
-            $dec    = (int) ($cfg['decimals'] ?? 2);
-            $display = htmlspecialchars($prefix) . '&nbsp;'
-                     . number_format((float) $val, $dec, ',', '.');
+            if (!isset($cfg['prefix']) && \Mad\Support\AppCurrency::isConfigured()) {
+                // Moeda do app definida: símbolo, casas e separadores dela/do idioma.
+                $dec = isset($cfg['decimals']) ? (int) $cfg['decimals'] : null;
+                $display = htmlspecialchars(\Mad\Support\AppCurrency::format((float) $val, $dec));
+            } else {
+                $prefix = $cfg['prefix'] ?? 'R$';
+                $dec    = (int) ($cfg['decimals'] ?? 2);
+                $display = htmlspecialchars($prefix) . '&nbsp;'
+                         . number_format((float) $val, $dec, ',', '.');
+            }
         } elseif ($type === 'date') {
             $fmt = $cfg['format'] ?? 'd/m/Y';
             try {
@@ -2256,7 +2262,13 @@ abstract class MadKanban extends MadComponent implements MadFilterable
     public function formatStageTotal(float $value): string
     {
         if ($value == 0.0) return '';
-        return \Mad\Chart\MadChartFormatter::make($this->valueFormat)($value);
+        // Formato padrão ('currency:R$ :2') + moeda do app definida: o símbolo
+        // e as casas dela. value-format do autor continua vencendo.
+        $format = $this->valueFormat === 'currency:R$ :2' && \Mad\Support\AppCurrency::isConfigured()
+            ? 'currency:' . \Mad\Support\AppCurrency::prefix() . ':' . \Mad\Support\AppCurrency::decimals()
+            : $this->valueFormat;
+
+        return \Mad\Chart\MadChartFormatter::make($format)($value);
     }
 
     /**

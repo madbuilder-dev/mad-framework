@@ -55,6 +55,61 @@ namespace Mad\Pdv;
  * │                                 vazio = "Monte o seu"                       │
  * │    (o navegador dispara `mad-pdv:compose`; a tela abre o montador dela)     │
  * │                                                                             │
+ * │  Imposto por linha (desligado sem tax-field = PDV de sempre):               │
+ * │    tax-field="aliquota"        coluna do produto com a alíquota em %        │
+ * │                                (até 4 casas; vazio/NULL = isento; pode vir  │
+ * │                                calculada no :where com addSelect)           │
+ * │    prices-include-tax          preço já tem o imposto (VAT/IVA); sem ele o  │
+ * │                                imposto vai por fora (sales tax)             │
+ * │    tax-label="VAT"             nome no cupom (vazio = "Imposto"/"Tax")      │
+ * │    sale-tax-field=  sale-tip-field=  item-tax-rate-field=  item-tax-field=  │
+ * │                                onde gravar (vazio = não grava)              │
+ * │    Regra: centavos inteiros, half-up; o desconto da VENDA é rateado nas     │
+ * │    linhas ANTES do imposto (resíduo na última linha com valor); o cupom     │
+ * │    agrupa por alíquota ("Imposto 8,25%" / "VAT 20% (incl.)").               │
+ * │                                                                             │
+ * │  Gorjeta:                                                                   │
+ * │    tips  tip-presets="15,18,20"  (% ou valor livre). Base do %: subtotal    │
+ * │    SEM imposto e DEPOIS do desconto. Não paga imposto; entra no total.      │
+ * │                                                                             │
+ * │  Opções do item (modificadores e combos):                                   │
+ * │    options-field="tem_opcoes"  coluna do produto que abre o modal de opções │
+ * │                                (tolerante 1/true/T/S; pode vir do :where)   │
+ * │    on-options="opcoes"         método da tela que dá os grupos              │
+ * │    item-options-field=         coluna do item p/ gravar as escolhas (JSON)  │
+ * │                                                                             │
+ * │    public function opcoes(object $produto): array {                         │
+ * │        return [                                                             │
+ * │          ['key' => 'tamanho', 'label' => 'Tamanho', 'min' => 1, 'max' => 1, │
+ * │           'options' => [['key' => 'p', 'label' => 'Pequeno', 'price' => 0], │
+ * │                         ['key' => 'g', 'label' => 'Grande', 'price' => 4.5, │
+ * │                          'default' => true]]],                              │
+ * │          ['key' => 'extras', 'label' => 'Adicionais', 'max' => 3,           │
+ * │           'options' => [['key' => 'bacon', 'label' => 'Bacon',             │
+ * │                           'price' => 3]]],                                  │
+ * │          // combo: opção que é outro produto (product_id vai no payload)    │
+ * │          ['key' => 'bebida', 'label' => 'Bebida', 'required' => true,      │
+ * │           'max' => 1, 'options' => [['product_id' => 12,                    │
+ * │                'label' => 'Refri lata', 'price' => 0]]],                    │
+ * │        ];                                                                   │
+ * │    }                                                                        │
+ * │    min (0) / max (nº de opções) / required (= min 1) por grupo; price é o   │
+ * │    ACRÉSCIMO da opção (pode ser 0). `['error' => 'msg']` recusa o item.     │
+ * │    Chamado ao abrir o modal e DE NOVO ao finalizar: preço = cadastro +      │
+ * │    opções, refeito no servidor. Mesmo produto com opções diferentes =       │
+ * │    linhas diferentes. Produto composto (composite-field) não abre o modal.  │
+ * │                                                                             │
+ * │    Por que não reaproveitar composite-field? O montador do composite é da   │
+ * │    TELA (o PDV só dispara o evento); opções são declarativas e o PDV tem    │
+ * │    o modal pronto — a tela só descreve os grupos.                           │
+ * │                                                                             │
+ * │  on-finalized="metodo": metodo($vendaId) como sempre; com 2 parâmetros      │
+ * │    metodo($vendaId, array $venda) recebe o resumo: items[] (product_id,     │
+ * │    qty, unit_price, discount, total + net/tax_rate/tax_amount/gross/        │
+ * │    sale_discount com imposto + options[] com opções), subtotal, discount,   │
+ * │    net, tax_total, taxes[] (rate, label, net, tax), tip, tip_percent,       │
+ * │    total, payments[], change.                                               │
+ * │                                                                             │
  * │  Visual: title=  fullscreen-toggle  currency-symbol="R$"  locale=           │
  * │          density="normal|compact"  show-images                              │
  * │                                                                             │
@@ -92,6 +147,7 @@ class MadPdvCompiler
         'allow-price-override', 'allow-fraction', 'stock-decrement',
         'ask-document', 'hold-sales', 'auto-print', 'fullscreen-toggle',
         'show-images', 'customer-required', 'product-picker',
+        'prices-include-tax', 'tips',
     ];
 
     /** Attrs inteiros da tag raiz (cast no compile; :attr passa cru). */

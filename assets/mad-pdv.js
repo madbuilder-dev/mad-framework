@@ -37,6 +37,167 @@
         });
     }
 
+    /**
+     * MadPdvTax — gêmeo JS de \Mad\Pdv\PdvTax (imposto por linha, centavos
+     * inteiros, half-up, desconto da venda rateado antes do imposto, resíduo
+     * na última linha de peso > 0). O carrinho calcula aqui; o servidor
+     * RECALCULA na finalização e é a verdade. Os dois rodam os mesmos vetores
+     * (tests/js/pdv-tax.test.mjs × MadPdvTaxTest) — mudou um, mude o outro.
+     *
+     * Multiplicação e divisão passam por BigInt: centavos × alíquota × 10⁶
+     * estoura os 2⁵³ do Number em valores grandes, e o PHP (int 64) não.
+     */
+    var MadPdvTax = (function () {
+        var RATE_SCALE = 10000;
+
+        function divRoundBig(num, den) {
+            if (den === 0n) throw new RangeError('Division by zero');
+            var neg = (num < 0n) !== (den < 0n);
+            if (num < 0n) num = -num;
+            if (den < 0n) den = -den;
+            var q = num / den;
+            if ((num % den) * 2n >= den) q += 1n;
+            return neg ? -q : q;
+        }
+
+        function divRound(num, den) {
+            return Number(divRoundBig(BigInt(num), BigInt(den)));
+        }
+
+        /** Número em string fixa (espelha o sprintf('%.6F') do PHP). */
+        function fixed6(v) { return v.toFixed(6); }
+
+        function fromDecimal(value) {
+            if (value === null || value === undefined || value === '') return 0;
+            if (typeof value === 'number' && Number.isInteger(value)) return value * 100;
+            var s = typeof value === 'number' ? fixed6(value) : String(value).trim();
+            s = s.replace(/[, ]/g, '');
+            var m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(s);
+            if (!m) throw new TypeError('Invalid amount: ' + value);
+            var neg = m[1] === '-';
+            var intPart = m[2] === '' ? '0' : m[2];
+            var dec = ((m[3] || '') + '000').slice(0, Math.max(3, (m[3] || '').length));
+            var cents = Number(BigInt(intPart) * 100n + BigInt(dec.slice(0, 2)));
+            if (Number(dec.charAt(2)) >= 5) cents++;
+            return neg ? -cents : cents;
+        }
+
+        function toDecimal(cents) {
+            var abs = Math.abs(cents);
+            return (cents < 0 ? '-' : '') + Math.floor(abs / 100) + '.' + String(abs % 100).padStart(2, '0');
+        }
+
+        function rateUnits(ratePct) {
+            if (ratePct === null || ratePct === undefined || ratePct === '') return 0;
+            var s = typeof ratePct === 'number' ? fixed6(ratePct) : String(ratePct).trim();
+            var m = /^(\d*)(?:\.(\d*))?$/.exec(s);
+            if (!m) throw new TypeError('Invalid rate: ' + ratePct);
+            var dec = ((m[2] || '') + '00000').slice(0, Math.max(5, (m[2] || '').length));
+            var units = Number(m[1] === '' ? 0 : m[1]) * RATE_SCALE + Number(dec.slice(0, 4));
+            if (Number(dec.charAt(4)) >= 5) units++;
+            return units;
+        }
+
+        function rateString(units) {
+            var intPart = Math.floor(units / RATE_SCALE);
+            var dec = String(units % RATE_SCALE).padStart(4, '0').replace(/0+$/, '');
+            return dec === '' ? String(intPart) : intPart + '.' + dec;
+        }
+
+        function normalizeRate(raw) {
+            if (raw === null || raw === undefined || raw === '' || typeof raw === 'boolean' || typeof raw === 'object') return '0';
+            var s = typeof raw === 'string' ? raw.trim().replace(',', '.') : raw;
+            try { return rateString(rateUnits(s)); } catch (e) { return '0'; }
+        }
+
+        function mulRate(cents, ratePct) {
+            return Number(divRoundBig(BigInt(cents) * BigInt(rateUnits(ratePct)), BigInt(100 * RATE_SCALE)));
+        }
+
+        function netFromGross(grossCents, ratePct) {
+            var den = BigInt(100 * RATE_SCALE);
+            return Number(divRoundBig(BigInt(grossCents) * den, den + BigInt(rateUnits(ratePct))));
+        }
+
+        /** Rateio proporcional; resíduo na ÚLTIMA parte de peso > 0. Array OU objeto. */
+        function allocate(total, weights) {
+            var keys = Object.keys(weights);
+            var out = Array.isArray(weights) ? weights.map(function () { return 0; }) : {};
+            keys.forEach(function (k) { out[k] = 0; });
+            var sum = 0, lastKey = null;
+            keys.forEach(function (k) { if (weights[k] > 0) { sum += weights[k]; lastKey = k; } });
+            if (sum === 0 || lastKey === null) return out;
+            var given = 0;
+            for (var i = 0; i < keys.length; i++) {
+                var k = keys[i], w = weights[k];
+                if (w <= 0) continue;
+                if (k === lastKey) { out[k] = total - given; break; }
+                // intdiv do PHP trunca em direção ao zero — BigInt também.
+                var part = Number(BigInt(total) * BigInt(w) / BigInt(sum));
+                out[k] = part;
+                given += part;
+            }
+            return out;
+        }
+
+        function lines(ls, inclusive, discountCents) {
+            var weights = [], subtotal = 0;
+            ls.forEach(function (l, k) {
+                var amount = l.amount | 0;
+                if (amount < 0) throw new RangeError('Line amount cannot be negative');
+                weights[k] = amount;
+                subtotal += amount;
+            });
+            var discount = Math.max(0, Math.min(discountCents || 0, subtotal));
+            var alloc = allocate(discount, weights);
+            var out = [], tNet = 0, tTax = 0, tGross = 0;
+            ls.forEach(function (l, k) {
+                var amount = l.amount | 0;
+                var rate = String(l.rate === undefined || l.rate === null ? '0' : l.rate);
+                var taxable = (l.taxable === undefined ? true : !!l.taxable) && rateUnits(rate) > 0;
+                var base = amount - (alloc[k] || 0);
+                var net, tax, gross;
+                if (!taxable) {
+                    net = base; tax = 0; gross = base; rate = '0';
+                } else if (inclusive) {
+                    gross = base; net = netFromGross(base, rate); tax = gross - net;
+                } else {
+                    net = base; tax = mulRate(base, rate); gross = net + tax;
+                }
+                out[k] = { amount: amount, discount: alloc[k] || 0, net: net, tax: tax, gross: gross, rate: rate };
+                tNet += net; tTax += tax; tGross += gross;
+            });
+            return { lines: out, subtotal: subtotal, discount: discount, net: tNet, tax: tTax, total: tGross };
+        }
+
+        /** Agrupado por alíquota, na ordem da 1ª aparição (array — ordem estável). */
+        function byRate(result) {
+            var idx = {}, g = [];
+            result.lines.forEach(function (l) {
+                if (l.tax === 0 && rateUnits(l.rate) === 0) return;
+                var key = String(l.rate);
+                if (idx[key] === undefined) { idx[key] = g.length; g.push({ rate: key, net: 0, tax: 0 }); }
+                g[idx[key]].net += l.net;
+                g[idx[key]].tax += l.tax;
+            });
+            return g;
+        }
+
+        function tip(baseCents, pct) {
+            var units = rateUnits(typeof pct === 'string' ? pct.trim().replace(',', '.') : pct);
+            if (units > 100 * RATE_SCALE) throw new RangeError('Tip percent above 100');
+            return Number(divRoundBig(BigInt(Math.max(0, baseCents)) * BigInt(units), BigInt(100 * RATE_SCALE)));
+        }
+
+        return {
+            RATE_SCALE: RATE_SCALE, fromDecimal: fromDecimal, toDecimal: toDecimal,
+            rateUnits: rateUnits, rateString: rateString, normalizeRate: normalizeRate,
+            mulRate: mulRate, netFromGross: netFromGross, allocate: allocate, divRound: divRound,
+            lines: lines, byRate: byRate, tip: tip,
+        };
+    })();
+    root.MadPdvTax = MadPdvTax;
+
     function registerPdv() {
         if (root.Alpine.__madPdvRegistered) {
             return;
@@ -65,6 +226,18 @@
                 _searchTimer: null,
                 _composePending: {}, // requestId → {product, qty, lineUid|null}
                 composing: false,    // esperando o servidor dar o preço do item montado
+
+                // Opções do item (modificadores / combos): grupos vêm do
+                // servidor (`on-options` da tela); o modal é do PDV.
+                _optPending: {},     // requestId → {product, qty, lineUid|null}
+                optLoading: false,
+                opt: { open: false, product: null, qty: 1, groups: [], sel: {}, lineUid: null, error: '' },
+
+                // Gorjeta: 'none' | 'percent' (tipPct) | 'custom' (tipCustomC).
+                tipMode: 'none',
+                tipPct: '',
+                tipInput: '',
+                tipCustomC: 0,
 
                 // Catálogo navegável (Rev. 5). `stack` guarda o cursor keyset de
                 // cada página visitada — é o que permite voltar sem offset.
@@ -112,7 +285,9 @@
                     this._onDone   = function (e) { self._handleSaleDone(e.detail || {}); };
                     this._onError  = function (e) { self._handleSaleError(e.detail || {}); };
                     this._onCompose = function (e) { self._handleCompose(e.detail || {}); };
+                    this._onOptions = function (e) { self._handleOptions(e.detail || {}); };
                     this.$el.addEventListener('mad-pdv:compose-result', this._onCompose);
+                    this.$el.addEventListener('mad-pdv:options-result', this._onOptions);
                     this.$el.addEventListener('mad-pdv:lookup-result', this._onLookup);
                     this.$el.addEventListener('mad-pdv:sale-done', this._onDone);
                     this.$el.addEventListener('mad-pdv:sale-error', this._onError);
@@ -188,6 +363,7 @@
                 destroy() {
                     if (this._cartRo) this._cartRo.disconnect();
                     this.$el.removeEventListener('mad-pdv:compose-result', this._onCompose);
+                    this.$el.removeEventListener('mad-pdv:options-result', this._onOptions);
                     this.$el.removeEventListener('mad-pdv:lookup-result', this._onLookup);
                     this.$el.removeEventListener('mad-pdv:sale-done', this._onDone);
                     this.$el.removeEventListener('mad-pdv:sale-error', this._onError);
@@ -205,20 +381,38 @@
                 // ── Dinheiro / formatação (centavos int) ──────────────────
                 toC(v) { return Math.round((Number(v) || 0) * 100); },
 
+                /** Casas da moeda na TELA: 2 (padrão) ou 0 (ex.: JPY). O carrinho segue em centavos. */
+                _curDecimals() {
+                    var d = this.cfg.currency.decimals;
+                    return (d === 0 || d === '0') ? 0 : 2;
+                },
+
+                /** Espaço entre o símbolo e o número: `gap` da moeda (padrão ' '). */
+                _curGap() {
+                    var g = this.cfg.currency.gap;
+                    return (g === undefined || g === null) ? ' ' : String(g);
+                },
+
                 money(c) {
                     var cur = this.cfg.currency;
                     var neg = c < 0;
                     c = Math.abs(Math.round(c || 0));
-                    var intPart = String(Math.floor(c / 100));
-                    var dec = String(c % 100).padStart(2, '0');
+                    var zero = this._curDecimals() === 0;
+                    // 0 casas: centavos → unidade, half-up.
+                    var intPart = String(zero ? Math.floor((c + 50) / 100) : Math.floor(c / 100));
+                    var dec = zero ? '' : cur.decimal + String(c % 100).padStart(2, '0');
                     var grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, cur.thousand);
-                    return (neg ? '-' : '') + cur.symbol + ' ' + grouped + cur.decimal + dec;
+                    var sym = (cur.symbol === '' || cur.symbol === undefined || cur.symbol === null)
+                        ? '' : cur.symbol + this._curGap();
+                    return (neg ? '-' : '') + sym + grouped + dec;
                 },
 
                 _moneyPlain(c) {
                     var cur = this.cfg.currency;
-                    var intPart = String(Math.floor(Math.abs(c) / 100));
-                    return intPart + cur.decimal + String(Math.abs(c) % 100).padStart(2, '0');
+                    var abs = Math.abs(c);
+                    if (this._curDecimals() === 0) return String(Math.floor((abs + 50) / 100));
+                    var intPart = String(Math.floor(abs / 100));
+                    return intPart + cur.decimal + String(abs % 100).padStart(2, '0');
                 },
 
                 // Preço na busca e no catálogo. O do cadastro de um item
@@ -333,6 +527,8 @@
                  */
                 _mergeKey(l) {
                     var parts = [l.id, l.priceC];
+                    // Mesmo produto com opções diferentes = linhas diferentes.
+                    if (l.optSig) parts.push(l.optSig);
                     var cols  = this.cfg.columns || [];
                     for (var i = 0; i < cols.length; i++) {
                         var c = cols[i];
@@ -438,7 +634,85 @@
                     for (var i = 0; i < this.cart.length; i++) s += this.lineTotalC(this.cart[i]);
                     return s;
                 },
-                get totalC()     { return Math.max(0, this.subtotalC - this.saleDiscC); },
+                get taxOn()  { return !!this.cfg.behavior.tax; },
+                get tipsOn() { return !!this.cfg.behavior.tips; },
+
+                /**
+                 * Imposto por linha (MadPdvTax): desconto da venda rateado nas
+                 * linhas ANTES do imposto. Prévia — o servidor refaz e vale o dele.
+                 */
+                get taxCalc() {
+                    var self = this;
+                    var lines = this.cart.map(function (l) {
+                        return { amount: Math.max(0, self.lineTotalC(l)), rate: self.taxOn ? (l.taxRate || '0') : '0' };
+                    });
+                    return MadPdvTax.lines(lines, !!(this.taxOn && this.cfg.behavior.tax.inclusive), this.saleDiscC);
+                },
+                get taxC() { return this.taxOn ? this.taxCalc.tax : 0; },
+                get taxGroups() {
+                    if (!this.taxOn) return [];
+                    var self = this;
+                    return MadPdvTax.byRate(this.taxCalc).map(function (g) {
+                        return { rate: g.rate, taxC: g.tax, label: self.taxRateLabel(g.rate) };
+                    });
+                },
+                taxRateLabel(rate) {
+                    var t = this.cfg.behavior.tax || {};
+                    var txt = String(rate).replace('.', this.cfg.currency.decimal);
+                    return (t.label || this.cfg.i18n.tax || 'Tax') + ' ' + txt + '%'
+                        + (t.inclusive ? ' ' + (this.cfg.i18n.tax_included || '(incl.)') : '');
+                },
+
+                /** Base da gorjeta em %: líquido SEM imposto, DEPOIS do desconto. */
+                get tipBaseC() {
+                    return this.taxOn ? this.taxCalc.net : Math.max(0, this.subtotalC - this.saleDiscC);
+                },
+                get tipC() {
+                    if (!this.tipsOn) return 0;
+                    if (this.tipMode === 'percent') {
+                        try { return MadPdvTax.tip(this.tipBaseC, this.tipPct); } catch (e) { return 0; }
+                    }
+                    return this.tipMode === 'custom' ? Math.max(0, this.tipCustomC | 0) : 0;
+                },
+
+                get totalC() {
+                    // Sem imposto nem gorjeta: a conta de sempre.
+                    if (!this.taxOn && !this.tipsOn) return Math.max(0, this.subtotalC - this.saleDiscC);
+                    var base = this.taxOn ? this.taxCalc.total : Math.max(0, this.subtotalC - this.saleDiscC);
+                    return base + this.tipC;
+                },
+
+                // ── Gorjeta ───────────────────────────────────────────────
+                tipPresetLabel(p) { return String(p).replace('.', this.cfg.currency.decimal) + '%'; },
+                isTipPreset(p) { return this.tipMode === 'percent' && this.tipPct === String(p); },
+                setTipPct(p) {
+                    if (!this.tipsOn) return;
+                    if (this.isTipPreset(p)) { this.setTipNone(); return; }
+                    this.tipMode = 'percent';
+                    this.tipPct = String(p);
+                    this.tipInput = '';
+                    this._tipChanged();
+                },
+                setTipNone() {
+                    this.tipMode = 'none';
+                    this.tipPct = '';
+                    this.tipInput = '';
+                    this.tipCustomC = 0;
+                    this._tipChanged();
+                },
+                setTipCustom(v) {
+                    if (!this.tipsOn) return;
+                    var c = Math.max(0, this.parseMoney(v));
+                    this.tipInput = v;
+                    this.tipCustomC = c;
+                    this.tipMode = c > 0 ? 'custom' : 'none';
+                    this.tipPct = '';
+                    this._tipChanged();
+                },
+                /** Pagamento lançado a mais depois de baixar a gorjeta não fecha mais: recomeça. */
+                _tipChanged() {
+                    if (this.paidC > this.totalC) this.payments = [];
+                },
                 get paidC()      { var s = 0; this.payments.forEach(function (p) { s += p.amountC; }); return s; },
                 get remainingC() { return Math.max(0, this.totalC - this.paidC); },
                 get changeNowC() {
@@ -605,6 +879,11 @@
                         this._askCompose(p, qty, null);
                         return;
                     }
+                    // Item com opções (tamanho, adicionais, combo): abre o modal.
+                    if (p.options && this.cfg.behavior.options) {
+                        this._askOptions(p, qty, null);
+                        return;
+                    }
 
                     var priceC = this.toC(p.price);
                     // Linha candidata: mesmos id/preço e as colunas de entrada
@@ -627,7 +906,7 @@
 
                 /** Linha nova do carrinho a partir de um produto da busca. */
                 _newLine(p, priceC) {
-                    return {
+                    var line = {
                         // uuid, não sequencial: o contador zera no F5 e uma venda
                         // retomada do hold traz uids antigos — as chaves do x-for
                         // colidiam, e com coluna de entrada isso põe o valor
@@ -652,6 +931,9 @@
                         cols: Object.assign({}, p.cols || {}),
                         disp: Object.assign({}, p.disp || {}),
                     };
+                    // Alíquota do produto (vem do lookup só com tax-field).
+                    if (this.taxOn) line.taxRate = MadPdvTax.normalizeRate(p.taxRate);
+                    return line;
                 },
 
                 // ── Item composto ─────────────────────────────────────────
@@ -757,6 +1039,225 @@
                     }, l.qty, l);
                 },
 
+                // ── Opções do item (modificadores / combos) ───────────────
+                /** Pede ao servidor os grupos de opções do produto. `line` = linha sendo alterada. */
+                _askOptions(p, qty, line) {
+                    var self = this;
+                    var id = ++this._reqSeq;
+                    var at = (this.$el && this.$el.closest && this.$el.closest('[data-mad-pdv]')) || this.$el;
+                    this._optPending[id] = { product: p, qty: qty, lineUid: line ? line.uid : null };
+                    this.optLoading = true;
+                    wireCall(at, this.cfg.wire.options, [String(p.id), id])
+                        .catch(function (err) {
+                            console.error('[mad-pdv] options:', err);
+                            delete self._optPending[id];
+                            self.optLoading = false;
+                        });
+                },
+
+                _handleOptions(d) {
+                    var pend = this._optPending[d.requestId];
+                    if (!pend) return;
+                    delete this._optPending[d.requestId];
+                    this.optLoading = false;
+                    if (!d.ok) { this.focusScan(); return; }   // o servidor já avisou o motivo
+
+                    var groups = Array.isArray(d.groups) ? d.groups : [];
+                    var line = null;
+                    if (pend.lineUid) {
+                        line = this.cart.find(function (l) { return l.uid === pend.lineUid; }) || null;
+                        if (!line) { this.focusScan(); return; }   // removida enquanto carregava
+                    }
+                    var sel = {};
+                    groups.forEach(function (g) {
+                        var prev = line && line.optChoices ? (line.optChoices[g.key] || []) : null;
+                        var keys = (g.options || []).map(function (o) { return o.key; });
+                        var pick = prev
+                            ? prev.filter(function (k) { return keys.indexOf(k) >= 0; })
+                            : (g.options || []).filter(function (o) { return o.default; }).map(function (o) { return o.key; });
+                        // Grupo obrigatório de uma opção só: já vem marcado.
+                        if (!pick.length && g.min >= 1 && keys.length === 1) pick = keys.slice();
+                        sel[g.key] = pick.slice(0, Math.max(1, g.max || 1));
+                    });
+                    this.opt = {
+                        open: true, product: pend.product, qty: pend.qty, groups: groups,
+                        sel: sel, lineUid: pend.lineUid, error: '',
+                    };
+                    this._optOpener = (root.document && root.document.activeElement) || null;
+                    var self = this;
+                    this.$nextTick(function () {
+                        var box = self.$refs.optModal;
+                        var first = box && box.querySelector('input:not([disabled]), button:not([disabled])');
+                        if (first) first.focus();
+                    });
+                },
+
+                optIsOn(g, o) { return (this.opt.sel[g.key] || []).indexOf(o.key) >= 0; },
+
+                optDisabled(g, o) {
+                    return g.max > 1 && !this.optIsOn(g, o) && (this.opt.sel[g.key] || []).length >= g.max;
+                },
+
+                optToggle(g, o) {
+                    var cur = (this.opt.sel[g.key] || []).slice();
+                    var on = cur.indexOf(o.key) >= 0;
+                    if (g.max === 1) {
+                        // Rádio: obrigatório não desmarca; opcional desmarca no 2º clique.
+                        cur = on ? (g.min >= 1 ? cur : []) : [o.key];
+                    } else if (on) {
+                        cur.splice(cur.indexOf(o.key), 1);
+                    } else if (cur.length < g.max) {
+                        cur.push(o.key);
+                    }
+                    var next = Object.assign({}, this.opt.sel);
+                    next[g.key] = cur;
+                    this.opt.sel = next;
+                    this.opt.error = '';
+                },
+
+                /** "Obrigatório · Escolha 1" / "Até 3" / "Escolha 1 a 2". */
+                optHint(g) {
+                    var t = this.cfg.i18n;
+                    var rule;
+                    if (g.min === g.max) rule = g.min === 1 ? (t.options_one || 'Choose 1') : String(t.options_exact || 'Choose :min').replace(':min', g.min);
+                    else if (!g.min) rule = String(t.options_up_to || 'Up to :max').replace(':max', g.max);
+                    else rule = String(t.options_range || 'Choose :min to :max').replace(':min', g.min).replace(':max', g.max);
+                    return (g.min >= 1 ? (t.options_required || 'Required') + ' · ' : '') + rule;
+                },
+
+                optPriceText(o) {
+                    var c = this.toC(o.price);
+                    if (!c) return '';
+                    return (c > 0 ? '+ ' : '− ') + this.money(Math.abs(c));
+                },
+
+                /** Preço unitário com as opções marcadas (prévia; o servidor refaz). */
+                get optUnitC() {
+                    if (!this.opt.product) return 0;
+                    var self = this;
+                    var c = this.toC(this.opt.product.price);
+                    this.opt.groups.forEach(function (g) {
+                        (g.options || []).forEach(function (o) { if (self.optIsOn(g, o)) c += self.toC(o.price); });
+                    });
+                    return c;
+                },
+
+                /** 1ª regra violada (mensagem) ou ''. */
+                _optViolation() {
+                    var t = this.cfg.i18n;
+                    for (var i = 0; i < this.opt.groups.length; i++) {
+                        var g = this.opt.groups[i];
+                        var n = (this.opt.sel[g.key] || []).length;
+                        if (n < g.min) return String(t.options_min || 'Choose at least :min in “:group”.').replace(':min', g.min).replace(':group', g.label);
+                        if (n > g.max) return String(t.options_max || 'Choose at most :max in “:group”.').replace(':max', g.max).replace(':group', g.label);
+                    }
+                    return '';
+                },
+
+                get optValid() { return this.opt.open && this._optViolation() === '' && this.optUnitC >= 0; },
+
+                optConfirm() {
+                    if (!this.opt.open) return;
+                    var why = this._optViolation();
+                    if (why) { this.opt.error = why; return; }
+                    var self = this;
+                    var choices = {}, list = [];
+                    // Ordem do CADASTRO, não a do clique: mesma escolha = mesma assinatura.
+                    this.opt.groups.forEach(function (g) {
+                        var keys = [];
+                        (g.options || []).forEach(function (o) {
+                            if (!self.optIsOn(g, o)) return;
+                            keys.push(o.key);
+                            list.push({ group: g.label, groupKey: g.key, option: o.label, optionKey: o.key,
+                                        priceC: self.toC(o.price), productId: o.productId === undefined ? null : o.productId });
+                        });
+                        if (keys.length) choices[g.key] = keys;
+                    });
+                    var sig = JSON.stringify(choices);
+                    var priceC = this.optUnitC;
+                    var p = this.opt.product;
+                    var line = null, i;
+
+                    if (this.opt.lineUid) {
+                        for (i = 0; i < this.cart.length; i++) {
+                            if (this.cart[i].uid === this.opt.lineUid) { line = this.cart[i]; this.selLine = i; break; }
+                        }
+                        if (line) {
+                            line.priceC = priceC;
+                            line.discC = Math.min(line.discC || 0, Math.round(line.qty * priceC));
+                            // preço mudou → o que já foi lançado de pagamento não fecha mais
+                            this.payments = [];
+                        }
+                    } else {
+                        var cand = this._candidateMergeKey(p, priceC);
+                        for (i = 0; i < this.cart.length && this.cfg.behavior.mergeLines !== 'off'; i++) {
+                            var l = this.cart[i];
+                            if (!l.composite && l.optSig === sig && l.id === p.id && this._mergeKey(l) === this._withSig(cand, sig)) {
+                                this._setLineQty(l, l.qty + this.opt.qty);
+                                this.selLine = i;
+                                this._optClose();
+                                return;
+                            }
+                        }
+                        line = this._newLine(p, priceC);
+                        line.baseC = this.toC(p.price);
+                        this.cart.push(line);
+                        this._setLineQty(line, this.opt.qty);
+                        this.selLine = this.cart.length - 1;
+                        line = this.cart[this.selLine];
+                    }
+                    if (line) {
+                        line.hasOptions = true;
+                        line.options = list;
+                        line.optChoices = choices;
+                        line.optSig = sig;
+                    }
+                    this._optClose();
+                },
+
+                _withSig(key, sig) {
+                    // Mesma montagem do _mergeKey: assinatura logo depois de id/preço.
+                    var parts = key.split('\u0001');
+                    parts.splice(2, 0, sig);
+                    return parts.join('\u0001');
+                },
+
+                optCancel() { this._optClose(); },
+
+                _optClose() {
+                    this.opt = { open: false, product: null, qty: 1, groups: [], sel: {}, lineUid: null, error: '' };
+                    this.focusScan();
+                },
+
+                /** Foco preso no modal (Tab / Shift+Tab giram dentro dele). */
+                optTrap(e) {
+                    if (e.key !== 'Tab') return;
+                    var box = this.$refs.optModal;
+                    if (!box) return;
+                    var els = Array.prototype.filter.call(
+                        box.querySelectorAll('input:not([disabled]), button:not([disabled])'),
+                        function (el) { return el.offsetParent !== null || el === root.document.activeElement; });
+                    if (!els.length) return;
+                    var first = els[0], last = els[els.length - 1];
+                    if (e.shiftKey && root.document.activeElement === first) { e.preventDefault(); last.focus(); }
+                    else if (!e.shiftKey && root.document.activeElement === last) { e.preventDefault(); first.focus(); }
+                },
+
+                /** Texto curto das opções na linha do carrinho ("Grande · Bacon"). */
+                optText(l) {
+                    return (l.options || []).map(function (o) { return o.option; }).join(' · ');
+                },
+
+                /** Botão "Alterar opções" da linha. */
+                editOptions(i) {
+                    var l = this.cart[i];
+                    if (!l || !l.hasOptions) return;
+                    this._askOptions({
+                        id: l.id, name: l.name, code: l.code, barcode: l.barcode, unit: l.unit, image: l.image,
+                        price: (l.baseC !== undefined ? l.baseC : l.priceC) / 100, taxRate: l.taxRate,
+                    }, l.qty, l);
+                },
+
                 _setLineQty(l, qty) {
                     if (!this.cfg.behavior.allowFraction) qty = Math.max(1, Math.round(qty));
                     var mode = this.cfg.behavior.stockMode;
@@ -786,7 +1287,7 @@
                 setLinePrice(i, v) {
                     var l = this.cart[i];
                     if (!l || !this.cfg.behavior.allowPriceOverride) return;
-                    if (l.composite) return;   // preço do item montado é do servidor
+                    if (l.composite || l.hasOptions) return;   // preço montado/com opções é do servidor
                     var c = this.parseMoney(v);
                     if (c > 0) l.priceC = c;
                 },
@@ -1025,6 +1526,7 @@
                                 line: l.uid,
                                 // Só as ESCOLHAS viajam; o preço o servidor refaz.
                                 choices: l.composite ? (l.choices || {}) : undefined,
+                                options: l.hasOptions ? (l.optChoices || {}) : undefined,
                                 qty: l.qty,
                                 unitPrice: l.priceC / 100,
                                 discount: (l.discC || 0) / 100,
@@ -1054,6 +1556,15 @@
                             change: this.changeNowC / 100,
                         },
                     };
+                    // Imposto/gorjeta: só entram no payload quando ligados (PDV de
+                    // sempre manda o mesmo JSON de antes). Valores aqui são
+                    // PRÉVIA — o servidor refaz imposto e gorjeta em %.
+                    if (this.taxOn) payload.totals.tax = this.taxC / 100;
+                    if (this.tipsOn) {
+                        payload.tip = this.tipC / 100;
+                        payload.tipPercent = this.tipMode === 'percent' ? this.tipPct : null;
+                        payload.totals.tip = this.tipC / 100;
+                    }
                     this.saving = true;
                     wireCall(this.$el, this.cfg.wire.finalize, [JSON.stringify(payload)])
                         .catch(function (err) {
@@ -1140,6 +1651,13 @@
                         this.focusScan();
                         return;
                     }
+                    if (code === 'options-invalid' && details.items && details.items[0]) {
+                        for (var oi = 0; oi < this.cart.length; oi++) {
+                            if (this.cart[oi].uid === details.items[0].line) { this.selLine = oi; break; }
+                        }
+                        this.focusScan();
+                        return;
+                    }
                     if (code === 'customer-required') { this._focusCustomer(); return; }
                     if (code === 'payment-incomplete' || code === 'payment-mismatch'
                         || code === 'invalid-payment-method') {
@@ -1162,6 +1680,10 @@
                     this.payAmount = '';
                     this.saleDiscC = 0;
                     this.saleDiscInput = '';
+                    this.tipMode = 'none';
+                    this.tipPct = '';
+                    this.tipInput = '';
+                    this.tipCustomC = 0;
                     this.selLine = -1;
                     this.docPrompt = { open: false, value: '', asked: false };
                     this.clientSaleId = uuid();
@@ -1223,6 +1745,7 @@
                             customerId: this.customerId,
                             document: this.docPrompt.value,
                             saleDiscC: this.saleDiscC,
+                            tip: { mode: this.tipMode, pct: this.tipPct, input: this.tipInput, customC: this.tipCustomC },
                             cart: JSON.parse(JSON.stringify(this.cart)),
                             payments: JSON.parse(JSON.stringify(this.payments)),
                         },
@@ -1248,6 +1771,11 @@
                     this.cart = this._backfillCart(s.cart || []);
                     this.payments = s.payments || [];
                     this.saleDiscC = s.saleDiscC || 0;
+                    var tp = s.tip || {};
+                    this.tipMode = tp.mode || 'none';
+                    this.tipPct = tp.pct || '';
+                    this.tipInput = tp.input || '';
+                    this.tipCustomC = tp.customC || 0;
                     this.customerId = s.customerId || null;
                     this.docPrompt = { open: false, value: s.document || '', asked: false };
                     this.clientSaleId = s.clientSaleId || uuid();
@@ -1381,6 +1909,11 @@
 
                 onHotkey(e) {
                     if (e.defaultPrevented) return;
+                    // Modal de opções aberto: Esc fecha; o resto do teclado é dele.
+                    if (this.opt.open) {
+                        if (e.key === 'Escape') { e.preventDefault(); this.optCancel(); }
+                        return;
+                    }
 
                     // Hotkey do catálogo é configurável (default F2 — a tecla
                     // que a legenda do rodapé anuncia) — checada antes do

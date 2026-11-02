@@ -11524,7 +11524,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
             [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
             if ($col->isMoney) {
-                return trim($col->moneyPrefix . ' ' . number_format((float) $v, 2, $dec, $tho));
+                return trim($col->moneyPrefix . ' ' . number_format((float) $v, $col->moneyDecimals, $dec, $tho));
             }
             if ($col->isNumber) {
                 return number_format((float) $v, $col->numberDecimals, $dec, $tho);

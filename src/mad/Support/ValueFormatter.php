@@ -84,13 +84,28 @@ final class ValueFormatter
     /**
      * Símbolo da moeda do idioma do app, o padrão do `currency`/`money` sem
      * símbolo no gráfico e no card de indicador: "R$" em português, "$" em
-     * inglês e espanhol.
+     * inglês e espanhol. Com a moeda do app definida (AppCurrency), o símbolo dela.
      */
     public static function currencyPrefix(): string
     {
+        // Moeda do app definida (AppCurrency): o símbolo dela.
+        $symbol = AppCurrency::symbol();
+        if ($symbol !== null) {
+            return $symbol . AppCurrency::gap($symbol);
+        }
+
         $text = \Mad\I18n\MadLang::t('mad.fmt.currency');
 
         return ($text === 'mad.fmt.currency' ? 'R$' : $text) . self::moneyGap();
+    }
+
+    /**
+     * Casas decimais do dinheiro: as da moeda do app (JPY: 0) ou 2 sem
+     * moeda definida.
+     */
+    public static function moneyDecimals(): int
+    {
+        return AppCurrency::decimals(2);
     }
 
     /**
@@ -207,7 +222,7 @@ final class ValueFormatter
             // prefixos manuais tipo "Total: R$ " dependem disso). Os
             // currency-* carregam símbolo por serem autodescritivos.
             case 'money':
-                return number_format(self::num($value), 2, ...self::separators());
+                return number_format(self::num($value), self::moneyDecimals(), ...self::separators());
             case 'currency-usd':
                 return self::usdPrefix() . number_format(self::num($value), 2, '.', ',');
             case 'currency-eur':

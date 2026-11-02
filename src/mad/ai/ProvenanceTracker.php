@@ -172,7 +172,12 @@ final class ProvenanceTracker
     /** Número de um texto cru ou formatado (pt-BR/en, com R$/%) — null se não for número. */
     private static function parseNumber(string $t): ?float
     {
+        // Símbolo da moeda do app (AppCurrency) também sai, além do R$.
+        $sym = (string) \Mad\Support\AppCurrency::symbol('');
         $s = trim(str_replace(['R$', '%', "\u{00a0}"], ['', '', ' '], $t));
+        if ($sym !== '' && $sym !== 'R$') {
+            $s = trim(str_replace($sym, '', $s));
+        }
         $s = str_replace(' ', '', $s);
         if ($s === '' || ! preg_match('/^[-+]?[\d.,]+$/', $s)) {
             return null;

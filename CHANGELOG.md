@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.254.0] — 2026-11-02
+
+### Novidades
+
+- **Moeda do sistema:** Preferências › Navegação ganhou o campo "Moeda do sistema" (dólar americano, canadense, australiano e neozelandês, libra, euro, real, peso mexicano, iene e outras). Com uma moeda escolhida, o símbolo e as casas decimais dela passam a ser o padrão do campo de dinheiro, do Display com `format="money"`, das colunas de dinheiro da listagem e da exportação para Excel, dos gráficos, dos indicadores, do kanban, da lista de itens, dos widgets do Copilot IA, dos preços dos planos no cadastro pelo site e do PDV: `$1,234.00`, `£1,234.00`, `¥1,234`. Os separadores continuam os do idioma do app. Sem moeda escolhida, nada muda.
+- **Moeda do sistema:** a tela de configurações do seu próprio app também pode ler e gravar a moeda pelo código (`AppCurrency::set('USD')`, `AppCurrency::code()`, `AppCurrency::format(1234)`), e o padrão da instalação pode vir de `general.currency` no `config/mad.php`.
+- **PDV:** imposto por linha com `tax-field` (a alíquota do produto): por fora ou já incluso no preço (`prices-include-tax`, com `tax-label="VAT"`), desconto da venda dividido entre os itens antes do imposto e cupom com o imposto separado por alíquota. O total é conferido de novo ao finalizar.
+- **PDV:** gorjeta com `tips` e `tip-presets="15,18,20"` (percentual sobre o subtotal sem imposto, depois do desconto) ou valor digitado; entra no total a pagar e não paga imposto.
+- **PDV:** opções do item com `options-field` e `on-options` (tamanho, adicionais, combos): o caixa escolhe num painel, a linha mostra as escolhas com o preço já somado e escolhas diferentes viram linhas diferentes.
+- **PDV:** `on-finalized` com dois parâmetros recebe o resumo da venda: itens com imposto e opções, total do imposto, gorjeta e pagamentos.
+
+### Atenção
+
+- **Moeda do sistema:** o que você escreveu na tag continua valendo: `prefix="R$"` no campo de dinheiro, `format="money:US$"` no Display, `money="€"` na coluna e `currency-symbol` no PDV não seguem a moeda do sistema.
+
 ## [5.253.0] — 2026-11-02
 
 ### Novidades

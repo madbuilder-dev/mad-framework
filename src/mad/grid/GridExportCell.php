@@ -126,7 +126,7 @@ final class GridExportCell
         // 4/5. Valor declarado na coluna.
         if ($col->isMoney) {
             return is_numeric($value)
-                ? self::number((float) $value, self::moneyFormat($col->moneyPrefix))
+                ? self::number((float) $value, self::moneyFormat($col->moneyPrefix, $col->moneyDecimals))
                 : self::text(self::scalar($value));
         }
         if ($col->isNumber) {
@@ -302,11 +302,12 @@ final class GridExportCell
      * Formato Excel de dinheiro. O prefixo vai entre aspas: solto, letras como
      * o `s` de "US$" seriam lidas como código de formato.
      */
-    public static function moneyFormat(string $prefix): string
+    public static function moneyFormat(string $prefix, int $decimals = 2): string
     {
         $prefix = str_replace('"', '', trim($prefix));
+        $number = self::decimalsFormat($decimals);
 
-        return $prefix === '' ? '#,##0.00' : '"' . $prefix . ' "#,##0.00';
+        return $prefix === '' ? $number : '"' . $prefix . ' "' . $number;
     }
 
     public static function decimalsFormat(int $decimals): string
@@ -322,7 +323,9 @@ final class GridExportCell
     {
         if (isset(self::BUILTIN_NUMBER_FORMATS[$token])) {
             return is_numeric($value)
-                ? self::number((float) $value, self::BUILTIN_NUMBER_FORMATS[$token])
+                ? self::number((float) $value, $token === 'money'
+                    ? self::decimalsFormat(ValueFormatter::moneyDecimals())
+                    : self::BUILTIN_NUMBER_FORMATS[$token])
                 : self::text(ValueFormatter::apply($value, $token));
         }
 

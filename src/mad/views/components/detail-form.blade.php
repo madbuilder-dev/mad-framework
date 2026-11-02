@@ -493,7 +493,7 @@
                                     return '<span class=&quot;mad-badge mad-badge-' + variant + '&quot;>' + lbl + '</span>';
                                 })()"></span>
                                 @elseif($col->isMoney)
-                                <span x-text="'{{ $col->moneyPrefix }} ' + madNumFmt({!! $_cv !!} || 0, 2)"></span>
+                                <span x-text="'{{ $col->moneyPrefix }} ' + madNumFmt({!! $_cv !!} || 0, {{ (int) $col->moneyDecimals }})"></span>
                                 @elseif($col->isNumber)
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $col->numberDecimals }})"></span>
@@ -580,7 +580,7 @@
                             } elseif (! $_hasFormula && ! in_array($col->totalFunc, ['sum', 'avg', 'min', 'max'], true)) {
                                 $_tot = '';
                             } elseif ($col->isMoney) {
-                                $_tot = "'{$col->moneyPrefix} ' + madNumFmt({$_agg}, 2)";
+                                $_tot = "'{$col->moneyPrefix} ' + madNumFmt({$_agg}, " . (int) $col->moneyDecimals . ')';
                             } elseif ($col->isNumber) {
                                 $_tot = "madNumFmt({$_agg}, " . (int) $col->numberDecimals . ')';
                             } elseif ($col->builtinFormat !== '') {

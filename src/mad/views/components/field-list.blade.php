@@ -844,7 +844,9 @@
                             $dTypeField  = $col->typeField ?: ($fld . '_tipo');
                             $dOptions    = $col->options;
                             if (empty($dOptions) && $col->type === 'discount') {
-                                $dOptions = ['%' => '%', 'R$' => 'R$'];
+                                // Valor gravado continua 'R$' (= desconto em valor); o rótulo
+                                // mostra o símbolo da moeda do app quando ela está definida.
+                                $dOptions = ['%' => '%', 'R$' => \Mad\Support\AppCurrency::symbol('R$')];
                             }
                             $dIsDiscount = $col->type === 'discount' ? 'true' : 'false';
                             $dDefaultOpt = !empty($dOptions) ? array_key_first($dOptions) : '';

@@ -334,7 +334,7 @@
         [$fmtDecDefault, $fmtThoDefault] = \Mad\Support\ValueFormatter::separators();
         if ($fmtType === 'currency' || $fmtType === 'money') {
             $fmtPrefix    = $parts[1] ?? \Mad\Support\ValueFormatter::currencyPrefix();
-            $fmtPrecision = (int)($parts[2] ?? 2);
+            $fmtPrecision = (int)($parts[2] ?? \Mad\Support\ValueFormatter::moneyDecimals());
             $fmtDecimal   = $parts[3] ?? $fmtDecDefault;
             $fmtThousand  = $parts[4] ?? $fmtThoDefault;
             $chart->currency($fmtPrecision, $fmtPrefix, $fmtDecimal, $fmtThousand);

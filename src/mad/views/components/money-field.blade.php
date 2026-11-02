@@ -1,9 +1,12 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => 'R$','suffix' => '', 'placeholder' => '', 'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => null,'suffix' => '', 'placeholder' => '', 'decimals' => null, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
     $readonly  = !empty($readonly);
-    $decimals  = (int)$decimals;
+    // Sem `prefix`/`decimals`: os da moeda do app (AppCurrency) ou, sem
+    // moeda definida, R$ e 2 casas (o padrão de sempre). `prefix=""` tira o símbolo.
+    $prefix    = $prefix ?? \Mad\Support\AppCurrency::symbol('R$');
+    $decimals  = $decimals === null || $decimals === '' ? \Mad\Support\AppCurrency::decimals(2) : (int)$decimals;
     $allowNegative = !empty($allowNegative);
     // Padrão = digitar como o <mad-numeric-field>: inteiro, vírgula opcional
     // ("10" = 10,00). A calculadora ("10" = 0,10) é `fill-direction="right"`.

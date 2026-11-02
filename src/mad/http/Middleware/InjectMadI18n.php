@@ -22,7 +22,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *     <script data-mad-i18n>window.MAD_I18N = {...};</script>
  *
  * Em pt-BR nada é injetado: o próprio JS já traz o texto pt-BR, e a página
- * sai byte a byte como antes. Página sem `<head>` (fragmento) fica como está.
+ * sai byte a byte como antes — exceto com a moeda do app definida
+ * (`Mad\Support\AppCurrency`), quando vão só as chaves `currency*`. Página sem `<head>` (fragmento) fica como está.
  * Roda no fim da resposta, depois do SetUserLocale do app: vale o idioma do
  * usuário.
  */
@@ -81,11 +82,12 @@ class InjectMadI18n
      */
     public static function scriptTag(): string
     {
-        if (MadLang::getLocale() === 'pt') {
-            return '';
-        }
+        // Moeda do app definida (AppCurrency): símbolo/casas para o JS, em
+        // qualquer idioma. Sem ela, em pt-BR nada é injetado (como sempre).
+        $currency = \Mad\Support\AppCurrency::jsDictionary();
 
-        $dict = MadLang::group('mad.js');
+        $dict = MadLang::getLocale() === 'pt' ? [] : MadLang::group('mad.js');
+        $dict = $currency + $dict;
         if ($dict === []) {
             return '';
         }

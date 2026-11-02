@@ -57,6 +57,8 @@ class GridColumn
     public array   $badgeMap   = [];
     public bool    $isMoney    = false;
     public string  $moneyPrefix= '';
+    /** Casas da coluna `money`: as da moeda do app (JPY: 0) ou 2. */
+    public int     $moneyDecimals = 2;
     public bool    $isNumber   = false;
     public int     $numberDecimals = 2;
     public bool    $isDate     = false;
@@ -623,7 +625,10 @@ class GridColumn
     public function money(string $prefix = ''): self
     {
         $this->isMoney    = true;
-        $this->moneyPrefix = $prefix;
+        // Sem símbolo + moeda do app definida (AppCurrency): o símbolo dela.
+        // Sem moeda definida, como sempre: coluna sem símbolo.
+        $this->moneyPrefix = $prefix !== '' ? $prefix : (string) \Mad\Support\AppCurrency::symbol('');
+        $this->moneyDecimals = \Mad\Support\AppCurrency::decimals(2);
         return $this;
     }
 
@@ -1288,7 +1293,7 @@ class GridColumn
         if ($this->isMoney) {
             $num = is_numeric($value) ? (float)$value : 0.0;
             [$dec, $tho] = \Mad\Support\ValueFormatter::separators();
-            $fmt = number_format($num, 2, $dec, $tho);
+            $fmt = number_format($num, $this->moneyDecimals, $dec, $tho);
             $pre = htmlspecialchars($this->moneyPrefix, ENT_QUOTES);
             return $pre . \Mad\Support\ValueFormatter::moneyGap() . $fmt;
         }

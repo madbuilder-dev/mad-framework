@@ -140,6 +140,9 @@
                                         {{-- Item montado: o que o caixa escolheu (sabores, borda, adicionais). --}}
                                         <small class="mad-pdv-line-desc" x-show="l.description" x-cloak
                                                x-text="l.description"></small>
+                                        {{-- Item com opções: o que foi escolhido (o preço já soma). --}}
+                                        <small class="mad-pdv-line-desc mad-pdv-line-opts" x-show="l.hasOptions && l.options && l.options.length" x-cloak
+                                               x-text="optText(l)"></small>
                                         <small x-text="l.code || l.barcode || ''"></small>
                                         <small class="mad-pdv-stock-badge" x-show="l.stockWarn" x-cloak
                                                x-text="cfg.i18n.stock_short"></small>
@@ -230,6 +233,12 @@
                                             @click.stop="recompose(i)">
                                         <i data-lucide="sliders-horizontal"></i>
                                     </button>
+                                    <button type="button" class="mad-pdv-iconbtn mad-pdv-edit-options" tabindex="-1"
+                                            x-show="l.hasOptions" x-cloak
+                                            :aria-label="cfg.i18n.options_edit" :title="cfg.i18n.options_edit"
+                                            @click.stop="editOptions(i)">
+                                        <i data-lucide="list-plus"></i>
+                                    </button>
                                     <button type="button" class="mad-pdv-iconbtn" tabindex="-1"
                                             :aria-label="cfg.i18n.remove_item"
                                             @click.stop="removeLine(i)">
@@ -294,6 +303,36 @@
                         <small class="mad-pdv-disc-hint" x-show="saleDiscUnit === 'percent' && saleDiscC > 0"
                                x-text="'= ' + money(saleDiscC)"></small>
                     </span>
+                </div>
+                {{-- Imposto por linha (tax-field): uma linha por alíquota. No modo
+                     incluso é informativo — já está dentro dos preços. --}}
+                <template x-for="g in taxGroups" :key="g.rate">
+                    <div class="mad-pdv-total-row mad-pdv-tax-row"
+                         :class="{ 'is-included': cfg.behavior.tax && cfg.behavior.tax.inclusive }">
+                        <span x-text="g.label"></span>
+                        <span x-text="money(g.taxC)"></span>
+                    </div>
+                </template>
+                {{-- Gorjeta: % sobre o subtotal sem imposto (depois do desconto) ou valor livre. --}}
+                <div class="mad-pdv-tip" x-show="tipsOn" x-cloak>
+                    <div class="mad-pdv-total-row">
+                        <span x-text="cfg.i18n.tip"></span>
+                        <span x-text="money(tipC)"></span>
+                    </div>
+                    <div class="mad-pdv-tip-choices" role="group" :aria-label="cfg.i18n.tip">
+                        <button type="button" class="mad-pdv-tip-chip" tabindex="-1"
+                                :class="{ 'is-active': tipMode === 'none' }" :aria-pressed="tipMode === 'none' ? 'true' : 'false'"
+                                @click="setTipNone()" x-text="cfg.i18n.tip_none"></button>
+                        <template x-for="tp in (cfg.behavior.tips ? cfg.behavior.tips.presets : [])" :key="tp">
+                            <button type="button" class="mad-pdv-tip-chip" tabindex="-1"
+                                    :class="{ 'is-active': isTipPreset(tp) }" :aria-pressed="isTipPreset(tp) ? 'true' : 'false'"
+                                    @click="setTipPct(tp)" x-text="tipPresetLabel(tp)"></button>
+                        </template>
+                        <input type="text" inputmode="decimal" class="mad-pdv-money-input mad-pdv-tip-input"
+                               :value="tipInput" :placeholder="cfg.i18n.tip_custom" :aria-label="cfg.i18n.tip_custom"
+                               @change="setTipCustom($event.target.value)">
+                    </div>
+                    <small class="mad-pdv-tip-hint" x-text="cfg.i18n.tip_hint"></small>
                 </div>
                 <div class="mad-pdv-total-row mad-pdv-total-grand">
                     <span>{{ __('pdv.total') }}</span>
@@ -527,6 +566,50 @@
         </div>
     </div>
 
+    {{-- Opções do item (modificadores / combos). Grupos vêm do servidor; o preço
+         mostrado é prévia — a finalização refaz com os grupos da tela. --}}
+    <div class="mad-pdv-overlay" x-show="opt.open" x-cloak>
+        <div class="mad-pdv-modal mad-pdv-modal--options" x-ref="optModal"
+             role="dialog" aria-modal="true" aria-labelledby="{{ $pdvKey }}-opt-title"
+             @keydown="optTrap($event)"
+             @keydown.enter="if ($event.target.tagName === 'INPUT') { $event.preventDefault(); optConfirm(); }">
+            <div class="mad-pdv-modal-title" id="{{ $pdvKey }}-opt-title">
+                <span x-text="opt.product ? opt.product.name : cfg.i18n.options_title"></span>
+                <small class="mad-pdv-opt-sub" x-text="cfg.i18n.options_title"></small>
+            </div>
+            <div class="mad-pdv-opt-groups">
+                <template x-for="g in opt.groups" :key="g.key">
+                    <fieldset class="mad-pdv-opt-group">
+                        <legend>
+                            <span class="mad-pdv-opt-gname" x-text="g.label"></span>
+                            <small class="mad-pdv-opt-hint" :class="{ 'is-required': g.min >= 1 }" x-text="optHint(g)"></small>
+                        </legend>
+                        <template x-for="o in g.options" :key="o.key">
+                            <label class="mad-pdv-opt" :class="{ 'is-on': optIsOn(g, o), 'is-disabled': optDisabled(g, o) }">
+                                <input :type="g.max === 1 ? 'radio' : 'checkbox'"
+                                       :name="'{{ $pdvKey }}-opt-' + g.key"
+                                       :checked="optIsOn(g, o)" :disabled="optDisabled(g, o)"
+                                       @click="optToggle(g, o); $event.target.checked = optIsOn(g, o)">
+                                <span class="mad-pdv-opt-label" x-text="o.label"></span>
+                                <span class="mad-pdv-opt-price" x-text="optPriceText(o)"></span>
+                            </label>
+                        </template>
+                    </fieldset>
+                </template>
+            </div>
+            <div class="mad-pdv-opt-error" role="alert" x-show="opt.error" x-text="opt.error"></div>
+            <div class="mad-pdv-opt-total">
+                <span x-text="fmtQty(opt.qty) + ' × ' + money(optUnitC)"></span>
+                <strong x-text="money(Math.round(opt.qty * optUnitC))"></strong>
+            </div>
+            <div class="mad-pdv-modal-actions">
+                <button type="button" class="mad-pdv-btn mad-pdv-btn--ghost" @click="optCancel()">{{ __('pdv.cancel') }}</button>
+                <button type="button" class="mad-pdv-btn" :disabled="!optValid" @click="optConfirm()"
+                        x-text="opt.lineUid ? cfg.i18n.options_save : cfg.i18n.options_confirm"></button>
+            </div>
+        </div>
+    </div>
+
     {{-- Vendas em espera --}}
     <div class="mad-pdv-overlay" x-show="heldOpen" x-cloak @keydown.escape.window="heldOpen = false">
         <div class="mad-pdv-modal mad-pdv-modal--held">
@@ -595,6 +678,12 @@
                                 <div class="mad-pdv-receipt-line mad-pdv-receipt-col mad-pdv-receipt-desc" x-show="ln.description">
                                     <span class="rl-name" x-text="ln.description"></span>
                                 </div>
+                                {{-- Opções escolhidas (o preço unitário acima já soma). --}}
+                                <template x-for="(oo, k) in (ln.options || [])" :key="k">
+                                    <div class="mad-pdv-receipt-line mad-pdv-receipt-col mad-pdv-receipt-opt">
+                                        <span class="rl-name" x-text="'+ ' + oo.option + (oo.price ? ' ' + money(toC(oo.price)) : '')"></span>
+                                    </div>
+                                </template>
                                 <template x-for="cc in (ln.cols || [])" :key="cc.label">
                                     <div class="mad-pdv-receipt-line mad-pdv-receipt-col">
                                         <span class="rl-name" x-text="cc.label + ': ' + cc.value"></span>
@@ -606,6 +695,11 @@
                     <div class="mad-pdv-receipt-totals">
                         <div><span>{{ __('pdv.subtotal') }}</span><span x-text="money(toC(lastReceipt.totals.subtotal))"></span></div>
                         <div x-show="lastReceipt.totals.discount > 0"><span>{{ __('pdv.discount') }}</span><span x-text="'-' + money(toC(lastReceipt.totals.discount))"></span></div>
+                        {{-- Imposto agrupado por alíquota ("Tax 8.25%" / "VAT 20% (incl.)") e gorjeta. --}}
+                        <template x-for="(tx, k) in (lastReceipt.totals.taxes || [])" :key="k">
+                            <div class="rt-tax"><span x-text="tx.label"></span><span x-text="money(toC(tx.tax))"></span></div>
+                        </template>
+                        <div class="rt-tip" x-show="lastReceipt.totals.tip > 0"><span x-text="cfg.i18n.tip"></span><span x-text="money(toC(lastReceipt.totals.tip))"></span></div>
                         <div class="rt-grand"><span>{{ __('pdv.total') }}</span><span x-text="money(toC(lastReceipt.totals.total))"></span></div>
                     </div>
                     <div class="mad-pdv-receipt-payments">

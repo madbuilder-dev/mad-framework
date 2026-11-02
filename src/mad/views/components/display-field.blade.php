@@ -64,12 +64,16 @@
         [$_cDec, $_cTho] = \Mad\Support\ValueFormatter::separators();
         $_computeFmt = ' data-mad-compute-fmt="' . htmlspecialchars((string) json_encode([
             'type'   => $_cType,
-            'prefix' => $_cType === 'money' ? (($_cParts[1] ?? '') ?: 'R$') : '',
-            'gap'    => \Mad\Support\ValueFormatter::moneyGap(),
+            'prefix' => $_cType === 'money' ? (($_cParts[1] ?? '') ?: \Mad\Support\AppCurrency::symbol('R$')) : '',
+            'gap'    => $_cType === 'money' && ($_cParts[1] ?? '') === '' && \Mad\Support\AppCurrency::isConfigured()
+                ? \Mad\Support\AppCurrency::gap() : \Mad\Support\ValueFormatter::moneyGap(),
             'dec'    => $_cDec,
             'tho'    => $_cTho,
             'empty'  => (string) $empty,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') . '"';
+        ] + ($_cType === 'money' && \Mad\Support\AppCurrency::isConfigured()
+            // Casas da moeda do app (JPY: 0); sem moeda definida o JS usa 2.
+            ? ['decimals' => \Mad\Support\ValueFormatter::moneyDecimals()] : []),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') . '"';
     }
     $displayHtml = '';
 
@@ -107,7 +111,10 @@
 
         switch ($fmtType) {
             case 'money':
-                $prefix = $fmtParam ?: 'R$';
+                // Sem símbolo no format: o da moeda do app (AppCurrency) ou R$.
+                $prefix = $fmtParam ?: \Mad\Support\AppCurrency::symbol('R$');
+                $_gap   = $fmtParam === '' && \Mad\Support\AppCurrency::isConfigured()
+                    ? \Mad\Support\AppCurrency::gap($prefix) : \Mad\Support\ValueFormatter::moneyGap();
                 // O campo de dinheiro manda o número cru ("1234.56"), como o
                 // banco guarda; só texto no padrão brasileiro ("1.234,56") é
                 // convertido. Antes "1234.56" virava R$ 123.456,00.
@@ -115,8 +122,8 @@
                     ? (float) $rawValue
                     : (float) str_replace(['.', ','], ['', '.'], $rawValue);
                 [$_dec, $_tho] = \Mad\Support\ValueFormatter::separators();
-                $displayHtml = htmlspecialchars($prefix, ENT_QUOTES) . \Mad\Support\ValueFormatter::moneyGap()
-                    . number_format($num, 2, $_dec, $_tho);
+                $displayHtml = htmlspecialchars($prefix, ENT_QUOTES) . $_gap
+                    . number_format($num, \Mad\Support\ValueFormatter::moneyDecimals(), $_dec, $_tho);
                 break;
 
             case 'date':

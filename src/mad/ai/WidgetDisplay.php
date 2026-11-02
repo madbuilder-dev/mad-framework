@@ -336,7 +336,11 @@ final class WidgetDisplay
         $n = (is_string($v) ? trim($v) : $v) + 0;
 
         return match ($kind) {
-            'currency' => 'R$ ' . number_format($n, $decimals ?? 2, ',', '.'),
+            // Moeda do app definida (AppCurrency): símbolo, casas e separadores
+            // dela/do idioma ("$20,884.00"). Sem ela, R$ em pt-BR como sempre.
+            'currency' => \Mad\Support\AppCurrency::isConfigured()
+                ? \Mad\Support\AppCurrency::format($n, $decimals)
+                : 'R$ ' . number_format($n, $decimals ?? 2, ',', '.'),
             'number'   => number_format($n, $decimals ?? (fmod((float) $n, 1.0) !== 0.0 ? 2 : 0), ',', '.'),
             'int'      => number_format($n, 0, ',', '.'),
             'percent'  => number_format($n, $decimals ?? 0, ',', '.') . '%',

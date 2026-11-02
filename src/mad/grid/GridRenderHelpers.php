@@ -583,7 +583,7 @@ class GridRenderHelpers
 
         $body = match ($t) {
             // `money` SEM simbolo (contrato do ValueFormatter); os currency-* carregam.
-            'money'        => $num . 'return ' . $fmt($nloc, 2) . ';',
+            'money'        => $num . 'return ' . $fmt($nloc, \Mad\Support\ValueFormatter::moneyDecimals()) . ';',
             'currency-usd' => $num . 'return ' . self::jsString(\Mad\Support\ValueFormatter::usdPrefix()) . '+' . $fmt('en-US', 2) . ';',
             'currency-eur' => $num . "return '\u{20AC} '+" . $fmt('pt-BR', 2) . ';',
             'currency-gbp' => $num . "return '\u{A3} '+" . $fmt('en-US', 2) . ';',
