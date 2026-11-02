@@ -86,15 +86,23 @@ namespace Mad\Pdv;
  * │                          'default' => true]]],                              │
  * │          ['key' => 'extras', 'label' => 'Adicionais', 'max' => 3,           │
  * │           'options' => [['key' => 'bacon', 'label' => 'Bacon',             │
- * │                           'price' => 3]]],                                  │
+ * │                           'price' => 3, 'max' => 3]]],   // 2× bacon        │
  * │          // combo: opção que é outro produto (product_id vai no payload)    │
  * │          ['key' => 'bebida', 'label' => 'Bebida', 'required' => true,      │
  * │           'max' => 1, 'options' => [['product_id' => 12,                    │
- * │                'label' => 'Refri lata', 'price' => 0]]],                    │
+ * │                'label' => 'Refri lata', 'price' => 0, 'share' => 1.5]]],    │
  * │        ];                                                                   │
  * │    }                                                                        │
- * │    min (0) / max (nº de opções) / required (= min 1) por grupo; price é o   │
- * │    ACRÉSCIMO da opção (pode ser 0). `['error' => 'msg']` recusa o item.     │
+ * │    Grupo: min (0) / max (soma dos max das opções) / required (= min 1),     │
+ * │    contando a SOMA das quantidades. Opção: price = ACRÉSCIMO (pode ser 0);  │
+ * │    min (0) / max (1; > 1 vira contador − 2 +); default (true = 1, ou qtd);  │
+ * │    tax_rate (sem ele, opção com product_id usa a alíquota DO PRODUTO dela,  │
+ * │    e a comum herda a do item); share = parte do preço do item que é dela    │
+ * │    (combo UK: bebida 0% dentro do lanche 20% — o item fica com preço −      │
+ * │    share); stock => false = product_id só de referência (com stock-field,  │
+ * │    a opção-produto baixa qtd da opção × qtd da linha, com a mesma trava).   │
+ * │    Payload: chave repetida = quantidade (["bacon","bacon"]) ou             │
+ * │    {"bacon": 2}. `['error' => 'msg']` recusa o item.                        │
  * │    Chamado ao abrir o modal e DE NOVO ao finalizar: preço = cadastro +      │
  * │    opções, refeito no servidor. Mesmo produto com opções diferentes =       │
  * │    linhas diferentes. Produto composto (composite-field) não abre o modal.  │
@@ -106,7 +114,9 @@ namespace Mad\Pdv;
  * │  on-finalized="metodo": metodo($vendaId) como sempre; com 2 parâmetros      │
  * │    metodo($vendaId, array $venda) recebe o resumo: items[] (product_id,     │
  * │    qty, unit_price, discount, total + net/tax_rate/tax_amount/gross/        │
- * │    sale_discount com imposto + options[] com opções), subtotal, discount,   │
+ * │    sale_discount com imposto + taxes[] na linha com alíquota mista +        │
+ * │    options[] com opções: group, option, qty, price, product_id, share e,    │
+ * │    com imposto, tax_rate/net/tax_amount da parte dela), subtotal, discount, │
  * │    net, tax_total, taxes[] (rate, label, net, tax), tip, tip_percent,       │
  * │    total, payments[], change.                                               │
  * │                                                                             │

@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.255.0] — 2026-11-02
+
+### Novidades
+
+- **PDV:** opção com quantidade (2× bacon): com `'max' => 3` na opção, o painel mostra um contador (− 2 +) no lugar da caixinha, o preço soma o acréscimo de cada unidade e a linha mostra "2× Bacon". O `min`/`max` do grupo passa a contar a soma das quantidades, e cada opção pode ter o seu `min`.
+- **PDV:** combo com alíquota por item: a opção que é outro produto (`product_id`) paga a alíquota do produto dela, e `tax_rate` na opção escolhe outra. Com `share`, parte do preço do combo fica com a opção (Reino Unido: o "meal deal" de £8.50 com £7.00 de comida quente a 20% e £1.50 de bebida fria a 0%). O cupom e o `on-finalized` separam o imposto por alíquota, inclusive dentro do mesmo item.
+- **PDV:** com `stock-field`, a opção que é outro produto também confere e baixa o estoque dele (quantidade da opção × quantidade do item), com o mesmo bloqueio de falta do produto principal. `'stock' => false` na opção desliga a baixa.
+
+### Atenção
+
+- **PDV:** combo com bebida ou acompanhamento de outra alíquota muda o imposto calculado: cada opção-produto agora paga a alíquota do produto dela. Para manter a do item, ponha `tax_rate` na opção com a mesma alíquota do item.
+- **PDV:** se a sua tela já baixava no `on-finalized` o estoque das opções-produto, tire essa baixa ao atualizar (ou ponha `'stock' => false` na opção), senão o estoque sai em dobro.
+
 ## [5.254.0] — 2026-11-02
 
 ### Novidades

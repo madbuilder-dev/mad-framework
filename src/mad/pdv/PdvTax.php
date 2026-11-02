@@ -16,7 +16,13 @@ namespace Mad\Pdv;
  *   - modo "por fora" (EUA/Canadá): imposto = base × alíquota, total = base + imposto;
  *   - modo "incluso" (UK/UE/AU): o preço já tem o imposto; líquido = base / (1 + alíquota)
  *     e imposto = base − líquido;
- *   - gorjeta nunca passa por aqui (não paga imposto).
+ *   - gorjeta nunca passa por aqui (não paga imposto);
+ *   - linha com PARTES (`components`: combo/opção com alíquota própria — UK:
+ *     bebida fria 0% + comida quente 20% no mesmo item): o desconto que coube à
+ *     linha é rateado nas partes pelo valor de cada uma; o imposto é calculado
+ *     por ALÍQUOTA dentro da linha (partes de mesma alíquota somam antes) e o
+ *     imposto de cada alíquota é rateado nas partes dela. Linha sem partes, ou
+ *     com todas as partes na mesma alíquota, dá exatamente o mesmo resultado.
  */
 final class PdvTax
 {
@@ -178,6 +184,10 @@ final class PdvTax
      * @param array<int|string, array{amount:int, rate?:string|int|float|null, taxable?:bool}> $lines
      *        amount = valor da linha em centavos ANTES do desconto da venda (preço com
      *        opções × qtd, já sem o desconto do item). No modo incluso já contém o imposto.
+     *        `components` (opcional) = lista de partes `{amount:int, rate?:…}` cuja soma é
+     *        o amount da linha; parte sem rate usa a da linha. A saída da linha ganha
+     *        `components` (o mesmo cálculo por parte) e `parts` (por alíquota, ordem de
+     *        1ª aparição, com as isentas).
      * @param bool $inclusive     preços com imposto incluso (UK/UE/AU) ou imposto por fora (EUA/CA)
      * @param int  $discountCents desconto da venda a ratear nas linhas (limitado ao subtotal)
      * @return array{lines: array<int|string, array{amount:int, discount:int, net:int, tax:int, gross:int, rate:string}>,
@@ -205,6 +215,13 @@ final class PdvTax
             $rate    = (string) ($l['rate'] ?? '0');
             $taxable = ($l['taxable'] ?? true) && self::rateUnits($rate) > 0;
             $base    = $amount - ($alloc[$k] ?? 0);
+            if (isset($l['components']) && is_array($l['components']) && $l['components'] !== []) {
+                $out[$k] = self::componentLine($l, $amount, $alloc[$k] ?? 0, $rate, $inclusive);
+                $tNet   += $out[$k]['net'];
+                $tTax   += $out[$k]['tax'];
+                $tGross += $out[$k]['gross'];
+                continue;
+            }
             if (!$taxable) {
                 $net   = $base;
                 $tax   = 0;
@@ -252,16 +269,102 @@ final class PdvTax
     public static function byRate(array $result): array
     {
         $g = [];
-        foreach ($result['lines'] as $l) {
-            if ($l['tax'] === 0 && self::rateUnits($l['rate']) === 0) {
-                continue;
+        foreach ($result['lines'] as $line) {
+            foreach ($line['parts'] ?? [$line] as $l) {
+                if ($l['tax'] === 0 && self::rateUnits($l['rate']) === 0) {
+                    continue;
+                }
+                $key = (string) $l['rate'];
+                $g[$key] ??= ['rate' => $key, 'net' => 0, 'tax' => 0];
+                $g[$key]['net'] += $l['net'];
+                $g[$key]['tax'] += $l['tax'];
             }
-            $key = (string) $l['rate'];
-            $g[$key] ??= ['rate' => $key, 'net' => 0, 'tax' => 0];
-            $g[$key]['net'] += $l['net'];
-            $g[$key]['tax'] += $l['tax'];
         }
         return $g;
+    }
+
+    /**
+     * Linha com partes de alíquotas diferentes (ver o docblock da classe).
+     *
+     * @param array  $l        linha de entrada (com `components`)
+     * @param int    $amount   valor da linha (= soma das partes)
+     * @param int    $lineDisc desconto da venda que coube à linha
+     * @param string $lineRate alíquota da linha (parte sem rate herda)
+     */
+    private static function componentLine(array $l, int $amount, int $lineDisc, string $lineRate, bool $inclusive): array
+    {
+        $taxableLine = (bool) ($l['taxable'] ?? true);
+        $amounts = [];
+        $rates   = [];
+        $sum     = 0;
+        foreach (array_values($l['components']) as $i => $c) {
+            $a = (int) ($c['amount'] ?? 0);
+            if ($a < 0) {
+                throw new \InvalidArgumentException('Component amount cannot be negative');
+            }
+            $r = array_key_exists('rate', $c) && $c['rate'] !== null ? self::normalizeRate($c['rate']) : self::normalizeRate($lineRate);
+            $amounts[$i] = $a;
+            $rates[$i]   = ($taxableLine && self::rateUnits($r) > 0) ? $r : '0';
+            $sum        += $a;
+        }
+        if ($sum !== $amount) {
+            throw new \InvalidArgumentException('Components must add up to the line amount');
+        }
+        $cDisc = self::allocate($lineDisc, $amounts);
+
+        $groups = [];   // rate => [índices], ordem de 1ª aparição
+        foreach ($rates as $i => $r) {
+            $groups[$r][] = $i;
+        }
+        $comps = [];
+        $parts = [];
+        foreach ($groups as $r => $idx) {
+            $r      = (string) $r;
+            $bases  = [];
+            $baseG  = 0;
+            foreach ($idx as $i) {
+                $bases[$i] = $amounts[$i] - $cDisc[$i];
+                $baseG    += $bases[$i];
+            }
+            if ($r === '0') {
+                $taxG = 0;
+            } elseif ($inclusive) {
+                $taxG = $baseG - self::netFromGross($baseG, $r);
+            } else {
+                $taxG = self::mulRate($baseG, $r);
+            }
+            $taxes = self::allocate($taxG, $bases);
+            foreach ($idx as $i) {
+                $t   = $taxes[$i] ?? 0;
+                $net = $inclusive ? $bases[$i] - $t : $bases[$i];
+                $comps[$i] = [
+                    'amount'   => $amounts[$i],
+                    'discount' => $cDisc[$i],
+                    'net'      => $net,
+                    'tax'      => $t,
+                    'gross'    => $net + $t,
+                    'rate'     => $r,
+                ];
+            }
+            $netG    = $inclusive ? $baseG - $taxG : $baseG;
+            $parts[] = ['rate' => $r, 'net' => $netG, 'tax' => $taxG, 'gross' => $netG + $taxG];
+        }
+        ksort($comps);
+        $net = $tax = 0;
+        foreach ($parts as $p) {
+            $net += $p['net'];
+            $tax += $p['tax'];
+        }
+        return [
+            'amount'     => $amount,
+            'discount'   => $lineDisc,
+            'net'        => $net,
+            'tax'        => $tax,
+            'gross'      => $net + $tax,
+            'rate'       => ($taxableLine && self::rateUnits($lineRate) > 0) ? $lineRate : '0',
+            'components' => array_values($comps),
+            'parts'      => $parts,
+        ];
     }
 
     /**

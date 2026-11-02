@@ -157,6 +157,12 @@
                 var taxable = (l.taxable === undefined ? true : !!l.taxable) && rateUnits(rate) > 0;
                 var base = amount - (alloc[k] || 0);
                 var net, tax, gross;
+                if (Array.isArray(l.components) && l.components.length) {
+                    var cl = componentLine(l, amount, alloc[k] || 0, rate, inclusive);
+                    out[k] = cl;
+                    tNet += cl.net; tTax += cl.tax; tGross += cl.gross;
+                    return;
+                }
                 if (!taxable) {
                     net = base; tax = 0; gross = base; rate = '0';
                 } else if (inclusive) {
@@ -170,15 +176,61 @@
             return { lines: out, subtotal: subtotal, discount: discount, net: tNet, tax: tTax, total: tGross };
         }
 
+        /** Linha com partes de alíquotas diferentes — espelha PdvTax::componentLine. */
+        function componentLine(l, amount, lineDisc, lineRate, inclusive) {
+            var taxableLine = l.taxable === undefined ? true : !!l.taxable;
+            var amounts = [], rates = [], sum = 0;
+            l.components.forEach(function (c, i) {
+                var a = (c && c.amount) | 0;
+                if (a < 0) throw new RangeError('Component amount cannot be negative');
+                var r = c && c.rate !== undefined && c.rate !== null ? normalizeRate(c.rate) : normalizeRate(lineRate);
+                amounts[i] = a;
+                rates[i] = (taxableLine && rateUnits(r) > 0) ? r : '0';
+                sum += a;
+            });
+            if (sum !== amount) throw new RangeError('Components must add up to the line amount');
+            var cDisc = allocate(lineDisc, amounts);
+            var order = [], groups = {};
+            rates.forEach(function (r, i) {
+                if (!groups[r]) { groups[r] = []; order.push(r); }
+                groups[r].push(i);
+            });
+            var comps = [], parts = [];
+            order.forEach(function (r) {
+                var idx = groups[r], bases = {}, baseG = 0, keys = [];
+                idx.forEach(function (i) { bases[i] = amounts[i] - cDisc[i]; baseG += bases[i]; });
+                var taxG = r === '0' ? 0 : (inclusive ? baseG - netFromGross(baseG, r) : mulRate(baseG, r));
+                // allocate pela ordem dos índices (iguais ao PHP): lista densa.
+                var w = idx.map(function (i) { return bases[i]; });
+                var tx = allocate(taxG, w);
+                idx.forEach(function (i, j) {
+                    var t = tx[j] || 0;
+                    var net = inclusive ? bases[i] - t : bases[i];
+                    comps[i] = { amount: amounts[i], discount: cDisc[i], net: net, tax: t, gross: net + t, rate: r };
+                });
+                var netG = inclusive ? baseG - taxG : baseG;
+                parts.push({ rate: r, net: netG, tax: taxG, gross: netG + taxG });
+            });
+            var net = 0, tax = 0;
+            parts.forEach(function (p) { net += p.net; tax += p.tax; });
+            return {
+                amount: amount, discount: lineDisc, net: net, tax: tax, gross: net + tax,
+                rate: (taxableLine && rateUnits(lineRate) > 0) ? lineRate : '0',
+                components: comps, parts: parts,
+            };
+        }
+
         /** Agrupado por alíquota, na ordem da 1ª aparição (array — ordem estável). */
         function byRate(result) {
             var idx = {}, g = [];
-            result.lines.forEach(function (l) {
-                if (l.tax === 0 && rateUnits(l.rate) === 0) return;
-                var key = String(l.rate);
-                if (idx[key] === undefined) { idx[key] = g.length; g.push({ rate: key, net: 0, tax: 0 }); }
-                g[idx[key]].net += l.net;
-                g[idx[key]].tax += l.tax;
+            result.lines.forEach(function (line) {
+                (line.parts || [line]).forEach(function (l) {
+                    if (l.tax === 0 && rateUnits(l.rate) === 0) return;
+                    var key = String(l.rate);
+                    if (idx[key] === undefined) { idx[key] = g.length; g.push({ rate: key, net: 0, tax: 0 }); }
+                    g[idx[key]].net += l.net;
+                    g[idx[key]].tax += l.tax;
+                });
             });
             return g;
         }
@@ -197,6 +249,21 @@
         };
     })();
     root.MadPdvTax = MadPdvTax;
+
+    /**
+     * Partes da linha com opções (mesma conta do PHP _optionTaxComponents):
+     * item (preço − share) + cada opção ((acréscimo + share) × qtd), rateando o
+     * valor da linha pelo peso de cada parte. null = linha sem partes.
+     */
+    function optionComponents(amountC, op) {
+        if (!op || !op.parts || !op.parts.length) return null;
+        var w = [op.baseC].concat(op.parts.map(function (p) { return p.unitC; }));
+        var a = MadPdvTax.allocate(amountC, w);
+        var out = [{ amount: a[0] }];
+        op.parts.forEach(function (p, i) { out.push({ amount: a[i + 1], rate: p.rate }); });
+        return out;
+    }
+    root.MadPdvOptionComponents = optionComponents;
 
     function registerPdv() {
         if (root.Alpine.__madPdvRegistered) {
@@ -644,7 +711,10 @@
                 get taxCalc() {
                     var self = this;
                     var lines = this.cart.map(function (l) {
-                        return { amount: Math.max(0, self.lineTotalC(l)), rate: self.taxOn ? (l.taxRate || '0') : '0' };
+                        var out = { amount: Math.max(0, self.lineTotalC(l)), rate: self.taxOn ? (l.taxRate || '0') : '0' };
+                        var comps = self.taxOn ? optionComponents(out.amount, l.optParts) : null;
+                        if (comps) out.components = comps;
+                        return out;
                     });
                     return MadPdvTax.lines(lines, !!(this.taxOn && this.cfg.behavior.tax.inclusive), this.saleDiscC);
                 },
@@ -1068,16 +1138,21 @@
                         line = this.cart.find(function (l) { return l.uid === pend.lineUid; }) || null;
                         if (!line) { this.focusScan(); return; }   // removida enquanto carregava
                     }
+                    // Seleção = {grupo: {opção: qtd}}. Chave repetida na escolha salva = +1.
                     var sel = {};
                     groups.forEach(function (g) {
                         var prev = line && line.optChoices ? (line.optChoices[g.key] || []) : null;
-                        var keys = (g.options || []).map(function (o) { return o.key; });
-                        var pick = prev
-                            ? prev.filter(function (k) { return keys.indexOf(k) >= 0; })
-                            : (g.options || []).filter(function (o) { return o.default; }).map(function (o) { return o.key; });
+                        var m = {}, n = 0;
+                        (g.options || []).forEach(function (o) {
+                            var q;
+                            if (prev) q = prev.filter(function (k) { return k === o.key; }).length;
+                            else q = o.default === true ? 1 : (+o.default || 0);
+                            q = Math.min(Math.max(q, o.min || 0), o.max || 1);
+                            if (q > 0) { m[o.key] = q; n += q; }
+                        });
                         // Grupo obrigatório de uma opção só: já vem marcado.
-                        if (!pick.length && g.min >= 1 && keys.length === 1) pick = keys.slice();
-                        sel[g.key] = pick.slice(0, Math.max(1, g.max || 1));
+                        if (!n && g.min >= 1 && (g.options || []).length === 1) m[g.options[0].key] = Math.max(1, g.min);
+                        sel[g.key] = m;
                     });
                     this.opt = {
                         open: true, product: pend.product, qty: pend.qty, groups: groups,
@@ -1092,27 +1167,56 @@
                     });
                 },
 
-                optIsOn(g, o) { return (this.opt.sel[g.key] || []).indexOf(o.key) >= 0; },
+                optQty(g, o) { return ((this.opt.sel[g.key] || {})[o.key]) || 0; },
+
+                optIsOn(g, o) { return this.optQty(g, o) > 0; },
+
+                /** Soma das quantidades do grupo (é o que o min/max do grupo conta). */
+                optCount(g) {
+                    var m = this.opt.sel[g.key] || {}, n = 0;
+                    Object.keys(m).forEach(function (k) { n += m[k]; });
+                    return n;
+                },
 
                 optDisabled(g, o) {
-                    return g.max > 1 && !this.optIsOn(g, o) && (this.opt.sel[g.key] || []).length >= g.max;
+                    return g.max > 1 && !this.optIsOn(g, o) && this.optCount(g) >= g.max;
+                },
+
+                _optSet(g, m) {
+                    var next = Object.assign({}, this.opt.sel);
+                    next[g.key] = m;
+                    this.opt.sel = next;
+                    this.opt.error = '';
                 },
 
                 optToggle(g, o) {
-                    var cur = (this.opt.sel[g.key] || []).slice();
-                    var on = cur.indexOf(o.key) >= 0;
+                    var cur = Object.assign({}, this.opt.sel[g.key] || {});
+                    var on = (cur[o.key] || 0) > 0;
                     if (g.max === 1) {
                         // Rádio: obrigatório não desmarca; opcional desmarca no 2º clique.
-                        cur = on ? (g.min >= 1 ? cur : []) : [o.key];
+                        if (on) { if (g.min < 1 && !(o.min > 0)) cur = {}; }
+                        else { cur = {}; cur[o.key] = 1; }
                     } else if (on) {
-                        cur.splice(cur.indexOf(o.key), 1);
-                    } else if (cur.length < g.max) {
-                        cur.push(o.key);
+                        if (!(o.min > 0)) delete cur[o.key];
+                    } else if (this.optCount(g) < g.max) {
+                        cur[o.key] = 1;
                     }
-                    var next = Object.assign({}, this.opt.sel);
-                    next[g.key] = cur;
-                    this.opt.sel = next;
-                    this.opt.error = '';
+                    this._optSet(g, cur);
+                },
+
+                /** Contador da opção com quantidade (− 2 +). */
+                optCanStep(g, o, d) {
+                    var q = this.optQty(g, o) + d;
+                    if (q < (o.min || 0) || q > (o.max || 1)) return false;
+                    return !(d > 0 && this.optCount(g) >= g.max);
+                },
+
+                optStep(g, o, d) {
+                    if (!this.optCanStep(g, o, d)) return;
+                    var cur = Object.assign({}, this.opt.sel[g.key] || {});
+                    var q = (cur[o.key] || 0) + d;
+                    if (q > 0) cur[o.key] = q; else delete cur[o.key];
+                    this._optSet(g, cur);
                 },
 
                 /** "Obrigatório · Escolha 1" / "Até 3" / "Escolha 1 a 2". */
@@ -1137,7 +1241,7 @@
                     var self = this;
                     var c = this.toC(this.opt.product.price);
                     this.opt.groups.forEach(function (g) {
-                        (g.options || []).forEach(function (o) { if (self.optIsOn(g, o)) c += self.toC(o.price); });
+                        (g.options || []).forEach(function (o) { c += self.toC(o.price) * self.optQty(g, o); });
                     });
                     return c;
                 },
@@ -1147,7 +1251,12 @@
                     var t = this.cfg.i18n;
                     for (var i = 0; i < this.opt.groups.length; i++) {
                         var g = this.opt.groups[i];
-                        var n = (this.opt.sel[g.key] || []).length;
+                        for (var j = 0; j < (g.options || []).length; j++) {
+                            var o = g.options[j], q = this.optQty(g, o);
+                            if (q > (o.max || 1)) return String(t.options_opt_max || 'Choose at most :max of “:option”.').replace(':max', o.max || 1).replace(':option', o.label);
+                            if (q < (o.min || 0)) return String(t.options_opt_min || 'Choose at least :min of “:option”.').replace(':min', o.min).replace(':option', o.label);
+                        }
+                        var n = this.optCount(g);
                         if (n < g.min) return String(t.options_min || 'Choose at least :min in “:group”.').replace(':min', g.min).replace(':group', g.label);
                         if (n > g.max) return String(t.options_max || 'Choose at most :max in “:group”.').replace(':max', g.max).replace(':group', g.label);
                     }
@@ -1161,15 +1270,20 @@
                     var why = this._optViolation();
                     if (why) { this.opt.error = why; return; }
                     var self = this;
-                    var choices = {}, list = [];
+                    var choices = {}, list = [], parts = [], shareC = 0;
                     // Ordem do CADASTRO, não a do clique: mesma escolha = mesma assinatura.
+                    // Quantidade vai como chave repetida (["bacon","bacon"] = 2× bacon).
                     this.opt.groups.forEach(function (g) {
                         var keys = [];
                         (g.options || []).forEach(function (o) {
-                            if (!self.optIsOn(g, o)) return;
-                            keys.push(o.key);
-                            list.push({ group: g.label, groupKey: g.key, option: o.label, optionKey: o.key,
-                                        priceC: self.toC(o.price), productId: o.productId === undefined ? null : o.productId });
+                            var q = self.optQty(g, o);
+                            if (!q) return;
+                            for (var r = 0; r < q; r++) keys.push(o.key);
+                            var priceC = self.toC(o.price), sC = self.toC(o.share || 0);
+                            shareC += sC * q;
+                            list.push({ group: g.label, groupKey: g.key, option: o.label, optionKey: o.key, qty: q,
+                                        priceC: priceC, productId: o.productId === undefined ? null : o.productId });
+                            parts.push({ unitC: (priceC + sC) * q, rate: o.taxRate === undefined ? null : o.taxRate });
                         });
                         if (keys.length) choices[g.key] = keys;
                     });
@@ -1211,6 +1325,8 @@
                         line.options = list;
                         line.optChoices = choices;
                         line.optSig = sig;
+                        // Partes da linha para o imposto por alíquota (combo misto).
+                        line.optParts = { baseC: (line.baseC !== undefined ? line.baseC : this.toC(p.price)) - shareC, parts: parts };
                     }
                     this._optClose();
                 },
@@ -1245,7 +1361,7 @@
 
                 /** Texto curto das opções na linha do carrinho ("Grande · Bacon"). */
                 optText(l) {
-                    return (l.options || []).map(function (o) { return o.option; }).join(' · ');
+                    return (l.options || []).map(function (o) { return (o.qty > 1 ? o.qty + '× ' : '') + o.option; }).join(' · ');
                 },
 
                 /** Botão "Alterar opções" da linha. */

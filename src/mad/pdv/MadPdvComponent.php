@@ -318,6 +318,7 @@ abstract class MadPdvComponent extends MadComponent
 
     protected const OPTION_GROUPS_MAX     = 20;
     protected const OPTIONS_PER_GROUP_MAX = 100;
+    protected const OPTION_QTY_MAX        = 99;
 
     // ── Visual ────────────────────────────────────────────────────────────
 
@@ -1491,6 +1492,10 @@ abstract class MadPdvComponent extends MadComponent
             'options_failed'   => 'Could not load the item options.',
             'options_min'      => 'Choose at least :min in “:group”.',
             'options_max'      => 'Choose at most :max in “:group”.',
+            'options_opt_min'  => 'Choose at least :min of “:option”.',
+            'options_opt_max'  => 'Choose at most :max of “:option”.',
+            'options_less'     => 'Less',
+            'options_more'     => 'More',
         ];
         $flags = $this->discountFlags();
 
@@ -2055,23 +2060,44 @@ abstract class MadPdvComponent extends MadComponent
                     error_log("[MadPdv] on-options de {$where}: opção '{$oKey}' do grupo '{$gKey}' sem chave única ou com preço inválido");
                     return $generic;
                 }
+                // Quantidade por opção (2× bacon): max padrão 1 = marcar/desmarcar como sempre.
+                $oMax  = isset($o['max']) && is_numeric($o['max']) ? (int) $o['max'] : 1;
+                $oMin  = isset($o['min']) && is_numeric($o['min']) ? (int) $o['min'] : 0;
+                $share = $o['share'] ?? 0;
+                if ($oMax < 1 || $oMax > self::OPTION_QTY_MAX || $oMin < 0 || $oMin > $oMax
+                    || !is_numeric($share) || (float) $share < 0) {
+                    error_log("[MadPdv] on-options de {$where}: opção '{$oKey}' do grupo '{$gKey}' com min/max/share inválido");
+                    return $generic;
+                }
+                $def = $o['default'] ?? false;
+                $def = is_bool($def) ? ($def ? max(1, $oMin) : $oMin) : (is_numeric($def) ? (int) $def : $oMin);
+                $rate = $o['tax_rate'] ?? $o['taxRate'] ?? null;
                 $oKeys[$oKey] = true;
                 $opts[] = [
                     'key'       => $oKey,
                     'label'     => mb_substr(trim((string) ($o['label'] ?? $o['name'] ?? $oKey)), 0, 120),
                     'price'     => $this->_r($price),
                     'productId' => ($pid === null || $pid === '') ? null : (ctype_digit((string) $pid) ? (int) $pid : (string) $pid),
-                    'default'   => !empty($o['default']),
+                    'default'   => min(max($def, $oMin), $oMax),
+                    'min'       => $oMin,
+                    'max'       => $oMax,
+                    'share'     => $this->_r($share),
+                    // null = herda a alíquota do item; preenchida abaixo pelo produto da opção.
+                    'taxRate'   => ($rate === null || $rate === '') ? null : PdvTax::normalizeRate($rate),
+                    'stock'     => ($o['stock'] ?? true) !== false,
                 ];
             }
-            $n   = count($opts);
-            $min = max(0, (int) ($g['min'] ?? 0));
+            $n    = count($opts);
+            $qMax = array_sum(array_column($opts, 'max'));
+            $qMin = array_sum(array_column($opts, 'min'));
+            $min  = max(0, (int) ($g['min'] ?? 0));
             if (!empty($g['required'])) {
                 $min = max(1, $min);
             }
-            $max = isset($g['max']) ? (int) $g['max'] : $n;
-            $max = min(max($max, $min, 1), max($n, 1));
-            if ($gKey === '' || isset($gKeys[$gKey]) || $n === 0 || $n > self::OPTIONS_PER_GROUP_MAX || $min > $n) {
+            $min = max($min, $qMin);
+            $max = isset($g['max']) ? (int) $g['max'] : $qMax;
+            $max = min(max($max, $min, 1), max($qMax, 1));
+            if ($gKey === '' || isset($gKeys[$gKey]) || $n === 0 || $n > self::OPTIONS_PER_GROUP_MAX || $min > $qMax) {
                 error_log("[MadPdv] on-options de {$where}: grupo '{$gKey}' inválido (chave repetida/vazia, sem opções, opções demais ou min > opções)");
                 return $generic;
             }
@@ -2088,34 +2114,109 @@ abstract class MadPdvComponent extends MadComponent
             error_log("[MadPdv] on-options de {$where}: grupos demais (" . count($groups) . ')');
             return $generic;
         }
-        return ['groups' => $groups];
+        return ['groups' => $this->_optionProductRates($groups)];
+    }
+
+    /**
+     * Opção que é produto (`product_id`) sem `tax_rate` próprio usa a alíquota
+     * DO PRODUTO dela (lida do banco, como a do item). Sem `tax-field`, nada muda.
+     */
+    protected function _optionProductRates(array $groups): array
+    {
+        if (!$this->taxEnabled()) {
+            return $groups;
+        }
+        $ids = [];
+        foreach ($groups as $g) {
+            foreach ($g['options'] as $o) {
+                if ($o['taxRate'] === null && $o['productId'] !== null) {
+                    $ids[] = $o['productId'];
+                }
+            }
+        }
+        if ($ids === []) {
+            return $groups;
+        }
+        $fqcn = $this->_resolveModelFqcn($this->model);
+        if ($fqcn === '') {
+            return $groups;
+        }
+        try {
+            $recs = $fqcn::query()->whereIn((new $fqcn())->getKeyName(), array_values(array_unique($ids)))
+                ->get()->keyBy(fn ($r) => (string) $r->getKey());
+        } catch (\Throwable $e) {
+            error_log('[MadPdv] alíquota das opções: ' . $e->getMessage());
+            return $groups;
+        }
+        foreach ($groups as &$g) {
+            foreach ($g['options'] as &$o) {
+                if ($o['taxRate'] === null && $o['productId'] !== null && isset($recs[(string) $o['productId']])) {
+                    $o['taxRate'] = $this->_taxRateOf($recs[(string) $o['productId']]);
+                }
+            }
+            unset($o);
+        }
+        unset($g);
+        return $groups;
     }
 
     /**
      * Confere as escolhas do navegador contra os grupos da tela e precifica.
      *
-     * `$choices` = `{grupo: [opção, …]}` (chaves). Chave de opção que não
-     * existe é recusada; grupo desconhecido é ignorado (o preço é refeito aqui,
-     * então nada do navegador entra na conta).
+     * `$choices` = `{grupo: [opção, …]}` (chave repetida = mais uma unidade:
+     * `["bacon","bacon"]` = 2× bacon) ou `{grupo: {opção: qtd}}`. Chave de
+     * opção que não existe é recusada; grupo desconhecido é ignorado (o preço é
+     * refeito aqui, então nada do navegador entra na conta). O `min`/`max` do
+     * grupo conta a SOMA das quantidades; o da opção, a quantidade dela.
      *
-     * @return array{error: string}|array{list: list<array>, sumC: int}
+     * @return array{error: string}|array{list: list<array>, sumC: int, shareC: int, parts: list<array>}
      */
     protected function _resolveOptions(array $groups, array $choices): array
     {
-        $list = [];
-        $sumC = 0;
+        $fail  = fn () => ['error' => $this->_t('options_failed', 'Could not load the item options.')];
+        $list  = [];
+        $parts = [];
+        $sumC  = 0;
+        $shareC = 0;
         foreach ($groups as $g) {
-            $picked = $choices[$g['key']] ?? [];
-            $picked = is_array($picked) ? $picked : [$picked];
-            $picked = array_values(array_unique(array_map(fn ($k) => trim((string) (is_scalar($k) ? $k : '')), $picked)));
-            $picked = array_values(array_filter($picked, fn ($k) => $k !== ''));
-            $byKey  = array_column($g['options'], null, 'key');
-            foreach ($picked as $k) {
-                if (!isset($byKey[$k])) {
-                    return ['error' => $this->_t('options_failed', 'Could not load the item options.')];
+            $raw   = $choices[$g['key']] ?? [];
+            $raw   = is_array($raw) ? $raw : [$raw];
+            $byKey = array_column($g['options'], null, 'key');
+            $qty   = [];
+            if (array_is_list($raw)) {
+                foreach ($raw as $k) {
+                    $k = trim((string) (is_scalar($k) ? $k : ''));
+                    if ($k !== '') {
+                        $qty[$k] = ($qty[$k] ?? 0) + 1;
+                    }
+                }
+            } else {
+                foreach ($raw as $k => $q) {
+                    if (!is_numeric($q) || (float) $q < 0 || abs((float) $q - round((float) $q)) > 1e-9) {
+                        return $fail();
+                    }
+                    if ((int) $q > 0) {
+                        $qty[trim((string) $k)] = (int) $q;
+                    }
                 }
             }
-            $n = count($picked);
+            foreach ($qty as $k => $q) {
+                if (!isset($byKey[$k])) {
+                    return $fail();
+                }
+            }
+            foreach ($g['options'] as $o) {
+                $q = $qty[$o['key']] ?? 0;
+                if ($q > $o['max']) {
+                    return ['error' => strtr($this->_t('options_opt_max', 'Choose at most :max of “:option”.'),
+                        [':max' => (string) $o['max'], ':option' => $o['label']])];
+                }
+                if ($q < $o['min']) {
+                    return ['error' => strtr($this->_t('options_opt_min', 'Choose at least :min of “:option”.'),
+                        [':min' => (string) $o['min'], ':option' => $o['label']])];
+                }
+            }
+            $n = array_sum($qty);
             if ($n < $g['min']) {
                 return ['error' => strtr($this->_t('options_min', 'Choose at least :min in “:group”.'),
                     [':min' => (string) $g['min'], ':group' => $g['label']])];
@@ -2126,21 +2227,39 @@ abstract class MadPdvComponent extends MadComponent
             }
             // Ordem do cadastro (não a do clique): mesma escolha = mesma linha.
             foreach ($g['options'] as $o) {
-                if (!in_array($o['key'], $picked, true)) {
+                $q = $qty[$o['key']] ?? 0;
+                if ($q === 0) {
                     continue;
                 }
-                $sumC  += PdvTax::fromDecimal($o['price']);
-                $list[] = [
+                $priceC  = PdvTax::fromDecimal($o['price']);
+                $oShareC = PdvTax::fromDecimal($o['share']);
+                $sumC   += $priceC * $q;
+                $shareC += $oShareC * $q;
+                $entry = [
                     'group'      => $g['label'],
                     'group_key'  => $g['key'],
                     'option'     => $o['label'],
                     'option_key' => $o['key'],
+                    'qty'        => $q,
                     'price'      => $o['price'],
                     'product_id' => $o['productId'],
                 ];
+                if ($oShareC > 0) {
+                    $entry['share'] = $o['share'];
+                }
+                $list[]  = $entry;
+                // Parte da linha (imposto por alíquota) e baixa de estoque do produto-opção.
+                $parts[] = [
+                    'unitC'  => ($priceC + $oShareC) * $q,
+                    'rate'   => $o['taxRate'],
+                    'qty'    => $q,
+                    'pid'    => $o['productId'],
+                    'stock'  => $o['stock'],
+                    'label'  => $o['label'],
+                ];
             }
         }
-        return ['list' => $list, 'sumC' => $sumC];
+        return ['list' => $list, 'sumC' => $sumC, 'shareC' => $shareC, 'parts' => $parts];
     }
 
     /**
@@ -2262,6 +2381,7 @@ abstract class MadPdvComponent extends MadComponent
         $notFound = $inactive = $noPrice = $priceChanged = $fieldErrors = $composeFailed = $optionsFailed = [];
         $clean        = [];
         $qtyByProduct = [];
+        $optNames     = [];   // nome do produto-opção na mensagem de estoque
 
         // Preço relacionado (Rev. 3): resolve em batch ANTES do loop — o
         // re-check de preço do finalize usa a MESMA fonte do lookup.
@@ -2294,8 +2414,10 @@ abstract class MadPdvComponent extends MadComponent
             // Item montado: o preço é o que a TELA calcula a partir das
             // escolhas — as mesmas que ela precificou ao montar. Nunca o do
             // payload, nem com "alterar preço" liberado.
-            $compose  = null;
-            $lineOpts = null;
+            $compose   = null;
+            $lineOpts  = null;
+            $lineParts = [];
+            $lineBaseC = 0;
             if ($this->_isComposite($rec)) {
                 $choices = $this->_composeChoices($it['choices'] ?? null);
                 $compose = $choices === null
@@ -2345,7 +2467,17 @@ abstract class MadPdvComponent extends MadComponent
                         ];
                         continue;
                     }
-                    $unitC = PdvTax::fromDecimal($current) + $res['sumC'];
+                    $baseC = PdvTax::fromDecimal($current);
+                    $unitC = $baseC + $res['sumC'];
+                    if ($res['shareC'] > $baseC) {
+                        // `share` das opções maior que o preço do item: cadastro errado na tela.
+                        error_log('[MadPdv] on-options de ' . static::class . ": soma do share das opções maior que o preço do produto {$pid}");
+                        $optionsFailed[] = [
+                            'productId' => $pid, 'line' => $lineId,
+                            'name' => (string) $rec->{$this->nameField}, 'msg' => $this->_t('options_failed', 'Could not load the item options.'),
+                        ];
+                        continue;
+                    }
                     if ($unitC < 0) {
                         $fieldErrors[] = ['field' => "items.{$pid}.options", 'msg' => 'preço com opções negativo'];
                         continue;
@@ -2357,6 +2489,8 @@ abstract class MadPdvComponent extends MadComponent
                     }
                     $effPrice = $current;
                     $lineOpts = $res['list'];
+                    $lineParts = $res['parts'];
+                    $lineBaseC = $baseC - $res['shareC'];
                 } else {
                     if (!$this->allowPriceOverride && abs($price - $current) > 0.005) {
                         $priceChanged[] = ['productId' => $pid, 'oldPrice' => $price, 'newPrice' => $current];
@@ -2422,6 +2556,17 @@ abstract class MadPdvComponent extends MadComponent
             }
 
             $qtyByProduct[$pid] = $this->_r(($qtyByProduct[$pid] ?? 0) + $qty);
+            // Opção que é produto baixa o estoque dele (qtd da opção × qtd da linha),
+            // na mesma conferência/lock/baixa do produto principal. `stock => false` desliga.
+            if ($this->stockField !== '') {
+                foreach ($lineParts as $op) {
+                    if ($op['pid'] !== null && $op['stock']) {
+                        $opid = $op['pid'];
+                        $qtyByProduct[$opid] = $this->_r(($qtyByProduct[$opid] ?? 0) + $op['qty'] * $qty);
+                        $optNames[(string) $opid] ??= $op['label'];
+                    }
+                }
+            }
             $clean[] = [
                 'productId' => $pid,
                 'name'      => (string) $rec->{$this->nameField},
@@ -2433,6 +2578,7 @@ abstract class MadPdvComponent extends MadComponent
                 'rec'       => $rec,
                 'compose'   => $compose,
                 'options'   => $lineOpts,
+                'optParts'  => $lineOpts !== null ? ['baseC' => $lineBaseC, 'parts' => $lineParts] : null,
                 'taxRate'   => $this->taxEnabled() ? $this->_taxRateOf($rec) : null,
             ];
         }
@@ -2508,11 +2654,24 @@ abstract class MadPdvComponent extends MadComponent
             if ($this->taxEnabled()) {
                 $taxLines = [];
                 foreach ($clean as $k => $l) {
-                    $taxLines[$k] = ['amount' => PdvTax::fromDecimal($l['total']), 'rate' => $l['taxRate']];
+                    $taxLines[$k] = ['amount' => PdvTax::fromDecimal($l['total']), 'rate' => $l['taxRate']]
+                        + $this->_optionTaxComponents($l);
                 }
                 $taxCalc = PdvTax::lines($taxLines, $this->pricesIncludeTax, $discC);
                 foreach ($clean as $k => &$l) {
                     $l['tax'] = $taxCalc['lines'][$k];
+                    // Cada opção leva a alíquota e o imposto da parte dela (parte 0 = o item).
+                    if (isset($l['tax']['components']) && $l['options'] !== null) {
+                        foreach ($l['options'] as $i => &$o) {
+                            $c = $l['tax']['components'][$i + 1] ?? null;
+                            if ($c !== null) {
+                                $o['tax_rate']   = $c['rate'];
+                                $o['net']        = PdvTax::toFloat($c['net']);
+                                $o['tax_amount'] = PdvTax::toFloat($c['tax']);
+                            }
+                        }
+                        unset($o);
+                    }
                 }
                 unset($l);
                 $netC   = $taxCalc['net'];
@@ -2693,7 +2852,7 @@ abstract class MadPdvComponent extends MadComponent
         $stockFqcn = $this->stockIsRelated()
             ? $this->_resolveModelFqcn($this->stockModel)
             : '';
-        $nameByPid = [];
+        $nameByPid = $optNames;
         foreach ($clean as $l) {
             $nameByPid[(string) $l['productId']] = $l['name'];
         }
@@ -2977,6 +3136,14 @@ abstract class MadPdvComponent extends MadComponent
                         'tax_amount'    => PdvTax::toFloat($l['tax']['tax']),
                         'gross'         => PdvTax::toFloat($l['tax']['gross']),
                     ];
+                    // Linha mista (combo com parte em outra alíquota): imposto por alíquota.
+                    if (count($l['tax']['parts'] ?? []) > 1) {
+                        $row['taxes'] = array_map(fn ($pt) => [
+                            'rate' => $pt['rate'],
+                            'net'  => PdvTax::toFloat($pt['net']),
+                            'tax'  => PdvTax::toFloat($pt['tax']),
+                        ], $l['tax']['parts']);
+                    }
                 }
                 if ($l['options'] !== null) {
                     $row['options'] = $l['options'];
@@ -3111,13 +3278,40 @@ abstract class MadPdvComponent extends MadComponent
             : $target->{$m}($venda->getKey());
     }
 
-    /** Opções da linha no formato do cupom (rótulo + acréscimo). */
+    /**
+     * Partes da linha com opções para o PdvTax: o item (preço − share) e cada
+     * opção ((acréscimo + share) × qtd), rateando o valor da linha (já com
+     * quantidade e desconto do item) pelo peso de cada parte. Mesma conta do
+     * `optionComponents` do mad-pdv.js.
+     *
+     * @return array{components?: list<array{amount:int, rate?:?string}>}
+     */
+    protected function _optionTaxComponents(array $l): array
+    {
+        $op = $l['optParts'] ?? null;
+        if ($op === null || $op['parts'] === []) {
+            return [];
+        }
+        $weights = [$op['baseC']];
+        foreach ($op['parts'] as $p) {
+            $weights[] = $p['unitC'];
+        }
+        $amounts = PdvTax::allocate(PdvTax::fromDecimal($l['total']), $weights);
+        $out = [['amount' => $amounts[0]]];
+        foreach ($op['parts'] as $i => $p) {
+            $out[] = ['amount' => $amounts[$i + 1], 'rate' => $p['rate']];
+        }
+        return ['components' => $out];
+    }
+
+    /** Opções da linha no formato do cupom (rótulo + acréscimo, qtd quando > 1). */
     protected function _receiptOptions(array $options): array
     {
         return array_map(fn ($o) => [
             'group'  => (string) ($o['group'] ?? ''),
             'option' => (string) ($o['option'] ?? ''),
             'price'  => (float) ($o['price'] ?? 0),
+            'qty'    => max(1, (int) ($o['qty'] ?? 1)),
         ], $options);
     }
 
@@ -3713,17 +3907,39 @@ abstract class MadPdvComponent extends MadComponent
                     'description' => $this->itemDescriptionField !== ''
                         ? (string) ($it->{$this->itemDescriptionField} ?? '') : '',
                 ];
+                $opts = [];
                 if ($this->optionsEnabled() && $this->itemOptionsField !== '') {
-                    $opts = json_decode((string) ($it->{$this->itemOptionsField} ?? ''), true);
-                    if (is_array($opts)) {
-                        $lines[count($lines) - 1]['options'] = $this->_receiptOptions(array_filter($opts, 'is_array'));
+                    $dec = json_decode((string) ($it->{$this->itemOptionsField} ?? ''), true);
+                    if (is_array($dec)) {
+                        $opts = array_filter($dec, 'is_array');
+                        $lines[count($lines) - 1]['options'] = $this->_receiptOptions($opts);
                     }
                 }
                 if ($this->taxEnabled() && $this->itemTaxRateField !== '' && $this->itemTaxField !== '') {
                     $rate = PdvTax::normalizeRate($it->{$this->itemTaxRateField} ?? null);
                     $lines[count($lines) - 1]['taxRate'] = $rate;
+                    $itemTaxC = PdvTax::fromDecimal((float) ($it->{$this->itemTaxField} ?? 0));
                     if ($rate !== '0') {
-                        $taxByRate[$rate] = ($taxByRate[$rate] ?? 0) + PdvTax::fromDecimal((float) ($it->{$this->itemTaxField} ?? 0));
+                        $taxByRate[$rate] ??= 0;   // ordem do cupom: a do item primeiro
+                    }
+                    // Opção com alíquota própria (combo misto): o imposto dela sai
+                    // do total do item e vai para a alíquota dela.
+                    foreach ($opts as $o) {
+                        if (!isset($o['tax_rate'], $o['tax_amount'])) {
+                            continue;
+                        }
+                        $oRate = PdvTax::normalizeRate($o['tax_rate']);
+                        if ($oRate === $rate) {
+                            continue;
+                        }
+                        $oc        = PdvTax::fromDecimal((float) $o['tax_amount']);
+                        $itemTaxC -= $oc;
+                        if ($oRate !== '0') {
+                            $taxByRate[$oRate] = ($taxByRate[$oRate] ?? 0) + $oc;
+                        }
+                    }
+                    if ($rate !== '0') {
+                        $taxByRate[$rate] = ($taxByRate[$rate] ?? 0) + $itemTaxC;
                     }
                 }
             }

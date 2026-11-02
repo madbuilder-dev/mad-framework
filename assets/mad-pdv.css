@@ -1046,6 +1046,11 @@
     flex: none;
     accent-color: var(--mad-primary, #2563eb);
 }
+.mad-pdv-opt-item { display: contents; }
+.mad-pdv-opt--qty { cursor: default; padding-top: 2px; padding-bottom: 2px; }
+.mad-pdv-opt--qty .mad-pdv-opt-label { padding-left: 24px; }   /* alinha com o texto ao lado da caixinha (16px + gap) */
+.mad-pdv-opt-step { display: inline-flex; align-items: center; gap: 4px; }
+.mad-pdv-opt-qty { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 .mad-pdv-opt-label { flex: 1; }
 .mad-pdv-opt-price { color: var(--mad-text-muted, #6b7280); font-size: 12px; white-space: nowrap; }
 .mad-pdv-opt-error {

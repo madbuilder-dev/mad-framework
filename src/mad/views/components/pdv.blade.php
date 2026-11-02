@@ -585,14 +585,34 @@
                             <small class="mad-pdv-opt-hint" :class="{ 'is-required': g.min >= 1 }" x-text="optHint(g)"></small>
                         </legend>
                         <template x-for="o in g.options" :key="o.key">
-                            <label class="mad-pdv-opt" :class="{ 'is-on': optIsOn(g, o), 'is-disabled': optDisabled(g, o) }">
-                                <input :type="g.max === 1 ? 'radio' : 'checkbox'"
-                                       :name="'{{ $pdvKey }}-opt-' + g.key"
-                                       :checked="optIsOn(g, o)" :disabled="optDisabled(g, o)"
-                                       @click="optToggle(g, o); $event.target.checked = optIsOn(g, o)">
-                                <span class="mad-pdv-opt-label" x-text="o.label"></span>
-                                <span class="mad-pdv-opt-price" x-text="optPriceText(o)"></span>
-                            </label>
+                            <div class="mad-pdv-opt-item">
+                                <template x-if="!(o.max > 1)">
+                                    <label class="mad-pdv-opt" :class="{ 'is-on': optIsOn(g, o), 'is-disabled': optDisabled(g, o) }">
+                                        <input :type="g.max === 1 ? 'radio' : 'checkbox'"
+                                               :name="'{{ $pdvKey }}-opt-' + g.key"
+                                               :checked="optIsOn(g, o)" :disabled="optDisabled(g, o)"
+                                               @click="optToggle(g, o); $event.target.checked = optIsOn(g, o)">
+                                        <span class="mad-pdv-opt-label" x-text="o.label"></span>
+                                        <span class="mad-pdv-opt-price" x-text="optPriceText(o)"></span>
+                                    </label>
+                                </template>
+                                {{-- Opção com quantidade (max > 1): "2× Bacon" — o grupo conta a soma. --}}
+                                <template x-if="o.max > 1">
+                                    <div class="mad-pdv-opt mad-pdv-opt--qty" :class="{ 'is-on': optIsOn(g, o) }">
+                                        <span class="mad-pdv-opt-label" x-text="o.label"></span>
+                                        <span class="mad-pdv-opt-price" x-text="optPriceText(o)"></span>
+                                        <span class="mad-pdv-opt-step">
+                                            <button type="button" class="mad-pdv-iconbtn"
+                                                    :disabled="!optCanStep(g, o, -1)" @click="optStep(g, o, -1)"
+                                                    :aria-label="cfg.i18n.options_less + ': ' + o.label">&minus;</button>
+                                            <output class="mad-pdv-opt-qty" aria-live="polite" x-text="optQty(g, o)"></output>
+                                            <button type="button" class="mad-pdv-iconbtn"
+                                                    :disabled="!optCanStep(g, o, 1)" @click="optStep(g, o, 1)"
+                                                    :aria-label="cfg.i18n.options_more + ': ' + o.label">+</button>
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
                         </template>
                     </fieldset>
                 </template>
@@ -681,7 +701,7 @@
                                 {{-- Opções escolhidas (o preço unitário acima já soma). --}}
                                 <template x-for="(oo, k) in (ln.options || [])" :key="k">
                                     <div class="mad-pdv-receipt-line mad-pdv-receipt-col mad-pdv-receipt-opt">
-                                        <span class="rl-name" x-text="'+ ' + oo.option + (oo.price ? ' ' + money(toC(oo.price)) : '')"></span>
+                                        <span class="rl-name" x-text="'+ ' + (oo.qty > 1 ? oo.qty + '× ' : '') + oo.option + (oo.price ? ' ' + money(toC(oo.price) * (oo.qty || 1)) : '')"></span>
                                     </div>
                                 </template>
                                 <template x-for="cc in (ln.cols || [])" :key="cc.label">
