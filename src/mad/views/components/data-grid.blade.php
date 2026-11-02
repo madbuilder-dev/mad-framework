@@ -144,6 +144,13 @@
             $selPageIds[] = (string) ($_sRow[$rowIdField] ?? $_sRow['id'] ?? $_sIdx);
         }
     }
+    // "Marcar as N que batem com o filtro" (selTotal = total do filtro; 0 = não
+    // oferece) e o estado "todas do filtro marcadas" (MadDataGrid::_selectAllState).
+    $selTotal     = $selectable ? (int) ($selTotal ?? 0) : 0;
+    $selAll       = $selectable && !empty($selAll);
+    $selAllCapped = !empty($selAllCapped);
+    $selAllCount  = (int) ($selAllCount ?? 0);
+    $_selNum      = static fn (int $n): string => number_format($n, 0, '', str_starts_with((string) app()->getLocale(), 'en') ? ',' : '.');
     // <mad-row-expand> (fórum #127): coluna estreita do chevron, logo depois da
     // seleção. Entra no colCount — o visibleColCount() do Alpine (estado vazio,
     // banda de quebra, row-detail) e a linha anexada contam com ela.
@@ -241,8 +248,8 @@
         ? json_encode(['lost' => mad_t('mad.error.cell_no_answer'), 'dropped' => mad_t('mad.error.cell_edit_dropped')], JSON_UNESCAPED_UNICODE)
         : '';
 @endphp
-<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"{{ $rowClick ? ' data-row-click' : '' }}{!! $_autoRefreshAttrs !!}{!! $_lookAttrs !!}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
-     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if(!empty($gridViews)), gvText: {{ json_encode(['nameInvalid' => mad_t('mad.gridview.name_invalid')]) }}@if(is_array($gridViews['client'] ?? null)), viewClient: {{ json_encode($gridViews['client']) }}@endif @endif @if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)], $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}@endif })"
+<div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"@if($selectable) x-on:mad-grid-bulk="onBulkEvent($event.detail)"@endif{{ $rowClick ? ' data-row-click' : '' }}{!! $_autoRefreshAttrs !!}{!! $_lookAttrs !!}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
+     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if(!empty($gridViews)), gvText: {{ json_encode(['nameInvalid' => mad_t('mad.gridview.name_invalid')]) }}@if(is_array($gridViews['client'] ?? null)), viewClient: {{ json_encode($gridViews['client']) }}@endif @endif @if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)] + (($b['preset'] ?? '') === 'export' ? ['x' => 1] : []), $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}, selTotal: {{ $selTotal }}, selAll: {{ $selAll ? 'true' : 'false' }}, bulkText: {{ json_encode(['stop' => __('grid.bulk_stop'), 'stopping' => __('grid.bulk_stopping'), 'failed' => __('grid.bulk_job_failed')]) }}@endif })"
      x-init="init($el)"
      @mad-dg-page="handlePage($event)"
      @mad-dg-call="handleCall($event)"
@@ -450,6 +457,40 @@
         </div>
         @endif
     </div>
+    {{-- "Marcar as N que batem com o filtro": a página inteira marcada e o
+         filtro com mais linhas. O servidor monta a seleção pela consulta com
+         os filtros (onBulkSelectAll), até o teto da seleção. --}}
+    @if($selTotal > count($selPageIds) || $selAll)
+    <div class="mad-dg-selall" x-show="_selAll || selAllOffer()" @if(!$selAll) style="display:none;"@endif>
+        <i data-lucide="list-checks" style="width:14px;height:14px;" aria-hidden="true"></i>
+        <span x-show="!_selAll" @if($selAll) style="display:none;"@endif>{{ trans_choice('grid.select_all_page', count($selPageIds), ['count' => $_selNum(count($selPageIds))]) }}</span>
+        <button type="button" class="mad-dg-selall-link" x-show="!_selAll" @if($selAll) style="display:none;"@endif @click="selectAllFiltered()">{{ $selTotal > \Mad\Grid\MadGridSelection::MAX ? __('grid.select_all_filter_capped', ['count' => $_selNum(\Mad\Grid\MadGridSelection::MAX), 'total' => $_selNum($selTotal)]) : __('grid.select_all_filter', ['count' => $_selNum($selTotal)]) }}</button>
+        <span x-show="_selAll" @if(!$selAll) style="display:none;"@endif>{{ $selAllCapped ? __('grid.select_all_capped', ['count' => $_selNum($selAllCount)]) : __('grid.select_all_done', ['count' => $_selNum($selAllCount)]) }}</span>
+        <button type="button" class="mad-dg-selall-link" x-show="_selAll" @if(!$selAll) style="display:none;"@endif @click="clearSelection()">{{ __('grid.select_all_clear') }}</button>
+    </div>
+    @endif
+    {{-- Lote grande em partes (MadDataGrid::onBulkStep): "Excluindo 300 de
+         1.240…" com Parar — para depois da parte em andamento. --}}
+    <template x-if="bulkJob">
+        <div class="mad-dialog-overlay mad-dg-bulkjob" role="dialog" aria-modal="true" :aria-label="bulkJob.title">
+            <div class="mad-dialog-box mad-dg-bulkjob-box">
+                <div class="mad-dialog-header">
+                    <span class="mad-spinner mad-spinner-sm" x-show="!bulkJob.failed" aria-hidden="true"></span>
+                    <strong class="mad-dialog-title" x-text="bulkJob.title"></strong>
+                </div>
+                <div class="mad-dialog-body">
+                    <div class="mad-dg-bulkjob-text" aria-live="polite" x-text="bulkJob.failed ? _cfg.bulkText.failed : bulkJob.text"></div>
+                    <div class="mad-dg-bulkjob-bar" role="progressbar" aria-valuemin="0" :aria-valuemax="bulkJob.total" :aria-valuenow="bulkJob.pos">
+                        <div class="mad-dg-bulkjob-fill" :style="'width:' + bulkPct() + '%'"></div>
+                    </div>
+                </div>
+                <div class="mad-dialog-footer">
+                    <button type="button" class="mad-btn mad-btn-secondary mad-btn-sm" x-show="!bulkJob.failed" :disabled="bulkJob.stopping" @click="stopBulkJob()" x-text="bulkJob.stopping ? _cfg.bulkText.stopping : _cfg.bulkText.stop"></button>
+                    <button type="button" class="mad-btn mad-btn-secondary mad-btn-sm" x-show="bulkJob.failed" @click="bulkJob = null">{{ __('grid.bulk_close') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
     @endif
 
     {{-- ── Barra de filtros ativos ─────────────────────────────────────── --}}

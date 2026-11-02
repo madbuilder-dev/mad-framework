@@ -7923,6 +7923,12 @@ document.addEventListener('alpine:init', () => {
         selectable:     !!cfg.selectable,
         selected:       (cfg.selected || []).map(String),
         _pageIds:       (cfg.pageIds || []).map(String),
+        // A seleção é EXATAMENTE "todas do filtro" (o servidor diz no render;
+        // qualquer marca/desmarca aqui desfaz).
+        _selAll:        !!cfg.selAll,
+        // Lote grande em partes: { id, title, text, pos, total, stopping, failed }.
+        bulkJob:        null,
+        _bulkSeq:       0,
 
         // ── Init ─────────────────────────────────────────────────────
         init(el) {
@@ -9169,6 +9175,7 @@ document.addEventListener('alpine:init', () => {
             const want = (on === undefined) ? !has : !!on;
             if (want && !has) this.selected = this.selected.concat([key]);
             else if (!want && has) this.selected = this.selected.filter(v => v !== key);
+            if (want !== has) this._selAll = false;
         },
 
         // Checkbox do cabeçalho: marca/desmarca as linhas DESTA página e
@@ -9180,6 +9187,7 @@ document.addEventListener('alpine:init', () => {
             } else {
                 const page = this._pageIds;
                 this.selected = this.selected.filter(id => page.indexOf(id) === -1);
+                this._selAll = false;
             }
         },
 
@@ -9193,6 +9201,67 @@ document.addEventListener('alpine:init', () => {
 
         clearSelection() {
             this.selected = [];
+            this._selAll = false;
+        },
+
+        // Faixa "Marcar as N que batem com o filtro": a página inteira marcada
+        // e o filtro com mais linhas do que a página (cfg.selTotal).
+        selAllOffer() {
+            return !this._selAll && (this._cfg.selTotal || 0) > this._pageIds.length && this.pageAllSelected();
+        },
+
+        // O servidor monta a seleção pela consulta com os filtros e redesenha.
+        selectAllFiltered() {
+            const w = this._wrapper || this.$el.closest('[mad-component]');
+            if (!w || typeof MadWire === 'undefined') return;
+            return MadWire.call(w, 'onBulkSelectAll', []);
+        },
+
+        // ── Lote grande em partes (MadDataGrid::onBulkStep) ──────────
+        // Cada resposta traz o andamento ({job, pos, total, ok, end, title,
+        // text}) num evento na raiz desta grade; ao recebê-lo, desmarca os que
+        // deram certo e pede a próxima parte — ou, com Parar, o fim.
+        onBulkEvent(d) {
+            if (!d || !d.job) return;
+            if (Array.isArray(d.ok) && d.ok.length) {
+                const ok = {};
+                d.ok.forEach(id => { ok[String(id)] = true; });
+                this.selected = this.selected.filter(id => !ok[id]);
+            }
+            if (d.end) {
+                this.bulkJob = null;
+                return;
+            }
+            if (!this.bulkJob || this.bulkJob.id !== d.job) {
+                this.bulkJob = { id: d.job, title: '', text: '', pos: 0, total: 0, stopping: false, failed: false };
+            }
+            const job = this.bulkJob;
+            job.title = d.title || job.title;
+            job.text  = d.text || job.text;
+            job.pos   = Number(d.pos) || 0;
+            job.total = Number(d.total) || 0;
+            const seq = ++this._bulkSeq;
+            const w = this._wrapper || this.$el.closest('[mad-component]');
+            if (!w || typeof MadWire === 'undefined') { job.failed = true; return; }
+            // A resposta desta parte chama onBulkEvent de novo (seq muda). Se
+            // ela voltou sem o evento (queda, erro do servidor), a janela não
+            // fica presa: vira o aviso com Fechar.
+            // O setTimeout deixa as ops da resposta (o evento) rodarem antes.
+            const lost = () => setTimeout(() => { if (this.bulkJob === job && this._bulkSeq === seq) job.failed = true; }, 50);
+            // Fila do componente: a próxima parte sai depois desta resposta,
+            // já com o campo da seleção atualizado.
+            Promise.resolve().then(() => MadWire.call(w, 'onBulkStep', [d.job, job.stopping ? 1 : 0]))
+                .then(lost, lost);
+        },
+
+        stopBulkJob() {
+            if (this.bulkJob) this.bulkJob.stopping = true;
+        },
+
+        bulkPct() {
+            const j = this.bulkJob;
+            if (!j || !j.total) return 0;
+            return Math.max(0, Math.min(100, Math.round(j.pos * 100 / j.total)));
         },
 
         selCountLabel() {
@@ -9221,9 +9290,14 @@ document.addEventListener('alpine:init', () => {
                 const w = this._wrapper || this.$el.closest('[mad-component]');
                 // `MadWire` é const global do mad-livewire.js (não vira window.MadWire).
                 if (!w || typeof MadWire === 'undefined') return;
-                return b.m
-                    ? MadWire.call(w, b.m, [this._selMap()])
-                    : MadWire.call(w, 'onBulkOpen', [index]);
+                if (b.m) return MadWire.call(w, b.m, [this._selMap()]);
+                // preset="export": vai com as colunas escondidas no seletor,
+                // como o Exportar da barra.
+                if (b.x) {
+                    const hidden = Object.keys(this.colVisibility || {}).filter(f => this.colVisibility[f] === false);
+                    return MadWire.call(w, 'onBulkRun', [index, null, 0, hidden]);
+                }
+                return MadWire.call(w, 'onBulkOpen', [index]);
             };
             if (b.c) {
                 this.confirmAction(String(b.c).replace(/:count/g, this.selected.length), go, event, null);
@@ -9256,6 +9330,18 @@ document.addEventListener('alpine:init', () => {
         }; // fim do return
     }); // fim do Alpine.data
 });
+
+// Andamento do lote em partes (op `script` do MadDataGrid::_bulkJobEvent): o
+// evento vai para a grade do componente que respondeu (Mad._opScope), não para
+// a janela — duas listagens na mesma tela não se confundem.
+window.madGridBulk = function (scope, detail) {
+    var root = null;
+    if (scope && typeof scope.querySelector === 'function') {
+        root = (scope.matches && scope.matches('.mad-dg-wrap')) ? scope : scope.querySelector('.mad-dg-wrap');
+    }
+    if (!root) root = document.querySelector('.mad-dg-wrap');
+    if (root) root.dispatchEvent(new CustomEvent('mad-grid-bulk', { detail: detail }));
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Alpine component: madCustomFilter — "Filtro avançado" da listagem

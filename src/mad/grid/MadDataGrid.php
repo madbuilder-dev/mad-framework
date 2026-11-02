@@ -622,6 +622,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _filterGateOn(): bool
     {
+        // Exportação dos marcados: as chaves conferidas já recortam a consulta
+        // (e ela roda sem os filtros do usuário, de propósito).
+        if ($this->_bulkOnlyIds !== null) {
+            return false;
+        }
+
         return $this->requireFilter || $this->requiredFilters !== [];
     }
 
@@ -1249,11 +1255,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      *    listagem recarrega na mesma página (ou na última que sobrou) e os
      *    avisos dizem quantos deram certo, quantos não e por quê.
      *
+     * Fase 2: `export` (só os marcados, pelo exportador da listagem — não
+     * mexe na seleção), `duplicate` (uma cópia de cada, com `mark`/`reset`/
+     * `with`) e `routine` (a rotina do projeto em cada marcado). Com mais de
+     * `$bulkBatchSize` marcados (menos no export), o lote roda em partes:
+     * a primeira resposta só abre a janela de progresso, e o navegador pede
+     * cada parte em {@see onBulkStep()}.
+     *
      * @param mixed      $value valor digitado no diálogo do `ask` (null = ainda não perguntado)
      * @param int|string $along 1 = quem clicou confirmou excluir junto o que pertence aos
      *                          registros (a mesma pergunta do Excluir da linha)
+     * @param array      $hiddenColumns export: colunas que o usuário escondeu no seletor
      */
-    public function onBulkRun(int $index, mixed $value = null, int|string $along = 0): \Mad\Http\MadResponse
+    public function onBulkRun(int $index, mixed $value = null, int|string $along = 0, array $hiddenColumns = []): \Mad\Http\MadResponse
     {
         $resp = new \Mad\Http\MadResponse();
         $cfg  = $this->bulkActions[$index] ?? null;
@@ -1286,40 +1300,191 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return $resp->toast(__('grid.bulk_no_model'), 'warning');
         }
 
-        if ($cfg['preset'] === 'delete') {
-            return $this->_bulkDelete($index, $ids, (string) $along === '1');
+        $preset = (string) $cfg['preset'];
+        if ($preset === 'export') {
+            return $this->_bulkExport($ids, (string) ($cfg['format'] ?? 'xlsx'), $hiddenColumns);
         }
 
-        // preset="set": a coluna vem da config e tem de existir na tabela.
-        $column = (string) ($cfg['field'] ?? '');
-        if (!$this->_bulkColumnExists($model, $column)) {
-            \Illuminate\Support\Facades\Log::warning(
-                'MadDataGrid: onBulkRun recusado — "' . static::_logSafe($column) . '" não é coluna de '
-                . $model . ' (' . static::class . ').'
-            );
+        $plan = $this->_bulkPlan($cfg, $model);
+        if (is_string($plan)) {
             $this->skipFullRender();
 
-            return $resp->toast(__('grid.bulk_unavailable'), 'warning');
+            return $resp->toast($plan, 'warning');
         }
 
-        if (!empty($cfg['ask'])) {
-            $field = $this->_bulkAskField($cfg, $model);
-            if ($value === null) {
-                return $this->_bulkAskDialog($index, $cfg, $field);
-            }
-            $error = null;
-            $value = $this->_bulkAskValue($field, $value, $error);
-            if ($error !== null) {
-                $this->skipFullRender();
+        if ($preset === 'set') {
+            if (!empty($cfg['ask'])) {
+                $field = $this->_bulkAskField($cfg, $model);
+                if ($value === null) {
+                    return $this->_bulkAskDialog($index, $cfg, $field);
+                }
+                $error = null;
+                $value = $this->_bulkAskValue($field, $value, $error);
+                if ($error !== null) {
+                    $this->skipFullRender();
 
-                return $resp->toast($error, 'warning');
+                    return $resp->toast($error, 'warning');
+                }
+            } else {
+                $value = ($cfg['value'] ?? null) === '' ? null : ($cfg['value'] ?? null);
             }
         } else {
-            $value = ($cfg['value'] ?? null) === '' ? null : ($cfg['value'] ?? null);
+            $value = null;   // só o `ask` do set tem valor vindo do navegador
         }
 
-        return $this->_bulkSet($ids, $column, $value);
+        $confirmed = (string) $along === '1';
+        if (count($ids) > max(1, $this->bulkBatchSize)) {
+            return $this->_bulkJobStart($index, $cfg, $ids, $value, $confirmed);
+        }
+
+        $out = $this->_bulkProcess($cfg, $plan, $ids, $value, $confirmed);
+
+        return $this->_bulkConclude($index, $cfg, $ids, $out, true);
     }
+
+    /**
+     * O que o preset precisa, conferido contra o banco e o Model (allowlist):
+     * nada vem do navegador. Devolve o plano ou o texto da recusa (o motivo
+     * técnico vai para o log).
+     *
+     *  - set: a coluna existe na tabela (e não é a chave);
+     *  - duplicate: `mark` é coluna de texto, `reset` são colunas, `with` são
+     *    relações hasMany do Model;
+     *  - routine: a rotina existe, tem botão, tem origem e a origem é o
+     *    model da listagem.
+     *
+     * @return array<string, mixed>|string
+     */
+    protected function _bulkPlan(array $cfg, string $model): array|string
+    {
+        $preset = (string) ($cfg['preset'] ?? '');
+        $refuse = function (string $why) use ($model): string {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: ação em lote recusada — ' . $why . ' (' . static::class . ', ' . $model . ').'
+            );
+
+            return __('grid.bulk_unavailable');
+        };
+
+        if ($preset === 'set') {
+            $column = (string) ($cfg['field'] ?? '');
+            if (!$this->_bulkColumnExists($model, $column)) {
+                return $refuse('"' . static::_logSafe($column) . '" não é coluna do model');
+            }
+
+            return ['column' => $column];
+        }
+
+        if ($preset === 'duplicate') {
+            $cols = $this->_bulkTableColumns($model);
+            if ($cols === null) {
+                return $refuse('não foi possível ler as colunas da tabela');
+            }
+            $m    = new $model();
+            $mark = (string) ($cfg['mark'] ?? '');
+            $max  = null;
+            if ($mark !== '') {
+                $info = $cols[strtolower($mark)] ?? null;
+                if ($info === null || $mark === $m->getKeyName() || !static::_bulkIsTextColumn($info)) {
+                    return $refuse('mark="' . static::_logSafe($mark) . '" não é coluna de texto');
+                }
+                $max = static::_bulkColumnLength($info);
+            }
+            $reset = [];
+            foreach ((array) ($cfg['reset'] ?? []) as $col) {
+                $col = (string) $col;
+                if (!isset($cols[strtolower($col)]) || $col === $m->getKeyName()) {
+                    return $refuse('reset="' . static::_logSafe($col) . '" não é coluna');
+                }
+                $reset[] = $col;
+            }
+            $with = [];
+            foreach ((array) ($cfg['with'] ?? []) as $rel) {
+                $rel = (string) $rel;
+                if (!static::_bulkHasManyRelation($m, $rel)) {
+                    return $refuse('with="' . static::_logSafe($rel) . '" não é relação hasMany do model');
+                }
+                $with[] = $rel;
+            }
+
+            return ['mark' => $mark, 'markMax' => $max, 'reset' => $reset, 'with' => $with];
+        }
+
+        if ($preset === 'routine') {
+            $class = $this->_bulkRoutineClass($cfg, $model, $why);
+
+            return $class === null ? $refuse($why) : ['class' => $class, 'mode' => (string) ($cfg['mode'] ?? 'redo')];
+        }
+
+        return [];   // delete
+    }
+
+    /**
+     * Os registros marcados pelo preset, um por um — sem recarregar nem
+     * avisar (quem chama decide: {@see _bulkConclude()} ou uma parte do lote
+     * grande).
+     *
+     * @param  array<int|string, string> $ids
+     * @return array{done:int, fail:array<string,string>, along:array<string,array>}
+     */
+    protected function _bulkProcess(array $cfg, array $plan, array $ids, ?string $value, bool $confirmedAlong): array
+    {
+        $ids     = array_values(array_map('strval', $ids));
+        $records = $this->_bulkRecords($ids);
+
+        return match ((string) ($cfg['preset'] ?? '')) {
+            'delete'    => $this->_bulkDeleteRun($records, $ids, $confirmedAlong),
+            'set'       => $this->_bulkSetRun($records, $ids, (string) $plan['column'], $value),
+            'duplicate' => $this->_bulkDuplicateRun($records, $ids, $plan),
+            'routine'   => $this->_bulkRoutineRun($records, $ids, $plan),
+            default     => ['done' => 0, 'fail' => array_fill_keys($ids, 'refused'), 'along' => []],
+        };
+    }
+
+    /**
+     * Fim do lote: seleção (quem falhou continua marcado), recarga e avisos —
+     * e, no excluir, a pergunta do que vai junto.
+     *
+     * @param array{done:int, fail:array, along:array} $out
+     * @param bool $updateSelection false = o lote em partes já tirou da seleção quem deu certo
+     * @param bool $askAlong        false = não pergunta do que vai junto (lote parado no meio)
+     */
+    protected function _bulkConclude(int $index, array $cfg, array $ids, array $out, bool $updateSelection, bool $askAlong = true): \Mad\Http\MadResponse
+    {
+        $verb  = self::BULK_VERBS[(string) ($cfg['preset'] ?? '')] ?? 'updated';
+        $along = $out['along'] ?? [];
+        $resp  = $this->_bulkFinish($ids, (int) $out['done'], ($out['fail'] ?? []) + $along, $verb, $updateSelection);
+        if ($along === [] || !$askAlong) {
+            return $resp;
+        }
+
+        $what = [];
+        foreach ($along as $list) {
+            foreach ($list as $item) {
+                $label = (string) ($item['label'] ?? '');
+                $what[$label] = ($what[$label] ?? 0) + (int) ($item['count'] ?? 0);
+            }
+        }
+        $txt = [];
+        foreach ($what as $label => $n) {
+            $txt[] = $n > 0 ? $label . ' (' . $n . ')' : $label;
+        }
+        $ask = \Mad\Ui\MadMessage::confirm(
+            mad_t('mad.error.delete_along_title'),
+            e(trans_choice('grid.bulk_along', count($along), ['count' => count($along), 'what' => implode(', ', $txt)])),
+            $this,
+            'trash-2'
+        )
+            ->button(mad_t('mad.error.delete_along_confirm'), 'onBulkRun', [$index, null, 1], 'destructive')
+            ->onCancel(mad_t('mad.error.delete_along_cancel'))
+            ->build();
+        $resp->ops = array_merge($resp->ops, $ask->ops);
+
+        return $resp;
+    }
+
+    /** Verbo dos avisos de cada preset (grid.bulk_<verbo> / grid.bulk_not_<verbo>). */
+    private const BULK_VERBS = ['delete' => 'deleted', 'set' => 'updated', 'duplicate' => 'duplicated', 'routine' => 'ran'];
 
     /**
      * Os registros marcados que a listagem alcança — `[id => Model]`. A
@@ -1382,10 +1547,24 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     /** preset="delete": um por um pelo Model, como o Excluir da linha. */
     protected function _bulkDelete(int $index, array $ids, bool $confirmedAlong): \Mad\Http\MadResponse
     {
-        $records = $this->_bulkRecords($ids);
-        $done    = 0;
-        $fail    = [];   // id => motivo
-        $along   = [];   // id => o que vai junto (falta a confirmação)
+        $cfg = $this->bulkActions[$index] ?? ['preset' => 'delete'];
+        $out = $this->_bulkDeleteRun($this->_bulkRecords($ids), array_values(array_map('strval', $ids)), $confirmedAlong);
+
+        return $this->_bulkConclude($index, is_array($cfg) ? $cfg : ['preset' => 'delete'], $ids, $out, true);
+    }
+
+    /**
+     * Exclusão de cada marcado (sem recarregar nem avisar).
+     *
+     * @param array<string, \Illuminate\Database\Eloquent\Model> $records
+     * @param list<string> $ids
+     * @return array{done:int, fail:array<string,string>, along:array<string,array>}
+     */
+    protected function _bulkDeleteRun(array $records, array $ids, bool $confirmedAlong): array
+    {
+        $done  = 0;
+        $fail  = [];   // id => motivo
+        $along = [];   // id => o que vai junto (falta a confirmação)
         foreach ($ids as $id) {
             $id     = (string) $id;
             $record = $records[$id] ?? null;
@@ -1430,40 +1609,27 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
         }
 
-        $resp = $this->_bulkFinish($ids, $done, $fail + $along, 'deleted');
-        if ($along !== []) {
-            $what = [];
-            foreach ($along as $list) {
-                foreach ($list as $item) {
-                    $label = (string) ($item['label'] ?? '');
-                    $what[$label] = ($what[$label] ?? 0) + (int) ($item['count'] ?? 0);
-                }
-            }
-            $txt = [];
-            foreach ($what as $label => $n) {
-                $txt[] = $n > 0 ? $label . ' (' . $n . ')' : $label;
-            }
-            $ask = \Mad\Ui\MadMessage::confirm(
-                mad_t('mad.error.delete_along_title'),
-                e(trans_choice('grid.bulk_along', count($along), ['count' => count($along), 'what' => implode(', ', $txt)])),
-                $this,
-                'trash-2'
-            )
-                ->button(mad_t('mad.error.delete_along_confirm'), 'onBulkRun', [$index, null, 1], 'destructive')
-                ->onCancel(mad_t('mad.error.delete_along_cancel'))
-                ->build();
-            $resp->ops = array_merge($resp->ops, $ask->ops);
-        }
-
-        return $resp;
+        return ['done' => $done, 'fail' => $fail, 'along' => $along];
     }
 
     /** preset="set": grava `$column` = `$value` nos marcados, um por um pelo Model. */
     protected function _bulkSet(array $ids, string $column, ?string $value): \Mad\Http\MadResponse
     {
-        $records = $this->_bulkRecords($ids);
-        $done    = 0;
-        $fail    = [];
+        $ids = array_values(array_map('strval', $ids));
+        $out = $this->_bulkSetRun($this->_bulkRecords($ids), $ids, $column, $value);
+
+        return $this->_bulkFinish($ids, $out['done'], $out['fail'], 'updated');
+    }
+
+    /**
+     * @param array<string, \Illuminate\Database\Eloquent\Model> $records
+     * @param list<string> $ids
+     * @return array{done:int, fail:array<string,string>, along:array}
+     */
+    protected function _bulkSetRun(array $records, array $ids, string $column, ?string $value): array
+    {
+        $done = 0;
+        $fail = [];
         foreach ($ids as $id) {
             $id     = (string) $id;
             $record = $records[$id] ?? null;
@@ -1487,7 +1653,729 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
         }
 
-        return $this->_bulkFinish($ids, $done, $fail, 'updated');
+        return ['done' => $done, 'fail' => $fail, 'along' => []];
+    }
+
+    /**
+     * preset="duplicate": uma cópia de cada marcado pelo Eloquent
+     * (`replicate()` + `save()` — os eventos `replicating`/`creating`/
+     * `saving` do Model valem), cada uma numa transação com os itens de
+     * `with` (a chave estrangeira deles passa a apontar para a cópia).
+     *
+     * `mark` ganha o sufixo " (cópia)" cabendo no tamanho da coluna; `reset`
+     * volta ao padrão do Model (`$attributes`) ou, sem ele, ao do banco (a
+     * coluna sai do INSERT). Coluna única repetida = motivo "valor que não
+     * pode repetir" e nada daquele registro fica gravado.
+     *
+     * @param array<string, \Illuminate\Database\Eloquent\Model> $records
+     * @param list<string> $ids
+     * @param array{mark:string, markMax:?int, reset:list<string>, with:list<string>} $plan
+     * @return array{done:int, fail:array<string,string>, along:array}
+     */
+    protected function _bulkDuplicateRun(array $records, array $ids, array $plan): array
+    {
+        $done   = 0;
+        $fail   = [];
+        $suffix = __('grid.bulk_copy_suffix');
+        foreach ($ids as $id) {
+            $id     = (string) $id;
+            $record = $records[$id] ?? null;
+            if ($record === null) {
+                $fail[$id] = 'gone';
+                continue;
+            }
+            try {
+                $saved = $record->getConnection()->transaction(function () use ($record, $plan, $suffix): bool {
+                    $copy     = $record->replicate();
+                    $defaults = (new ($record::class)())->getAttributes();
+                    foreach ($plan['reset'] as $col) {
+                        if (array_key_exists($col, $defaults)) {
+                            $copy->setAttribute($col, $defaults[$col]);
+                        } else {
+                            $copy->offsetUnset($col);
+                        }
+                    }
+                    $mark = (string) $plan['mark'];
+                    if ($mark !== '' && $copy->getAttribute($mark) !== null && (string) $copy->getAttribute($mark) !== '') {
+                        $copy->setAttribute($mark, static::_bulkWithSuffix((string) $copy->getAttribute($mark), $suffix, $plan['markMax']));
+                    }
+                    if ($copy->save() === false) {
+                        return false;   // `saving`/`creating` do Model recusou
+                    }
+                    foreach ($plan['with'] as $rel) {
+                        foreach ($record->$rel()->get() as $child) {
+                            if ($copy->$rel()->save($child->replicate()) === false) {
+                                // O item recusou (`saving` do Model): desfaz a
+                                // cópia inteira — motivo "recusado".
+                                throw new \DomainException('bulk duplicate: item refused');
+                            }
+                        }
+                    }
+
+                    return true;
+                });
+                if ($saved) {
+                    $done++;
+                } else {
+                    $fail[$id] = 'refused';
+                }
+            } catch (\Throwable $e) {
+                $fail[$id] = $e instanceof \Illuminate\Database\UniqueConstraintViolationException
+                    ? 'unique'
+                    : $this->_bulkReason($e, false);
+            }
+        }
+
+        return ['done' => $done, 'fail' => $fail, 'along' => []];
+    }
+
+    /**
+     * preset="routine": `redo`/`launch`/`reverse` da rotina para CADA marcado,
+     * um por um (a rotina roda na transação dela). Um `RoutineStopped` vira o
+     * motivo daquele registro, com o texto da própria rotina; o resto segue.
+     *
+     * @param array<string, \Illuminate\Database\Eloquent\Model> $records
+     * @param list<string> $ids
+     * @param array{class:class-string<\Mad\Routine\Routine>, mode:string} $plan
+     * @return array{done:int, fail:array<string,string>, along:array}
+     */
+    protected function _bulkRoutineRun(array $records, array $ids, array $plan): array
+    {
+        $done  = 0;
+        $fail  = [];
+        $class = $plan['class'];
+        foreach ($ids as $id) {
+            $id     = (string) $id;
+            $record = $records[$id] ?? null;
+            if ($record === null) {
+                $fail[$id] = 'gone';
+                continue;
+            }
+            try {
+                // A chave, não o Model: a rotina relê a origem COM os escopos
+                // (unidade, empresa) e a trava para escrita.
+                $key = $record->getKey();
+                match ($plan['mode']) {
+                    'launch'  => $class::launch($key),
+                    'reverse' => $class::reverse($key),
+                    default   => $class::redo($key),
+                };
+                $done++;
+            } catch (\Mad\Routine\RoutineStopped $e) {
+                $msg       = trim($e->getMessage());
+                $fail[$id] = $msg !== '' ? self::BULK_MSG . $msg : 'refused';
+            } catch (\Throwable $e) {
+                $fail[$id] = $this->_bulkReason($e, false);
+            }
+        }
+
+        return ['done' => $done, 'fail' => $fail, 'along' => []];
+    }
+
+    /** Prefixo do motivo que já é o texto para o usuário (mensagem da rotina). */
+    private const BULK_MSG = 'msg:';
+
+    /**
+     * A classe da rotina do `preset="routine"`, ou null com o motivo em `$why`:
+     * a rotina tem de existir no routines.json, ter botão, ter origem e a
+     * origem ser o model da listagem (ou uma classe-mãe dele).
+     */
+    protected function _bulkRoutineClass(array $cfg, string $model, ?string &$why = null): ?string
+    {
+        $slug  = (string) ($cfg['routine'] ?? '');
+        $entry = $slug !== '' ? \Mad\Routine\RoutineRegistry::find($slug) : null;
+        if ($entry === null || !$entry->button) {
+            $why = 'rotina "' . static::_logSafe($slug) . '" não existe ou não tem botão';
+
+            return null;
+        }
+        $class = \Mad\Routine\RoutineTriggers::routineClass($entry);
+        if ($class === null) {
+            $why = 'classe da rotina "' . static::_logSafe($slug) . '" não encontrada';
+
+            return null;
+        }
+        $source = $class::sourceModel();
+        if ($source === null || $source === '') {
+            $why = 'rotina "' . static::_logSafe($slug) . '" sem origem';
+
+            return null;
+        }
+        if ($model === '' || !is_a($model, ltrim($source, '\\'), true)) {
+            $why = 'a origem da rotina "' . static::_logSafe($slug) . '" é ' . $source . ', não o model da listagem';
+
+            return null;
+        }
+
+        return $class;
+    }
+
+    /**
+     * Colunas da tabela do model, por nome em minúsculas (informação do
+     * `Schema::getColumns()`), ou null sem acesso ao catálogo.
+     *
+     * @return array<string, array<string, mixed>>|null
+     */
+    protected function _bulkTableColumns(string $model): ?array
+    {
+        try {
+            $m    = new $model();
+            $cols = \Illuminate\Support\Facades\Schema::connection($m->getConnectionName())->getColumns($m->getTable());
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $out = [];
+        foreach ($cols as $c) {
+            if (isset($c['name'])) {
+                $out[strtolower((string) $c['name'])] = $c;
+            }
+        }
+
+        return $out === [] ? null : $out;
+    }
+
+    /** A coluna guarda texto (char/varchar/text…)? */
+    protected static function _bulkIsTextColumn(array $info): bool
+    {
+        $type = strtolower((string) ($info['type_name'] ?? $info['type'] ?? ''));
+
+        return (bool) preg_match('/char|text|string|clob/', $type);
+    }
+
+    /** Tamanho máximo da coluna de texto ("varchar(60)" → 60), ou null. */
+    protected static function _bulkColumnLength(array $info): ?int
+    {
+        return preg_match('/\(\s*(\d+)\s*\)/', (string) ($info['type'] ?? ''), $m) ? max(1, (int) $m[1]) : null;
+    }
+
+    /** "Pedido 12" + " (cópia)" cabendo em `$max` caracteres (corta o texto, não o sufixo). */
+    protected static function _bulkWithSuffix(string $text, string $suffix, ?int $max): string
+    {
+        if ($max === null || mb_strlen($text . $suffix) <= $max) {
+            return $text . $suffix;
+        }
+        $room = $max - mb_strlen($suffix);
+
+        return $room > 0 ? rtrim(mb_substr($text, 0, $room)) . $suffix : mb_substr($text, 0, $max);
+    }
+
+    /**
+     * `with="itens"`: o nome é uma relação hasMany declarada no Model do app?
+     * Confere ANTES de chamar o método — `with="delete"` (método do Eloquent)
+     * ou um método com parâmetro não são relação e nunca são chamados.
+     */
+    protected static function _bulkHasManyRelation(\Illuminate\Database\Eloquent\Model $m, string $name): bool
+    {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) || !method_exists($m, $name)) {
+            return false;
+        }
+        try {
+            $rm = new \ReflectionMethod($m, $name);
+        } catch (\ReflectionException $e) {
+            return false;
+        }
+        if (!$rm->isPublic() || $rm->isStatic() || $rm->getNumberOfRequiredParameters() > 0
+            || str_starts_with($rm->getDeclaringClass()->getName(), 'Illuminate\\')) {
+            return false;
+        }
+        // Só chama o método quando ele SE DECLARA relação: retorno tipado
+        // HasMany (o que o gerador escreve) ou, sem tipo, `hasMany(` no corpo.
+        $type = $rm->getReturnType();
+        if ($type !== null) {
+            if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()
+                || !is_a($type->getName(), \Illuminate\Database\Eloquent\Relations\HasMany::class, true)) {
+                return false;
+            }
+        } elseif (!static::_bulkBodyHasMany($rm)) {
+            return false;
+        }
+        try {
+            return $m->$name() instanceof \Illuminate\Database\Eloquent\Relations\HasMany;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Corpo do método sem tipo de retorno chama `hasMany(`? */
+    private static function _bulkBodyHasMany(\ReflectionMethod $rm): bool
+    {
+        $file = $rm->getFileName();
+        $from = (int) $rm->getStartLine();
+        $to   = (int) $rm->getEndLine();
+        if (!is_string($file) || $from < 1 || $to < $from || !is_readable($file)) {
+            return false;
+        }
+        $lines = @file($file);
+        if (!is_array($lines)) {
+            return false;
+        }
+
+        return (bool) preg_match('/->\s*hasMany\s*\(/i', implode('', array_slice($lines, $from - 1, $to - $from + 1)));
+    }
+
+    /**
+     * preset="export" (e o "Converter em código" do Studio): exporta SÓ os
+     * `$ids` que a listagem alcança — a consulta dela sem os filtros do
+     * usuário (os marcados podem ter vindo de outro filtro), mais `whereKey` —
+     * pelo MESMO exportador da barra: colunas, formatadores, colunas
+     * escondidas pelo usuário, título. Mesma permissão do Exportar da barra.
+     * Não mexe na seleção e não recarrega a listagem.
+     *
+     * @param array<int|string, string> $ids
+     * @param string $format xlsx | csv | pdf
+     */
+    protected function _bulkExport(array $ids, string $format = 'xlsx', array $hiddenColumns = []): \Mad\Http\MadResponse
+    {
+        $format = strtolower(trim($format));
+        if (!in_array($format, MadGridCompiler::BULK_EXPORT_FORMATS, true)) {
+            $format = 'xlsx';
+        }
+        if ($this->_exportBlocked()) {
+            return $this->_exportBlockedToast();
+        }
+        $perm = $this->_bulkKeyDecision('export');
+        if ($perm['mode'] !== 'allow') {
+            $this->skipFullRender();
+
+            return (new \Mad\Http\MadResponse())->toast($perm['title'] !== '' ? $perm['title'] : __('grid.bulk_unavailable'), 'warning');
+        }
+
+        $records = $this->_bulkRecords(MadGridSelection::normalize($ids));
+        if ($records === []) {
+            $this->skipFullRender();
+
+            return (new \Mad\Http\MadResponse())->toast(__('grid.bulk_export_none'), 'warning');
+        }
+        $hidden = array_values(array_filter($hiddenColumns, 'is_string'));
+
+        $this->_bulkOnlyIds = array_map('strval', array_keys($records));
+        // `{FILTERS}` do PDF: o recorte é a seleção, não o filtro da barra.
+        $meta = $this->exportMeta;
+        $this->exportMeta['filters'] = trans_choice('grid.bulk_export_filters', count($records), ['count' => static::_bulkNumber(count($records))]);
+        try {
+            return $this->_withoutUserFilters(fn () => match ($format) {
+                'csv'   => $this->onExportCSV($hidden),
+                'pdf'   => $this->onExportPDF($hidden),
+                default => $this->onExportXLSX($hidden),
+            });
+        } finally {
+            $this->_bulkOnlyIds = null;
+            $this->exportMeta   = $meta;
+            // A listagem na tela não muda: só o diálogo do arquivo volta.
+            $this->skipFullRender();
+        }
+    }
+
+    /** Recorta a consulta às chaves da exportação dos marcados. */
+    private function _applyBulkOnly($q, bool $fromSource): void
+    {
+        $ids = $this->_bulkOnlyIds ?? [];
+        if ($fromSource) {
+            $model = $this->_recordModel();
+            $pk    = $model !== '' && class_exists($model) ? (new $model())->getKeyName() : 'id';
+            $q->whereIn('mad_src.' . $pk, $ids);
+        } elseif (method_exists($q, 'whereKey')) {
+            $q->whereKey($ids);
+        } else {
+            $q->whereIn('id', $ids);
+        }
+    }
+
+    /**
+     * Itens de um `query()` próprio que estão entre as chaves da exportação
+     * dos marcados (Model pela chave; linha de array/objeto pela coluna `id`).
+     */
+    private function _onlyBulkItems(array $items): array
+    {
+        $keep = array_flip($this->_bulkOnlyIds ?? []);
+        $out  = [];
+        foreach ($items as $k => $item) {
+            $key = $item instanceof \Illuminate\Database\Eloquent\Model
+                ? $item->getKey()
+                : (is_array($item) ? ($item['id'] ?? null) : (is_object($item) ? ($item->id ?? null) : null));
+            if (is_scalar($key) && isset($keep[(string) $key])) {
+                $out[$k] = $item;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Exportação dos marcados em andamento: as chaves que a consulta da
+     * listagem pode devolver (ver _buildQuery e loadData). null = sem recorte.
+     *
+     * @var list<string>|null
+     */
+    private ?array $_bulkOnlyIds = null;
+
+    /**
+     * Permissão de uma CHAVE do perfil (`export`, `insert`) para as ações em
+     * lote que não têm método de linha equivalente — a mesma pergunta do menu
+     * Exportar / do botão Novo, feita a cada dono da permissão.
+     *
+     * @return array{mode: 'allow'|'hide'|'disable', title: string}
+     */
+    protected function _bulkKeyDecision(string $key): array
+    {
+        try {
+            foreach (\Mad\Security\PermissionGate::actionOwners($this) as $class) {
+                $d = \Mad\Security\ActionGuard::decide($class, $key);
+                if ($d['mode'] !== 'allow') {
+                    return ['mode' => $d['mode'] === 'hide' ? 'hide' : 'disable', 'title' => (string) $d['title']];
+                }
+            }
+        } catch (\Throwable $e) {
+            // sem sessão de permissões: liberado, como as ações de linha
+        }
+
+        return ['mode' => 'allow', 'title' => ''];
+    }
+
+    // ── Lote em partes (progresso) ─────────────────────────────────────
+
+    /**
+     * Acima disto o lote roda em partes deste tamanho: cada parte é uma
+     * requisição, com a janela de progresso ("Excluindo 300 de 1.240…") e o
+     * botão Parar. Uma requisição só com milhares de exclusões estourava o
+     * tempo limite e não dizia nada até o fim.
+     */
+    protected int $bulkBatchSize = 100;
+
+    private const BULK_JOB_SESSION = 'mad_grid_bulk_job';
+
+    /**
+     * Abre o lote em partes: os ids são CONGELADOS aqui (a seleção encolhe
+     * conforme dá certo, o trabalho não muda), e a resposta só abre a janela
+     * de progresso — o navegador pede cada parte em onBulkStep().
+     */
+    protected function _bulkJobStart(int $index, array $cfg, array $ids, ?string $value, bool $confirmed): \Mad\Http\MadResponse
+    {
+        $job = [
+            'id'        => bin2hex(random_bytes(8)),
+            'index'     => $index,
+            'ids'       => array_values(array_map('strval', $ids)),
+            'pos'       => 0,
+            'done'      => 0,
+            'fail'      => [],
+            'along'     => [],
+            'value'     => $value,
+            'confirmed' => $confirmed,
+        ];
+        $this->_bulkJobPut($job);
+        $this->skipFullRender();
+
+        return $this->_bulkJobEvent($job, $cfg, [], false);
+    }
+
+    /**
+     * Uma parte do lote grande (o navegador chama em sequência, a partir da
+     * janela de progresso). `$stop` = 1: quem usa clicou Parar — nada mais é
+     * processado; o resumo soma o que já foi feito e o resto continua marcado.
+     * A config, a permissão e o plano são conferidos de novo a cada parte.
+     */
+    public function onBulkStep(string $job = '', int|string $stop = 0): \Mad\Http\MadResponse
+    {
+        $this->skipFullRender();
+        $state = $this->_bulkJobGet();
+        $cfg   = is_array($state) ? ($this->bulkActions[(int) ($state['index'] ?? -1)] ?? null) : null;
+        if ($state === null || $job === '' || !hash_equals((string) ($state['id'] ?? ''), $job)
+            || !is_array($cfg) || !in_array((string) ($cfg['preset'] ?? ''), ['delete', 'set', 'duplicate', 'routine'], true)) {
+            return $this->_bulkJobEvent(['id' => $job, 'pos' => 0, 'ids' => []], [], [], true)
+                ->toast(__('grid.bulk_unavailable'), 'warning');
+        }
+
+        $perm  = $this->_bulkDecision($cfg);
+        $model = $this->_recordModel();
+        $plan  = $perm['mode'] === 'allow' && $model !== '' && is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)
+            ? $this->_bulkPlan($cfg, $model)
+            : ($perm['title'] !== '' ? $perm['title'] : __('grid.bulk_unavailable'));
+        if (is_string($plan)) {
+            return $this->_bulkJobFinish($state, $cfg, true, [])->toast($plan, 'warning');
+        }
+        if ((string) $stop === '1') {
+            return $this->_bulkJobFinish($state, $cfg, true, []);
+        }
+
+        $chunk = array_slice($state['ids'], (int) $state['pos'], max(1, $this->bulkBatchSize));
+        $out   = $this->_bulkProcess($cfg, $plan, $chunk, $state['value'] ?? null, !empty($state['confirmed']));
+
+        $state['pos']   = (int) $state['pos'] + count($chunk);
+        $state['done']  = (int) $state['done'] + (int) $out['done'];
+        $state['fail']  = $state['fail'] + $out['fail'];
+        $state['along'] = $state['along'] + $out['along'];
+
+        // Quem deu certo sai da seleção já (o navegador também tira, pelo evento).
+        $ok  = array_values(array_filter($chunk, fn ($id) => !isset($out['fail'][$id]) && !isset($out['along'][$id])));
+        $sel = $this->selectedIds();
+        foreach ($ok as $id) {
+            unset($sel[$id]);
+        }
+
+        if ($state['pos'] >= count($state['ids'])) {
+            $this->setSelectedIds($sel);
+
+            return $this->_bulkJobFinish($state, $cfg, false, $ok);
+        }
+        // Parte do meio: só a sessão. Mexer na prop `selection` redesenharia a
+        // grade e, com ela, a janela de progresso — o "Parar" clicado durante
+        // esta parte se perderia. A lista na tela o navegador tira pelo evento.
+        MadGridSelection::put($this->_selectionKey(), $sel);
+        $this->_bulkJobPut($state);
+
+        return $this->_bulkJobEvent($state, $cfg, $ok, false);
+    }
+
+    /** Fim do lote em partes (acabou ou parou): resumo somado, recarga, janela fechada. */
+    protected function _bulkJobFinish(array $state, array $cfg, bool $stopped, array $ok): \Mad\Http\MadResponse
+    {
+        $this->_bulkJobPut(null);
+        $total = count($state['ids']);
+        $left  = max(0, $total - (int) $state['pos']);
+        $resp  = $this->_bulkConclude(
+            (int) $state['index'],
+            $cfg,
+            $state['ids'],
+            ['done' => (int) $state['done'], 'fail' => (array) $state['fail'], 'along' => (array) $state['along']],
+            false,
+            !$stopped
+        );
+        if ($stopped && $left > 0) {
+            $resp->toast(trans_choice('grid.bulk_stopped', $left, ['count' => $left]), 'info');
+        }
+
+        return $resp->merge($this->_bulkJobEvent($state, $cfg, $ok, true));
+    }
+
+    /**
+     * Op que leva o andamento à janela de progresso da grade que pediu (o
+     * escopo da resposta): `ok` = ids que deram certo nesta parte (o
+     * navegador os desmarca), `end` = fecha a janela.
+     */
+    protected function _bulkJobEvent(array $state, array $cfg, array $ok, bool $end): \Mad\Http\MadResponse
+    {
+        $total  = count((array) ($state['ids'] ?? []));
+        $pos    = min($total, (int) ($state['pos'] ?? 0));
+        $preset = (string) ($cfg['preset'] ?? '');
+        $detail = [
+            'job'   => (string) ($state['id'] ?? ''),
+            'pos'   => $pos,
+            'total' => $total,
+            'ok'    => array_values(array_map('strval', $ok)),
+            'end'   => $end,
+            'title' => $cfg !== [] ? $this->_bulkLabel($cfg) : '',
+            'text'  => $preset !== '' ? __('grid.bulk_progress_' . $preset, ['done' => static::_bulkNumber($pos), 'total' => static::_bulkNumber($total)]) : '',
+        ];
+        $json = json_encode($detail, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return (new \Mad\Http\MadResponse())->script(
+            'window.madGridBulk&&madGridBulk(typeof Mad!=="undefined"?Mad._opScope:null,' . $json . ')'
+        );
+    }
+
+    /** @return array<string, mixed>|null o lote em partes desta grade */
+    protected function _bulkJobGet(): ?array
+    {
+        try {
+            $all = session(self::BULK_JOB_SESSION);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $job = is_array($all) ? ($all[$this->_selectionKey()] ?? null) : null;
+
+        return is_array($job) && is_array($job['ids'] ?? null) ? $job : null;
+    }
+
+    protected function _bulkJobPut(?array $job): void
+    {
+        try {
+            $all = session(self::BULK_JOB_SESSION);
+            $all = is_array($all) ? $all : [];
+            if ($job === null) {
+                unset($all[$this->_selectionKey()]);
+            } else {
+                $all[$this->_selectionKey()] = $job;
+            }
+            session([self::BULK_JOB_SESSION => $all]);
+        } catch (\Throwable $e) {
+            // sem sessão (CLI): o lote em partes não continua
+        }
+    }
+
+    /** 1240 → "1.240" (em inglês "1,240"). */
+    protected static function _bulkNumber(int $n): string
+    {
+        $locale = function_exists('app') ? (string) app()->getLocale() : '';
+
+        return number_format($n, 0, '', str_starts_with($locale, 'en') ? ',' : '.');
+    }
+
+    // ── Marcar todas as linhas do filtro ─────────────────────────────────
+
+    private const BULK_ALL_SESSION = 'mad_grid_select_all';
+
+    /**
+     * "Marcar as N que batem com o filtro": a seleção passa a ser as linhas da
+     * consulta da listagem COM os filtros do usuário, na ordem dela — até o
+     * teto da seleção (MadGridSelection::MAX), e o aviso diz quando cortou.
+     */
+    public function onBulkSelectAll(): \Mad\Http\MadResponse
+    {
+        $resp = new \Mad\Http\MadResponse();
+        if (!$this->_canSelectAll()) {
+            $this->skipFullRender();
+
+            return $resp->toast(__('grid.bulk_unavailable'), 'warning');
+        }
+        $ids    = $this->_filteredIds(MadGridSelection::MAX + 1);
+        $capped = count($ids) > MadGridSelection::MAX;
+        $ids    = array_slice($ids, 0, MadGridSelection::MAX);
+        $this->setSelectedIds($ids);
+        $this->_selectAllPut([
+            'sig'    => $this->_userFilterSignature(),
+            'hash'   => static::_idsHash($ids),
+            'n'      => count($ids),
+            'capped' => $capped,
+        ]);
+
+        $this->loadData();
+        $this->forceFullRender();
+        if ($capped) {
+            $resp->toast(__('grid.select_all_capped_toast', ['count' => static::_bulkNumber(MadGridSelection::MAX)]), 'warning');
+        }
+
+        return $resp;
+    }
+
+    /**
+     * Dá para montar a seleção pela consulta? Precisa do Model e da consulta
+     * do próprio framework (tela com `query()` próprio monta a dela por conta),
+     * paginação, e a listagem já liberada (filtro obrigatório preenchido).
+     */
+    protected function _canSelectAll(): bool
+    {
+        $model = $this->_recordModel();
+        if ($model === '' || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class) || $this->perPage <= 0) {
+            return false;
+        }
+        if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class) {
+            return false;
+        }
+        if ($this->_isDeferred() || ($this->_filterGateOn() && !$this->_hasUserFilter())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Chaves das linhas da listagem com os filtros do usuário, na ordem da
+     * tela, até `$limit`.
+     *
+     * @return list<string>
+     */
+    protected function _filteredIds(int $limit): array
+    {
+        $model = $this->_recordModel();
+        $pk    = (new $model())->getKeyName();
+        $q     = $this->_buildQuery();
+        if ($this->searchQuery) {
+            ($this->searchQuery)($q);
+        }
+        if ($q instanceof \Illuminate\Database\Eloquent\Builder) {
+            $col = $q->getModel()->getQualifiedKeyName();
+        } elseif ($this->_usesSource()) {
+            $col = 'mad_src.' . $pk;
+        } else {
+            return [];
+        }
+        $out = [];
+        foreach ($q->limit($limit)->pluck($col) as $id) {
+            if (is_scalar($id) && (string) $id !== '') {
+                $out[(string) $id] = (string) $id;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Retrato dos filtros do usuário (período, busca, filtros de coluna e
+     * avançado, campos do bloco de filtros): a seleção "todas do filtro" só
+     * continua valendo enquanto ele não muda.
+     */
+    protected function _userFilterSignature(): string
+    {
+        $props = array_unique(array_merge(
+            ['mes', 'ano', 'dtIni', 'dtFim', 'preset', 'search', 'filters', 'filterOps', 'colFilters', 'customFilterState'],
+            $this->discoverFilterProps()
+        ));
+        $vals = [];
+        foreach ($props as $name) {
+            $vals[$name] = $this->$name ?? null;
+        }
+        if (isset($this->form) && $this->form instanceof \Mad\Form\MadForm) {
+            $vals['__form'] = $this->form->fields;
+        }
+
+        return md5((string) json_encode($vals, JSON_PARTIAL_OUTPUT_ON_ERROR));
+    }
+
+    /** @param list<string> $ids */
+    protected static function _idsHash(array $ids): string
+    {
+        $ids = array_map('strval', $ids);
+        sort($ids, SORT_STRING);
+
+        return md5(implode(',', $ids));
+    }
+
+    /** @return array{sig:string, hash:string, n:int, capped:bool}|null */
+    protected function _selectAllGet(): ?array
+    {
+        try {
+            $all = session(self::BULK_ALL_SESSION);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $rec = is_array($all) ? ($all[$this->_selectionKey()] ?? null) : null;
+
+        return is_array($rec) && isset($rec['sig'], $rec['hash'], $rec['n']) ? $rec : null;
+    }
+
+    protected function _selectAllPut(?array $rec): void
+    {
+        try {
+            $all = session(self::BULK_ALL_SESSION);
+            $all = is_array($all) ? $all : [];
+            if ($rec === null) {
+                unset($all[$this->_selectionKey()]);
+            } else {
+                $all[$this->_selectionKey()] = $rec;
+            }
+            session([self::BULK_ALL_SESSION => $all]);
+        } catch (\Throwable $e) {
+            // sem sessão (CLI)
+        }
+    }
+
+    /**
+     * Estado de "todas do filtro" para a barra: a seleção atual é EXATAMENTE a
+     * que o "Marcar as N" montou, com o mesmo filtro?
+     *
+     * @return array{all:bool, capped:bool, n:int}
+     */
+    protected function _selectAllState(): array
+    {
+        $rec = $this->_selectAllGet();
+        if ($rec === null || (int) $rec['n'] !== count($this->selection)) {
+            return ['all' => false, 'capped' => false, 'n' => 0];
+        }
+        if ($rec['hash'] !== static::_idsHash($this->selection) || $rec['sig'] !== $this->_userFilterSignature()) {
+            return ['all' => false, 'capped' => false, 'n' => 0];
+        }
+
+        return ['all' => true, 'capped' => !empty($rec['capped']), 'n' => (int) $rec['n']];
     }
 
     /**
@@ -1514,16 +2402,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * (na mesma página, ou na última que sobrou) e os avisos dizem o resultado.
      *
      * @param array<string, string|array> $fail id => motivo (ou a lista do "vai junto")
+     * @param bool $updateSelection false = a seleção já foi acertada (lote em partes)
      */
-    protected function _bulkFinish(array $ids, int $done, array $fail, string $verb): \Mad\Http\MadResponse
+    protected function _bulkFinish(array $ids, int $done, array $fail, string $verb, bool $updateSelection = true): \Mad\Http\MadResponse
     {
-        $keep = [];
-        foreach ($ids as $id) {
-            if (isset($fail[(string) $id])) {
-                $keep[] = (string) $id;
+        if ($updateSelection) {
+            $keep = [];
+            foreach ($ids as $id) {
+                if (isset($fail[(string) $id])) {
+                    $keep[] = (string) $id;
+                }
             }
+            $this->setSelectedIds($keep);
         }
-        $this->setSelectedIds($keep);
 
         $this->loadData();
         if ($this->perPage > 0 && $this->page > 1) {
@@ -1555,7 +2446,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 if ($rest > 0) {
                     $codes .= ($codes !== '' ? ' ' : '') . __('grid.bulk_more', ['count' => $rest]);
                 }
-                $parts[] = __('grid.bulk_reason_' . $reason) . ' (' . $codes . ')';
+                // Motivo `msg:` já é o texto para o usuário (mensagem da rotina).
+                $text    = str_starts_with((string) $reason, self::BULK_MSG)
+                    ? substr((string) $reason, strlen(self::BULK_MSG))
+                    : __('grid.bulk_reason_' . $reason);
+                $parts[] = $text . ' (' . $codes . ')';
             }
             $n = count($failed);
             $resp->toast(
@@ -1592,11 +2487,28 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($label !== '') {
             return $label;
         }
-        if (($b['preset'] ?? '') === 'delete') {
-            return __('grid.bulk_delete');
-        }
+        return match ((string) ($b['preset'] ?? '')) {
+            'delete'    => __('grid.bulk_delete'),
+            'export'    => ($b['format'] ?? '') === 'pdf' ? __('grid.bulk_export_pdf') : __('grid.bulk_export'),
+            'duplicate' => __('grid.bulk_duplicate'),
+            'routine'   => static::_bulkRoutineName((string) ($b['routine'] ?? '')),
+            default     => __('grid.bulk_set', ['field' => $this->_bulkColumnLabel((string) ($b['field'] ?? ''))]),
+        };
+    }
 
-        return __('grid.bulk_set', ['field' => $this->_bulkColumnLabel((string) ($b['field'] ?? ''))]);
+    /**
+     * Nome da rotina para o botão: o `name` do routines.json; sem ele, o slug
+     * legível ("recalcular-pedido" → "Recalcular pedido").
+     */
+    protected static function _bulkRoutineName(string $slug): string
+    {
+        $entry = $slug !== '' ? \Mad\Routine\RoutineRegistry::find($slug) : null;
+        if ($entry !== null && $entry->name !== '') {
+            return $entry->name;
+        }
+        $human = trim(str_replace('-', ' ', $slug));
+
+        return $human !== '' ? mb_strtoupper(mb_substr($human, 0, 1)) . mb_substr($human, 1) : __('grid.bulk_routine');
     }
 
     /** Confirmação antes do clique: o delete sempre confirma (vazio = a padrão). */
@@ -1605,6 +2517,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $confirm = (string) ($b['confirm'] ?? '');
         if ($confirm === '' && ($b['preset'] ?? '') === 'delete') {
             return __('grid.bulk_delete_confirm');
+        }
+        // Desfazer a rotina apaga o que ela gerou: confirma por padrão.
+        if ($confirm === '' && ($b['preset'] ?? '') === 'routine' && ($b['mode'] ?? '') === 'reverse') {
+            return __('grid.bulk_routine_reverse_confirm', ['routine' => static::_bulkRoutineName((string) ($b['routine'] ?? ''))]);
         }
 
         return $confirm;
@@ -2038,7 +2954,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Desabilitados). Antes só existia o cinza, e com Ocultos todos os
         // outros botões sumiam menos este. A ação NÃO sai da lista: o índice
         // dela é o que o navegador manda de volta (onBulkOpen(índice)).
-        $bulk = array_values($this->bulkActions);
+        $bulk  = array_values($this->bulkActions);
+        $model = null;
         foreach ($bulk as &$b) {
             $perm        = $this->_bulkDecision($b);
             $b['hidden'] = $perm['mode'] === 'hide';
@@ -2047,14 +2964,34 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $b['label']   = $this->_bulkLabel($b);
                 $b['confirm'] = $this->_bulkConfirm($b);
             }
+            // Rotina que não serve para esta listagem (não existe, sem botão,
+            // sem origem ou origem de outro model): o botão fica apagado com o
+            // motivo, em vez de falhar só no clique. Ler o routines.json é de
+            // memória, sem banco.
+            if (($b['preset'] ?? '') === 'routine' && !$b['hidden'] && $b['deny'] === '') {
+                $model ??= $this->_recordModel();
+                if ($this->_bulkRoutineClass($b, $model, $why) === null) {
+                    $b['deny'] = __('grid.bulk_routine_invalid');
+                    static::_warnOnce('bulk-routine:' . ($b['routine'] ?? ''), 'ação em lote preset="routine": ' . $why . '.');
+                }
+            }
         }
         unset($b);
+
+        // "Marcar as N que batem com o filtro": N = o total da consulta com os
+        // filtros do usuário (0 = não oferece).
+        $selAll   = $this->_selectAllState();
+        $selTotal = $this->_canSelectAll() ? max(0, (int) $this->_total) : 0;
 
         return [
             'selectable'     => true,
             'selected'       => array_values(array_map('strval', $this->selection)),
             'bulkActions'    => $bulk,
             'selectionField' => MadGridSelection::REQUEST_FIELD . '[' . $this->_selectionStorageKey() . ']',
+            'selTotal'       => $selTotal,
+            'selAll'         => $selAll['all'],
+            'selAllCapped'   => $selAll['capped'],
+            'selAllCount'    => $selAll['n'],
         ];
     }
 
@@ -2077,8 +3014,21 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Ação pronta: a MESMA pergunta da ação de linha equivalente — excluir
         // como o Excluir da linha, alterar como a edição na célula.
         $preset = (string) ($b['preset'] ?? '');
+        if ($preset === 'export' && $this->_exportBlocked()) {
+            // `no-export` na listagem vale também para o lote.
+            return ['mode' => 'hide', 'title' => mad_t('mad.grid.export_disabled')];
+        }
+        if ($preset === 'export' || $preset === 'duplicate') {
+            // Sem método de linha equivalente: a chave do perfil — a do menu
+            // Exportar, e a de Incluir (a cópia é um registro novo).
+            return $this->_bulkKeyDecision($preset === 'export' ? 'export' : 'insert');
+        }
         if ($preset !== '') {
-            $method = $preset === 'delete' ? 'onMadGridDelete' : 'onInlineSave';
+            $method = match ($preset) {
+                'delete'  => 'onMadGridDelete',
+                'routine' => 'onRunRoutine',   // a chave Editar, como o botão "Executar rotina"
+                default   => 'onInlineSave',
+            };
         }
 
         try {
@@ -2154,9 +3104,31 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
         $value = $b['value'] ?? null;
 
+        // Fase 2: export / duplicate / routine.
+        $ident  = fn ($v): bool => is_string($v) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $v) === 1;
+        $idents = fn ($list): array => array_values(array_unique(array_filter(
+            is_array($list) ? $list : (is_string($list) ? array_map('trim', explode(',', $list)) : []),
+            $ident
+        )));
+        $format = strtolower((string) ($b['format'] ?? ''));
+        $format = in_array($format, MadGridCompiler::BULK_EXPORT_FORMATS, true) ? $format : 'xlsx';
+        $slug   = trim((string) ($b['routine'] ?? ''));
+        $mode   = strtolower((string) ($b['mode'] ?? '')) ?: 'redo';
+        if ($preset === 'routine' && (!preg_match('/^' . \Mad\Routine\RoutineEntry::SLUG_PATTERN . '$/', $slug)
+            || !in_array($mode, MadGridCompiler::BULK_ROUTINE_MODES, true))) {
+            return null;
+        }
+        $icon = match ($preset) {
+            'delete'    => 'trash-2',
+            'export'    => $format === 'pdf' ? 'file-text' : 'download',
+            'duplicate' => 'copy',
+            'routine'   => 'play',
+            default     => '',
+        };
+
         return [
             'label'        => (string) ($b['label'] ?? ''),
-            'icon'         => (string) ($b['icon'] ?? ($preset === 'delete' ? 'trash-2' : '')),
+            'icon'         => (string) ($b['icon'] ?? $icon),
             'variant'      => (string) ($b['variant'] ?? ($preset === 'delete' ? 'danger' : 'primary')),
             'confirm'      => (string) ($b['confirm'] ?? ''),
             'min'          => max(0, (int) ($b['min'] ?? 1)),
@@ -2168,6 +3140,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'hasValue'     => $preset === 'set' && $has,
             'value'        => is_bool($value) ? ($value ? '1' : '0') : (is_scalar($value) ? (string) $value : null),
             'ask'          => $preset === 'set' ? $ask : null,
+            'format'       => $preset === 'export' ? $format : '',
+            'mark'         => $preset === 'duplicate' && $ident($b['mark'] ?? null) ? (string) $b['mark'] : '',
+            'reset'        => $preset === 'duplicate' ? $idents($b['reset'] ?? []) : [],
+            'with'         => $preset === 'duplicate' ? $idents($b['with'] ?? []) : [],
+            'routine'      => $preset === 'routine' ? $slug : '',
+            'mode'         => $preset === 'routine' ? $mode : '',
         ];
     }
 
@@ -6721,14 +7699,24 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 }
 
                 $this->_rawItems  = $result['items'] ?? [];
+                // Exportação dos marcados numa tela com `query()` próprio: a
+                // consulta é do app e não passa pelo _buildQuery — recorta aqui.
+                if ($this->_bulkOnlyIds !== null) {
+                    $this->_rawItems = $this->_onlyBulkItems($this->_rawItems);
+                    $result['total'] = count($this->_rawItems);
+                }
                 $this->_evaluated = [];
                 $this->_buildRows($this->_effectiveColumns());
                 $this->_total     = $this->_tooManyRows > 0 ? 0 : (int)($result['total'] ?? count($this->_rows));
             }
 
-            $this->_saveToSession();
-            $this->_saveReturnSnapshot();
-            $this->_saveRememberSnapshot();
+            // A exportação dos marcados carrega SEM os filtros do usuário: não
+            // é navegação e não pode virar o filtro lembrado nem o da volta.
+            if ($this->_bulkOnlyIds === null) {
+                $this->_saveToSession();
+                $this->_saveReturnSnapshot();
+                $this->_saveRememberSnapshot();
+            }
         } catch (\Throwable $e) {
             $this->_rows  = [];
             $this->_total = 0;
@@ -6932,6 +7920,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $source = $base === null ? $this->_sourceBase() : null;
         $q      = $base ?? $source ?? $this->_modelQuery();
         $model  = $this->model ?: null;
+
+        // Exportação dos marcados (preset="export"): só as chaves que o lote
+        // já conferiu. Vale para o caminho em fluxo, o carregado e o PDF.
+        if ($this->_bulkOnlyIds !== null) {
+            $this->_applyBulkOnly($q, $source !== null);
+        }
 
         // (A) período + unit + auto-discovery — siblings builder-native.
         if ($this->autoMergeDashFilters) {

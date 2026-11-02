@@ -23,6 +23,8 @@ final class RoutineEntry
         public readonly array $controllers,
         public readonly bool $onDelete,
         public readonly bool $button,
+        /** Nome para quem usa (botão da ação em lote); '' = o slug legível. */
+        public readonly string $name = '',
     ) {
     }
 
@@ -66,6 +68,7 @@ final class RoutineEntry
             $controllers,
             $hasSource && ($raw['on_delete'] ?? false) === true,
             ($raw['button'] ?? false) === true,
+            is_string($raw['name'] ?? null) ? mb_substr(trim($raw['name']), 0, 120) : '',
         );
     }
 

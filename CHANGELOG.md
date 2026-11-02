@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.253.0] — 2026-11-02
+
+### Novidades
+
+- **Ações em lote:** `<mad-bulk-action preset="export">` exporta só os registros marcados, com as mesmas colunas do menu Exportar (as que a pessoa escondeu ficam de fora). O padrão é Excel; `format="csv"` ou `format="pdf"` troca o formato. Segue a permissão de exportar da tela e não mexe na seleção.
+- **Ações em lote:** `<mad-bulk-action preset="duplicate">` cria uma cópia de cada registro marcado. `mark="descricao"` acrescenta " (cópia)" ao texto, `reset="codigo,status"` volta essas colunas ao valor padrão (bom para código que não pode repetir) e `with="itens"` copia junto os itens do registro. Segue a permissão de incluir; o que não pôde ser copiado continua marcado e o aviso diz por quê.
+- **Ações em lote:** `<mad-bulk-action preset="routine" routine="recalcular-pedido">` roda a rotina em cada registro marcado; `mode="launch"` só lança e `mode="reverse"` desfaz, com confirmação. O botão leva o nome da rotina. Quando a rotina para num registro, o aviso mostra a mensagem dela e ele continua marcado.
+- **Listagem:** com a página inteira marcada aparece "Marcar as N que batem com o filtro", que marca de uma vez todos os registros do filtro atual (até 5.000). "Desmarcar todas" desfaz.
+- **Ações em lote:** lote com mais de 100 registros roda em partes, numa janela de andamento ("Excluindo 300 de 1.240…") com o botão Parar. O que já foi feito fica gravado e o que faltou continua marcado.
+
 ## [5.252.0] — 2026-11-02
 
 ### Novidades

@@ -7540,6 +7540,49 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   margin-left: auto;
 }
 .mad-dg-bulk-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* "Marcar as N que batem com o filtro" (fórum #215, fase 2). */
+.mad-dg-selall {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--mad-border);
+  background: color-mix(in srgb, var(--mad-primary) 4%, var(--mad-bg));
+  font-size: 12.5px;
+  color: var(--mad-text);
+}
+.mad-dg-selall > i, .mad-dg-selall > svg { color: var(--mad-text-muted); flex: 0 0 auto; }
+.mad-dg-selall-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--mad-primary-ink, var(--mad-primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.mad-dg-selall-link:hover { text-decoration-thickness: 2px; }
+.mad-dg-selall-link:focus-visible { outline: 2px solid var(--mad-primary); outline-offset: 2px; border-radius: 3px; }
+/* Janela de progresso do lote em partes ("Excluindo 300 de 1.240…"). */
+.mad-dg-bulkjob { z-index: 10040; }
+.mad-dg-bulkjob-box { max-width: 420px; }
+.mad-dg-bulkjob-text { margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+.mad-dg-bulkjob-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--mad-bg-muted, color-mix(in srgb, var(--mad-text) 10%, transparent));
+  overflow: hidden;
+}
+.mad-dg-bulkjob-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mad-primary);
+  transition: width .25s ease;
+}
+@media (prefers-reduced-motion: reduce) { .mad-dg-bulkjob-fill { transition: none; } }
 .mad-dg-th-select,
 /* <mad-grid reorder>: alça de arrastar na 1ª célula (madDataGrid._initReorder). */
 .mad-dg-drag {

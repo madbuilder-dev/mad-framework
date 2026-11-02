@@ -77,10 +77,34 @@ use Mad\View\MadBlade;
  * │                           campo como no <mad-custom-filter> (type, opts,    │
  * │                           model/display/key…) ou deduzido da coluna (chave  │
  * │                           estrangeira = combo). Permissão = Editar.         │
- * │  Regras dos dois: os ids marcados passam pela consulta da própria listagem  │
- * │  (model, unidade/tenant, :filters); falha não derruba o lote — quem falhou  │
- * │  continua marcado, quem deu certo sai; a listagem recarrega e um aviso diz  │
- * │  quantos e por quê. preset + method/target: vale o preset (com aviso).      │
+ * │  preset="export"          Exporta SÓ os marcados com o exportador da        │
+ * │    format="xlsx"          listagem (colunas, formatos, colunas escondidas,  │
+ * │                           título): xlsx (padrão) | csv | pdf. Permissão =   │
+ * │                           Exportar. Não mexe na seleção. Padrão "Exportar"  │
+ * │                           (pdf: "Exportar PDF"), download / file-text.      │
+ * │  preset="duplicate"       Uma cópia de cada marcado pelo Model (replicate + │
+ * │                           save, eventos valem). Permissão = Incluir.        │
+ * │    mark="descricao"       coluna de texto que ganha " (cópia)"              │
+ * │    reset="codigo,numero"  colunas que voltam ao padrão/nulo na cópia        │
+ * │    with="itens"           relações hasMany do Model copiadas junto (os      │
+ * │                           itens passam a apontar para a cópia)              │
+ * │                           Coluna única fora do `reset` que repete = aquele  │
+ * │                           registro falha ("valor que não pode repetir").    │
+ * │  preset="routine"         Roda a rotina do projeto (routines.json, com      │
+ * │    routine="slug"         botão) em CADA marcado. A origem da rotina tem de │
+ * │    mode="redo"            ser o model da listagem. redo (padrão) | launch | │
+ * │                           reverse (este confirma antes). Permissão = Editar.│
+ * │                           Rótulo padrão = nome da rotina; ícone play.       │
+ * │  Regras de todos (menos export): os ids marcados passam pela consulta da    │
+ * │  própria listagem (model, unidade/tenant, :filters); falha não derruba o    │
+ * │  lote — quem falhou continua marcado, quem deu certo sai; a listagem        │
+ * │  recarrega e um aviso diz quantos e por quê. Mais de 100 marcados: roda em  │
+ * │  partes, com janela de progresso e botão Parar. preset + method/target:     │
+ * │  vale o preset (com aviso).                                                  │
+ * │                                                                              │
+ * │  Marcar todas do filtro: em toda grade selectable, com a página inteira     │
+ * │  marcada e mais linhas no filtro, a barra oferece "Marcar as N que batem    │
+ * │  com o filtro" (até o teto da seleção, 5.000).                               │
  * │                                                                              │
  * │  Seleção no servidor — formato [id => id] (foreach / whereIn / isset):       │
  * │    $this->selectedIds()                        no próprio grid              │
@@ -101,6 +125,10 @@ use Mad\View\MadBlade;
  * │      <mad-bulk-action preset="delete" />                                    │
  * │      <mad-bulk-action preset="set" field="status" value="C" label="Cancelar" />│
  * │      <mad-bulk-action preset="set" field="responsavel_id" ask />            │
+ * │      <mad-bulk-action preset="export" format="pdf" />                       │
+ * │      <mad-bulk-action preset="duplicate" mark="descricao" reset="codigo"    │
+ * │                       with="itens" />                                       │
+ * │      <mad-bulk-action preset="routine" routine="recalcular-meta" />         │
  * │  </mad-grid>                                                                │
  * │                                                                              │
  * │  <mad-custom-filters> — Filtro avançado do usuário final                    │
@@ -1973,7 +2001,13 @@ class MadGridCompiler
     }
 
     /** Ações em lote prontas (`<mad-bulk-action preset>`), executadas pelo framework. */
-    public const BULK_PRESETS = ['delete', 'set'];
+    public const BULK_PRESETS = ['delete', 'set', 'export', 'duplicate', 'routine'];
+
+    /** `preset="export"`: formatos (o primeiro é o padrão). */
+    public const BULK_EXPORT_FORMATS = ['xlsx', 'csv', 'pdf'];
+
+    /** `preset="routine"`: modos (o primeiro é o padrão). */
+    public const BULK_ROUTINE_MODES = ['redo', 'launch', 'reverse'];
 
     /**
      * `<mad-bulk-action>` → config da ação em lote (ver docblock da classe).
@@ -1982,9 +2016,10 @@ class MadGridCompiler
      * Sem nenhum dos dois o botão não tem o que fazer — sai com aviso de
      * authoring, em vez de virar um botão morto.
      *
-     * `preset="delete|set"` (fórum #215): a ação pronta roda no framework
-     * (MadDataGrid::onBulkRun) e vence `method`/`target` escritos junto, com
-     * aviso. Preset desconhecido sai como a ação sem destino: aviso e ignorada.
+     * `preset="delete|set|export|duplicate|routine"` (fórum #215): a ação
+     * pronta roda no framework (MadDataGrid::onBulkRun) e vence
+     * `method`/`target` escritos junto, com aviso. Preset desconhecido sai
+     * como a ação sem destino: aviso e ignorada.
      *
      * @return string|null  literal PHP do array; null = descartada
      */
@@ -1999,7 +2034,7 @@ class MadGridCompiler
         if ($preset !== null) {
             if (!in_array($preset, self::BULK_PRESETS, true)) {
                 static::$_actionNotes[] = '<mad-bulk-action preset="' . static::str($a, 'preset')
-                    . '"> desconhecido (use delete ou set) — ação em lote ignorada.';
+                    . '"> desconhecido (use ' . implode(', ', self::BULK_PRESETS) . ') — ação em lote ignorada.';
                 return null;
             }
             if ($method !== '' || $nav !== '') {
@@ -2013,11 +2048,22 @@ class MadGridCompiler
                 $defaults['icon']    = "'trash-2'";
                 $defaults['variant'] = 'danger';
             } else {
-                $set = static::buildBulkSetConfig($a);
-                if ($set === null) {
+                $parts = match ($preset) {
+                    'set'       => static::buildBulkSetConfig($a),
+                    'export'    => static::buildBulkExportConfig($a),
+                    'duplicate' => static::buildBulkDuplicateConfig($a),
+                    default     => static::buildBulkRoutineConfig($a),
+                };
+                if ($parts === null) {
                     return null;
                 }
-                array_push($c, ...$set);
+                array_push($c, ...$parts);
+                $defaults['icon'] = match ($preset) {
+                    'export'    => in_array("'format' => 'pdf'", $parts, true) ? "'file-text'" : "'download'",
+                    'duplicate' => "'copy'",
+                    'routine'   => "'play'",
+                    default     => null,
+                };
             }
             $method = '';
             $nav    = '';
@@ -2106,6 +2152,113 @@ class MadGridCompiler
         }
 
         return $c;
+    }
+
+    /**
+     * Partes do `preset="export"`: o formato (xlsx padrão | csv | pdf).
+     * Formato desconhecido vira xlsx, com aviso — exportar a mais não estraga
+     * nada, e o botão continua útil.
+     *
+     * @return list<string>
+     */
+    protected static function buildBulkExportConfig(array $a): array
+    {
+        $raw    = strtolower(trim(static::str($a, 'format', '')));
+        $format = $raw === '' ? self::BULK_EXPORT_FORMATS[0] : $raw;
+        if (!in_array($format, self::BULK_EXPORT_FORMATS, true)) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="export" format="' . static::str($a, 'format')
+                . '"> desconhecido (use ' . implode(', ', self::BULK_EXPORT_FORMATS) . ') — vale xlsx.';
+            $format = self::BULK_EXPORT_FORMATS[0];
+        }
+
+        return [static::kv('format', static::qs($format))];
+    }
+
+    /**
+     * Partes do `preset="duplicate"`: `mark` (coluna que ganha " (cópia)"),
+     * `reset` (colunas que voltam ao padrão) e `with` (relações hasMany
+     * copiadas junto). Só identificadores: nome inválido sai com aviso e o
+     * resto vale. O runtime confere de novo contra o banco e o Model.
+     *
+     * @return list<string>
+     */
+    protected static function buildBulkDuplicateConfig(array $a): array
+    {
+        $c    = [];
+        $mark = static::bulkIdentList($a, 'mark', 'coluna');
+        if ($mark !== []) {
+            if (count($mark) > 1) {
+                static::$_actionNotes[] = '<mad-bulk-action preset="duplicate"> mark= aceita uma coluna só — vale "' . $mark[0] . '".';
+            }
+            $c[] = static::kv('mark', static::qs($mark[0]));
+        }
+        foreach (['reset' => 'coluna', 'with' => 'relação'] as $attr => $what) {
+            $list = static::bulkIdentList($a, $attr, $what);
+            if ($list !== []) {
+                $c[] = static::kv($attr, '[' . implode(', ', array_map(fn ($v) => static::qs($v), $list)) . ']');
+            }
+        }
+
+        return $c;
+    }
+
+    /**
+     * Partes do `preset="routine"`: o slug da rotina (obrigatório, formato do
+     * routines.json) e o modo (redo padrão | launch | reverse). Sem slug
+     * válido, ou com modo desconhecido, a ação é descartada com aviso — rodar
+     * a rotina errada, ou no modo errado, não tem volta.
+     *
+     * @return list<string>|null
+     */
+    protected static function buildBulkRoutineConfig(array $a): ?array
+    {
+        $slug = trim(static::str($a, 'routine', ''));
+        if (!preg_match('/^' . \Mad\Routine\RoutineEntry::SLUG_PATTERN . '$/', $slug) || strlen($slug) > 120) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="routine"> sem routine= com o identificador de uma rotina'
+                . ($slug !== '' ? ' ("' . $slug . '")' : '') . ' — ação em lote ignorada.';
+            return null;
+        }
+        $raw  = strtolower(trim(static::str($a, 'mode', '')));
+        $mode = $raw === '' ? self::BULK_ROUTINE_MODES[0] : $raw;
+        if (!in_array($mode, self::BULK_ROUTINE_MODES, true)) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="routine" mode="' . static::str($a, 'mode')
+                . '"> desconhecido (use ' . implode(', ', self::BULK_ROUTINE_MODES) . ') — ação em lote ignorada.';
+            return null;
+        }
+
+        return [static::kv('routine', static::qs($slug)), static::kv('mode', static::qs($mode))];
+    }
+
+    /**
+     * Lista de identificadores de um atributo ("a, b, {c}"): só nomes de
+     * coluna/relação; o que não é identificador sai com aviso.
+     *
+     * @return list<string>
+     */
+    protected static function bulkIdentList(array $a, string $attr, string $what): array
+    {
+        if (!isset($a[$attr]) || $a[$attr]['type'] !== 'string') {
+            if (isset($a[$attr]) && $a[$attr]['type'] === 'php') {
+                static::$_actionNotes[] = '<mad-bulk-action> :' . $attr . '= não aceita expressão — escreva os nomes (' . $attr . '="a,b").';
+            }
+            return [];
+        }
+        $out = [];
+        foreach (explode(',', static::str($a, $attr)) as $name) {
+            $name = trim($name, " \t\n\r{}");
+            if ($name === '') {
+                continue;
+            }
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+                static::$_actionNotes[] = '<mad-bulk-action> ' . $attr . '="…' . $name . '…" não é nome de ' . $what . ' — ignorado.';
+                continue;
+            }
+            if (!in_array($name, $out, true)) {
+                $out[] = $name;
+            }
+        }
+
+        return $out;
     }
 
     /**
