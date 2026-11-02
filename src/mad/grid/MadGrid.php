@@ -65,6 +65,9 @@ class MadGrid extends MadDataGrid
         if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
         // Seleção de linhas + ações em lote (<mad-grid model=... selectable>).
         if (!empty($cfg['selectable'])) $this->selectable = true;
+        // remember-filters: protegida no MadDataGrid; antes do parent::mount(),
+        // que restaura o guardado da última visita.
+        if (array_key_exists('rememberFilters', $cfg)) $this->rememberFilters = (bool) $cfg['rememberFilters'];
         // row-click: protegida no MadDataGrid (só o template lê) — sem isto o
         // render() do grid standalone nunca a veria.
         if (!empty($cfg['rowClick']))   $this->rowClick   = true;
@@ -117,6 +120,7 @@ class MadGrid extends MadDataGrid
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
         if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
         if (!empty($cfg['rowClick']))   $this->rowClick   = true;
+        if (array_key_exists('rememberFilters', $cfg)) $this->rememberFilters = (bool) $cfg['rememberFilters'];
         if (!empty($cfg['orderBy'])) $this->baseOrder = (string) $cfg['orderBy'];
         if (!empty($cfg['filters']) && is_array($cfg['filters'])) {
             $this->baseFilters = $cfg['filters'];
@@ -300,6 +304,38 @@ class MadGrid extends MadDataGrid
         $key   = str_replace('\\', '_', $owner !== '' ? $owner : static::class);
 
         return $model !== '' ? $key . ':' . basename(str_replace('\\', '/', $model)) : $key;
+    }
+
+    /**
+     * Chave dos filtros lembrados (remember-filters): a tela dona + o model,
+     * como a do filtro avançado — todo grid standalone roda nesta classe.
+     */
+    protected function _rememberKey(): string
+    {
+        $owner = trim((string) ($this->gridConfig['owner'] ?? ''));
+        $model = trim((string) ($this->gridConfig['model'] ?? ''));
+
+        return ($owner !== '' ? $owner : static::class) . ($model !== '' ? ':' . $model : '');
+    }
+
+    /** Filtros da trait (período) na mesma chave por tela. */
+    protected function filterSessionKey(string $suffix = 'state'): string
+    {
+        return 'mad_filters_' . $this->_rememberKey() . '_' . $suffix;
+    }
+
+    /**
+     * O guardado antigo (todas as props públicas na chave da CLASSE) não
+     * serve ao standalone: misturaria as grades de todas as telas e devolveria
+     * a config do Blade de antes (gridConfig, ações). O remember-filters
+     * guarda pelo _saveRememberSnapshot(), só a navegação e os filtros.
+     */
+    protected function _saveToSession(): void
+    {
+    }
+
+    protected function _restoreFromSession(): void
+    {
     }
 
     // ── Delegação de actions ao handler externo ───────────────────────────

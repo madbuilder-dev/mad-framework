@@ -1033,6 +1033,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         // Grid pagination/sort session + load (adiado com no-auto-load)
         $this->_restoreFromSession();
+        // remember-filters: o guardado da última visita; o link vence de novo.
+        $this->_restoreRemembered($req, $params);
         // Filtro avançado padrão do usuário: só tem efeito quando as defs já
         // são conhecidas aqui (grid standalone — o MadGrid as aplica antes do
         // parent::mount()). No <mad-grid self> quem aplica é o render.
@@ -1047,6 +1049,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function hydrate(): void
     {
         $this->_gridHydrated = true;
+
+        // remember-filters vem do Blade (protegida: não viaja no estado). A
+        // ação roda antes do render: a config do último render diz se a carga
+        // que ela fizer grava o estado para a próxima abertura.
+        $cfg = $this->_bladeGridConfig();
+        if ($cfg === []) {
+            $cached = function_exists('session') ? session(static::class . '_dg_cfg') : null;
+            $cfg    = is_array($cached) ? $cached : [];
+        }
+        if (array_key_exists('rememberFilters', $cfg)) {
+            $this->rememberFilters = (bool) $cfg['rememberFilters'];
+        }
 
         // Antes de qualquer ação: o método chamado (ação em lote, botão do
         // cabeçalho, ação de linha) já enxerga a seleção que o usuário vê.
@@ -1174,6 +1188,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function onBulkOpen(int $index): \Mad\Http\MadResponse
     {
         $cfg = $this->bulkActions[$index] ?? null;
+        // Ação pronta (preset): o botão sem método chega aqui, como o target.
+        if (is_array($cfg) && ($cfg['preset'] ?? '') !== '') {
+            return $this->onBulkRun($index);
+        }
         $target = is_array($cfg) ? (string) ($cfg['target'] ?? '') : '';
         if ($target === '') {
             return (new \Mad\Http\MadResponse())->toast(__('grid.bulk_unavailable'), 'warning');
@@ -1196,6 +1214,762 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             [MadGridSelection::PARAM => implode(',', $ids)],
             (string) ($cfg['targetMethod'] ?? 'show') ?: 'show'
         );
+    }
+
+
+    // ── Ações em lote prontas (<mad-bulk-action preset>, fórum #215) ─────
+
+    /** Nome do campo do diálogo do `ask` (o valor volta como parâmetro, não por mad_model). */
+    private const BULK_ASK_FIELD = 'value';
+
+    /** Códigos mostrados no aviso de falha (o resto vira "e mais N"). */
+    private const BULK_SHOW_IDS = 5;
+
+    /** Teto de opções do combo do diálogo do `ask`. */
+    private const BULK_ASK_MAX_OPTIONS = 1000;
+
+    /** Colunas que costumam descrever um registro (rótulo do combo deduzido). */
+    private const BULK_DISPLAY_GUESS = ['nome', 'name', 'descricao', 'description', 'titulo', 'title', 'razao_social', 'label'];
+
+    /**
+     * Ação em lote PRONTA (`<mad-bulk-action preset="delete|set">`): quem
+     * executa é o framework — a tela não escreve PHP. O botão da barra de
+     * seleção chama este método com o índice da ação, como o `onBulkOpen`.
+     *
+     * Regras dos dois presets:
+     *  - a config (preset, coluna, valor) vem do estado cifrado pelo índice,
+     *    nunca do navegador; a permissão é a da ação de linha equivalente
+     *    (Excluir / editar na célula), recusada aqui também;
+     *  - os ids marcados passam pela consulta da PRÓPRIA listagem (model,
+     *    unidade/tenant, filtros fixos da tela): id forjado de um registro
+     *    que ela não mostra é "não encontrado";
+     *  - um por um, pelo Model (eventos, exclusão lógica, auditoria), cada
+     *    um na sua transação: a falha de um não derruba o lote;
+     *  - quem falhou continua marcado, quem deu certo sai da seleção; a
+     *    listagem recarrega na mesma página (ou na última que sobrou) e os
+     *    avisos dizem quantos deram certo, quantos não e por quê.
+     *
+     * @param mixed      $value valor digitado no diálogo do `ask` (null = ainda não perguntado)
+     * @param int|string $along 1 = quem clicou confirmou excluir junto o que pertence aos
+     *                          registros (a mesma pergunta do Excluir da linha)
+     */
+    public function onBulkRun(int $index, mixed $value = null, int|string $along = 0): \Mad\Http\MadResponse
+    {
+        $resp = new \Mad\Http\MadResponse();
+        $cfg  = $this->bulkActions[$index] ?? null;
+        if (!is_array($cfg) || ($cfg['preset'] ?? '') === '') {
+            $this->skipFullRender();
+
+            return $resp->toast(__('grid.bulk_unavailable'), 'warning');
+        }
+        // O botão desta ação não está na barra (perfil sem ela): o pedido
+        // forjado também não executa.
+        $perm = $this->_bulkDecision($cfg);
+        if ($perm['mode'] !== 'allow') {
+            $this->skipFullRender();
+
+            return $resp->toast($perm['title'] !== '' ? $perm['title'] : __('grid.bulk_unavailable'), 'warning');
+        }
+
+        $ids = $this->selectedIds();
+        $min = max(1, (int) ($cfg['min'] ?? 1));
+        if (count($ids) < $min) {
+            $this->skipFullRender();
+
+            return $resp->toast(trans_choice('grid.bulk_min', $min, ['count' => $min]), 'warning');
+        }
+
+        $model = $this->_recordModel();
+        if ($model === '' || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
+            $this->skipFullRender();
+
+            return $resp->toast(__('grid.bulk_no_model'), 'warning');
+        }
+
+        if ($cfg['preset'] === 'delete') {
+            return $this->_bulkDelete($index, $ids, (string) $along === '1');
+        }
+
+        // preset="set": a coluna vem da config e tem de existir na tabela.
+        $column = (string) ($cfg['field'] ?? '');
+        if (!$this->_bulkColumnExists($model, $column)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: onBulkRun recusado — "' . static::_logSafe($column) . '" não é coluna de '
+                . $model . ' (' . static::class . ').'
+            );
+            $this->skipFullRender();
+
+            return $resp->toast(__('grid.bulk_unavailable'), 'warning');
+        }
+
+        if (!empty($cfg['ask'])) {
+            $field = $this->_bulkAskField($cfg, $model);
+            if ($value === null) {
+                return $this->_bulkAskDialog($index, $cfg, $field);
+            }
+            $error = null;
+            $value = $this->_bulkAskValue($field, $value, $error);
+            if ($error !== null) {
+                $this->skipFullRender();
+
+                return $resp->toast($error, 'warning');
+            }
+        } else {
+            $value = ($cfg['value'] ?? null) === '' ? null : ($cfg['value'] ?? null);
+        }
+
+        return $this->_bulkSet($ids, $column, $value);
+    }
+
+    /**
+     * Os registros marcados que a listagem alcança — `[id => Model]`. A
+     * consulta é a da própria listagem SEM os filtros do usuário (a seleção
+     * sobrevive à troca de filtro: o marcado continua valendo), mas com o
+     * recorte fixo da tela: model, escopos globais (unidade/tenant),
+     * `:filters`, critérios do `onSearch()`. Tela com `query()` próprio vale o
+     * Model com os escopos dele, como no Excluir da linha.
+     *
+     * @param  array<int|string, string> $ids
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    protected function _bulkRecords(array $ids): array
+    {
+        $model = $this->_recordModel();
+        $ids   = array_values(array_map('strval', $ids));
+        $found = [];
+        $keep  = function (iterable $rows) use (&$found): void {
+            foreach ($rows as $row) {
+                if ($row instanceof \Illuminate\Database\Eloquent\Model) {
+                    $found[(string) $row->getKey()] = $row;
+                }
+            }
+        };
+
+        if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $keep($model::query()->whereKey($chunk)->get());
+            }
+
+            return $found;
+        }
+        if ($this->_usesSource()) {
+            foreach ($ids as $id) {
+                if ($this->_sourceRow($id) !== null && ($row = $model::find($id)) !== null) {
+                    $found[(string) $row->getKey()] = $row;
+                }
+            }
+
+            return $found;
+        }
+
+        $this->_withoutUserFilters(function () use ($ids, $keep): void {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $q = $this->_buildQuery();
+                if (!method_exists($q, 'whereKey')) {
+                    return;
+                }
+                $q->whereKey($chunk);
+                if ($this->searchQuery) {
+                    ($this->searchQuery)($q);
+                }
+                $keep($q->get());
+            }
+        });
+
+        return $found;
+    }
+
+    /** preset="delete": um por um pelo Model, como o Excluir da linha. */
+    protected function _bulkDelete(int $index, array $ids, bool $confirmedAlong): \Mad\Http\MadResponse
+    {
+        $records = $this->_bulkRecords($ids);
+        $done    = 0;
+        $fail    = [];   // id => motivo
+        $along   = [];   // id => o que vai junto (falta a confirmação)
+        foreach ($ids as $id) {
+            $id     = (string) $id;
+            $record = $records[$id] ?? null;
+            if ($record === null) {
+                $fail[$id] = 'gone';
+                continue;
+            }
+            // Condições do <mad-del> da linha (display-condition, when-*,
+            // disabled-*) valem para o lote também.
+            if (!$this->_gridDeleteAllowedFor($record)) {
+                $fail[$id] = 'refused';
+                continue;
+            }
+            try {
+                if (!$confirmedAlong) {
+                    $with = \Mad\Ui\MadRecordInUse::alongWith($record);
+                    if ($with !== []) {
+                        if (\Mad\Ui\MadRecordInUse::message($record) !== null) {
+                            $fail[$id] = 'in_use';
+                        } else {
+                            $along[$id] = $with;
+                        }
+                        continue;
+                    }
+                }
+                $deleted = $record->getConnection()->transaction(function () use ($record): bool {
+                    // delete() devolve false quando um `deleting` cancela; o
+                    // estado do registro confirma (saiu do banco ou foi para a
+                    // lixeira).
+                    $result = $record->delete();
+
+                    return $result !== false
+                        && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
+                });
+                if ($deleted) {
+                    $done++;
+                } else {
+                    $fail[$id] = 'refused';
+                }
+            } catch (\Throwable $e) {
+                $fail[$id] = $this->_bulkReason($e, true);
+            }
+        }
+
+        $resp = $this->_bulkFinish($ids, $done, $fail + $along, 'deleted');
+        if ($along !== []) {
+            $what = [];
+            foreach ($along as $list) {
+                foreach ($list as $item) {
+                    $label = (string) ($item['label'] ?? '');
+                    $what[$label] = ($what[$label] ?? 0) + (int) ($item['count'] ?? 0);
+                }
+            }
+            $txt = [];
+            foreach ($what as $label => $n) {
+                $txt[] = $n > 0 ? $label . ' (' . $n . ')' : $label;
+            }
+            $ask = \Mad\Ui\MadMessage::confirm(
+                mad_t('mad.error.delete_along_title'),
+                e(trans_choice('grid.bulk_along', count($along), ['count' => count($along), 'what' => implode(', ', $txt)])),
+                $this,
+                'trash-2'
+            )
+                ->button(mad_t('mad.error.delete_along_confirm'), 'onBulkRun', [$index, null, 1], 'destructive')
+                ->onCancel(mad_t('mad.error.delete_along_cancel'))
+                ->build();
+            $resp->ops = array_merge($resp->ops, $ask->ops);
+        }
+
+        return $resp;
+    }
+
+    /** preset="set": grava `$column` = `$value` nos marcados, um por um pelo Model. */
+    protected function _bulkSet(array $ids, string $column, ?string $value): \Mad\Http\MadResponse
+    {
+        $records = $this->_bulkRecords($ids);
+        $done    = 0;
+        $fail    = [];
+        foreach ($ids as $id) {
+            $id     = (string) $id;
+            $record = $records[$id] ?? null;
+            if ($record === null) {
+                $fail[$id] = 'gone';
+                continue;
+            }
+            try {
+                $saved = $record->getConnection()->transaction(function () use ($record, $column, $value) {
+                    $record->$column = $value;
+
+                    return $record->save();
+                });
+                if ($saved === false) {
+                    $fail[$id] = 'refused';   // `saving`/`updating` do Model recusou
+                } else {
+                    $done++;
+                }
+            } catch (\Throwable $e) {
+                $fail[$id] = $this->_bulkReason($e, false);
+            }
+        }
+
+        return $this->_bulkFinish($ids, $done, $fail, 'updated');
+    }
+
+    /**
+     * Motivo de um registro que falhou: em uso (chave estrangeira do banco ou
+     * a guarda "em uso" do Model gerado), recusado (regra do próprio Model,
+     * com mensagem para quem usa) ou erro (técnico — vai para o log, não para
+     * a tela).
+     */
+    protected function _bulkReason(\Throwable $e, bool $deleting): string
+    {
+        if ($deleting && \Mad\Ui\MadRecordInUse::matches($e)) {
+            return 'in_use';
+        }
+        if (!\Mad\Ui\MadUserError::isTechnical($e)) {
+            return 'refused';
+        }
+        \Mad\Ui\MadUserError::report($e, static::class . '::onBulkRun');
+
+        return 'error';
+    }
+
+    /**
+     * Fim do lote: só os que falharam continuam marcados, a listagem recarrega
+     * (na mesma página, ou na última que sobrou) e os avisos dizem o resultado.
+     *
+     * @param array<string, string|array> $fail id => motivo (ou a lista do "vai junto")
+     */
+    protected function _bulkFinish(array $ids, int $done, array $fail, string $verb): \Mad\Http\MadResponse
+    {
+        $keep = [];
+        foreach ($ids as $id) {
+            if (isset($fail[(string) $id])) {
+                $keep[] = (string) $id;
+            }
+        }
+        $this->setSelectedIds($keep);
+
+        $this->loadData();
+        if ($this->perPage > 0 && $this->page > 1) {
+            $last = max(1, (int) ceil($this->_total / $this->perPage));
+            if ($this->page > $last) {
+                $this->page = $last;
+                $this->loadData();
+            }
+        }
+        $this->forceFullRender();
+
+        $resp = new \Mad\Http\MadResponse();
+        if ($done > 0) {
+            $resp->toast(trans_choice('grid.bulk_' . $verb, $done, ['count' => $done]), 'success');
+        }
+        $failed = array_filter($fail, 'is_string');
+        if ($failed !== []) {
+            $byReason = [];
+            foreach ($failed as $id => $reason) {
+                $byReason[$reason][] = (string) $id;
+            }
+            $budget = self::BULK_SHOW_IDS;
+            $parts  = [];
+            foreach ($byReason as $reason => $rids) {
+                $show   = array_slice($rids, 0, max(0, $budget));
+                $budget -= count($show);
+                $codes  = implode(', ', $show);
+                $rest   = count($rids) - count($show);
+                if ($rest > 0) {
+                    $codes .= ($codes !== '' ? ' ' : '') . __('grid.bulk_more', ['count' => $rest]);
+                }
+                $parts[] = __('grid.bulk_reason_' . $reason) . ' (' . $codes . ')';
+            }
+            $n = count($failed);
+            $resp->toast(
+                trans_choice('grid.bulk_not_' . $verb, $n, ['count' => $n, 'reasons' => implode('; ', $parts)]),
+                'warning'
+            );
+        }
+
+        return $resp;
+    }
+
+    /** A coluna existe na tabela do model (e não é a chave)? */
+    protected function _bulkColumnExists(string $model, string $column): bool
+    {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column)) {
+            return false;
+        }
+        try {
+            $m = new $model();
+            if ($column === $m->getKeyName()) {
+                return false;
+            }
+
+            return \Illuminate\Support\Facades\Schema::connection($m->getConnectionName())->hasColumn($m->getTable(), $column);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Rótulo do botão: o escrito no Blade, ou o padrão do preset, traduzido. */
+    protected function _bulkLabel(array $b): string
+    {
+        $label = (string) ($b['label'] ?? '');
+        if ($label !== '') {
+            return $label;
+        }
+        if (($b['preset'] ?? '') === 'delete') {
+            return __('grid.bulk_delete');
+        }
+
+        return __('grid.bulk_set', ['field' => $this->_bulkColumnLabel((string) ($b['field'] ?? ''))]);
+    }
+
+    /** Confirmação antes do clique: o delete sempre confirma (vazio = a padrão). */
+    protected function _bulkConfirm(array $b): string
+    {
+        $confirm = (string) ($b['confirm'] ?? '');
+        if ($confirm === '' && ($b['preset'] ?? '') === 'delete') {
+            return __('grid.bulk_delete_confirm');
+        }
+
+        return $confirm;
+    }
+
+    /** Rótulo da coluna como a listagem a mostra; sem coluna, o nome legível. */
+    protected function _bulkColumnLabel(string $field): string
+    {
+        $cols = $this->_effectiveColumns();
+        if ($cols === []) {
+            $cols = $this->_actionColumns();
+        }
+        foreach ($cols as $col) {
+            if ($col instanceof GridColumn && static::_unbrace((string) $col->field) === $field) {
+                $label = trim(strip_tags((string) $col->label));
+                if ($label !== '') {
+                    return $label;
+                }
+            }
+        }
+        $human = (string) preg_replace('/_id$/', '', $field);
+
+        return ucfirst(str_replace('_', ' ', $human !== '' ? $human : $field));
+    }
+
+    /**
+     * O campo do diálogo do `ask`: tipo, opções e se aceita vazio. Sem `type`
+     * no Blade, deduzido — opções escritas, model escrito, relação belongsTo
+     * da coluna (combo do model relacionado, com os escopos dele), cast do
+     * Model e, por fim, o tipo da coluna no banco.
+     *
+     * @return array{kind:string, type:string, label:string, nullable:bool, options:array<string,string>, true:string, false:string, source:?array}
+     */
+    protected function _bulkAskField(array $cfg, string $model): array
+    {
+        $ask    = (array) ($cfg['ask'] ?? []);
+        $column = (string) ($cfg['field'] ?? '');
+        $kind   = (string) ($ask['kind'] ?? '');
+        $label  = $this->_bulkColumnLabel($column);
+        $source = null;   // fonte do combo: ['model' => cls|'' , 'table' => '', 'key' => '', 'display' => '', ...]
+
+        $m       = new $model();
+        $schema  = null;
+        $colInfo = null;
+        try {
+            $schema = \Illuminate\Support\Facades\Schema::connection($m->getConnectionName());
+            foreach ($schema->getColumns($m->getTable()) as $c) {
+                if (($c['name'] ?? '') === $column) {
+                    $colInfo = $c;
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            $schema = null;
+        }
+        $nullable = $colInfo === null ? true : (bool) ($colInfo['nullable'] ?? true);
+
+        if ($kind === '' && !empty($ask['opts'])) {
+            $kind = 'select';
+        }
+        if ($kind === '' && ($ask['model'] ?? '') !== '') {
+            $kind = 'dbcombo';
+        }
+        if (($kind === '' || $kind === 'dbcombo') && ($ask['model'] ?? '') === '') {
+            $rel = static::_bulkBelongsTo($m, $column);
+            if ($rel !== null) {
+                // A relação diz QUAL tabela; o que o Blade escreveu no ask
+                // (display, :filters, ordem) continua valendo sobre ela.
+                $kind   = 'dbcombo';
+                $source = $rel + [
+                    'orderBy' => (string) ($ask['orderBy'] ?? ''),
+                    'order'   => (string) ($ask['order'] ?? 'asc'),
+                    'filters' => (array) ($ask['filters'] ?? []),
+                ];
+                if (($ask['display'] ?? '') !== '') {
+                    $source['display'] = (string) $ask['display'];
+                }
+            }
+        }
+        if ($kind === '') {
+            $cast = strtolower((string) ($m->getCasts()[$column] ?? ''));
+            $kind = match (true) {
+                in_array($cast, ['bool', 'boolean'], true)                                  => 'bool',
+                in_array($cast, ['date', 'immutable_date'], true)                           => 'date',
+                in_array($cast, ['datetime', 'immutable_datetime', 'timestamp'], true)      => 'datetime',
+                in_array($cast, ['int', 'integer', 'float', 'double', 'real'], true),
+                str_starts_with($cast, 'decimal')                                           => 'number',
+                default                                                                     => '',
+            };
+        }
+        $opts = (array) ($ask['opts'] ?? []);
+        if ($kind === '' && $colInfo !== null) {
+            $type  = strtolower((string) ($colInfo['type'] ?? ''));
+            $tname = strtolower((string) ($colInfo['type_name'] ?? ''));
+            if (preg_match("/^enum\\((.*)\\)$/", $type, $em)) {
+                preg_match_all("/'((?:[^'\\\\]|\\\\.|'')*)'/", $em[1], $vals);
+                foreach ($vals[1] as $v) {
+                    $v = str_replace("''", "'", $v);
+                    $opts[$v] = $v;
+                }
+                $kind = 'select';
+            } elseif (in_array($tname, ['bool', 'boolean'], true) || $type === 'tinyint(1)') {
+                $kind = 'bool';
+            } elseif ($tname === 'date') {
+                $kind = 'date';
+            } elseif (str_starts_with($tname, 'datetime') || str_starts_with($tname, 'timestamp')) {
+                $kind = 'datetime';
+            } elseif (preg_match('/^(tinyint|smallint|mediumint|int|integer|bigint|int2|int4|int8|decimal|numeric|float|float4|float8|double|real|money)/', $tname)) {
+                $kind = 'number';
+            }
+        }
+        // Chave estrangeira sem relação no Model: combo da tabela referenciada.
+        if (($kind === '' || $kind === 'number') && $source === null && $schema !== null) {
+            try {
+                foreach ($schema->getForeignKeys($m->getTable()) as $fk) {
+                    if (($fk['columns'] ?? []) === [$column] && !empty($fk['foreign_table'])) {
+                        $kind   = 'dbcombo';
+                        $source = [
+                            'model'      => '',
+                            'connection' => $m->getConnectionName(),
+                            'table'      => (string) $fk['foreign_table'],
+                            'key'        => (string) (($fk['foreign_columns'] ?? ['id'])[0] ?? 'id'),
+                            'display'    => '',
+                        ];
+                        break;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // banco sem catálogo de FKs: fica o tipo da coluna
+            }
+        }
+        if ($kind === 'dbcombo' && $source === null) {
+            $source = [
+                'model'      => (string) ($ask['model'] ?? ''),
+                'connection' => (string) ($ask['database'] ?? ''),
+                'table'      => '',
+                'key'        => (string) ($ask['keyField'] ?? 'id'),
+                'display'    => (string) ($ask['display'] ?? ''),
+                'orderBy'    => (string) ($ask['orderBy'] ?? ''),
+                'order'      => (string) ($ask['order'] ?? 'asc'),
+                'filters'    => (array) ($ask['filters'] ?? []),
+            ];
+        }
+        if ($kind === 'dbcombo' && ($source['model'] ?? '') === '' && ($source['table'] ?? '') === '') {
+            $kind = 'text';   // combo sem fonte: vira texto, e o banco confere
+        }
+        $kind = $kind === '' ? 'text' : $kind;
+
+        $true  = (string) ($ask['true'] ?? '1');
+        $false = (string) ($ask['false'] ?? '0');
+        $options = match ($kind) {
+            'select'  => array_map('strval', $opts),
+            'bool'    => [$true => mad_t('mad.gridcf.yes'), $false => mad_t('mad.gridcf.no')],
+            'dbcombo' => $this->_bulkComboOptions($source),
+            default   => [],
+        };
+        $type = match ($kind) {
+            'number'   => 'number',
+            'date'     => 'date',
+            'datetime' => 'datetime',
+            'select', 'bool', 'dbcombo' => 'select',
+            default    => 'text',
+        };
+
+        return [
+            'kind' => $kind, 'type' => $type, 'label' => $label, 'nullable' => $nullable,
+            'options' => $options, 'true' => $true, 'false' => $false, 'source' => $source,
+        ];
+    }
+
+    /** Relação belongsTo do Model cuja chave é `$column` → fonte do combo. */
+    protected static function _bulkBelongsTo(\Illuminate\Database\Eloquent\Model $m, string $column): ?array
+    {
+        foreach ((new \ReflectionClass($m))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            $type = $method->getReturnType();
+            if ($method->isStatic() || $method->getNumberOfParameters() > 0
+                || !$type instanceof \ReflectionNamedType
+                || !is_a($type->getName(), \Illuminate\Database\Eloquent\Relations\BelongsTo::class, true)) {
+                continue;
+            }
+            try {
+                $rel = $method->invoke($m);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($rel instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo && $rel->getForeignKeyName() === $column) {
+                return [
+                    'model'      => get_class($rel->getRelated()),
+                    'connection' => '',
+                    'table'      => '',
+                    'key'        => $rel->getOwnerKeyName(),
+                    'display'    => '',
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /** Consulta da fonte do combo (com os escopos do model, quando há model). */
+    protected function _bulkComboQuery(array $source): ?object
+    {
+        if (($source['model'] ?? '') !== '') {
+            $cls = class_exists($source['model'])
+                ? $source['model']
+                : \Mad\Form\ModelOptionsLoader::resolveModelClass($source['model']);
+            $q = ($source['connection'] ?? '') !== '' ? $cls::on($source['connection']) : $cls::query();
+        } elseif (($source['table'] ?? '') !== '') {
+            $q = \Illuminate\Support\Facades\DB::connection(($source['connection'] ?? '') !== '' ? $source['connection'] : null)->table($source['table']);
+        } else {
+            return null;
+        }
+        if (!empty($source['filters'])) {
+            \Mad\Database\QuerySource::applyArrayFilters($q, (array) $source['filters']);
+        }
+
+        return $q;
+    }
+
+    /** Coluna que descreve o registro da fonte: a declarada ou a primeira conhecida. */
+    protected function _bulkComboDisplay(array $source): string
+    {
+        if (($source['display'] ?? '') !== '') {
+            return (string) $source['display'];
+        }
+        try {
+            if (($source['model'] ?? '') !== '') {
+                $cls = class_exists($source['model']) ? $source['model'] : \Mad\Form\ModelOptionsLoader::resolveModelClass($source['model']);
+                $m   = new $cls();
+                $cols = \Illuminate\Support\Facades\Schema::connection(($source['connection'] ?? '') !== '' ? $source['connection'] : $m->getConnectionName())->getColumnListing($m->getTable());
+            } else {
+                $cols = \Illuminate\Support\Facades\Schema::connection(($source['connection'] ?? '') !== '' ? $source['connection'] : null)->getColumnListing((string) $source['table']);
+            }
+        } catch (\Throwable $e) {
+            $cols = [];
+        }
+        foreach (self::BULK_DISPLAY_GUESS as $c) {
+            if (in_array($c, $cols, true)) {
+                return $c;
+            }
+        }
+
+        return (string) ($source['key'] ?? 'id');
+    }
+
+    /** @return array<string, string> chave => rótulo (até BULK_ASK_MAX_OPTIONS) */
+    protected function _bulkComboOptions(?array $source): array
+    {
+        if ($source === null) {
+            return [];
+        }
+        try {
+            $q = $this->_bulkComboQuery($source);
+            if ($q === null) {
+                return [];
+            }
+            $key     = (string) ($source['key'] ?? 'id') ?: 'id';
+            $display = $this->_bulkComboDisplay($source);
+            $orderBy = (string) ($source['orderBy'] ?? '') ?: $display;
+            $q->limit(self::BULK_ASK_MAX_OPTIONS);
+            if ($q instanceof \Illuminate\Database\Eloquent\Builder) {
+                return array_map('strval', \Mad\Form\ModelOptionsLoader::itemsFromQuery(
+                    $q, $key, $display, $orderBy, ($source['order'] ?? 'asc') === 'desc' ? 'desc' : 'asc'
+                ) ?: []);
+            }
+            $out = [];
+            foreach ($q->orderBy($orderBy, ($source['order'] ?? 'asc') === 'desc' ? 'desc' : 'asc')->get([$key, $display]) as $row) {
+                $row = (array) $row;
+                $out[(string) $row[$key]] = (string) ($row[$display] ?? $row[$key]);
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            @error_log('[MadDataGrid] opções do diálogo da ação em lote: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * O valor digitado no diálogo, conferido como entrada do usuário: tipo,
+     * opção existente, registro existente na fonte do combo. Vazio = nulo,
+     * só onde a coluna aceita nulo.
+     */
+    protected function _bulkAskValue(array $field, mixed $raw, ?string &$error): ?string
+    {
+        $error = null;
+        $label = $field['label'];
+        if (!is_scalar($raw)) {
+            $error = __('grid.bulk_invalid_value', ['field' => $label]);
+            return null;
+        }
+        $v = trim((string) $raw);
+        if ($v === '') {
+            if (!$field['nullable']) {
+                $error = __('grid.bulk_required_value', ['field' => $label]);
+            }
+            return null;
+        }
+        $ok = match ($field['kind']) {
+            'number'   => is_numeric($v),
+            'date'     => ($d = \DateTime::createFromFormat('!Y-m-d', $v)) !== false && $d->format('Y-m-d') === $v,
+            'datetime' => (bool) preg_match('/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/', $v)
+                          && strtotime(str_replace('T', ' ', $v)) !== false,
+            'select', 'bool' => array_key_exists($v, $field['options']),
+            'dbcombo'  => $this->_bulkComboHas((array) $field['source'], $v),
+            default    => true,
+        };
+        if (!$ok) {
+            $error = __('grid.bulk_invalid_value', ['field' => $label]);
+            return null;
+        }
+
+        return $field['kind'] === 'datetime' ? str_replace('T', ' ', $v) : $v;
+    }
+
+    /** A chave existe na fonte do combo (mesma consulta e escopos das opções)? */
+    protected function _bulkComboHas(array $source, string $value): bool
+    {
+        try {
+            $q = $this->_bulkComboQuery($source);
+
+            return $q !== null && $q->where((string) ($source['key'] ?? 'id') ?: 'id', $value)->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Diálogo de UM campo do `ask` (o MadDialog do framework, nada de
+     * window.prompt). O valor volta como PARÂMETRO do onBulkRun — não pelo
+     * mad_model, que o levaria ao formulário de filtros da listagem.
+     */
+    protected function _bulkAskDialog(int $index, array $cfg, array $field): \Mad\Http\MadResponse
+    {
+        $this->skipFullRender();
+        $def = ['name' => self::BULK_ASK_FIELD, 'label' => $field['label'], 'type' => $field['type']];
+        if ($field['type'] === 'select') {
+            $def['options'] = [];
+            foreach ($field['options'] as $k => $v) {
+                $def['options'][] = ['value' => (string) $k, 'label' => (string) $v];
+            }
+        }
+        if (!empty($cfg['hasValue']) && ($cfg['value'] ?? null) !== null && $cfg['value'] !== '') {
+            $def['value'] = (string) $cfg['value'];
+        }
+        if (!$field['nullable']) {
+            $def['required']     = true;
+            $def['required_msg'] = __('grid.bulk_required_value', ['field' => $field['label']]);
+        }
+        $n    = count($this->selectedIds());
+        $opts = json_encode([
+            'type'    => 'info',
+            'title'   => $this->_bulkLabel($cfg),
+            'message' => e($n === 1 ? __('grid.selected_one') : str_replace(':count', (string) $n, __('grid.selected_many'))),
+            'icon'    => (string) ($cfg['icon'] ?? '') !== '' ? (string) $cfg['icon'] : 'pencil',
+            'fields'  => [$def],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        $id   = json_encode($this->_getId());
+        $btns = '[{label:' . json_encode(__('grid.bulk_apply'), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG)
+              . ',type:"primary",submit:true,callback:(v)=>MadWire.call(' . $id . ',"onBulkRun",[' . $index
+              . ',String((v||{}).' . self::BULK_ASK_FIELD . '==null?"":v.' . self::BULK_ASK_FIELD . '),0])},'
+              . '{label:' . json_encode(mad_t('mad.ui.cancel'), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) . ',type:"secondary",callback:null}]';
+
+        return (new \Mad\Http\MadResponse())->script('MadDialog.show(' . substr($opts, 0, -1) . ',"buttons":' . $btns . '})');
     }
 
     /**
@@ -1269,6 +2043,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $perm        = $this->_bulkDecision($b);
             $b['hidden'] = $perm['mode'] === 'hide';
             $b['deny']   = $perm['mode'] === 'disable' ? $perm['title'] : '';
+            if (($b['preset'] ?? '') !== '') {
+                $b['label']   = $this->_bulkLabel($b);
+                $b['confirm'] = $this->_bulkConfirm($b);
+            }
         }
         unset($b);
 
@@ -1296,6 +2074,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $livre  = ['mode' => 'allow', 'title' => ''];
         $method = (string) ($b['method'] ?? '');
         $target = (string) ($b['target'] ?? '');
+        // Ação pronta: a MESMA pergunta da ação de linha equivalente — excluir
+        // como o Excluir da linha, alterar como a edição na célula.
+        $preset = (string) ($b['preset'] ?? '');
+        if ($preset !== '') {
+            $method = $preset === 'delete' ? 'onMadGridDelete' : 'onInlineSave';
+        }
 
         try {
             if ($method !== '') {
@@ -1328,6 +2112,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $out = [];
         foreach ($raw as $b) {
             if (!is_array($b)) continue;
+            $preset = static::_normalizeBulkPreset($b);
+            if ($preset !== null) {
+                $out[] = $preset;
+                continue;
+            }
+            if (isset($b['preset'])) continue;   // preset inválido: fora, como a ação sem destino
             $method = (string) ($b['method'] ?? '');
             $target = (string) ($b['target'] ?? '');
             if ($method === '' && $target === '') continue;
@@ -1342,6 +2132,67 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 'targetMethod' => $method === '' ? (string) ($b['targetMethod'] ?? 'show') : '',
             ];
         }
+        return $out;
+    }
+
+    /**
+     * `<mad-bulk-action preset>` normalizada, ou null quando a entrada não é
+     * um preset válido. `label` vazio = o rótulo padrão (traduzido no render);
+     * `confirm` vazio no delete = a confirmação padrão (sempre confirma).
+     */
+    protected static function _normalizeBulkPreset(array $b): ?array
+    {
+        $preset = strtolower(trim((string) ($b['preset'] ?? '')));
+        if (!in_array($preset, MadGridCompiler::BULK_PRESETS, true)) {
+            return null;
+        }
+        $field = (string) ($b['field'] ?? '');
+        $ask   = is_array($b['ask'] ?? null) ? static::_normalizeBulkAsk($b['ask']) : null;
+        $has   = !empty($b['hasValue']) || array_key_exists('value', $b);
+        if ($preset === 'set' && (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field) || ($ask === null && !$has))) {
+            return null;
+        }
+        $value = $b['value'] ?? null;
+
+        return [
+            'label'        => (string) ($b['label'] ?? ''),
+            'icon'         => (string) ($b['icon'] ?? ($preset === 'delete' ? 'trash-2' : '')),
+            'variant'      => (string) ($b['variant'] ?? ($preset === 'delete' ? 'danger' : 'primary')),
+            'confirm'      => (string) ($b['confirm'] ?? ''),
+            'min'          => max(0, (int) ($b['min'] ?? 1)),
+            'method'       => '',
+            'target'       => '',
+            'targetMethod' => '',
+            'preset'       => $preset,
+            'field'        => $preset === 'set' ? $field : '',
+            'hasValue'     => $preset === 'set' && $has,
+            'value'        => is_bool($value) ? ($value ? '1' : '0') : (is_scalar($value) ? (string) $value : null),
+            'ask'          => $preset === 'set' ? $ask : null,
+        ];
+    }
+
+    /** Campo do diálogo do `ask` (vocabulário do `<mad-custom-filter>`). */
+    protected static function _normalizeBulkAsk(array $a): array
+    {
+        $kind = (string) ($a['kind'] ?? '');
+        $kind = $kind === '' ? '' : MadGridCompiler::customFilterKind($kind);
+        if ($kind === 'dbsearch') {
+            $kind = 'dbcombo';
+        }
+        $opts = $a['opts'] ?? [];
+        if (is_string($opts)) {
+            $opts = GridColumn::parseOptsMap($opts);
+        }
+        $out = ['kind' => $kind, 'opts' => is_array($opts) ? array_map(fn ($v) => is_scalar($v) ? (string) $v : '', $opts) : []];
+        foreach (['true', 'false', 'model', 'display', 'keyField', 'database', 'orderBy', 'order'] as $k) {
+            if (isset($a[$k]) && is_scalar($a[$k]) && (string) $a[$k] !== '') {
+                $out[$k] = (string) $a[$k];
+            }
+        }
+        if (isset($a['filters']) && is_array($a['filters'])) {
+            $out['filters'] = $a['filters'];
+        }
+
         return $out;
     }
 
@@ -1450,6 +2301,208 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 // tipo): mantém o default em vez de derrubar a tela.
             }
         }
+    }
+
+    // ── Filtros da última visita (<mad-grid remember-filters>, fórum #215) ─
+
+    /**
+     * O que o `remember-filters` guarda além dos filtros da tela (período e
+     * campos do bloco de filtros, via filterStateSnapshot()): a navegação do
+     * usuário — as mesmas props da volta de formulário, menos o "carregar"
+     * do no-auto-load (toda abertura dele começa adiada).
+     */
+    private const _REMEMBER_PROPS = [
+        'page', 'perPage', 'perPageLocked',
+        'sortBy', 'sortDir', 'search', 'filters', 'filterOps', 'colFilters',
+        'customFilterState',
+    ];
+
+    /**
+     * A abertura desta requisição devolveu filtros da última visita: a barra
+     * de filtros avisa ("Filtros da sua última visita" + Limpar). Viaja no
+     * estado para o aviso não sumir ao trocar de página; sai no Limpar, no
+     * "Limpar filtros" da barra e quando não sobra filtro nenhum.
+     */
+    public bool $filtersRemembered = false;
+
+    /** A restauração da abertura já rodou nesta requisição (mount ou render). */
+    private bool $_rememberDone = false;
+
+    /** Chave dos filtros lembrados: a tela (o MadGrid standalone usa a tela dona + o model). */
+    protected function _rememberKey(): string
+    {
+        return static::class;
+    }
+
+    private function _rememberSessionKey(): string
+    {
+        return $this->_rememberKey() . '_grid_remember';
+    }
+
+    /**
+     * Abertura da tela: o `remember-filters` vem do Blade, mas o bloco de
+     * filtros lê os valores ANTES de o template rodar — restaurar no prólogo
+     * deixava a lista filtrada com os campos em branco (e a próxima ação
+     * mandava o campo vazio de volta). A config que o último render deixou na
+     * sessão diz se a tela lembra; sem ela (1ª abertura na sessão), quem
+     * restaura é o prólogo do template.
+     */
+    private function _rememberOnOpenFromConfig(): void
+    {
+        if ($this->_gridHydrated || isset($_POST['mad_state']) || $this->_rememberDone) {
+            return;
+        }
+        $cfg = $this->_bladeGridConfig();
+        if ($cfg === []) {
+            $cached = function_exists('session') ? session(static::class . '_dg_cfg') : null;
+            $cfg    = is_array($cached) ? $cached : [];
+        }
+        if (!array_key_exists('rememberFilters', $cfg)) {
+            return;
+        }
+        $this->rememberFilters = (bool) $cfg['rememberFilters'];
+        $this->_restoreRemembered(array_merge($_GET ?? [], $_POST ?? []));
+    }
+
+    /**
+     * Chamado no topo do template da tela pelo `<mad-grid self remember-filters>`
+     * (o compilador põe a chamada lá): o bloco de filtros é desenhado ANTES da
+     * grade e já tem de nascer com o que o usuário deixou da última vez.
+     *
+     * Só na ABERTURA (F5, menu, link): numa ação o estado já é o da tela. Na
+     * volta de formulário quem restaura é a própria volta. O link vence o
+     * guardado — os filtros da URL entram por cima.
+     *
+     * @internal
+     */
+    public function _rememberFiltersOnOpen(bool $on = true): void
+    {
+        $this->rememberFilters = $on;
+        if (!$on || $this->_rememberDone) {
+            return;
+        }
+        if ($this->_gridHydrated || isset($_POST['mad_state'])) {
+            $this->_rememberDone = true;
+            return;
+        }
+        $this->_restoreRemembered(array_merge($_GET ?? [], $_POST ?? []));
+    }
+
+    /**
+     * Aplica o guardado da última visita (uma vez por requisição) e, por cima,
+     * os filtros do link (`$link`: query string, params da abertura) — o link
+     * vence. Link com filtro é outra busca: volta para a página 1. True quando
+     * havia algo guardado (a grade recarrega).
+     */
+    protected function _restoreRemembered(array ...$link): bool
+    {
+        if (!$this->rememberFilters || $this->_rememberDone || $this->_returnPending) {
+            return false;
+        }
+        $this->_rememberDone = true;
+
+        $snap = session($this->_rememberSessionKey());
+        if (!is_array($snap)) {
+            return false;
+        }
+        if (is_array($snap['filters'] ?? null)) {
+            $this->applyFilterStateSnapshot($snap['filters']);
+            $this->syncFormFields();
+        }
+        $grid = is_array($snap['grid'] ?? null) ? $snap['grid'] : [];
+        $this->_restoreProps(array_intersect_key($grid, array_flip(self::_REMEMBER_PROPS)));
+
+        $before = $this->filterStateSnapshot();
+        foreach ($link as $src) {
+            $this->hydrateFiltersFromArray($src);
+        }
+        if ($this->filterStateSnapshot() !== $before) {
+            $this->page = 1;
+        }
+        $this->syncFormFields();
+
+        // O guardado vence a visão padrão do usuário (como um filtro no link).
+        $this->_svExplicitOpen = true;
+        $this->filtersRemembered = $this->_rememberedHasFilter();
+        $this->_dataLoaded = false;
+
+        return true;
+    }
+
+    /** Grava o estado da última carga para a próxima abertura (só com remember-filters). */
+    protected function _saveRememberSnapshot(): void
+    {
+        if (!$this->rememberFilters || $this->_returnSnapshotSuspended || $this->_returnPending) {
+            return;
+        }
+        $grid = [];
+        foreach (self::_REMEMBER_PROPS as $name) {
+            if (property_exists($this, $name)) {
+                $grid[$name] = $this->$name;
+            }
+        }
+        session([$this->_rememberSessionKey() => [
+            'grid'    => $grid,
+            'filters' => $this->filterStateSnapshot(),
+        ]]);
+    }
+
+    /** Limpar: a próxima abertura começa do zero (a carga seguinte grava o estado limpo). */
+    protected function _forgetRemembered(): void
+    {
+        $this->filtersRemembered = false;
+        if (function_exists('session')) {
+            session()->forget($this->_rememberSessionKey());
+        }
+    }
+
+    /**
+     * Sobrou filtro do usuário na tela? Busca, filtros de coluna, filtro
+     * avançado, campos do bloco de filtros e o período — este só quando a tela
+     * não abre num período padrão (aí ele é da tela, não do usuário).
+     */
+    protected function _rememberedHasFilter(): bool
+    {
+        if (trim($this->search) !== '') {
+            return true;
+        }
+        foreach ($this->filters as $v) {
+            if (!static::_filterValueIsEmpty($v)) {
+                return true;
+            }
+        }
+        foreach ($this->colFilters as $cf) {
+            if (!static::_filterValueIsEmpty(is_array($cf) ? ($cf['value'] ?? null) : $cf)) {
+                return true;
+            }
+        }
+        if (!empty($this->customFilterState['rules'])) {
+            return true;
+        }
+        foreach ($this->discoverFilterProps() as $name) {
+            if (!static::_filterValueIsEmpty($this->$name)) {
+                return true;
+            }
+        }
+        if ($this->_defaultPeriodPreset() === '' && !$this->defaultToCurrentPeriod) {
+            foreach (['mes', 'ano', 'dtIni', 'dtFim', 'preset'] as $k) {
+                if ($this->$k !== '') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** O aviso da barra de filtros: lembrado nesta tela e ainda com filtro. */
+    protected function _rememberViewData(): array
+    {
+        if ($this->filtersRemembered && !$this->_rememberedHasFilter()) {
+            $this->filtersRemembered = false;
+        }
+
+        return ['rememberedNotice' => $this->rememberFilters && $this->filtersRemembered];
     }
 
     // ── Volta de formulário (?_mad_return=) ──────────────────────────────
@@ -1707,6 +2760,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // mas chegava depois do bloco de filtros.
         if ($method === 'mount' && !$this->_returnPending) {
             $this->_seedDefaultPeriodOnOpen();
+            // remember-filters: pelo mesmo motivo, os filtros da última visita
+            // entram aqui (o período padrão acima fica por baixo deles).
+            $this->_rememberOnOpenFromConfig();
         }
 
         return $result;
@@ -2321,6 +3377,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     public function onClearAllFilters(): void
     {
+        $this->_forgetRemembered();
         $this->filters    = [];
         $this->filterOps  = [];
         $this->colFilters = [];
@@ -2341,6 +3398,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     public function onLimpar(): void
     {
+        $this->_forgetRemembered();
         // "Limpar" zera TODOS os filtros da tela — as condições do filtro
         // avançado inclusive (as props dele ficam fora da descoberta da trait,
         // que é quem zera o resto).
@@ -4519,7 +5577,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => false,
             'cardBelow'    => 0,
             'cardCols'     => '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData()];
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData() + $this->_rememberViewData()];
     }
 
     // ── Inline grid (<mad-grid self>) ─────────────────────────────────────
@@ -4562,6 +5620,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         // Propriedades não-serializadas: aplicar sempre (perdidas entre requests AJAX)
+        if (array_key_exists('rememberFilters', $config)) $this->rememberFilters = (bool) $config['rememberFilters'];
         if (!empty($config['model']))      $this->model      = $config['model'];
         if (!empty($config['database']))   $this->database   = $config['database'];
         // order-by/:filters declarativos (props públicas — ver baseOrder/baseFilters).
@@ -4802,7 +5861,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'cardDefault'  => $this->_inlineConfig['cardDefault'] ?? false,
             'cardBelow'    => max(0, (int) ($this->_inlineConfig['cardBelow'] ?? 0)),
             'cardCols'     => $this->_inlineConfig['cardCols'] ?? '',
-        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData());
+        ] + $this->_selectionViewData() + $this->_rowLookViewData() + $this->_reorderViewData() + $this->_savedViewsViewData() + $this->_rememberViewData());
     }
 
     /**
@@ -5669,6 +6728,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
             $this->_saveToSession();
             $this->_saveReturnSnapshot();
+            $this->_saveRememberSnapshot();
         } catch (\Throwable $e) {
             $this->_rows  = [];
             $this->_total = 0;

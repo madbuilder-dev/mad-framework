@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.252.0] — 2026-11-02
+
+### Novidades
+
+- **Listagem:** com `remember-filters` no `<mad-grid>`, a listagem reabre (F5, menu, volta do formulário) com os filtros, a ordem e a página da última visita, e avisa "Filtros da sua última visita" ao lado dos filtros, com o botão Limpar filtros. Filtro que vem no link vence o guardado.
+- **Ações em lote:** `<mad-bulk-action preset="delete">` exclui os registros marcados sem escrever código. Confirma antes, segue a permissão de excluir da tela e só alcança o que a listagem mostra; quem não pôde ser excluído (em uso por outro cadastro, por exemplo) continua marcado e o aviso diz quantos e por quê.
+- **Ações em lote:** `<mad-bulk-action preset="set" field="situacao" value="inativo">` muda uma coluna de todos os marcados de uma vez. Com `ask`, abre uma janelinha com um campo só (lista do cadastro relacionado, data, número, sim/não ou as opções de `opts`) e confere o valor antes de gravar.
+
 ## [5.251.3] — 2026-11-01
 
 ### Correções

@@ -515,8 +515,16 @@
         $cfAny     = $cfEnabled && ($customFilters['match'] ?? 'all') === 'any' && count($cfChips) > 1;
         $cfDropped = $cfEnabled ? (int) ($customFilters['dropped'] ?? 0) : 0;
     @endphp
-    @if(!empty($activeFilters) || !empty($cfChips) || $cfDropped > 0)
+    @php $_remembered = !empty($rememberedNotice); @endphp
+    @if(!empty($activeFilters) || !empty($cfChips) || $cfDropped > 0 || $_remembered)
     <div class="mad-dg-active-filters">
+        {{-- remember-filters: a tela abriu com os filtros da última visita. --}}
+        @if($_remembered)
+        <span class="mad-dg-active-filters-label mad-dg-remembered" role="status">
+            <i data-lucide="history" style="width:13px;height:13px;vertical-align:-2px;"></i>
+            {{ __('grid.remembered_filters') }}
+        </span>
+        @endif
         @if(!empty($activeFilters) || (!empty($cfChips) && !$cfAny))
         <span class="mad-dg-active-filters-label">{{ __('grid.active_filters') }}</span>
         @endif
@@ -561,7 +569,12 @@
             {{ \Mad\I18n\MadLang::t('mad.gridcf.dropped_warning', ['count' => $cfDropped]) }}
         </span>
         @endif
-        @if(!empty($activeFilters) || !empty($cfChips))
+        @if($_remembered)
+        {{-- Limpa tudo (bloco de filtros inclusive) e esquece o guardado. --}}
+        <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-clear-all" mad:click="onLimpar">
+            {{ __('grid.clear_filters') }}
+        </button>
+        @elseif(!empty($activeFilters) || !empty($cfChips))
         <button class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-clear-all" mad:click="onClearAllFilters">
             {{ __('grid.clear_filters') }}
         </button>

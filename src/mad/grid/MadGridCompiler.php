@@ -43,6 +43,11 @@ use Mad\View\MadBlade;
  * │  selectable               Coluna de seleção (checkbox) + ações em lote      │
  * │  row-click                Clique na linha executa a 1ª ação dela (o "clique │
  * │                           padrão" do 4.0); ações de exclusão ficam de fora  │
+ * │  remember-filters         Lembra filtros, busca, ordenação, página e itens  │
+ * │                           por página na sessão: voltam no F5, ao reabrir    │
+ * │                           pelo menu e ao voltar do formulário. Parâmetro de │
+ * │                           URL vence; "Limpar" apaga o guardado.             │
+ * │                           ="false" desliga; ausente = desligado             │
  * │                                                                              │
  * │  <mad-bulk-action> — Ação em lote (exige <mad-grid selectable>)             │
  * │  ──────────────────────────────────────────────────────────────────────────  │
@@ -61,6 +66,22 @@ use Mad\View\MadBlade;
  * │  confirm="Quitar?"        Confirmação antes (":count" = nº selecionados)    │
  * │  min="1"                  Mínimo de linhas marcadas (default 1; 0 = sempre) │
  * │                                                                              │
+ * │  Ações PRONTAS (preset) — rodam no framework, zero PHP na tela:              │
+ * │  preset="delete"          Exclui os marcados UM POR UM pelo Model (eventos, │
+ * │                           exclusão lógica). Padrão: "Excluir", trash-2,     │
+ * │                           danger, confirmação "Excluir :count registros?"   │
+ * │                           (sempre confirma). Permissão = Excluir da tela.   │
+ * │  preset="set" field="x"   Grava a coluna `x` (do model) nos marcados.       │
+ * │    value="C"              valor fixo                                        │
+ * │    ask                    pergunta o valor num diálogo de um campo; tipo do │
+ * │                           campo como no <mad-custom-filter> (type, opts,    │
+ * │                           model/display/key…) ou deduzido da coluna (chave  │
+ * │                           estrangeira = combo). Permissão = Editar.         │
+ * │  Regras dos dois: os ids marcados passam pela consulta da própria listagem  │
+ * │  (model, unidade/tenant, :filters); falha não derruba o lote — quem falhou  │
+ * │  continua marcado, quem deu certo sai; a listagem recarrega e um aviso diz  │
+ * │  quantos e por quê. preset + method/target: vale o preset (com aviso).      │
+ * │                                                                              │
  * │  Seleção no servidor — formato [id => id] (foreach / whereIn / isset):       │
  * │    $this->selectedIds()                        no próprio grid              │
  * │    $this->clearSelection() / setSelectedIds()  no próprio grid              │
@@ -74,6 +95,12 @@ use Mad\View\MadBlade;
  * │                       label="Quitar em lote" />                             │
  * │      <mad-bulk-action method="onExcluirLote" icon="trash-2" danger          │
  * │                       label="Excluir" confirm="Excluir :count registros?" />│
+ * │  </mad-grid>                                                                │
+ * │                                                                              │
+ * │  <mad-grid self model="Meta" selectable remember-filters>                   │
+ * │      <mad-bulk-action preset="delete" />                                    │
+ * │      <mad-bulk-action preset="set" field="status" value="C" label="Cancelar" />│
+ * │      <mad-bulk-action preset="set" field="responsavel_id" ask />            │
  * │  </mad-grid>                                                                │
  * │                                                                              │
  * │  <mad-custom-filters> — Filtro avançado do usuário final                    │
@@ -363,6 +390,13 @@ class MadGridCompiler
      */
     protected static array $_masks = [];
 
+    /**
+     * `<mad-grid self remember-filters>` visto nesta compilação: a expressão
+     * booleana que vai no prólogo do template (ver compileMasked()). Null =
+     * nenhum grid `self` pediu para lembrar os filtros.
+     */
+    protected static ?string $_rememberOpen = null;
+
     // ── Fronteira de tag: corrida de atributos CIENTE DE ASPAS ────────────────
 
     /**
@@ -419,10 +453,13 @@ class MadGridCompiler
         // Reentrante: um bloco pode acabar compilando outro template (ex.: um
         // renderString durante a compilação) — cada chamada tem as suas máscaras.
         $mascarasDeFora = static::$_masks;
+        $lembrarDeFora  = static::$_rememberOpen;
+        static::$_rememberOpen = null;
         try {
             return static::compileMasked($template);
         } finally {
-            static::$_masks = $mascarasDeFora;
+            static::$_masks        = $mascarasDeFora;
+            static::$_rememberOpen = $lembrarDeFora;
         }
     }
 
@@ -582,6 +619,14 @@ class MadGridCompiler
         // Restaura os comentarios Blade mascarados (o Blade os remove em seguida).
         if ($comments) {
             $template = strtr($template, $comments);
+        }
+
+        // <mad-grid self remember-filters>: na abertura da tela, os filtros da
+        // última visita voltam ANTES de qualquer coisa ser desenhada — o bloco
+        // de filtros (sidebar, barra) vem antes da grade e já nasce com eles.
+        if (static::$_rememberOpen !== null) {
+            $template = '<?php if (isset($__component) && method_exists($__component, \'_rememberFiltersOnOpen\')) { $__component->_rememberFiltersOnOpen('
+                . static::$_rememberOpen . '); } ?>' . $template;
         }
 
         return $template;
@@ -1119,6 +1164,14 @@ class MadGridCompiler
 
         // <mad-grid self> — delega para $__component->_renderInlineGrid() (subclasse MadDataGrid)
         if (static::has($gridAttrs, 'self')) {
+            // Lembrar filtros: o bloco de filtros da tela é desenhado ANTES da
+            // grade, então o que a última visita deixou precisa voltar antes
+            // dele — no prólogo do template (ver compileMasked()).
+            $remember = static::rememberFiltersExpr($gridAttrs);
+            if ($remember !== null && $remember !== 'false') {
+                static::$_rememberOpen = $remember;
+            }
+
             return $diag . "<?php echo \$__component->_renderInlineGrid({$configStr}); ?>";
         }
 
@@ -1890,8 +1943,37 @@ class MadGridCompiler
             $c[] = "'selectable' => true";
         }
 
+        // Lembrar filtros (fórum #215): flag nua liga, `="false"` desliga e,
+        // ausente, vale o que a classe declarar ($rememberFilters, desligado).
+        $remember = static::rememberFiltersExpr($a);
+        if ($remember !== null) {
+            $c[] = "'rememberFilters' => " . $remember;
+        }
+
         return $c;
     }
+
+    /**
+     * `remember-filters` → expressão PHP booleana, ou null quando o atributo
+     * não foi escrito. `="false"`/`="0"` desligam; `:remember-filters="$x"`
+     * vale o que a expressão der.
+     */
+    protected static function rememberFiltersExpr(array $a): ?string
+    {
+        if (!isset($a['remember-filters'])) {
+            return null;
+        }
+        $attr = $a['remember-filters'];
+        if ($attr['type'] === 'php') {
+            return '(bool) (' . static::emit($attr) . ')';
+        }
+        $v = strtolower(trim(static::str($a, 'remember-filters')));
+
+        return in_array($v, ['false', '0'], true) ? 'false' : 'true';
+    }
+
+    /** Ações em lote prontas (`<mad-bulk-action preset>`), executadas pelo framework. */
+    public const BULK_PRESETS = ['delete', 'set'];
 
     /**
      * `<mad-bulk-action>` → config da ação em lote (ver docblock da classe).
@@ -1900,6 +1982,10 @@ class MadGridCompiler
      * Sem nenhum dos dois o botão não tem o que fazer — sai com aviso de
      * authoring, em vez de virar um botão morto.
      *
+     * `preset="delete|set"` (fórum #215): a ação pronta roda no framework
+     * (MadDataGrid::onBulkRun) e vence `method`/`target` escritos junto, com
+     * aviso. Preset desconhecido sai como a ação sem destino: aviso e ignorada.
+     *
      * @return string|null  literal PHP do array; null = descartada
      */
     protected static function buildBulkConfig(array $a, string $body = ''): ?string
@@ -1907,8 +1993,35 @@ class MadGridCompiler
         $c = [];
         $method = static::str($a, 'method');
         $nav    = static::str($a, 'target', static::str($a, 'navigate'));
+        $preset = isset($a['preset']) ? strtolower(trim(static::str($a, 'preset'))) : null;
 
-        if ($method !== '' && preg_match('/^[A-Za-z_]\w*$/', $method)) {
+        $defaults = ['label' => null, 'icon' => null, 'variant' => 'primary', 'confirm' => null];
+        if ($preset !== null) {
+            if (!in_array($preset, self::BULK_PRESETS, true)) {
+                static::$_actionNotes[] = '<mad-bulk-action preset="' . static::str($a, 'preset')
+                    . '"> desconhecido (use delete ou set) — ação em lote ignorada.';
+                return null;
+            }
+            if ($method !== '' || $nav !== '') {
+                static::$_actionNotes[] = '<mad-bulk-action preset="' . $preset
+                    . '"> com method=/target= — vale o preset; o method/target foi ignorado.';
+            }
+            $c[] = static::kv('preset', static::qs($preset));
+            if ($preset === 'delete') {
+                // Rótulo e confirmação padrão vêm do runtime, traduzidos no
+                // idioma de quem usa; aqui só o que não depende de idioma.
+                $defaults['icon']    = "'trash-2'";
+                $defaults['variant'] = 'danger';
+            } else {
+                $set = static::buildBulkSetConfig($a);
+                if ($set === null) {
+                    return null;
+                }
+                array_push($c, ...$set);
+            }
+            $method = '';
+            $nav    = '';
+        } elseif ($method !== '' && preg_match('/^[A-Za-z_]\w*$/', $method)) {
             $c[] = static::kv('method', static::qs($method));
         } elseif ($nav !== '' && preg_match('/^\\\\?([A-Za-z_][\w\\\\]*)(?:::(\w+))?\s*(?:\(\s*\))?$/', trim($nav), $nm)) {
             $c[] = static::kv('target', static::qs(ltrim($nm[1], '\\')));
@@ -1923,25 +2036,119 @@ class MadGridCompiler
         $text = trim(strip_tags((string) preg_replace('/MAD__BLADE_(?:COMMENT|PHPBLOCK)__\d+__/', '', $body)));
         if (isset($a['label'])) {
             $c[] = static::kv('label', static::strExpr($a, 'label'));
-        } else {
-            $c[] = static::kv('label', static::qs($text !== '' ? $text : ($method !== '' ? $method : $nav)));
+        } elseif ($text !== '') {
+            $c[] = static::kv('label', static::qs($text));
+        } elseif ($preset === null) {
+            $c[] = static::kv('label', static::qs($method !== '' ? $method : $nav));
         }
-        if (isset($a['icon']))    $c[] = static::kv('icon',    static::strExpr($a, 'icon'));
-        if (isset($a['confirm'])) $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
+        if (isset($a['icon'])) {
+            $c[] = static::kv('icon', static::strExpr($a, 'icon'));
+        } elseif ($defaults['icon'] !== null) {
+            $c[] = static::kv('icon', $defaults['icon']);
+        }
+        // `confirm` vazio no preset delete = a confirmação padrão (ela é
+        // obrigatória): o runtime preenche quando chega vazio.
+        if (isset($a['confirm']) && $a['confirm']['type'] !== 'bool') {
+            $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
+        }
 
         $variant = match (true) {
             static::has($a, 'danger')    => 'danger',
             static::has($a, 'primary')   => 'primary',
             static::has($a, 'secondary') => 'secondary',
             static::has($a, 'ghost')     => 'ghost',
-            default                      => static::str($a, 'variant', 'primary'),
+            default                      => static::str($a, 'variant', $defaults['variant']),
         };
-        $c[] = static::kv('variant', static::qs(in_array($variant, ['primary', 'danger', 'secondary', 'ghost', 'success', 'warning'], true) ? $variant : 'primary'));
+        $c[] = static::kv('variant', static::qs(in_array($variant, ['primary', 'danger', 'secondary', 'ghost', 'success', 'warning'], true) ? $variant : $defaults['variant']));
 
         $min = isset($a['min']) && $a['min']['type'] === 'string' && is_numeric($a['min']['value'])
             ? max(0, (int) $a['min']['value'])
             : 1;
         $c[] = "'min' => {$min}";
+
+        return '[' . implode(', ', $c) . ']';
+    }
+
+    /**
+     * Partes do `preset="set"`: a coluna (obrigatória, coluna do próprio
+     * model — o runtime confere de novo contra o banco), o valor fixo
+     * (`value`) e/ou o campo do diálogo (`ask`). Sem coluna válida, ou sem
+     * `value` nem `ask`, a ação é descartada com aviso.
+     *
+     * @return list<string>|null
+     */
+    protected static function buildBulkSetConfig(array $a): ?array
+    {
+        $raw   = trim(static::str($a, 'field'));
+        $field = $raw;
+        if (strlen($field) > 2 && $field[0] === '{' && substr($field, -1) === '}') {
+            $field = trim(substr($field, 1, -1));
+        }
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $field)) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="set"> sem field= de uma coluna do model'
+                . ($raw !== '' ? ' ("' . $raw . '")' : '') . ' — ação em lote ignorada.';
+            return null;
+        }
+
+        $c   = [static::kv('field', static::qs($field))];
+        $ask = static::has($a, 'ask') && !in_array(strtolower(static::str($a, 'ask')), ['false', '0'], true);
+        if (isset($a['value'])) {
+            // `value` sem "=…" (atributo nu) é o valor vazio: grava nulo.
+            $c[] = static::kv('value', $a['value']['type'] === 'bool' ? "''" : static::emit($a['value']));
+            $c[] = "'hasValue' => true";
+        } elseif (!$ask) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="set" field="' . $field
+                . '"> sem value= nem ask — ação em lote ignorada.';
+            return null;
+        }
+        if ($ask) {
+            $c[] = "'ask' => " . static::buildBulkAskConfig($a);
+        }
+
+        return $c;
+    }
+
+    /**
+     * O campo do diálogo do `ask`: mesmo vocabulário do `<mad-custom-filter>`
+     * (`type`, `opts`, `true`/`false`, `model`/`display`/`key`/`order-by`/
+     * `database`/`:filters`). Sem `type`, o runtime deduz do model e do banco
+     * (chave estrangeira vira combo da tabela referenciada). `dbsearch` vira
+     * `dbcombo`: o diálogo não tem busca sob demanda.
+     */
+    protected static function buildBulkAskConfig(array $a): string
+    {
+        $type = trim(static::str($a, 'type', ''));
+        $kind = $type === '' ? '' : static::customFilterKind($type);
+        if ($kind === 'dbsearch') {
+            $kind = 'dbcombo';
+        }
+        $c = [static::kv('kind', static::qs($kind))];
+
+        if (isset($a['opts']) && $a['opts']['type'] !== 'bool') {
+            $c[] = static::kv('opts', static::emitOptsAttr($a['opts']));
+        }
+        foreach (['true' => 'true', 'false' => 'false'] as $src => $dst) {
+            $val = static::str($a, $src, '');
+            if ($val !== '') $c[] = static::kv($dst, static::qs($val));
+        }
+        foreach (['model' => 'model', 'display' => 'display', 'key' => 'keyField', 'database' => 'database'] as $src => $dst) {
+            $val = static::str($a, $src, '');
+            if ($val !== '') $c[] = static::kv($dst, static::qs($val));
+        }
+        $orderBy = trim(static::str($a, 'order-by', ''));
+        $order   = strtolower(static::str($a, 'order', ''));
+        if ($orderBy !== '') {
+            $bits    = preg_split('/\s+/', $orderBy) ?: [$orderBy];
+            $orderBy = (string) $bits[0];
+            if (isset($bits[1]) && $order === '') $order = strtolower((string) $bits[1]);
+            $c[] = static::kv('orderBy', static::qs($orderBy));
+        }
+        if (in_array($order, ['asc', 'desc'], true)) {
+            $c[] = static::kv('order', static::qs($order));
+        }
+        if (isset($a['filters']) && $a['filters']['type'] === 'php') {
+            $c[] = static::kv('filters', static::emit($a['filters']));
+        }
 
         return '[' . implode(', ', $c) . ']';
     }
