@@ -9,7 +9,7 @@
             break;
         }
     }
-    $summaryLabelKeys = array_map(fn($index) => $summaryColumns[$index]->fieldKey, $summaryLabelIndexes);
+    $summaryLabelKeys = array_map(fn($index) => $summaryColumns[$index]->colKey(), $summaryLabelIndexes);
     $summaryLabelKeysJs = json_encode($summaryLabelKeys);
     $summaryPreviousKeys = [];
     // Só o total GERAL (rodapé da grade) é atualizável no lugar e avisa
@@ -31,7 +31,7 @@
         @endif
     @else
         <td class="mad-dg-cell mad-dg-total-cell{{ $summaryColumn->nowrapClass() }}" style="text-align:{{ $summaryColumn->align }};"
-            :class="{ 'mad-dg-col-hidden': isColHidden({{ json_encode($summaryColumn->fieldKey) }}) }">
+            :class="{ 'mad-dg-col-hidden': isColHidden({{ json_encode($summaryColumn->colKey()) }}) }">
             {{-- Se as colunas do rótulo forem ocultadas (ou todas calcularem),
                  identifica o resumo dentro da primeira célula ainda visível. --}}
             <span class="mad-dg-group-total-label mad-dg-total-label-fallback" x-cloak
@@ -42,5 +42,5 @@
             @if(isset($summaryTotals[$summaryColumn->field]))@if($summaryGrand)<span class="mad-dg-total-value" data-mad-total="{{ $summaryColumn->fieldKey }}">{!! \Mad\Grid\MadDataGrid::totalCellHtml($summaryTotals[$summaryColumn->field], !empty($summaryPageOnly[$summaryColumn->field])) !!}</span>@else{!! $summaryTotals[$summaryColumn->field] !!}@endif @endif
         </td>
     @endif
-    @php $summaryPreviousKeys[] = $summaryColumn->fieldKey; @endphp
+    @php $summaryPreviousKeys[] = $summaryColumn->colKey(); @endphp
 @endforeach

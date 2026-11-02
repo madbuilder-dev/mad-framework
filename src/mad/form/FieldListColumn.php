@@ -97,6 +97,7 @@ class FieldListColumn
     public string $mask           = '';   // alias ('cpf','cnpj','cep'...) ou pattern (999.999-99)
     public bool   $stripMask      = false; // salva só dígitos/letras (aplicado no getFieldList)
     public bool   $allowNegative  = false; // money/numeric: aceita o sinal de menos (fw#549)
+    public string $emptyAs        = '';   // numeric: 'null' = célula vazia chega null (padrão: 0) (fw#584)
     public string $forceCase      = '';   // upper | lower | title
     public string $icon           = '';   // lucide icon name
     public string $iconColor      = '';   // cor CSS do ícone
@@ -181,6 +182,13 @@ class FieldListColumn
     public function mask(string $v): self          { $this->mask = $v;                         return $this; }
     public function stripMask(bool $on = true): self { $this->stripMask = $on;               return $this; }
     public function allowNegative(bool $on = true): self { $this->allowNegative = $on;       return $this; }
+    public function emptyAs(string $v): self       { $this->emptyAs = strtolower(trim($v));   return $this; }
+
+    /** Coluna numeric com `empty-as="null"`: a célula vazia fica vazia e chega null (fw#584). */
+    public function keepsEmpty(): bool
+    {
+        return $this->type === 'numeric' && $this->emptyAs === 'null';
+    }
     public function forceCase(string $v): self     { $this->forceCase = $v;                    return $this; }
     public function icon(string $v): self          { $this->icon = $v;                         return $this; }
     public function iconColor(string $v): self     { $this->iconColor = $v;                    return $this; }
@@ -466,6 +474,7 @@ class FieldListColumn
             'step'        => $this->step,
             'decimals'    => $this->decimals,
             'allowNegative' => $this->allowNegative,
+            'emptyAs'     => $this->emptyAs,
             'prefix'      => $this->prefix,
             'typeField'   => $this->typeField,
             'accept'      => $this->accept,

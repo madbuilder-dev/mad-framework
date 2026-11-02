@@ -26,7 +26,7 @@
     // coluna para a direita. Mesma conta da linha de sub-total
     // (data-grid-total-cells).
     $_gbKeysJs = json_encode(array_map(
-        fn($c) => $c->fieldKey,
+        fn($c) => $c->colKey(),
         array_slice($visibleColumns, 0, $_gbSpan)
     ));
 @endphp
@@ -48,7 +48,7 @@
         </div>
     </td>
     @foreach(array_slice($visibleColumns, $_gbSpan) as $col)
-    <td class="mad-dg-cell mad-dg-total-cell{{ $col->nowrapClass() }}" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->align }};">
+    <td class="mad-dg-cell mad-dg-total-cell{{ $col->nowrapClass() }}" :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }" style="text-align:{{ $col->align }};">
         @if(isset($item['totals'][$col->field])){!! $item['totals'][$col->field] !!}@endif
     </td>
     @endforeach

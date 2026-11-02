@@ -43,7 +43,7 @@ final class GridRowRenderer
 
         foreach ($this->columns as $col) {
             $this->cells[] = [
-                'fk'    => $col->fieldKey,
+                'fk'    => $col->colKey(),
                 'field' => $col->field,
                 'class' => 'mad-dg-cell' . $col->nowrapClass() . $col->cellClass(),
                 'align' => $col->alignCss(),

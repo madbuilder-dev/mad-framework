@@ -245,7 +245,8 @@ class ModelOptionsLoader
      *
      * Aceita FQCN explícito ('App\Models\Iam\User'), token DomainEntity
      * ('IamUser') ou basename de entidade ('User'/'Message'). Fallback legado
-     * prefixa 'App\Models\' ao short name se o registry não achar.
+     * prefixa 'App\Models\' ao short name se o registry não achar. Erro no
+     * idioma do app (catálogo `mad.error.model_*`).
      */
     public static function resolveModelClass(string $model): string
     {
@@ -259,12 +260,7 @@ class ModelOptionsLoader
             // onde se espera o model dos dados. Sem este guard o caller faz
             // `$class::query()` e o PHP fatala com o enigmático
             // "Call to protected method ...::query()".
-            throw new Exception(
-                "ModelOptionsLoader: \"{$model}\" existe mas não é um Model "
-                . "Eloquent (esperado App\\Models\\...). Passe o model dos "
-                . "dados, não um componente/classe. "
-                . "Ex: baseQuery(App\\Models\\Cliente::class)."
-            );
+            throw new Exception('ModelOptionsLoader: ' . mad_t('mad.error.model_not_eloquent', ['model' => $model]));
         }
 
         $resolved = \Mad\Database\ModelRegistry::resolve($model);
@@ -279,10 +275,20 @@ class ModelOptionsLoader
             return $candidate;
         }
 
-        throw new Exception(
-            "ModelOptionsLoader: model \"{$model}\" não encontrado "
-            . "(tentado \"{$model}\", registry e \"{$candidate}\")."
-        );
+        // Mensagem no idioma do app (fw#583). Nome curto disputado por dois models
+        // do app: diz quais são, em vez de "não encontrado".
+        $claimants = \Mad\Database\ModelRegistry::candidates($short);
+        if (count($claimants) > 1) {
+            throw new Exception('ModelOptionsLoader: ' . mad_t('mad.error.model_ambiguous', [
+                'model'      => $model,
+                'candidates' => implode(', ', $claimants),
+            ]));
+        }
+
+        throw new Exception('ModelOptionsLoader: ' . mad_t('mad.error.model_not_found', [
+            'model'     => $model,
+            'candidate' => $candidate,
+        ]));
     }
 
     /**

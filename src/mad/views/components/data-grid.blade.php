@@ -724,7 +724,7 @@
                         };
                     @endphp
                     <th class="mad-dg-th mad-dg-th-align-{{ $thAlign }}{{ $col->isNumeric() && !$col->alignSet ? ' mad-dg-th-num' : '' }}{{ $col->shape === 'grow' ? ' mad-dg-col-grow' : '' }}{{ $isActive ? ' mad-dg-th-filtered' : '' }}{{ $isSorted ? ' mad-dg-th-sorted' : '' }}"
-                        :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }"
+                        :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }"
                         style="{{ $thStyle }}text-align:{{ $col->alignCss() }};{{ $_growN > 1 && $col->shape === 'grow' ? '--mad-dg-grow-w:' . round(40 / $_growN, 2) . '%;' : '' }}">
                         <div class="mad-dg-th-content">
                             @if($thAlign !== 'right')
@@ -1263,7 +1263,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1372,7 +1372,7 @@
                                 if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
                             }
                         @endphp
-                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+                        <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
                             @if($col->editable)
                             @php
                                 $editInitVal = $cellVal;
@@ -1478,7 +1478,7 @@
                     @else
                     @foreach($visibleColumns as $col)
                     <td class="mad-dg-cell mad-dg-total-cell{{ $col->nowrapClass() }}{{ $col->isNumeric() ? ' mad-dg-cell-num' : '' }}" style="text-align:{{ $col->alignCss() }};"
-                        :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }">
+                        :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }">
                         @if(isset($totals[$col->field]))<span class="mad-dg-total-value" data-mad-total="{{ $col->fieldKey }}">{!! \Mad\Grid\MadDataGrid::totalCellHtml($totals[$col->field], !empty($totalsPageOnly[$col->field])) !!}</span>@endif
                     </td>
                     @endforeach
@@ -1572,7 +1572,7 @@
                         @foreach($cardBody as $col)
                         @php $cellVal = $row[$col->field] ?? ''; $_hlCellStyle = ltrim(\Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col), ';'); @endphp
                         @if($cellVal !== '' && $cellVal !== null)
-                        <div class="mad-dg-card-field{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($_hlCellStyle !== '') style="{{ $_hlCellStyle }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }">
+                        <div class="mad-dg-card-field{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"@if($_hlCellStyle !== '') style="{{ $_hlCellStyle }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }">
                             <span class="mad-dg-card-field-label">{{ $col->label }}</span>
                             <span class="mad-dg-card-field-value">{!! $col->renderValue($cellVal, $row) !!}</span>
                         </div>

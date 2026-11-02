@@ -5643,15 +5643,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Reconstrói colunas a partir do config salvo (AJAX perde _inlineConfig)
         $columns = $this->_effectiveColumns();
         if (empty($columns) && !empty($this->exportColConfigs)) {
-            $columns = array_map(fn($c) => static::_colFromConfig($c), $this->exportColConfigs);
+            $columns = static::assignColKeys(array_map(fn($c) => static::_colFromConfig($c), $this->exportColConfigs));
         }
 
-        // O chooser usa fieldKey (inclusive para campos de relacionamento) e
+        // O chooser usa a chave da coluna (fieldKey, inclusive para campos de
+        // relacionamento; `__2`… na 2ª coluna do mesmo campo) e
         // guarda a seleção no navegador. O cliente só pode REMOVER colunas —
         // e só as que o seletor oferece (`not-hideable` fica sempre).
         $visibleCols = array_values(array_filter($columns, fn($c) =>
             !$c->hidden && $c->checkDisplay()
-            && (!$c->hideable || !in_array($c->fieldKey, $hiddenColumns, true))
+            && (!$c->hideable || !in_array($c->colKey(), $hiddenColumns, true))
         ));
         if (empty($visibleCols)) {
             throw new \RuntimeException(__('grid.export_no_columns'));
@@ -6855,7 +6856,39 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             )
             : $this->columns();
 
-        return $this->_normalizeFilterTokens($this->_normalizeSortable($cols));
+        return static::assignColKeys($this->_normalizeFilterTokens($this->_normalizeSortable($cols)));
+    }
+
+    /**
+     * A chave de ocultar de cada coluna (fw#578). A 1ª coluna de um campo fica
+     * com o `fieldKey` — escolha guardada no navegador e visão salva continuam
+     * valendo; as seguintes com o MESMO campo (`{id}` com transforms
+     * diferentes) ganham `<fieldKey>__2`, `__3`… Antes dividiam a chave, e o
+     * `hide-below` ou o seletor de uma escondia a outra também.
+     *
+     * @param GridColumn[] $cols
+     * @return GridColumn[]
+     */
+    public static function assignColKeys(array $cols): array
+    {
+        $taken = [];
+        foreach ($cols as $c) {
+            if ($c instanceof GridColumn) $taken[$c->fieldKey] = true;
+        }
+        $used = [];
+        foreach ($cols as $c) {
+            if (!($c instanceof GridColumn)) continue;
+            $key = $c->fieldKey;
+            if (isset($used[$key])) {
+                $n = 2;
+                while (isset($used[$c->fieldKey . '__' . $n]) || isset($taken[$c->fieldKey . '__' . $n])) $n++;
+                $key = $c->fieldKey . '__' . $n;
+            }
+            $c->colKey  = $key;
+            $used[$key] = true;
+        }
+
+        return $cols;
     }
 
     /**
@@ -7095,7 +7128,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public static function _colsClientConfig(array $columns): array
     {
         return array_values(array_map(
-            fn($c) => ['field' => $c->fieldKey, 'label' => $c->label, 'hideable' => $c->hideable]
+            fn($c) => ['field' => $c->colKey(), 'label' => $c->label, 'hideable' => $c->hideable]
                 + ($c->hideBelow > 0 ? ['hideBelow' => $c->hideBelow] : []),
             array_filter($columns, fn($c) => !$c->hidden)
         ));
@@ -11078,7 +11111,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $hlCellStyle = ltrim(static::cellHighlightStyle($rowHighlight, $col), ';');
                 $html .= '<div class="mad-dg-card-field' . static::cellHighlightClass($rowHighlight, $col) . '"'
                         . ($hlCellStyle !== '' ? ' style="' . htmlspecialchars($hlCellStyle, ENT_QUOTES) . '"' : '')
-                        . " :class=\"{ 'mad-dg-col-hidden': isColHidden('" . $col->fieldKey . "') }\">"
+                        . " :class=\"{ 'mad-dg-col-hidden': isColHidden('" . $col->colKey() . "') }\">"
                         . '<span class="mad-dg-card-field-label">' . htmlspecialchars($col->label, ENT_QUOTES) . '</span>'
                         . '<span class="mad-dg-card-field-value">' . $col->renderValue($cellVal, $row) . '</span>'
                         . '</div>';

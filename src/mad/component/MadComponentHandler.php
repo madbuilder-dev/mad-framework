@@ -713,7 +713,8 @@ class MadComponentHandler
         $stateDepois = $component->_getState();
 
         $bindOps       = [];
-        $precisaRender = $component->_needsFullRender();
+        $precisaRender = $component->_needsFullRender()
+            || self::_refreshesItself($explicitOps, $component, $target ?? null);
 
         foreach ($stateDepois as $prop => $valor) {
             if ($prop === '_forwardParams' || $prop === '_rowAttach' || $prop === '_comboOrigin') continue; // interno, não é prop renderizável
@@ -995,6 +996,40 @@ class MadComponentHandler
         }
 
         return $fullResponse;
+    }
+
+    /**
+     * A resposta pede `refreshScreen()` da PRÓPRIA tela (`->refreshScreen('Agenda')`
+     * respondido pela Agenda)? O navegador nunca recarrega quem respondeu, então o
+     * pedido não fazia nada e o dia/semana mudado ficava parado na tela (fw#584).
+     * Com o nome dela na lista, a resposta volta com a tela redesenhada — o mesmo
+     * que `forceFullRender()`; as outras telas pedidas seguem pelo op.
+     *
+     * @param list<array<string,mixed>> $ops
+     */
+    private static function _refreshesItself(array $ops, MadComponent $component, ?object $target): bool
+    {
+        // Mesmo critério do navegador (Mad._refreshScreens): nome completo ou curto.
+        $short = static fn (string $cls): string => substr((string) strrchr('\\' . $cls, '\\'), 1);
+        $mine  = [];
+        foreach ([$component, $target] as $obj) {
+            if ($obj instanceof MadComponent) {
+                $mine[$short(get_class($obj))] = true;
+            }
+        }
+        foreach ($ops as $op) {
+            if (!is_array($op) || ($op['op'] ?? '') !== 'refresh_screen') {
+                continue;
+            }
+            foreach ((array) ($op['screens'] ?? []) as $screen) {
+                $screen = ltrim(trim((string) $screen), '\\');
+                if ($screen !== '' && isset($mine[$short($screen)])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // ── Helpers de segurança ───────────────────────────────────────────────────

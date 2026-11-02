@@ -11277,6 +11277,10 @@ document.addEventListener('alpine:init', () => {
         const field  = cfg.field || '';
         const rowRef = cfg.row || null;
         const allowNeg = !!cfg.allowNegative;
+        // `empty-as="null"` na coluna (fw#584): vazio fica vazio (o servidor
+        // recebe null) e o zero digitado aparece. Sem a prop, vazio vira 0.
+        const keepEmpty = String(cfg.emptyAs || '').toLowerCase() === 'null';
+        const isBlank = (v) => v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '-';
 
         function clamp(v) {
             if (min !== null && v < min) return min;
@@ -11292,7 +11296,8 @@ document.addEventListener('alpine:init', () => {
 
         // Formata float para pt-BR, removendo zeros desnecessários à direita
         function fmtNumeric(val) {
-            if (val === 0) return '';
+            if (val === '' || val === null) return '';
+            if (val === 0 && !keepEmpty) return '';
             var s = madNumFmt(val, maxDec);
             // Remove trailing zeros: "150,500" → "150,5"; "150,000" → "150"
             if (s.indexOf(',') !== -1) {
@@ -11306,7 +11311,7 @@ document.addEventListener('alpine:init', () => {
 
             init() {
                 var initial = rowRef ? (parseFloat(rowRef[field]) || 0) : 0;
-                initial = clamp(initial);
+                initial = (keepEmpty && rowRef && isBlank(rowRef[field])) ? '' : clamp(initial);
                 this.display = fmtNumeric(initial);
                 if (this.$refs.input) this.$refs.input.value = this.display;
 
@@ -11315,7 +11320,7 @@ document.addEventListener('alpine:init', () => {
                 if (rowRef && field) {
                     this.$watch(() => rowRef[field], (val) => {
                         var f = parseFloat(val) || 0;
-                        var next = fmtNumeric(clamp(f));
+                        var next = (keepEmpty && isBlank(val)) ? '' : fmtNumeric(clamp(f));
                         if (next !== this.display && document.activeElement !== this.$refs.input) {
                             this.display = next;
                             if (this.$refs.input) this.$refs.input.value = next;
@@ -11341,13 +11346,13 @@ document.addEventListener('alpine:init', () => {
                 }
                 if (neg) val = '-' + val;
                 e.target.value = val;
-                var floatVal = madNumParse(val);
+                var floatVal = (keepEmpty && isBlank(val)) ? '' : madNumParse(val);
                 if (rowRef) rowRef[field] = floatVal;
             },
 
             _onFocus(e) {
                 var val = rowRef ? (parseFloat(rowRef[field]) || 0) : 0;
-                if (val !== 0) {
+                if (val !== 0 || (keepEmpty && rowRef && !isBlank(rowRef[field]))) {
                     // Mostra com vírgula, sem separador de milhar
                     var s = val.toFixed(maxDec);
                     if (s.indexOf('.') !== -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
@@ -11361,7 +11366,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             _onBlur(e) {
-                var parsed = snap(clamp(madNumParse(e.target.value)));
+                var parsed = (keepEmpty && isBlank(e.target.value)) ? '' : snap(clamp(madNumParse(e.target.value)));
                 this.display = fmtNumeric(parsed);
                 e.target.value = this.display;
                 if (rowRef) rowRef[field] = parsed;

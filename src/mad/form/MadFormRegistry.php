@@ -1038,7 +1038,7 @@ class MadFormRegistry
      * leitura: a lista gravada à mão lê `getFieldList()` antes de qualquer
      * `fromRequest()` e, sem isto, o desmarcado ia vazio ao banco (fw#375).
      *
-     * @return array<string,array{bool: true}>
+     * @return array<string,array{bool?: true, emptyNull?: true}>
      */
     private static function requestBoolColumns(string $name, string $field = '__mad_form'): array
     {
@@ -1053,7 +1053,8 @@ class MadFormRegistry
         $meta = self::$requestSchema['__mad_field_lists'][$name]['colMeta']
             ?? self::$requestSchema['__mad_detail_forms'][$name]['colMeta'] ?? [];
 
-        return array_filter(is_array($meta) ? $meta : [], static fn ($cfg) => is_array($cfg) && !empty($cfg['bool']));
+        // Também a numérica com `empty-as="null"` (fw#584): vazio vira null.
+        return array_filter(is_array($meta) ? $meta : [], static fn ($cfg) => is_array($cfg) && (!empty($cfg['bool']) || !empty($cfg['emptyNull'])));
     }
 
     /**
@@ -1087,6 +1088,14 @@ class MadFormRegistry
                         } elseif ($value === true) {
                             $rows[$i][$field] = '1';
                         }
+                    }
+                    continue;
+                }
+                // Numérica com `empty-as="null"` (fw#584): vazio vira null. A linha
+                // toda em branco fica como está (o Salvar a descarta).
+                if (!empty($cfg['emptyNull'])) {
+                    if (!$blank && array_key_exists($field, $row) && is_string($row[$field]) && trim($row[$field]) === '') {
+                        $rows[$i][$field] = null;
                     }
                     continue;
                 }

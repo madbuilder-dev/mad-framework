@@ -323,6 +323,11 @@ return [
             'cell_edit_dropped' => 'What you were typing was not saved: the list was refreshed before you confirmed.',
             // Ação da listagem chamada com argumento de tipo errado (requisição alterada): MadDataGrid::_resolveAndCall.
             'bad_request'    => 'Invalid request. Refresh the screen and try again.',
+            // Model name that does not resolve to a class (ModelOptionsLoader::resolveModelClass): shown to whoever builds the screen.
+            'model_not_found'    => 'model ":model" not found (tried ":model", the model index and ":candidate"). Check the name or use the full class name (e.g. App\\Models\\Sales\\Invoice).',
+            'model_ambiguous'    => 'model ":model" is ambiguous: :candidates. Use the full class name of the one you want.',
+            'model_not_eloquent' => '":model" exists but is not an Eloquent model (expected App\\Models\\...). Pass the data model, not a component or other class. E.g.: baseQuery(App\\Models\\Customer::class).',
+            'options_load'       => 'Could not load the options: :message',
         ],
 
         // Screen field (or list column) that is not a table column: Save refuses the

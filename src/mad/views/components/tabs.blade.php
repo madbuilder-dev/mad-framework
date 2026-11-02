@@ -11,11 +11,14 @@
         default     => '',
     };
 @endphp
-{{-- data-mad-tabs-default: a aba inicial que o SERVIDOR pediu. No redesenho
+{{-- x-id: escopo dos ids que ligam aba e painel (aria-controls/aria-labelledby,
+     #576) — o mesmo `name` em dois grupos da tela não colide.
+     data-mad-tabs-default: a aba inicial que o SERVIDOR pediu. No redesenho
      da tela o navegador mantém a aba em que o usuário estava (Mad.restoreUiState)
      — a menos que o servidor tenha mudado este default: aí vale o novo. --}}
 <div class="mad-tabs{{ $variantClass }}{{ $wrap ? ' mad-tabs-wrap' : '' }} {{ $class }}" @if($style) style="{{ $style }}" @endif
      data-mad-tabs-default="{{ $default }}"
-     x-data="{ activeTab: '{{ $default }}' }">
+     x-data="{ activeTab: '{{ $default }}' }"
+     x-id="['mad-tab', 'mad-tab-panel']">
     {!! $slot !!}
 </div>

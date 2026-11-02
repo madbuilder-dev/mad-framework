@@ -407,15 +407,26 @@ trait MadGridSavedViews
         $this->gridViewId = (int) ($row['id'] ?? 0) ?: null;
     }
 
-    /** Campos das colunas declaradas (allowlist das colunas escondidas). */
+    /**
+     * Allowlist das colunas escondidas: o campo e a chave de ocultar de cada
+     * coluna — é a chave que o navegador manda (`cliente__nome`, `_id_`, e
+     * `_id___2` na 2ª coluna do mesmo campo, fw#578).
+     */
     protected function _svColumnFields(): array
     {
         $configs = $this->exportColConfigs;
-        if (!empty($configs)) {
-            return array_values(array_filter(array_map(fn ($c) => (string) ($c['field'] ?? ''), $configs), 'strlen'));
+        $cols    = !empty($configs)
+            ? static::assignColKeys(array_map(fn ($c) => static::_colFromConfig($c), $configs))
+            : $this->_effectiveColumns();
+
+        $out = [];
+        foreach ($cols as $c) {
+            foreach ([(string) $c->field, $c->colKey()] as $k) {
+                if ($k !== '') $out[$k] = true;
+            }
         }
 
-        return array_values(array_filter(array_map(fn ($c) => (string) $c->field, $this->_effectiveColumns()), 'strlen'));
+        return array_keys($out);
     }
 
     /** Dados do menu "Visões" para o Blade da grade. */

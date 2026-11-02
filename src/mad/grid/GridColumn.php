@@ -8,6 +8,13 @@ class GridColumn
 {
     public string  $field      = '';
     public string  $fieldKey   = '';  // chave sanitizada para Alpine/JS (sem {, }, ->)
+    /**
+     * Chave de ocultar da COLUNA: seletor de colunas, `hide-below`, escolha
+     * guardada no navegador, visão salva e exportação. É o `fieldKey`, mas
+     * duas colunas com o mesmo campo ganham chaves próprias (fw#578) — ver
+     * MadDataGrid::assignColKeys(). '' = ainda não atribuída (vale o fieldKey).
+     */
+    public string  $colKey     = '';
     public string  $label      = '';
     public string  $width      = '';
     public string  $align      = 'left';
@@ -683,6 +690,12 @@ class GridColumn
     }
 
     /** Oculta a coluna em telas mais estreitas que $px (0 = sempre visível). */
+    /** Chave de ocultar da coluna (ver $colKey). */
+    public function colKey(): string
+    {
+        return $this->colKey !== '' ? $this->colKey : $this->fieldKey;
+    }
+
     public function hideBelow(int $px): self
     {
         $this->hideBelow = max(0, $px);

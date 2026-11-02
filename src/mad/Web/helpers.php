@@ -189,9 +189,14 @@ if (!function_exists('site_url')) {
      *   - Prod root:   site_url('/public/login') → /public/login
      *
      * Com `absolute: true` devolve o endereço COMPLETO, para tudo que sai do
-     * app (link enviado por e-mail ou WhatsApp, QR Code, texto copiado):
+     * app (link enviado por e-mail ou WhatsApp, QR Code, texto copiado,
+     * `success_url`/`cancel_url` do Checkout do Stripe ou de outro gateway,
+     * webhook cadastrado fora — com o caminho relativo o gateway recusa):
      *
      *   site_url('/loja/x', absolute: true) → https://dominio.com/loja/x
+     *
+     * Não embrulhe em `url(site_url(...))`: em deploy em subpasta a pasta entra
+     * duas vezes (https://dominio.com/meu-app/meu-app/loja/x).
      *
      * Fora de uma requisição HTTP (comando, job de fila, agendador, script) a
      * base vem do endereço configurado do app (APP_URL): ali o SCRIPT_NAME é o

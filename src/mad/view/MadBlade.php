@@ -553,6 +553,48 @@ class MadBladeCompiler extends BladeCompiler
         return $nm[1];
     }
 
+    /**
+     * Props de TEXTO, que os templates só imprimem escapadas ou como texto de
+     * elemento: nelas `&quot;`/`&#39;` também viram aspas. Nas demais (name,
+     * value, href, style…) a aspa pode cair crua num atributo ou numa string
+     * JS do template (`'mad:model="' . $name . '"'`, `madColorField('{{ $value }}')`).
+     */
+    private const TEXT_PROPS = [
+        'title', 'subtitle', 'description', 'label', 'hint', 'placeholder',
+        'confirm', 'tooltip', 'emptyText', 'breadcrumb', 'heading',
+    ];
+
+    /**
+     * Texto de um atributo LITERAL (`title="Services &amp; materials"`), como o
+     * HTML o lê: a entidade é só o jeito de escrever o caractere, e o template
+     * escapa a prop ao imprimir. Sem isto a tela mostrava "&amp;amp;" (#575).
+     *
+     * Fica como está (tudo ou nada) o valor em que a entidade viraria um `<`
+     * novo — rótulo de campo, breadcrumb, hint… saem CRUS (`{!! !!}`), e o
+     * `&lt;img …&gt;` de um template montado com `e($dado)` viraria marcação —,
+     * uma aspa nova fora das TEXT_PROPS, ou texto que ainda parece entidade
+     * (`&amp;copy;` quer mostrar "&copy;"). `{{ }}` no valor não é tocado.
+     */
+    private static function literalAttrText(string $val, string $prop): string
+    {
+        if (strpos($val, '&') === false || preg_match('/\{\{|\{!!/', $val)) {
+            return $val;
+        }
+        $text = html_entity_decode($val, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if ($text === $val
+            || preg_match('/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i', $text)) {
+            return $val;
+        }
+        $risky = in_array($prop, self::TEXT_PROPS, true) ? ['<'] : ['<', '"', "'"];
+        foreach ($risky as $ch) {
+            if (substr_count($text, $ch) > substr_count($val, $ch)) {
+                return $val;
+            }
+        }
+
+        return $text;
+    }
+
     /** `$text` como literal PHP entre aspas duplas. */
     private static function phpString(string $text): string
     {
@@ -891,6 +933,8 @@ class MadBladeCompiler extends BladeCompiler
                 if ($phpKey === 'attrs') {
                     $hasAttrs   = true;
                     $attrsIndex = count($compiled);
+                } elseif ($m[1] === '') {
+                    $val = self::literalAttrText($val, $phpKey);
                 }
 
                 $compiled[] = $m[1]  // tem ':' → expressão PHP

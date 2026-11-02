@@ -64,7 +64,7 @@
             if ($lbl !== '') $rendered = htmlspecialchars((string)$lbl, ENT_QUOTES);
         }
     @endphp
-    <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->fieldKey }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
+    <td class="mad-dg-cell{{ $col->nowrapClass() }}{{ $col->cellClass($cellVal) }}{{ \Mad\Grid\MadDataGrid::cellHighlightClass($_hl, $col) }}"{!! $col->cardAttrs($rendered) !!}@if($col->editable) data-col="{{ $col->fieldKey }}"@endif :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }" style="text-align:{{ $col->alignCss() }}{{ \Mad\Grid\MadDataGrid::cellHighlightStyle($_hl, $col) }};">
         @if($col->editable)
         @php
             $editInitVal = $cellVal;

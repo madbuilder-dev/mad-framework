@@ -813,8 +813,9 @@ class MadResponse
      * <mad-transporter> ou outra camada aberta por baixo) é redesenhada pelo
      * servidor com o estado que tem — relê o banco, como o `$refresh`; a que
      * embute outra redesenha as embutidas junto. Tela que não está aberta não é
-     * tocada: quando abrir, já vem atualizada. A própria tela que responde nunca
-     * é recarregada por aqui (use o retorno da ação para ela).
+     * tocada: quando abrir, já vem atualizada. A própria tela que responde, se
+     * estiver na lista pelo nome, volta redesenhada nesta mesma resposta (o mesmo
+     * que `$this->forceFullRender()`, fw#584); sem nome ela não entra.
      *
      * @param string ...$screens Classes das telas (ex.: 'NegociacaoFormView'); vazio = as de trás
      */

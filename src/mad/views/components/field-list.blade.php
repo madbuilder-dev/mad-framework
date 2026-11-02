@@ -184,6 +184,12 @@
             $_flColMeta[$_mc->field] = ['bool' => true];
             continue;
         }
+        // Numérica com `empty-as="null"`: a célula vazia chega '' do navegador e o
+        // getFieldList() entrega null — "vazio = usar o padrão" (fw#584).
+        if ($_mc->keepsEmpty()) {
+            $_flColMeta[$_mc->field] = ['emptyNull' => true];
+            continue;
+        }
         if (!$_mc->supportsTextPresentation()) {
             continue;
         }
@@ -811,7 +817,7 @@
                             $nMin      = $col->min;
                             $nMax      = $col->max;
                         @endphp
-                            <div x-data="madNumericCell({ decimals: {{ $nDecimals }}, min: {{ $nMin !== null ? $nMin : 'null' }}, max: {{ $nMax !== null ? $nMax : 'null' }}, allowNegative: {{ $col->allowNegative ? 'true' : 'false' }}, field: '{{ $fld }}', row: row })">
+                            <div x-data="madNumericCell({ decimals: {{ $nDecimals }}, min: {{ $nMin !== null ? $nMin : 'null' }}, max: {{ $nMax !== null ? $nMax : 'null' }}, allowNegative: {{ $col->allowNegative ? 'true' : 'false' }}, field: '{{ $fld }}', row: row, emptyAs: '{{ $col->keepsEmpty() ? 'null' : '' }}' })">
                                 <input type="text"
                                        inputmode="decimal"
                                        class="mad-input mad-input-sm"

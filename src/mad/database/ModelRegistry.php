@@ -20,7 +20,8 @@ use Mad\Registry\AbstractClassRegistry;
  *  - token DomainEntity (sempre único): "IamUser", "CommMessage", "GedDocument".
  *    É o handle público canônico usado nos blades (`model="IamUser"`).
  *  - basename de entidade quando único: "Message", "Document", "Token", "User".
- *    Em colisão (>1 claimant) o model FLAT/app-space vence o bare; senão só por
+ *    Em colisão (>1 claimant) o model FLAT vence o bare; sem flat, o ÚNICO model
+ *    do app (fora de {@see FRAMEWORK_DOMAINS}) vence os do framework; senão só por
  *    token DomainEntity ou FQCN — desambiguação determinística.
  *
  * Aceita os três mundos em {@see resolve()}: FQCN explícito, token DomainEntity e
@@ -37,6 +38,13 @@ class ModelRegistry extends AbstractClassRegistry
 {
     /** @var array<string,string>|null token|bare => FQCN (cache PRÓPRIO). */
     protected static ?array $map = null;
+
+    /**
+     * Domínios dos models que o PRÓPRIO framework traz em `app/Models` (IAM,
+     * cobrança, GED, mensagens, log, site, workflow, IA, API, MCP, sistema). Num
+     * nome curto disputado com um model do app, o do app vence ({@see buildMap()}).
+     */
+    public const FRAMEWORK_DOMAINS = ['Ai', 'Api', 'Comm', 'Ged', 'Iam', 'Log', 'Mcp', 'Site', 'Sys', 'Wf'];
 
     protected static function baseNamespace(): string
     {
@@ -81,10 +89,48 @@ class ModelRegistry extends AbstractClassRegistry
             $flat = array_values(array_filter($claimants, static fn ($c) => $c['domain'] === ''));
             if (count($flat) === 1) {
                 $map[$base] = $flat[0]['fqcn'];
+
+                continue;
             }
-            // senão: ambíguo entre domínios -> alcançável só por token DomainEntity/FQCN
+            // Model do APP vence o que o framework traz (fw#583): o app com o próprio
+            // `App\Models\Services\Invoice` escreve `model="Invoice"` e o
+            // `App\Models\Iam\Invoice` da cobrança tirava o nome do índice. O do
+            // framework segue alcançável pelo token ("IamInvoice") ou FQCN.
+            $app = array_values(array_filter(
+                $claimants,
+                static fn ($c) => ! in_array($c['domain'], self::FRAMEWORK_DOMAINS, true)
+            ));
+            if (count($app) === 1) {
+                $map[$base] = $app[0]['fqcn'];
+            }
+            // senão: ambíguo entre domínios do app -> alcançável só por token DomainEntity/FQCN
         }
 
         return $map;
+    }
+
+    /**
+     * FQCNs indexados cujo nome de classe é `$base` — quem disputa um nome curto
+     * que ficou fora do índice (ambíguo). Serve à mensagem de erro, que diz quais
+     * são em vez de "não encontrado".
+     *
+     * @return list<string>
+     */
+    public static function candidates(string $base): array
+    {
+        $base = ltrim(strrchr($base, '\\') ?: $base, '\\');
+        if ($base === '') {
+            return [];
+        }
+        $out = [];
+        foreach (static::map() as $fqcn) {
+            if (substr($fqcn, -strlen($base) - 1) === '\\' . $base) {
+                $out[$fqcn] = true;
+            }
+        }
+        $out = array_keys($out);
+        sort($out);
+
+        return $out;
     }
 }

@@ -12,6 +12,31 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.256.0] — 2026-11-02
+
+### Novidades
+
+- **Listagem:** a coluna pode aparecer ou sumir conforme o estado da tela: `:hidden="$that->embutida"` esconde só quando o valor é verdadeiro e o novo `:visible="…"` mostra só quando é verdadeiro — por exemplo, tirar a coluna Cliente quando a listagem já está dentro da ficha do cliente. `hidden` sem `:` continua escondendo sempre.
+- **Lista de itens:** `empty-as="null"` na coluna numérica (`<mad-field-list-column type="numeric" empty-as="null">`) deixa a célula em branco chegar vazia (null) em vez de 0 — para "em branco = usar o padrão". O zero digitado continua zero e aparece como 0.
+
+### Melhorias
+
+- **Abas:** `<mad-tabs>` agora se anuncia como abas para leitor de tela (lista de abas, aba selecionada e o painel de cada uma), e testes automatizados acham as abas pelo papel (`getByRole('tab')`).
+
+### Correções
+
+- **Componentes:** texto com `&amp;`, `&quot;` ou acento escrito como entidade num atributo de `<mad-*>` (título do `<mad-page-header>`, descrição do `<mad-empty-state>`, rótulo de botão, placeholder, valor do campo) aparecia na tela como `&amp;amp;` ou `&quot;`. Agora mostra o caractere.
+- **Listagem:** duas colunas com o mesmo campo (por exemplo `{id}` com `transform` diferente) não somem mais juntas — o `hide-below`, o seletor de colunas, a exportação e as visões salvas escondem só a coluna escolhida, inclusive no cartão do celular (`mobile="cards"`).
+- **Campos de banco:** `<mad-dbcombo-field model="Invoice">` (e os demais campos e listas que recebem `model`) derrubava a tela com "model não encontrado" quando o framework também tem um model com esse nome. Agora acha o model do seu sistema; o aviso de erro do campo sai no idioma do app.
+- **Telas:** `refreshScreen('MinhaTela')` devolvido pela própria tela não redesenhava nada (dia da agenda, botões das fichas parados). Agora a tela se redesenha na mesma resposta.
+- **Cobrança:** com o Stripe, o checkout da assinatura abria com o erro "não foi possível criar a cobrança" e, no lugar do cartão, um aviso de que o formulário não carregou — ninguém conseguia pagar. Agora o checkout abre limpo, o campo do cartão aparece e o pagamento conclui. O aviso de formulário fora do ar cita só os outros meios que o seu checkout oferece.
+- **Licença e cobrança em inglês:** o aviso de licença vencida, a tela de bloqueio, as assinaturas, a área do cliente e os e-mails de cobrança mostravam a data em dia/mês e valores como "US$ 39,00". Agora seguem a data e a moeda do app (`11/01/2026`, `$39.00`). Apps em português não mudam.
+
+### Atenção
+
+- **Listagem:** `:hidden="…"` com `:` passou a valer pelo valor. Coluna com `:hidden` cujo valor é falso, que antes ficava escondida mesmo assim, volta a aparecer; para esconder sempre, use `hidden` sem `:`.
+- **Formulário:** a data de um campo sem hora lida por `MadForm::parseDate()` ou `$this->form->date()` vira texto só com o dia (`2026-11-02`, antes `2026-11-02 00:00:00`), para juntar com uma hora sem erro. Comparar, formatar, gravar no banco e o JSON não mudam. Quem montava texto contando com o `00:00:00` usa `->toDateTimeString()`.
+
 ## [5.255.2] — 2026-11-02
 
 ### Correções

@@ -316,6 +316,11 @@ return [
             'cell_edit_dropped' => 'Lo que estaba escribiendo no fue guardado: el listado se actualizó antes de la confirmación.',
             // Ação da listagem chamada com argumento de tipo errado (requisição alterada): MadDataGrid::_resolveAndCall.
             'bad_request'    => 'Solicitud no válida. Actualice la pantalla e inténtelo de nuevo.',
+            // Nombre de model que no resuelve a una clase (ModelOptionsLoader::resolveModelClass): lo ve quien arma la pantalla.
+            'model_not_found'    => 'model ":model" no encontrado (se intentó ":model", el índice de models y ":candidate"). Revise el nombre o use el nombre completo de la clase (ej.: App\\Models\\Ventas\\Pedido).',
+            'model_ambiguous'    => 'model ":model" es ambiguo: :candidates. Use el nombre completo de la clase que desea.',
+            'model_not_eloquent' => '":model" existe pero no es un Model Eloquent (se esperaba App\\Models\\...). Pase el model de los datos, no un componente/clase. Ej.: baseQuery(App\\Models\\Cliente::class).',
+            'options_load'       => 'Error al cargar las opciones: :message',
         ],
 
         // Campo de la pantalla (o columna de una lista) que no es columna de la tabla:

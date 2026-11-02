@@ -19,6 +19,7 @@
     </button>
 
     <div class="mad-tabs-list {{ $class }}"
+         role="tablist"
          x-ref="list"
          @scroll.passive="update()"
          @focusin="reveal($event.target)"

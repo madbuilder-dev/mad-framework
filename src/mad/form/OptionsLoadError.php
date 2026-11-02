@@ -34,7 +34,10 @@ final class OptionsLoadError
     /** Binding `scoped` do container: o Octane e o queue worker descartam a cada request/job. */
     private const SEEN_BINDING = 'mad.options_load_error.seen';
 
-    /** Prefixo do aviso no campo (só com APP_DEBUG). */
+    /**
+     * Prefixo do aviso no campo em português — o aviso sai no idioma do app pela
+     * chave `mad.error.options_load` (fw#583); a constante fica por compatibilidade.
+     */
     public const NOTICE_PREFIX = 'Erro ao carregar opções: ';
 
     /** Tamanho máximo da mensagem curta exibida no campo. */
@@ -123,7 +126,7 @@ final class OptionsLoadError
             return null;
         }
 
-        return self::NOTICE_PREFIX . self::shortMessage($e);
+        return mad_t('mad.error.options_load', ['message' => self::shortMessage($e)]);
     }
 
     /**

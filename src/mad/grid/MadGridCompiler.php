@@ -1551,6 +1551,35 @@ class MadGridCompiler
         return in_array(strtolower(trim((string) $a['hideable']['value'])), ['false', '0'], true);
     }
 
+    /**
+     * Expressão do `'hidden'` de uma `<mad-col>` (null = coluna visível).
+     *
+     * `hidden`/`hide` sem bind escondem pela PRESENÇA, como sempre foi
+     * (`hidden="hidden"`, `hidden="true"`…). Com bind (fw#577) valem pelo VALOR,
+     * avaliado no render: `:hidden="$that->embedded"` esconde a coluna só
+     * quando a tela está naquele estado; `:visible="…"` é o contrário.
+     * `visible="false"`/`"0"` escondem; `visible` nu ou `"true"` não fazem nada.
+     * Os dois juntos: esconde se qualquer um mandar esconder.
+     */
+    protected static function colHiddenExpr(array $a): ?string
+    {
+        $parts = [];
+        foreach (['hidden', 'hide'] as $k) {
+            if (!isset($a[$k])) continue;
+            if ($a[$k]['type'] !== 'php') return 'true';
+            $parts[] = '(bool) (' . static::emit($a[$k]) . ')';
+        }
+        if (isset($a['visible'])) {
+            if ($a['visible']['type'] === 'php') {
+                $parts[] = '! (bool) (' . static::emit($a['visible']) . ')';
+            } elseif (in_array(strtolower(trim(static::str($a, 'visible'))), ['false', '0'], true)) {
+                return 'true';
+            }
+        }
+
+        return $parts === [] ? null : implode(' || ', $parts);
+    }
+
     /** Verifica se algum dos nomes de atributo existe (booleano ou qualquer valor). */
     protected static function has(array $attrs, string ...$keys): bool
     {
@@ -2559,7 +2588,7 @@ class MadGridCompiler
 
         // Flags
         if (static::has($a, 'sort', 'sortable'))  $c[] = "'sortable' => true";
-        if (static::has($a, 'hide', 'hidden'))     $c[] = "'hidden' => true";
+        if (($hidden = static::colHiddenExpr($a)) !== null) $c[] = "'hidden' => " . $hidden;
         if (static::has($a, 'edit', 'editable'))   $c[] = "'editable' => true";
 
         // not-hideable: coluna fora do seletor de colunas (sempre visível).
@@ -3663,6 +3692,7 @@ class MadGridCompiler
             'required-when'  => 'requiredWhen',
             'visible-when'   => 'visibleWhen',
             'force-case'     => 'forceCase',
+            'empty-as'       => 'emptyAs',
             'icon-color'     => 'iconColor',
             'icon-side'      => 'iconSide',
             'max-width'      => 'maxWidth',

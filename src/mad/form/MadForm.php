@@ -8119,6 +8119,11 @@ class MadForm
      * Lê uma data que pode estar no formato da tela ou no do banco, sem trocar
      * dia e mês (`Carbon::parse('11/10/2026')` lê 10 de novembro).
      *
+     * Devolve um Carbon. Data sem hora ("02/11/2026", "2026-11-02") vira texto
+     * só com o dia ("2026-11-02"), para juntar com uma hora:
+     * `Carbon::parse(MadForm::parseDate($dia) . ' ' . $hora)`. Data e hora
+     * completas: `->toDateTimeString()`.
+     *
      * Serve para o valor que não passa por `get()`: a propriedade pública da
      * tela com o mesmo nome do campo e o `$value` que o `mad:change` do campo
      * recebe, que chegam como o usuário vê. Vazio, texto que não é data e dia
@@ -8141,7 +8146,15 @@ class MadForm
             $date = \DateTime::createFromFormat('!' . $format, $value);
             // O PHP aceita 31/02 e devolve 03/03: só vale a data que volta igual.
             if ($date !== false && $date->format($format) === $value) {
-                return \Illuminate\Support\Carbon::instance($date);
+                $carbon = \Illuminate\Support\Carbon::instance($date);
+
+                // Data SEM hora (campo de data): como texto é o dia, "2026-11-02" —
+                // `parseDate($dia) . ' ' . $hora` montava "2026-11-02 00:00:00 09:00"
+                // e o Carbon lançava (fw#582). Hora posta depois (setTime) volta a
+                // aparecer; format(), comparação e gravação no banco não mudam.
+                return ! str_contains($format, 'H')
+                    ? $carbon->settings(['toStringFormat' => self::_dayStringFormat()])
+                    : $carbon;
             }
         }
 
@@ -8156,6 +8169,18 @@ class MadForm
         }
 
         return null;
+    }
+
+    /**
+     * Texto da data lida sem hora ({@see parseDate()}): o dia enquanto for
+     * meia-noite, data e hora quando alguém pôs uma hora (`setTime(9, 30)`).
+     * Fica no objeto e não entra no serialize() do Carbon.
+     */
+    private static function _dayStringFormat(): \Closure
+    {
+        return static fn (\Carbon\CarbonInterface $d): string => $d->format('H:i:s.u') === '00:00:00.000000'
+            ? $d->format('Y-m-d')
+            : $d->format('Y-m-d H:i:s');
     }
 
     /**
