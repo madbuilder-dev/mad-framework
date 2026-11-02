@@ -730,7 +730,7 @@ return [
         'site_contact_title'           => 'Get in touch',
         'site_contact_lead'            => 'Tell us what you need. We answer at the e-mail you give us.',
         'site_field_name'              => 'Name',
-        'site_field_email'             => 'E-mail',
+        'site_field_email'             => 'Email',
         'site_field_phone'             => 'Phone',
         'site_field_company'           => 'Company',
         'site_field_message'           => 'Message',
@@ -1017,6 +1017,10 @@ return [
 
         // Textos de interface do JavaScript (mad-ui.js, mad.js, mad-livewire.js, casco). Viram window.MAD_I18N fora do pt-BR; o pt-BR é o texto do próprio código.
         'js' => [
+            'confirm' => 'Confirm',
+            'ok' => 'OK',
+            'keep_editing' => 'Keep editing',
+            'save' => 'Save',
             'pin_side_menu'             => 'Keep side menu open',
             'collapse_side_menu'        => 'Collapse side menu',
             'mail_new_message'          => 'New message',

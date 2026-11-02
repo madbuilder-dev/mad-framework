@@ -12,6 +12,23 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.257.0] — 2026-11-02
+
+### Novidades
+
+- **Site:** `<mad-site-pricing signup-href="/join">` define para onde vai o botão de cada plano. Sem a prop, o botão leva à página de cadastro do seu site (a criada como cadastro, ou a do idioma do app: `/signup` em inglês, `/registro` em espanhol, `/cadastro` em português).
+
+### Correções
+
+- **Confirmação:** a caixa de confirmação de um botão (`confirm`) mostrava "Cancelar / Confirmar" em app em inglês ou espanhol. Agora os botões seguem o idioma do app, assim como os botões OK/Fechar dos avisos e Salvar/Limpar do seletor de cor.
+- **Lista de itens:** a coluna `type="number"` mostrava o decimal no formato do navegador, não no do app — num app em inglês aberto num navegador em português, o custo 5.20 aparecia "5,20". Agora a célula usa o separador do app, e o valor salvo continua o mesmo. Na listagem, a edição na célula de valor (`numeric` e `money`) também passou a mostrar o número no formato do app.
+- **Botões:** `:navigate="'Tela::metodo(' . $id . ')'"` saía desabilitado com "Sem acesso a esta tela", até para o administrador, e não abria. Agora abre o método com o id, respeitando a permissão da tela e do método, como `navigate="Tela::metodo({{ $id }})"`.
+- **Site:** no site em inglês, o botão de cada plano em `<mad-site-pricing>` levava a `/cadastro` (página não encontrada) e "Falar com vendas" a `/contato`. Agora vão às páginas do seu site no idioma do app. O formulário de cadastro em inglês mostra "Email", e o campo invisível contra robôs dos formulários do site deixou de usar estilo no meio do HTML.
+
+### Atenção
+
+- **Lista de itens:** a célula da coluna `type="number"` passou a ser um campo de texto (teclado numérico no celular) em vez do campo numérico do navegador. Valor fora de `min`/`max` volta ao limite ao sair da célula, e as setinhas de subir e descer do navegador saem. Script próprio que procurava `input[type=number]` na lista precisa procurar a coluna pelo `name` do campo.
+
 ## [5.256.0] — 2026-11-02
 
 ### Novidades

@@ -80,7 +80,7 @@
     }
 
     $__contactHref = trim((string) $contactHref);
-    if ($__contactHref === '') { $__contactHref = site_url('/contato'); }
+    if ($__contactHref === '') { $__contactHref = \Mad\Site\SiteRegistry::hrefFor('contact'); }
 
     $__routeHas = function (string $name): bool {
         try {
@@ -220,7 +220,6 @@
         $__phoneMask = trim((string) $phoneMask);
     }
 
-    $__trapStyle = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;';
 @endphp
 
 <section class="site-section {{ trim(($tone === 'tint' ? 'site-section--tint ' : '') . $class) }}"
@@ -255,7 +254,7 @@
                     <p class="site-form__error" role="alert">{{ $__error('form') }}</p>
                 @endif
 
-                <div style="{{ $__trapStyle }}" aria-hidden="true">
+                <div class="site-trap" aria-hidden="true">
                     <label for="site-signup-website">Website</label>
                     <input type="text" id="site-signup-website" name="website" value="" tabindex="-1" autocomplete="off">
                 </div>

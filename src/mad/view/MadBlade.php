@@ -889,6 +889,23 @@ class MadBladeCompiler extends BladeCompiler
                     }
 
                     // Gera código PHP runtime: MadAction::to('Class','method', $params)->auto()
+                    $navMethodExpr = "'" . addslashes($navMethod) . "'";
+                    $navPermExpr   = '"' . ($navMethodExplicito ? addslashes($navMethod) : '@open') . '"';
+                    if ($navClassExpr !== null) {
+                        // `:navigate="'Tela::onEdit(' . $id . ')'"`: classe, método e
+                        // argumento só existem depois de avaliar — separa em
+                        // execução (fw#589). Antes a expressão inteira ia como
+                        // classe: o gate negava a tela e o clique ia para lugar nenhum.
+                        $navSplit      = '\\Mad\\View\\MadBlade::navSplit(' . $navClassExpr . ')';
+                        $navClassExpr  = $navSplit . "['class']";
+                        if (!$navMethodExplicito) {
+                            $navMethodExpr = '(' . $navSplit . "['method'] ?? " . $navMethodExpr . ')';
+                            $navPermExpr   = '(' . $navSplit . "['method'] ?? '@open')";
+                        }
+                        if ($navParamsExpr === '[]') {
+                            $navParamsExpr = $navSplit . "['params']";
+                        }
+                    }
                     $navClassExpr ??= "'" . addslashes($navClass) . "'";
                     // Botão que abre OUTRA tela: quem manda na permissão é a tela
                     // de DESTINO (é ela que o perfil marca), não a que contém o
@@ -897,10 +914,9 @@ class MadBladeCompiler extends BladeCompiler
                     // listagem/dashboard só abrem (#356, ActionGuard::decideOpen).
                     if ($_wantsPerm) {
                         $compiled[] = '"permClass"=>' . $navClassExpr;
-                        $compiled[] = '"permAction"=>"'
-                            . ($navMethodExplicito ? addslashes($navMethod) : '@open') . '"';
+                        $compiled[] = '"permAction"=>' . $navPermExpr;
                     }
-                    $compiled[] = '"attrs"=>\\Mad\\Ui\\MadAction::to(' . $navClassExpr . ',\'' . addslashes($navMethod) . '\',' . $navParamsExpr . ')->auto()';
+                    $compiled[] = '"attrs"=>\\Mad\\Ui\\MadAction::to(' . $navClassExpr . ',' . $navMethodExpr . ',' . $navParamsExpr . ')->auto()';
                     continue;
                 }
                 if ($_hasNav && ($key === 'method' || $key === 'params')) continue;
@@ -1776,6 +1792,29 @@ HTML;
         $blade->directive('endCanAccess', function (string $exp): string {
             return "<?php endif; ?>";
         });
+    }
+
+    /**
+     * Destino de um `:navigate` dinâmico, avaliado em execução (fw#589):
+     * `'Tela::onEdit(' . $id . ')'` → classe `Tela`, método `onEdit`, params
+     * `['id' => '4']` — a mesma leitura do `navigate="Tela::onEdit({{ $id }})"`
+     * literal. Sem `::` é só a classe (como antes).
+     *
+     * @return array{class: string, method: ?string, params: array<string, mixed>}
+     */
+    public static function navSplit(mixed $v): array
+    {
+        $v = trim((string) $v);
+        if (preg_match('/^([A-Za-z_\\\\][\\w\\\\]*)::(\\w+)\\s*(?:\\((.*)\\))?$/s', $v, $m)) {
+            $arg = trim($m[3] ?? '');
+            if ($arg !== '' && preg_match('/^([\'"])(.*)\\1$/s', $arg, $q)) {
+                $arg = $q[2];
+            }
+
+            return ['class' => $m[1], 'method' => $m[2], 'params' => $arg === '' ? [] : ['id' => $arg]];
+        }
+
+        return ['class' => $v, 'method' => null, 'params' => []];
     }
 
     /**

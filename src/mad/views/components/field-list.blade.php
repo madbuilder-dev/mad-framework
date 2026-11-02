@@ -1300,6 +1300,37 @@
                                     <i data-lucide="{{ $_icon }}" style="width:13px;height:13px;"></i>
                                 </span>
                             @endif
+                            @if($col->type === 'number' && !$_toggle)
+                            {{-- fw#591: o <input type="number"> nativo mostra o número no idioma do NAVEGADOR
+                                 (app en num Chrome pt-BR via "5,20"). O campo visível mostra com o separador do
+                                 app; a linha e o POST continuam com o valor cru ("5.20"), no hidden. --}}
+                            <span style="display:contents"
+                                  x-data="madNumberCell({ field: '{{ $fld }}', row: row, min: {{ $col->min !== null ? json_encode((float) $col->min) : 'null' }}, max: {{ $col->max !== null ? json_encode((float) $col->max) : 'null' }} })">
+                            <input type="text"
+                                   inputmode="decimal"
+                                   class="mad-input mad-input-sm"
+                                   x-ref="input"
+                                   placeholder="{{ $ph }}"
+                                   @focus="_onFocus()"
+                                   @input="_onInput($event)"
+                                   @blur="_onBlur($event)"
+                                   @keydown.enter="$event.target.blur()"
+                                   @if($col->required)        required                    @endif
+                                   @if($col->readonly)        readonly                    @endif
+                                   @if($col->disabled)        disabled                    @endif
+                                   @if($dw !== '') :disabled="{{ $dw }}" @endif
+                                   @if($rw !== '') :readonly="{{ $rw }}" @endif
+                                   @if($qw !== '') :required="{{ $qw }}" @endif
+                                   @if($_maxlen !== null) maxlength="{{ $_maxlen }}"      @endif
+                                   @if($_inpDim !== '') style="{{ $_inpDim }}"            @endif
+                                   @if($col->onChange && !$ocIsMethod) @change="{{ $col->onChange }}" @endif
+                                   @if($col->attrs) {!! $col->attrs !!}                  @endif>
+                            <input type="hidden"
+                                   name="{{ $fld }}[]"
+                                   x-model="row['{{ $fld }}']"
+                                   @if($col->onChange && $ocIsMethod) data-mad-fl-change="{{ $col->onChange }}" @endif>
+                            </span>
+                            @else
                             <input @if($_toggle) :type="pwVisible ? 'text' : 'password'" @else type="{{ $col->type }}" @endif
                                    class="mad-input mad-input-sm"
                                    name="{{ $fld }}[]"
@@ -1326,6 +1357,7 @@
                                    @endif
                                    @endif
                                    @if($col->attrs) {!! $col->attrs !!}                  @endif>
+                            @endif
                             @if($_icon !== '' && $_iconSd === 'right' && !$_toggle)
                                 <span class="mad-input-addon mad-input-addon-r"{!! $_iconSty !!}>
                                     <i data-lucide="{{ $_icon }}" style="width:13px;height:13px;"></i>

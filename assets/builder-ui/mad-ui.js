@@ -5479,7 +5479,7 @@ document.addEventListener('alpine:init', () => {
                     hue: true,
                     interaction: { hex: true, input: true, clear: true, save: true }
                 },
-                i18n: { 'btn:save': 'Salvar', 'btn:clear': 'Limpar' }
+                i18n: { 'btn:save': madT('save', 'Salvar'), 'btn:clear': madT('clear', 'Limpar') }
             });
             this.pickr.on('change', (c) => {
                 self._syncingFromPickr = true;
@@ -7617,11 +7617,11 @@ window.madConfirm = function (message, options) {
 
         var cancelBtn = document.createElement('button');
         cancelBtn.className = 'mad-btn mad-btn-secondary mad-btn-sm';
-        cancelBtn.textContent = options.cancelText || 'Cancelar';
+        cancelBtn.textContent = options.cancelText || madT('cancel', 'Cancelar');
 
         var confirmBtn = document.createElement('button');
         confirmBtn.className = 'mad-btn mad-btn-sm ' + (options.danger ? 'mad-btn-danger' : 'mad-btn-primary');
-        confirmBtn.textContent = options.confirmText || 'Confirmar';
+        confirmBtn.textContent = options.confirmText || madT('confirm', 'Confirmar');
 
         btns.appendChild(cancelBtn);
         btns.appendChild(confirmBtn);
@@ -7675,11 +7675,11 @@ window.madConfirmPopover = function (btn, message, options) {
 
         var cancelBtn = document.createElement('button');
         cancelBtn.className = 'mad-btn mad-btn-ghost mad-btn-sm';
-        cancelBtn.textContent = options.cancelText || 'Cancelar';
+        cancelBtn.textContent = options.cancelText || madT('cancel', 'Cancelar');
 
         var confirmBtn = document.createElement('button');
         confirmBtn.className = 'mad-btn mad-btn-sm ' + (options.danger ? 'mad-btn-danger' : 'mad-btn-primary');
-        confirmBtn.textContent = options.confirmText || 'Confirmar';
+        confirmBtn.textContent = options.confirmText || madT('confirm', 'Confirmar');
 
         btns.appendChild(cancelBtn);
         btns.appendChild(confirmBtn);
@@ -11379,6 +11379,94 @@ document.addEventListener('alpine:init', () => {
                         if (h) h.dispatchEvent(new Event('change', { bubbles: true }));
                     });
                 }
+            },
+        };
+    });
+
+    // ── madNumberCell — coluna type="number" do field-list (fw#591) ──────
+    //
+    // O <input type="number"> nativo mostra o número no idioma do NAVEGADOR,
+    // não no do app: app em inglês num Chrome pt-BR via "5,20". A célula vira
+    // texto com o separador decimal do app; a linha guarda o valor como o
+    // input nativo guardava (texto com ponto: "5.20", "" quando vazio), sem
+    // separador de milhar, sem completar casas. Aceita ponto ou vírgula como
+    // decimal na digitação. Fora do min/max volta ao limite ao sair do campo.
+    //
+    window._madNumberCellToRaw = function (txt, decSep) {
+        var s = String(txt == null ? '' : txt).trim();
+        if (s === '' || s === '-') return '';
+        var neg = s.charAt(0) === '-';
+        s = s.replace(/[^\d.,]/g, '');
+        var other = decSep === '.' ? ',' : '.';
+        if (s.indexOf(decSep) !== -1) {
+            s = s.split(other).join('');
+        } else if (s.split(other).length === 2 && !/^\d{1,3}\D\d{3}$/.test(s.replace(other, '#'))) {
+            s = s.replace(other, decSep);               // "5.20" num app pt: decimal
+        } else {
+            s = s.split(other).join('');                // "1,234" num app en: milhar
+        }
+        var i = s.indexOf(decSep);
+        if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).split(decSep).join('');
+        s = s.replace(decSep, '.');
+        if (s === '' || s === '.') return '';
+        if (s.charAt(0) === '.') s = '0' + s;
+        return (neg ? '-' : '') + s;
+    };
+    window._madNumberCellShow = function (raw, decSep) {
+        if (raw === null || raw === undefined) return '';
+        var s = String(raw).trim();
+        return decSep === '.' ? s : s.replace('.', decSep);
+    };
+
+    Alpine.data('madNumberCell', (cfg = {}) => {
+        const num    = (v) => (v !== null && v !== undefined && v !== '' && isFinite(v)) ? Number(v) : null;
+        const min    = num(cfg.min);
+        const max    = num(cfg.max);
+        const field  = cfg.field || '';
+        const rowRef = cfg.row || null;
+        const sep    = () => _madNumSeps()[0];
+
+        return {
+            init() {
+                var inp = this.$refs.input;
+                if (inp && rowRef) inp.value = window._madNumberCellShow(rowRef[field], sep());
+                if (rowRef && field) {
+                    this.$watch(() => rowRef[field], (val) => {
+                        if (inp && document.activeElement !== inp) inp.value = window._madNumberCellShow(val, sep());
+                    });
+                }
+            },
+
+            _onFocus() {
+                this._before = rowRef ? String(rowRef[field] == null ? '' : rowRef[field]) : '';
+            },
+
+            _onInput(e) {
+                var t = e.target;
+                var clean = t.value.replace(/[^\d.,\-]/g, '').replace(/(?!^)-/g, '');
+                if (clean !== t.value) t.value = clean;
+                if (rowRef) rowRef[field] = window._madNumberCellToRaw(clean, sep());
+            },
+
+            _onBlur(e) {
+                var raw = window._madNumberCellToRaw(e.target.value, sep());
+                if (raw !== '') {
+                    var v = Number(raw);
+                    if (min !== null && v < min) raw = String(min);
+                    if (max !== null && v > max) raw = String(max);
+                }
+                if (rowRef) rowRef[field] = raw;
+                e.target.value = window._madNumberCellShow(raw, sep());
+
+                // on-change PHP da coluna: o hidden leva o valor cru (só quando mudou,
+                // como o change do input nativo).
+                if (String(raw) === this._before) return;
+                this._before = String(raw);
+                var inp = e.target;
+                this.$nextTick(function () {
+                    var h = inp.parentNode && inp.parentNode.querySelector('input[type="hidden"][data-mad-fl-change]');
+                    if (h) h.dispatchEvent(new Event('change', { bubbles: true }));
+                });
             },
         };
     });

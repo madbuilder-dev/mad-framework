@@ -1203,7 +1203,7 @@ const Mad = {
                 close.setAttribute('type', 'button');
                 close.className = 'mad-dg-attach-close';
                 close.setAttribute('onclick', 'Mad.rowDetach(this)');
-                close.setAttribute('aria-label', 'Fechar');
+                close.setAttribute('aria-label', madT('close', 'Fechar'));
                 close.innerHTML = '<i data-lucide="x"></i>';
                 wrap.appendChild(close);
             }
@@ -3909,7 +3909,7 @@ function _madDeniedButtons(actions) {
             }
         },
     }));
-    buttons.push({ label: 'Fechar', type: 'secondary', callback: null });
+    buttons.push({ label: madT('close', 'Fechar'), type: 'secondary', callback: null });
     return buttons;
 }
 
@@ -4016,7 +4016,7 @@ const MadDialog = {
         // Botoes — cada click fecha APENAS este overlay (nao todos)
         const footer = el.querySelector('.mad-dialog-footer');
         footer.innerHTML = '';
-        const btns = buttons || [{ label: 'OK', type: 'primary', callback: null }];
+        const btns = buttons || [{ label: madT('ok', 'OK'), type: 'primary', callback: null }];
         btns.forEach(b => {
             const btn = document.createElement('button');
             btn.className = `mad-btn mad-btn-${b.type || 'secondary'}`;
@@ -4140,8 +4140,8 @@ const MadDialog = {
         return ok;
     },
 
-    confirm({ title = 'Confirmar', message = '', labelYes = 'Confirmar', labelNo = 'Cancelar',
-              typeYes = 'primary', onYes, onNo } = {}) {
+    confirm({ title = madT('confirm', 'Confirmar'), message = '', labelYes = madT('confirm', 'Confirmar'),
+              labelNo = madT('cancel', 'Cancelar'), typeYes = 'primary', onYes, onNo } = {}) {
         return this.show({
             type: 'warning', title, message,
             buttons: [
@@ -4176,12 +4176,12 @@ const MadDialog = {
 
 function __mad_error(title, message, callback) {
     MadDialog.show({ type: 'error', title, message,
-        buttons: [{ label: 'OK', type: 'primary', callback }] });
+        buttons: [{ label: madT('ok', 'OK'), type: 'primary', callback }] });
 }
 
 function __mad_warning(title, message, callback) {
     MadDialog.show({ type: 'warning', title, message,
-        buttons: [{ label: 'OK', type: 'primary', callback }] });
+        buttons: [{ label: madT('ok', 'OK'), type: 'primary', callback }] });
 }
 
 function __mad_question(title, message, cb_yes, cb_no, label_yes, label_no) {
@@ -4200,7 +4200,7 @@ function __mad_dialog(options) {
         type:    options.type || 'info',
         title:   options.title || '',
         message: options.message || '',
-        buttons: [{ label: 'OK', type: 'primary', callback: options.callback }],
+        buttons: [{ label: madT('ok', 'OK'), type: 'primary', callback: options.callback }],
     });
 }
 
@@ -4345,7 +4345,7 @@ const MadOverlayEsc = {
         el._madAsking = true;
         const msg = el.getAttribute('data-mad-confirm-close-msg') || madT('discard_confirm', 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?');
         const yes = el.getAttribute('data-mad-confirm-close-yes') || madT('discard', 'Descartar');
-        const no  = el.getAttribute('data-mad-confirm-close-no') || 'Continuar editando';
+        const no  = el.getAttribute('data-mad-confirm-close-no') || madT('keep_editing', 'Continuar editando');
         // Depois do despacho do Esc: o madConfirm escuta o Esc no document e o
         // MESMO keydown ainda vai chegar lá — cancelaria a pergunta na hora.
         setTimeout(() => {

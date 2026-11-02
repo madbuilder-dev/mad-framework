@@ -1008,6 +1008,10 @@ return [
 
         // Textos de interface do JavaScript (mad-ui.js, mad.js, mad-livewire.js, casco). Viram window.MAD_I18N fora do pt-BR; o pt-BR é o texto do próprio código.
         'js' => [
+            'confirm' => 'Confirmar',
+            'ok' => 'OK',
+            'keep_editing' => 'Continuar editando',
+            'save' => 'Salvar',
             'pin_side_menu'             => 'Fixar menu lateral aberto',
             'collapse_side_menu'        => 'Recolher menu lateral',
             'mail_new_message'          => 'Nova mensagem',

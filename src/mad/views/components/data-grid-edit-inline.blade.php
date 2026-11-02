@@ -164,7 +164,7 @@
            @blur="commitInline({{ $rowIdJs }},'{{ $col->field }}',$event.target.value)"
            @keydown.enter="$event.target.blur()">
 @elseif($col->editType === 'numeric')
-    @php $fmtVal = number_format((float)$cellVal, $col->editDecimals, ',', '.'); @endphp
+    @php [$_dgDec, $_dgTho] = \Mad\Support\ValueFormatter::separators(); $fmtVal = number_format((float)$cellVal, $col->editDecimals, $_dgDec, $_dgTho); @endphp
     <div style="display:flex;align-items:center;gap:4px;" x-data="{ rawV: {{ json_encode((float)$cellVal) }} }">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
         <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $fmtVal }}"
@@ -176,7 +176,7 @@
         @if($col->editSuffix)<span class="mad-dg-edit-prefix">{{ $col->editSuffix }}</span>@endif
     </div>
 @elseif($col->editType === 'money')
-    @php $fmtVal = number_format((float)$cellVal, $col->editDecimals, ',', '.'); @endphp
+    @php [$_dgDec, $_dgTho] = \Mad\Support\ValueFormatter::separators(); $fmtVal = number_format((float)$cellVal, $col->editDecimals, $_dgDec, $_dgTho); @endphp
     <div style="display:flex;align-items:center;gap:4px;" x-data="{ rawV: {{ json_encode((float)$cellVal) }} }">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
         <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $fmtVal }}"

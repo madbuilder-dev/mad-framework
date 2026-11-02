@@ -25,6 +25,7 @@
     'cycle'       => 'monthly',
     'ctaMode'     => 'auto',
     'contactHref' => '',
+    'signupHref'  => '',
     'tone'        => 'plain',
     'class'       => '',
 ])
@@ -34,7 +35,10 @@
     $__title = $title !== '' ? $title : mad_t('mad.site_plans_title');
 
     $__contactHref = trim((string) $contactHref);
-    if ($__contactHref === '') { $__contactHref = site_url('/contato'); }
+    if ($__contactHref === '') { $__contactHref = \Mad\Site\SiteRegistry::hrefFor('contact'); }
+    // Página de cadastro: a prop, ou a do site (kind signup / caminho do idioma) — fw#592.
+    $__signupHref = trim((string) $signupHref);
+    if ($__signupHref === '') { $__signupHref = \Mad\Site\SiteRegistry::hrefFor('signup'); }
 
     // Vitrine. Fail-safe em duas camadas: a classe pode não existir (app sem
     // cobrança) e a consulta pode falhar (schema antigo).
@@ -68,7 +72,7 @@
      * cadastro ligado). Sem a política instalada, o padrão é sempre contato —
      * mandar o visitante a uma tela que talvez não exista seria pior.
      */
-    $__ctaFor = function (array $card) use ($ctaMode, $__cycle, $__contactHref, $__hasPolicy): array {
+    $__ctaFor = function (array $card) use ($ctaMode, $__cycle, $__contactHref, $__signupHref, $signupHref, $__hasPolicy): array {
         $fallback = [
             'mode'  => 'contact',
             'href'  => $__contactHref,
@@ -82,7 +86,7 @@
         if ($ctaMode === 'signup') {
             return [
                 'mode'  => 'signup',
-                'href'  => site_url('/cadastro') . '?plan=' . (int) $card['id'] . '&cycle=' . $__cycle,
+                'href'  => $__signupHref . (str_contains($__signupHref, '?') ? '&' : '?') . 'plan=' . (int) $card['id'] . '&cycle=' . $__cycle,
                 'label' => mad_t('mad.site_start_free'),
             ];
         }
@@ -99,6 +103,11 @@
 
         if (! is_array($cta) || ($cta['mode'] ?? '') === '') {
             return $fallback;
+        }
+
+        // `signup-href` na tag vence o caminho que a política conhece.
+        if (($cta['mode'] ?? '') === 'signup' && trim((string) $signupHref) !== '') {
+            $cta['href'] = $__signupHref . (str_contains($__signupHref, '?') ? '&' : '?') . 'plan=' . (int) $card['id'] . '&cycle=' . $__cycle;
         }
 
         return [

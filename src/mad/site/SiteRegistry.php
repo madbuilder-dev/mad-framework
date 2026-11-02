@@ -218,6 +218,42 @@ class SiteRegistry
         self::$extraUrlProviders = [];
     }
 
+    /**
+     * Caminhos conhecidos de cada página-padrão do site, nos três idiomas
+     * (o 1º de cada idioma é o padrão quando nada está registrado).
+     */
+    private const KNOWN_PATHS = [
+        'signup'  => ['pt' => 'cadastro', 'en' => 'signup', 'es' => 'registro', 'pt-PT' => 'registo'],
+        'contact' => ['pt' => 'contato',  'en' => 'contact', 'es' => 'contacto', 'pt-PT' => 'contacto'],
+    ];
+
+    /**
+     * Endereço da página de cadastro (`signup`) ou de contato (`contact`) do
+     * site (fw#592): a página registrada com esse `kind`; senão a registrada
+     * num caminho conhecido (`cadastro`, `signup`, `registro`…); senão o
+     * caminho padrão do idioma do app. Site em inglês não cai mais em
+     * `/cadastro` (404) nem em `/contato`.
+     */
+    public static function hrefFor(string $page): string
+    {
+        $known = self::KNOWN_PATHS[$page] ?? [];
+
+        foreach (self::$pages as $p) {
+            if ($p['kind'] === $page) {
+                return self::href($p['path']);
+            }
+        }
+        foreach (array_unique(array_values($known)) as $path) {
+            if (isset(self::$pages[$path])) {
+                return self::href($path);
+            }
+        }
+
+        $locale = class_exists(\Mad\I18n\MadLang::class) ? \Mad\I18n\MadLang::getLocale() : 'pt';
+
+        return self::href($known[$locale] ?? $known[substr($locale, 0, 2)] ?? ($known['pt'] ?? $page));
+    }
+
     /** Endereço (relativo ao deploy) de um caminho de site. */
     public static function href(string $path): string
     {

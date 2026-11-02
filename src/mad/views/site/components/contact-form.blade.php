@@ -93,7 +93,6 @@
     }
 
     // Fora da tabulação E fora do leitor de tela, mas presente no DOM.
-    $__trapStyle = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;';
 @endphp
 
 <section class="site-section {{ trim(($tone === 'tint' ? 'site-section--tint ' : '') . $class) }}"
@@ -122,7 +121,7 @@
                     <p class="site-form__error" role="alert">{{ $__error('form') }}</p>
                 @endif
 
-                <div style="{{ $__trapStyle }}" aria-hidden="true">
+                <div class="site-trap" aria-hidden="true">
                     <label for="site-lead-website">Website</label>
                     <input type="text" id="site-lead-website" name="website" value="" tabindex="-1" autocomplete="off">
                 </div>

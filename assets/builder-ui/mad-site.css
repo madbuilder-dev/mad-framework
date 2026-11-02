@@ -538,3 +538,13 @@ body.site .site-form__error,
 @media (prefers-reduced-motion: reduce) {
   body.site * { transition-duration: .01ms !important; }
 }
+
+/* Campo isca (honeypot) dos formulários do site: fora da tela, fora do leitor de tela. */
+.site-trap {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
