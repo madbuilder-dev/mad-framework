@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.255.1] — 2026-11-02
+
+### Correções
+
+- **Idioma do sistema:** sistema com idioma principal inglês ou espanhol mostrava dinheiro e textos em português no que roda fora da tela (rotinas, e-mails e PDFs gerados em segundo plano), como `$ 1.234,50`. Agora segue o idioma principal do projeto: `$1,234.50`. Sistemas em português continuam iguais.
+
 ## [5.255.0] — 2026-11-02
 
 ### Novidades
