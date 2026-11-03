@@ -440,9 +440,26 @@
                 },
 
                 _tickClock() {
-                    var d = new Date();
-                    this.clock = d.toLocaleDateString() + ' ' +
-                        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    this.clock = this.fmtDateTime(new Date());
+                },
+
+                /**
+                 * Data/hora no idioma do APP (cfg.locale), não no do navegador:
+                 * o Chrome em pt-BR mostrava "02/11/2026 20:48" num app `en`
+                 * (fw#607). Locale inválido cai no do navegador.
+                 */
+                _locale() {
+                    return String(this.cfg.locale || '').replace(/_/g, '-') || undefined;
+                },
+                fmtDate(d) {
+                    var opt = { day: '2-digit', month: '2-digit', year: 'numeric' };
+                    try { return d.toLocaleDateString(this._locale(), opt); }
+                    catch (e) { return d.toLocaleDateString(undefined, opt); }
+                },
+                fmtTime(d) {
+                    var opt = { hour: '2-digit', minute: '2-digit' };
+                    try { return d.toLocaleTimeString(this._locale(), opt); }
+                    catch (e) { return d.toLocaleTimeString(undefined, opt); }
                 },
 
                 // ── Dinheiro / formatação (centavos int) ──────────────────
@@ -540,15 +557,7 @@
                     if (v === null || v === undefined || v === '') return '';
                     var d = new Date(v);
                     if (isNaN(d.getTime())) return String(v);
-                    var loc = String(this.cfg.locale || '').replace(/_/g, '-') || undefined;
-                    var dOpt = { day: '2-digit', month: '2-digit', year: 'numeric' };
-                    var tOpt = { hour: '2-digit', minute: '2-digit' };
-                    try {
-                        return d.toLocaleDateString(loc, dOpt) + ' ' + d.toLocaleTimeString(loc, tOpt);
-                    } catch (e) {
-                        // locale inválido (RangeError): idioma do navegador
-                        return d.toLocaleDateString(undefined, dOpt) + ' ' + d.toLocaleTimeString(undefined, tOpt);
-                    }
+                    return this.fmtDate(d) + ' ' + this.fmtTime(d);
                 },
 
                 fmtQty(q) {
@@ -657,7 +666,7 @@
                         d.setDate(d.getDate() + first + i * every);
                         out.push({
                             n: i + 1, total: n, amountC: parts[i],
-                            dueLabel: d.toLocaleDateString(),
+                            dueLabel: this.fmtDate(d),
                         });
                     }
                     return out;
@@ -1859,7 +1868,7 @@
                     var d = new Date();
                     this.held.push({
                         holdId: uuid(),
-                        label: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        label: this.fmtTime(d)
                             + ' · ' + this.cart.length + ' ' + (this.cfg.i18n.items || 'itens').toLowerCase()
                             + ' · ' + this.money(this.totalC),
                         createdAt: d.toISOString(),

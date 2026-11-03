@@ -708,7 +708,7 @@ const Mad = {
             const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.navigate' })) return;
             // opts.tab: veio de link de menu → aba nova (quando as abas estao ligadas).
             this._deliver(html, url, res, opts);
@@ -741,7 +741,7 @@ const Mad = {
             const res  = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.load' })) return;
             if (this._opsOnly(res, html)) return;
 
@@ -768,6 +768,71 @@ const Mad = {
      *
      * Usado pelo shell renderizado por AppRouteResolver::renderShell (web mode).
      */
+    // ── Assets sob demanda (fw#603) ────────────────────────────────────────
+    // O casco publica window.MadLazyAssets = [{ test:[...], css:[...], js:[...] }]
+    // (shell/partials/libraries.blade.php): TinyMCE, FullCalendar, ECharts,
+    // C3/D3 e os componentes gantt/planilha/conciliação/organograma/PDV. Todo
+    // HTML que chega do servidor passa por ensureAssets() ANTES de ir para a
+    // tela: o que ela usa (achado por um trecho do HTML, ex. "madGantt") é
+    // baixado primeiro. Depois do 1º conteúdo, loadAllLazyAssets() traz o
+    // resto em segundo plano, para HTML que entra por outro caminho.
+    _lazyState: null,
+
+    _loadLazy(i) {
+        const list = window.MadLazyAssets;
+        if (!Array.isArray(list) || !list[i]) return Promise.resolve();
+        this._lazyState = this._lazyState || {};
+        if (this._lazyState[i]) return this._lazyState[i];
+        const entry = list[i];
+        const marker = document.querySelector('meta[name="mad-lazy-css"]');
+        (entry.css || []).forEach((href) => {
+            if (document.querySelector('link[data-mad-lazy="' + href + '"]')) return;
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = href;
+            link.setAttribute('data-mad-lazy', href);
+            // No lugar do marcador (antes do CSS do tema): a cascata fica a
+            // mesma de quando o <link> vinha no casco.
+            if (marker && marker.parentNode) marker.parentNode.insertBefore(link, marker);
+            else document.head.appendChild(link);
+        });
+        // JS em sequência: c3 depende do d3, echarts-dark do echarts.
+        const run = (entry.js || []).reduce((chain, src) => chain.then(() => new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.async = false;
+            s.onload = () => resolve();
+            s.onerror = () => { console.error('[Mad] não carregou ' + src); resolve(); };
+            document.head.appendChild(s);
+        })), Promise.resolve());
+        // Rede travada não segura a tela para sempre.
+        this._lazyState[i] = Promise.race([run, new Promise((r) => setTimeout(r, 8000))]);
+        return this._lazyState[i];
+    },
+
+    ensureAssets(html) {
+        const list = window.MadLazyAssets;
+        if (!Array.isArray(list) || typeof html !== 'string' || !html) return Promise.resolve();
+        const wait = [];
+        list.forEach((entry, i) => {
+            if ((entry.test || []).some((t) => html.indexOf(t) !== -1)) wait.push(this._loadLazy(i));
+        });
+        return wait.length ? Promise.all(wait) : Promise.resolve();
+    },
+
+    loadAllLazyAssets() {
+        const list = window.MadLazyAssets;
+        if (!Array.isArray(list)) return Promise.resolve();
+        return Promise.all(list.map((_, i) => this._loadLazy(i)));
+    },
+
+    /** Corpo da resposta como texto, com os assets que ele usa já carregados. */
+    async _html(res) {
+        const text = await res.text();
+        try { await this.ensureAssets(text); } catch (e) {}
+        return text;
+    },
+
     async bootShell(url) {
         url = url || (window.location.pathname + window.location.search);
         // A entrada do histórico de quem abriu a tela pela URL (F5, link,
@@ -780,9 +845,18 @@ const Mad = {
         } catch (e) {}
         MadLoader.show();
         try {
-            const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
+            // O casco já pediu o conteúdo no <head>, em paralelo com o CSS/JS
+            // (fw#603). Usa essa resposta uma vez só; sem ela (outra URL,
+            // falha de rede), pede como sempre.
+            const pre = window.__madBootPrefetch;
+            window.__madBootPrefetch = null;
+            let res = null;
+            if (pre && pre.url === url && pre.res) {
+                try { res = await pre.res; } catch (e) { res = null; }
+            }
+            if (!res) res = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
             if (this._offline(res)) return;
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.bootShell' })) return;
             if (this._tabsOn() && !this._isOverlayHtml(html)) {
                 // Tela aberta por URL/F5 vira aba (a URL ja e a atual: sem pushState).
@@ -796,6 +870,9 @@ const Mad = {
             this._onError(e);
         } finally {
             MadLoader.hide();
+            // Depois do 1º conteúdo, o resto dos assets sob demanda vem em
+            // segundo plano (HTML que entra por outro caminho já os acha).
+            setTimeout(() => { try { this.loadAllLazyAssets(); } catch (e) {} }, 300);
         }
     },
 
@@ -924,7 +1001,7 @@ const Mad = {
                 headers: friendly ? { 'X-Mad-Partial': '1' } : undefined,
             });
             if (this._offline(res)) return;
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'POST', source: 'Mad.postForm' })) return;
 
             if (friendly || url.indexOf('static=1') >= 0) {
@@ -964,7 +1041,7 @@ const Mad = {
             const body = new URLSearchParams(data);
             const res  = await fetch(url, { method: 'POST', body });
             if (this._offline(res)) return;
-            const text = await res.text();
+            const text = await this._html(res);
             if (this._httpError(res, text, { url: url, method: 'POST', source: 'Mad.exec' })) return;
 
             // Tenta interpretar como MadResponse (JSON array de ops ou objeto com _debug)
@@ -1024,7 +1101,7 @@ const Mad = {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const text = await res.text();
+            const text = await this._html(res);
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.get' })) return;
 
             if (text.trimStart().startsWith('[') || text.trimStart().startsWith('{')) {
@@ -1086,7 +1163,7 @@ const Mad = {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
             if (this._errorFragment(html, res, { url: url, method: 'GET', source: 'Mad.overlay' })) return;
             if (this._deniedFragment(html, res)) return;
@@ -1173,7 +1250,7 @@ const Mad = {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const text = await res.text();
+            const text = await this._html(res);
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.rowAttach' })) return;
             if (this._deniedFragment(text, res)) return;
 
@@ -1292,7 +1369,7 @@ const Mad = {
             const res  = await fetch(url, { headers });
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const text = await res.text();
+            const text = await this._html(res);
             if (this._httpError(res, text, { url: url, method: 'GET', source: 'Mad.rowAttach' })) return;
             if (this._deniedFragment(text, res)) return;
             if (text.trimStart().startsWith('[') || text.trimStart().startsWith('{')) {
@@ -1413,7 +1490,7 @@ const Mad = {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
             if (this._fileResponse(res)) { this.openDocument(url); return; }
-            const html = await res.text();
+            const html = await this._html(res);
             if (this._httpError(res, html, { url: url, method: 'GET', source: 'Mad.go' })) return;
             if (this._opsOnly(res, html)) return;
 
@@ -1861,6 +1938,9 @@ const Mad = {
      * componente (ver _opTarget).
      */
     async applyOps(ops, scope = null) {
+        // HTML que vem nos ops (html/append/replace…) usa os assets dele já
+        // carregados (fw#603).
+        try { await this.ensureAssets(JSON.stringify(ops)); } catch (e) {}
         if (typeof this._flashBeforeLeaving === 'function') this._flashBeforeLeaving(ops);
         // Calculado ANTES do loop: fechar a camada tira o `scope` do DOM.
         const gridsBehind = this._gridsBehindToRefresh(ops, scope);

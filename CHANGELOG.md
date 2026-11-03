@@ -12,6 +12,24 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.261.0] — 2026-11-03
+
+### Melhorias
+
+- **Primeira carga:** o app abre mais rápido. O conteúdo da tela é pedido junto com o resto da página, e editor de texto, calendário, gráficos, gantt, planilha, conciliação, organograma e PDV só são baixados na tela que os usa. O portal do cliente deixou de baixar uns 25 arquivos que nunca usava.
+- **Portal e telas sem IA:** quem não tem o Copilot, a Central de Comando ou o chat ligados não baixa mais os arquivos deles.
+
+### Correções
+
+- **Minha conta › Assinatura:** com a cobrança desligada, o teste grátis que já acabou dizia "termina em 0 dias" com a data de ontem. Agora diz "Seu teste grátis terminou", e o acesso segue a mesma data.
+- **Minha conta › Assinatura:** o dono da plataforma recebia "Você não tem acesso a esta tela". Agora a tela abre e mostra o aviso da cobrança desligada, com o botão Configurações da cobrança e o atalho para as assinaturas das empresas.
+- **Tela fora do plano:** a dona da empresa lia "peça a liberação a quem administra o sistema". Agora a tela diz que o módulo não está no plano, com Ver planos (ou o contato de quem vende, se a cobrança estiver desligada). A equipe é orientada a falar com o administrador da empresa.
+- **Assinatura em teste:** o texto "Todos os módulos liberados até…" virou "Teste grátis até…", sem prometer módulos que o plano não inclui.
+- **Pagamento, Faturas e Dados de cobrança:** abertos pelo endereço com a cobrança desligada, diziam "peça a liberação a quem administra o sistema". Agora explicam que o pagamento online está desligado e levam à Assinatura.
+- **`<mad-pdv>`:** a data e a hora do caixa seguiam o idioma do navegador. Agora seguem o idioma do app.
+- **Redefinir senha:** a tela pedia "seu usuário" acima de um campo de e-mail. Agora pede o e-mail, nos quatro idiomas.
+- **Contato de suporte:** o WhatsApp de suporte de fora do Brasil (EUA/Canadá, Portugal, Espanha) aparece formatado. Os exemplos das Configurações da cobrança seguem o idioma do app.
+
 ## [5.260.0] — 2026-11-03
 
 ### Novidades
