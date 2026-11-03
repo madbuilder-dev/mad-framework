@@ -29,6 +29,19 @@ use Mad\Routing\MadRoutes;
  * precisa ser literal (texto, ou array de texto/número), que é o que o PHP
  * aceita como valor padrão de propriedade de qualquer forma.
  *
+ * Link condicional (fw#601): a tela pode decidir A CADA PEDIDO se o link
+ * aparece, declarando o gancho ao lado da propriedade:
+ *
+ *   protected static string $loginLink = 'Try a demo restaurant';
+ *   public static function loginLinkVisible(): bool
+ *   {
+ *       return DemoVisitorService::active();
+ *   }
+ *
+ * Só a tela que declara o gancho é carregada (autoload), e só na hora de
+ * montar o login; `false`, exceção ou classe que não carrega escondem o link.
+ * Quem não declara continua sendo só lido, como sempre.
+ *
  * O link mora na classe: sobrevive à regeneração do app e ao cache de rotas
  * (nada em config/, no menu ou em routes/). O texto passa por `__()`, então uma
  * tradução JSON do app (`lang/en.json`) troca o rótulo por idioma.
@@ -38,7 +51,7 @@ final class PublicLoginLinks
     /** Arquivo maior que isto não é tela gerada — nem é lido. */
     private const MAX_BYTES = 1048576;
 
-    /** @var array<string, array{mtime:int, size:int, found:list<array{class:string, label:string, icon:string, order:?int}>}> */
+    /** @var array<string, array{mtime:int, size:int, found:list<array{class:string, fqcn:string, gate:bool, label:string, icon:string, order:?int}>}> */
     private static array $memo = [];
 
     /** Pasta das telas no lugar de app/control (testes). */
@@ -69,6 +82,9 @@ final class PublicLoginLinks
 
         $links = [];
         foreach ($found as $link) {
+            if (($link['gate'] ?? false) && ! self::gateAllows((string) ($link['fqcn'] ?? ''))) {
+                continue;
+            }
             try {
                 $url = MadRoutes::urlFor($link['class']);
             } catch (\Throwable) {
@@ -170,7 +186,13 @@ final class PublicLoginLinks
                 || basename(str_replace('\\', '/', $class['extends'])) === 'MadSitePage';
             $link = self::normalize($class['props']['loginLink'] ?? null);
             if ($public && $link !== null) {
-                $found[] = ['class' => $class['class']] + $link;
+                $gate = $class['methods']['loginlinkvisible'] ?? null;
+                $found[] = [
+                    'class' => $class['class'],
+                    'fqcn'  => (string) ($class['fqcn'] ?? $class['class']),
+                    // gancho só vale estático e público (é chamado sem instância)
+                    'gate'  => is_array($gate) && ($gate['static'] ?? false) && ($gate['public'] ?? false),
+                ] + $link;
             }
         }
 
@@ -199,6 +221,28 @@ final class PublicLoginLinks
             'icon'  => preg_match('/^(tabler:)?[a-z0-9][a-z0-9-]{0,63}$/i', $icon) ? strtolower($icon) : '',
             'order' => is_int($value['order'] ?? null) ? $value['order'] : null,
         ];
+    }
+
+    /**
+     * O gancho `loginLinkVisible()` da tela libera o link agora? Na dúvida, não:
+     * classe que não carrega, gancho que lança ou que não devolve `true`
+     * escondem o link sem tirar os outros do login.
+     */
+    private static function gateAllows(string $fqcn): bool
+    {
+        try {
+            if ($fqcn === '' || ! class_exists($fqcn) || ! is_callable([$fqcn, 'loginLinkVisible'])) {
+                return false;
+            }
+
+            return $fqcn::loginLinkVisible() === true;
+        } catch (\Throwable $e) {
+            if (function_exists('report')) {
+                report($e);
+            }
+
+            return false;
+        }
     }
 
     /** "Área" ordena junto de "Area". */

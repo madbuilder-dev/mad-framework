@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.260.0] — 2026-11-03
+
+### Novidades
+
+- **Unidades:** o cadastro de Unidades ganha o campo "Fuso horário". O horário de acesso dos usuários da unidade passa a valer nesse fuso, e a tela de usuários diz "Horários no fuso desta unidade". Vazio, vale o fuso do sistema, como antes. App que guarda o fuso da empresa em tabela própria pode informá-lo com `AccessScheduleService::resolveTimezoneUsing(fn (int $unitId) => …)`.
+- **Login:** o link de uma tela pública na tela de login (`$loginLink`) pode aparecer só quando fizer sentido: declare `public static function loginLinkVisible(): bool` na tela, por exemplo para mostrar "Experimente a demonstração" só com a demonstração ligada.
+
+### Correções
+
+- **Horário de acesso:** numa empresa em outro fuso que o do sistema (ex.: New York num sistema em Denver), o horário de acesso valia no fuso do sistema e a tela dizia "Horários no fuso do sistema". Agora, com o fuso preenchido na unidade, vale o da unidade, também no login, na API e no aviso de horário encerrado.
+- **Minha conta:** com a cobrança desligada, a dona da empresa via as abas Faturas, Pagamento e Dados de cobrança, que davam "sem acesso", e a Assinatura em teste grátis ou vencida dizia "Escolha um plano" sem botão nenhum. Agora só aparecem Perfil e Assinatura; a empresa lê "Fale com <nome do sistema> para escolher um plano" com o e-mail e o WhatsApp de suporte das configurações da cobrança, e o dono da plataforma vê o aviso "Cobrança desligada" com o atalho para ligá-la. Com a cobrança ligada nada muda.
+
 ## [5.259.0] — 2026-11-03
 
 ### Novidades
