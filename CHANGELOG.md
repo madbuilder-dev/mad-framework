@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.261.1] — 2026-11-03
+
+### Correções
+
+- **Combos no celular:** tocar num combo subia o teclado e a lista ficava escondida atrás dele, como se o campo fosse de digitar (Android, no navegador e em app com WebView). Agora a lista abre sem o teclado e um toque escolhe. Para filtrar, toque na busca: a lista fica logo acima ou abaixo do campo, à vista com o teclado aberto.
+
 ## [5.261.0] — 2026-11-03
 
 ### Melhorias

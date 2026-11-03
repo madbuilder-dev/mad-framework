@@ -2406,11 +2406,40 @@ function _madSelectFactory() {
             }
             return base;
         },
+        // Toque com o cursor na busca: a lista sai da folha do pé da tela e cola
+        // no campo, dentro da área VISÍVEL. O teclado do celular encolhe só a
+        // `visualViewport` (Chrome do Android, WebView, Safari do iOS): o que é
+        // `position: fixed; bottom: 0` fica atrás dele, e a pessoa via só a
+        // caixa de digitar com o teclado por cima da lista (fórum #221).
+        // Embaixo do campo se couber (ou se ali houver mais espaço), senão em
+        // cima. Devolve { top, up, maxH } ou null (fica a folha do CSS).
+        get touchAnchor() {
+            this._posV;
+            if (!this.open || !this._isTouch) return null;
+            var r = this._ctrlRect, i = this.$refs.input;
+            if (!r || !i || document.activeElement !== i) return null;
+            var vv = window.visualViewport;
+            var top = vv ? vv.offsetTop : 0;
+            var bottom = top + (vv ? vv.height : window.innerHeight);
+            var below = bottom - r.bottom - 8, above = r.top - top - 8;
+            if (below >= 160 || below >= above) return { top: r.bottom + 4, up: false, maxH: Math.max(0, Math.round(below)) };
+            return { top: r.top - 4, up: true, maxH: Math.max(0, Math.round(above)) };
+        },
         get dropStyle() {
             // Objeto (não string): Alpine mescla por-propriedade e NÃO sobrescreve
-            // o display gerenciado pelo x-show. Touch usa bottom-sheet via CSS.
+            // o display gerenciado pelo x-show. Touch usa bottom-sheet via CSS;
+            // com o cursor na busca, as variáveis do touchAnchor a prendem ao campo
+            // (string vazia apaga a variável e o CSS volta à folha).
             this._posV;
-            if (!this.open || this._isTouch) return {};
+            if (!this.open) return {};
+            if (this._isTouch) {
+                var a = this.touchAnchor;
+                return {
+                    '--mad-sel-anchor-top': a ? a.top + 'px' : '',
+                    '--mad-sel-anchor-max-h': a ? a.maxH + 'px' : '',
+                    '--mad-sel-anchor-shift': a && a.up ? '-100%' : '',
+                };
+            }
             var r = this._ctrlRect;
             if (!r) return {};
             // SEM z-index aqui: quem manda é `.mad-sel-dropdown { z-index:
@@ -2459,6 +2488,11 @@ function _madSelectFactory() {
             if (this._locked || this._native.disabled || this._readonly()) return;
             if (e.target && (e.target.closest('.mad-sel-chip-x') || e.target.closest('.mad-sel-clear'))) return;
             this.openDropdown();
+            // Toque numa lista já carregada: abre SEM o cursor na busca. Com ele
+            // o teclado do celular subia por cima da lista e o combo parecia um
+            // campo de digitar (fórum #221). Quem quer filtrar toca na busca.
+            // Busca no servidor e tags: digitar É o campo, o cursor vai.
+            if (this._isTouch && this.searchable && !this.ajax && this.mode !== 'tags') return;
             this._focusControl();
         },
         // Cursor na busca (sem busca, no próprio controle: é dele que saem as
@@ -2763,10 +2797,19 @@ function _madSelectFactory() {
             document.addEventListener('mousedown', this._outside, true);
             window.addEventListener('scroll', this._onScroll, true);
             window.addEventListener('resize', this._onScroll, true);
+            // Teclado do celular subindo/descendo muda só a área visível, sem
+            // `resize` da janela: a lista presa ao campo (touchAnchor) acompanha.
+            var vv = window.visualViewport;
+            if (vv) { vv.addEventListener('resize', this._onScroll); vv.addEventListener('scroll', this._onScroll); }
         },
         _detachOutside() {
             if (this._outside) { document.removeEventListener('mousedown', this._outside, true); this._outside = null; }
-            if (this._onScroll) { window.removeEventListener('scroll', this._onScroll, true); window.removeEventListener('resize', this._onScroll, true); this._onScroll = null; }
+            if (this._onScroll) {
+                window.removeEventListener('scroll', this._onScroll, true); window.removeEventListener('resize', this._onScroll, true);
+                var vv = window.visualViewport;
+                if (vv) { vv.removeEventListener('resize', this._onScroll); vv.removeEventListener('scroll', this._onScroll); }
+                this._onScroll = null;
+            }
         },
 
         // ── API pública (el._madSelect.*) — escreve sempre no <select> ──
@@ -2861,7 +2904,7 @@ var _MAD_SEL_CONTROL_TPL =
   '<template x-if="checkbox">' +
     '<span class="mad-sel-summary" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?summaryText():placeholder"></span>' +
   '</template>' +
-  '<input class="mad-sel-input" x-ref="input" type="text" x-model="query" @input="onSearchInput()" @focus="openDropdown()" ' +
+  '<input class="mad-sel-input" x-ref="input" type="text" x-model="query" @input="onSearchInput()" @focus="openDropdown()" @blur="_isTouch && open && _measure()" ' +
     'x-show="searchable && (open || (multiple && !checkbox))" :placeholder="(multiple && hasValue)?\'\':placeholder" ' +
     'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
   '<span class="mad-sel-clear" role="button" tabindex="-1" aria-label="' + _madTE('clear', 'Limpar') + '" title="' + _madTE('clear', 'Limpar') + '" x-show="clearable" x-cloak @mousedown.prevent.stop="clearValue()" @click.stop>&times;</span>' +
@@ -2870,7 +2913,7 @@ var _MAD_SEL_CONTROL_TPL =
 '<template x-teleport="body">' +
   '<div class="mad-sel-dropdown mad-ui" x-ref="dropdown" :data-mad-owner="_uid" x-show="open" :style="dropStyle" x-cloak ' +
     'x-effect="open && !_isTouch && (_posV, visibleOptions.length, $nextTick(() => window.madFloatPlace && window.madFloatPlace($el)))" ' +
-    ':class="{\'mad-sel-dropdown-touch\':_isTouch}" @mousedown.prevent>' +
+    ':class="{\'mad-sel-dropdown-touch\':_isTouch,\'is-anchored\':!!touchAnchor}" @mousedown.prevent>' +
     '<template x-if="open">' +
       '<div class="mad-sel-dropdown-inner">' +
         '<ul class="mad-sel-list" role="listbox">' +

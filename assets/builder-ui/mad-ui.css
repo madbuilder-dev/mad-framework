@@ -1769,6 +1769,17 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   border-bottom: 0;
 }
 .mad-sel-dropdown-touch .mad-sel-option { min-height: 44px; }
+/* Com o cursor na busca (teclado aberto) a folha não pode ficar no pé da tela:
+   o teclado cobre o pé. O JS (touchAnchor) a prende ao campo, dentro da área
+   visível — embaixo dele ou, com shift -100%, em cima. */
+.mad-sel-dropdown-touch.is-anchored {
+  top: var(--mad-sel-anchor-top, auto) !important;
+  bottom: auto !important;
+  max-height: min(var(--mad-sel-anchor-max-h, 55vh), 55vh);
+  transform: translateY(var(--mad-sel-anchor-shift, 0));
+  border-radius: var(--mad-radius);
+  border-bottom: 1px solid var(--mad-border);
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════
