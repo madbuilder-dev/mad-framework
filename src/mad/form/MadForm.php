@@ -889,6 +889,18 @@ class MadForm
             unset($dataArray[$untouched]);
         }
 
+        // Campo com caminho de relação (`divisao->subgrupo_id`, o combo de
+        // filtro da cascata): é da tela, não coluna do registro. Ia para o
+        // fill() e o Eloquent o lia como coluna JSON — `update produto set
+        // divisao = {...}` e o Salvar quebrava (fórum #217).
+        if ($record instanceof \Illuminate\Database\Eloquent\Model) {
+            foreach (array_keys($dataArray) as $pathField) {
+                if (self::_isRelationPathField($record, (string) $pathField)) {
+                    unset($dataArray[$pathField]);
+                }
+            }
+        }
+
         // Chave, colunas de controle e empresa: o formulário não as atribui a
         // partir da tela, nem quando alguém as declara como campo.
         $screenGuarded = [];
@@ -8825,6 +8837,25 @@ class MadForm
     private static function isDisplayOnlyDetailKey(string $key): bool
     {
         return str_contains($key, '->') || str_contains($key, '{');
+    }
+
+    /**
+     * Campo do formulário cujo nome é um caminho de RELAÇÃO do registro
+     * (`divisao->subgrupo_id`): o primeiro elo é uma relação do Model, não uma
+     * coluna. Coluna JSON (`config->tema`, atributo com cast) continua sendo
+     * gravada pelo Eloquent como sempre.
+     */
+    private static function _isRelationPathField(\Illuminate\Database\Eloquent\Model $record, string $name): bool
+    {
+        if (!str_contains($name, '->')) {
+            return false;
+        }
+        $first = trim(explode('->', trim($name, " \t{}"), 2)[0]);
+        if ($first === '' || $record->hasCast($first) || array_key_exists($first, $record->getAttributes())) {
+            return false;
+        }
+
+        return $record->isRelation($first);
     }
 
     // ── O que este formulário entregou ao navegador ($_known) ────────────────

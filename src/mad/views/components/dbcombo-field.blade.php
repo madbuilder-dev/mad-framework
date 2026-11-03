@@ -102,39 +102,23 @@
     $maxWidth = $maxWidth ?? '';
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
 
-    // Resolve um valor de CAMINHO-DE-RELACAO ('{estado->pais_id}' ou 'estado->pais_id')
-    // a partir do record original do fill() — usado p/ pre-popular combos de cascata
-    // na EDICAO: o FK do pai (ex.: pais_id) so existe via relacao, nao como coluna do
-    // model editado. Retorna null se: nao for caminho de relacao / sem record / sem valor.
-    $__madRelValue = static function (string $relKey) {
-        $relKey = trim($relKey);
-        if ($relKey !== '' && $relKey[0] === '{' && substr($relKey, -1) === '}') {
-            $relKey = substr($relKey, 1, -1);            // tira { }
-        }
-        if (strpos($relKey, '->') === false) {
-            return null;                                  // nao e caminho de relacao
-        }
-        $__form = \Mad\Component\MadRenderContext::getForm();
-        $__rec  = $__form ? $__form->getSourceRecord() : null;
-        if (!$__rec) {
-            return null;
-        }
-        $__cur = $__rec;
-        foreach (explode('->', $relKey) as $__part) {     // traversa relacao (lazy-load)
-            $__part = trim($__part);
-            if (is_object($__cur)) {
-                try { $__cur = $__cur->{$__part} ?? null; } catch (\Throwable $e) { return null; }
-            } elseif (is_array($__cur)) {
-                $__cur = $__cur[$__part] ?? null;
-            } else {
-                return null;
+    // Campo de CAMINHO DE RELAÇÃO ('divisao->subgrupo->grupo_id'): o combo de
+    // filtro da cascata, que não é coluna do registro editado. Na edição o
+    // valor vem do registro que o fill() abriu — ver \Mad\Form\RelationPathValue.
+    // O caminho que passa por um registro do Model das opções vale a CHAVE
+    // dele: `…->grupo->nome` num combo de Grupo é o id do grupo (fórum #217).
+    $__relModel = null;
+    if (($name && \Mad\Form\RelationPathValue::isPath((string) $name)) || (($dependsOn ?? '') !== '' && \Mad\Form\RelationPathValue::isPath((string) $dependsOn))) {
+        try {
+            if (\Mad\Database\QuerySource::isQuery($query ?? null) && method_exists($query, 'getModel')) {
+                $__relModel = get_class($query->getModel());
+            } elseif (($model ?? '') !== '') {
+                $__relModel = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             }
-            if ($__cur === null) {
-                return null;
-            }
+        } catch (\Throwable $e) {
+            $__relModel = null;
         }
-        return $__cur;
-    };
+    }
 
     $selected      = $selected      ?? null;
     if ($selected === null && $name) {
@@ -149,14 +133,19 @@
     // Cascata/edicao: name como caminho de relacao ('{estado->pais_id}') nao existe
     // no contexto (nao e coluna) — deriva o valor do record original.
     if (($selected === null || $selected === '') && $name && strpos($name, '->') !== false) {
-        $__sv = $__madRelValue($name);
-        if ($__sv !== null) {
+        $__sv = \Mad\Form\RelationPathValue::fromRecord($name, $__relModel ?? '', (string) $keyField);
+        if (is_scalar($__sv)) {
             $selected = (string) $__sv;
         }
     }
     $selected = (string) ($selected ?? '');
     // "Valor padrão" do Studio: só quando nem `selected` nem o registro trouxeram valor.
     $selected = \Mad\Support\MadFieldValue::withDefault((string) $name, $selected, $default ?? null);
+    // O combo filho (`depends-on` = este name) filtra pelo valor que ESTE
+    // combo escolheu, não pela coluna do fim do caminho.
+    if ($name && strpos($name, '->') !== false) {
+        \Mad\Form\RelationPathValue::remember($name, $selected);
+    }
     $placeholder   = $placeholder   ?? mad_t('mad.ui.select_placeholder');
     // `no-empty`: a lista sai sem a opção em branco e o navegador elege o
     // primeiro registro — o `setDefaultOption(false)` de quem vem do 4.0.
@@ -286,9 +275,13 @@
             // ausente do contexto — deriva do record original p/ carregar as options
             // do filho ja filtradas no 1o render (senao o combo filho vem vazio e o
             // valor salvo nao tem <option> p/ pre-selecionar).
+            // O pai já desenhado anotou o valor que escolheu (a chave do
+            // registro dele, não a coluna do fim do caminho): é por ele que o
+            // filho filtra. Pai que vem depois do filho: o fim do caminho.
             if ($parentValue === '' && strpos($dependsOn, '->') !== false) {
-                $__pv = $__madRelValue($dependsOn);
-                if ($__pv !== null) {
+                $__pv = \Mad\Form\RelationPathValue::chosen($dependsOn)
+                    ?? \Mad\Form\RelationPathValue::fromRecord($dependsOn);
+                if (is_scalar($__pv)) {
                     $parentValue = (string) $__pv;
                 }
             }

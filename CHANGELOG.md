@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.261.3] — 2026-11-03
+
+### Correções
+
+- **Combo dependente:** no cadastro em cascata em que só o último nível é gravado (Grupo → Subgrupo → Divisão, com Grupo e Subgrupo só para filtrar), a edição abria os três combos em "Registro atual (fora da sua lista)" e o Salvar dava erro. Agora cada combo abre no grupo e no subgrupo do registro, com a lista já filtrada, e o Salvar grava só a Divisão. Vale também quando o combo de filtro aponta para o nome (`divisao->subgrupo->grupo->nome`) em vez do id.
+- **Display no formulário:** o campo de exibição com caminho de relação (`divisao->subgrupo->grupo->nome`) mostrava sempre "—". Agora mostra o valor do registro aberto.
+
 ## [5.261.2] — 2026-11-03
 
 ### Correções

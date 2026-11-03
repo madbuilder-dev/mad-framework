@@ -8,6 +8,15 @@
     if ($value === null && $name) {
         $_ctx = \Mad\Component\MadRenderContext::current();
         $value = array_key_exists($name, $_ctx) ? $_ctx[$name] : '';
+        // Caminho de relação (`divisao->subgrupo->grupo->nome`): não é coluna
+        // do registro, não está no contexto — lê do registro que o formulário
+        // abriu. Antes saía sempre "—" (fórum #217).
+        if ($value === '' && \Mad\Form\RelationPathValue::isPath((string) $name)) {
+            $_rv = \Mad\Form\RelationPathValue::fromRecord((string) $name);
+            if (is_scalar($_rv) || $_rv instanceof \Stringable) {
+                $value = (string) $_rv;
+            }
+        }
     }
     // Chave de outra tabela (`model` + `display`, como no combo): mostra o
     // rótulo do registro, não o código — um valor ou vários (seleção múltipla:
