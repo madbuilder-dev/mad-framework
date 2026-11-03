@@ -24,6 +24,11 @@
     troca o rótulo ("WhatsApp da clínica"); `phone-mask` troca a máscara
     (9 = dígito, várias separadas por `|`; vazio = sem máscara). O número vai
     para o contato do lead e para o `SiteSignupCompleted`.
+
+    **Fuso** (fw#593): um campo escondido leva o fuso do navegador
+    (`America/Chicago`) e o `SiteSignupCompleted` o entrega em `$event->timezone`
+    — é onde o app grava o fuso da empresa nova. Fuso desconhecido ou ausente
+    chega vazio e não barra o cadastro.
 --}}
 @props([
     'id'          => '',
@@ -241,6 +246,8 @@
             <form class="site-form" method="post" action="{{ site_url('/public/site/signup') }}">
                 @csrf
                 <input type="hidden" name="_t" value="{{ time() }}">
+                {{-- fw#593: fuso do navegador (site.js); o servidor só aceita fuso que o PHP conhece. --}}
+                <input type="hidden" name="timezone" value="{{ $__old('timezone') }}" data-site-timezone>
                 @if($__planMode !== 'select')
                     <input type="hidden" name="plan_id" value="{{ $__planId }}">
                 @endif

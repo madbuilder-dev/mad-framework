@@ -144,6 +144,26 @@
     });
   }
 
+  /* ── Fuso do navegador no cadastro (fw#593) ────────────────────────────── */
+
+  // `<input type="hidden" name="timezone" data-site-timezone>`: o servidor
+  // entrega o fuso à conta nova (`SiteSignupCompleted`). Campo que voltou
+  // preenchido (erro de validação) fica; navegador sem Intl deixa vazio.
+  function ligarFuso() {
+    var campos = document.querySelectorAll('input[data-site-timezone]');
+    if (!campos.length) return;
+    var fuso = '';
+    try {
+      fuso = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || '';
+    } catch (e) {
+      fuso = '';
+    }
+    if (!fuso) return;
+    Array.prototype.forEach.call(campos, function (campo) {
+      if (!campo.value) campo.value = fuso;
+    });
+  }
+
   /* ── Máscara de telefone ───────────────────────────────────────────────── */
 
   // `data-site-mask="(99) 9999-9999|(99) 99999-9999"`: 9 = dígito; com várias,
@@ -247,6 +267,7 @@
     ligarMenu();
     ligarCiclo();
     ligarPlanoDoCadastro();
+    ligarFuso();
     ligarMascaras();
     ligarAncoras();
   }

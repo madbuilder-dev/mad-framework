@@ -1118,6 +1118,7 @@ return [
             'wait'                      => 'Espere...',
             'weekdays_min'              => 'D,L,M,M,J,V,S',
             'weekdays_short'            => 'Dom,Lun,Mar,Mié,Jue,Vie,Sáb',
+            'notch_date'                => ':wd, :d :mon',
             'year_letter'               => 'a',
             'yes'                       => 'Sí',
         ],

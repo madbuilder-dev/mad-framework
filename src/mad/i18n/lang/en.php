@@ -1130,6 +1130,7 @@ return [
             'wait'                      => 'Please wait...',
             'weekdays_min'              => 'S,M,T,W,T,F,S',
             'weekdays_short'            => 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
+            'notch_date'                => ':wd, :mon :d',
             'year_letter'               => 'y',
             'yes'                       => 'Yes',
         ],

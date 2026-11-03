@@ -1121,6 +1121,7 @@ return [
             'wait'                      => 'Aguarde...',
             'weekdays_min'              => 'D,S,T,Q,Q,S,S',
             'weekdays_short'            => 'Dom,Seg,Ter,Qua,Qui,Sex,Sáb',
+            'notch_date'                => ':wd, :d :mon',
             'year_letter'               => 'a',
             'yes'                       => 'Sim',
         ],

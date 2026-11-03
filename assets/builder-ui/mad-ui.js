@@ -8756,6 +8756,8 @@ document.addEventListener('alpine:init', () => {
                     // Se for campo money, exibe valor formatado pt-BR
                     if (inp.dataset && inp.dataset.editMoney !== undefined) {
                         inp.value = madNumFmt(currentVal, parseInt(inp.dataset.editDecimals || 2));
+                    } else if (inp.dataset && inp.dataset.editNumber !== undefined) {
+                        inp.value = window._madNumberCellShow(currentVal, _madNumSeps()[0]);
                     }
                     if (keep && keep.focus === false) return;
                     // Pode ser selects com MAD Select (sem .focus tradicional)
@@ -11416,6 +11418,27 @@ document.addEventListener('alpine:init', () => {
         if (raw === null || raw === undefined) return '';
         var s = String(raw).trim();
         return decSep === '.' ? s : s.replace('.', decSep);
+    };
+
+    // `editNumber()` da listagem (mesmo caso da #591): campo de texto com o
+    // separador do app. Devolve o valor cru ("5.20", "" vazio). `finish` (ao
+    // sair do campo) aplica min/max e reescreve o campo no formato do app.
+    window.madDgNumberRaw = function (input, min, max, finish) {
+        var sep = _madNumSeps()[0];
+        if (!finish) {
+            var clean = input.value.replace(/[^\d.,\-]/g, '').replace(/(?!^)-/g, '');
+            if (clean !== input.value) input.value = clean;
+            return window._madNumberCellToRaw(clean, sep);
+        }
+        var raw = window._madNumberCellToRaw(input.value, sep);
+        if (raw !== '') {
+            var v = Number(raw);
+            if (min !== null && min !== undefined && v < min) raw = String(min);
+            if (max !== null && max !== undefined && v > max) raw = String(max);
+        }
+        var shown = window._madNumberCellShow(raw, sep);
+        if (input.value !== shown) input.value = shown;
+        return raw;
     };
 
     Alpine.data('madNumberCell', (cfg = {}) => {

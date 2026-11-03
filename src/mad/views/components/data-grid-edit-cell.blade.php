@@ -121,11 +121,18 @@
         @include('components.partials.date-popup', ['withTime' => true])
     </div>
 @elseif($col->editType === 'number')
-    <input type="number" class="mad-input mad-dg-cell-input" x-model="editValue"
-           step="{{ $col->editStep ?? ($col->editDecimals > 0 ? '0.'.str_repeat('0', max($col->editDecimals - 1, 0)).'1' : '1') }}"
-           @if($col->editMin !== null) min="{{ $col->editMin }}" @endif
-           @if($col->editMax !== null) max="{{ $col->editMax }}" @endif
-           @keydown.enter="$event.target.reportValidity() && commitEdit()" @keydown.escape="cancelEdit()" @blur="commitEdit()">
+    {{-- Texto com o separador do APP: o <input type="number"> mostra o decimal no idioma do navegador (#591). --}}
+    @php
+        $_dgNumMin = $col->editMin !== null ? (string) $col->editMin : 'null';
+        $_dgNumMax = $col->editMax !== null ? (string) $col->editMax : 'null';
+    @endphp
+    <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input"
+           data-edit-number
+           data-edit-row-id="{{ $rowId ?? '' }}" data-edit-field="{{ $col->field }}"
+           @focus="madSelectOnFocus($event)"
+           @input="editValue = madDgNumberRaw($event.target)"
+           @blur="editValue = madDgNumberRaw($event.target, {{ $_dgNumMin }}, {{ $_dgNumMax }}, true); commitEdit()"
+           @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
 @elseif($col->editType === 'numeric')
     <div style="display:flex;align-items:center;gap:4px;">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif

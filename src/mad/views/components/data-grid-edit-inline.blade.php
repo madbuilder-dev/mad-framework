@@ -157,11 +157,17 @@
         @include('components.partials.date-popup', ['withTime' => true])
     </div>
 @elseif($col->editType === 'number')
-    <input type="number" class="mad-input mad-dg-inline-input" value="{{ $editInitVal }}"
-           step="{{ $col->editStep ?? ($col->editDecimals > 0 ? '0.'.str_repeat('0', max($col->editDecimals - 1, 0)).'1' : '1') }}"
-           @if($col->editMin !== null) min="{{ $col->editMin }}" @endif
-           @if($col->editMax !== null) max="{{ $col->editMax }}" @endif
-           @blur="commitInline({{ $rowIdJs }},'{{ $col->field }}',$event.target.value)"
+    {{-- Texto com o separador do APP: o <input type="number"> mostra o decimal no idioma do navegador (#591). --}}
+    @php
+        $_dgNumShow = is_numeric($editInitVal) ? str_replace('.', \Mad\Support\ValueFormatter::separators()[0], (string) $editInitVal) : (string) $editInitVal;
+        $_dgNumMin  = $col->editMin !== null ? (string) $col->editMin : 'null';
+        $_dgNumMax  = $col->editMax !== null ? (string) $col->editMax : 'null';
+    @endphp
+    <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $_dgNumShow }}"
+           data-edit-number
+           @focus="madSelectOnFocus($event)"
+           @input="madDgNumberRaw($event.target)"
+           @blur="commitInline({{ $rowIdJs }},'{{ $col->field }}',madDgNumberRaw($event.target, {{ $_dgNumMin }}, {{ $_dgNumMax }}, true))"
            @keydown.enter="$event.target.blur()">
 @elseif($col->editType === 'numeric')
     @php [$_dgDec, $_dgTho] = \Mad\Support\ValueFormatter::separators(); $fmtVal = number_format((float)$cellVal, $col->editDecimals, $_dgDec, $_dgTho); @endphp

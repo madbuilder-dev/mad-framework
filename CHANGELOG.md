@@ -12,6 +12,22 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.258.0] — 2026-11-02
+
+### Novidades
+
+- **Site:** o cadastro do site (`<mad-site-signup-form>`) passa a levar o fuso do navegador de quem se cadastra, e o `SiteSignupCompleted` o entrega em `$event->timezone` (como `America/Chicago`). Grave na empresa nova para o horário de funcionamento e o "hoje" do painel seguirem o fuso do cliente. Fuso desconhecido ou formulário antigo chega vazio e não barra o cadastro.
+
+### Correções
+
+- **Topo do sistema:** a data no topo mostrava "Mon, 2 Nov" em app em inglês. Agora segue a ordem do idioma: "Mon, Nov 2" em inglês; em português e espanhol continua igual.
+- **Listagem:** `@if` entre as ações da listagem (`<mad-actions>`) com parênteses na condição, como `@if (\App\Services\Account::has('inventory'))`, derrubava a tela com erro de sintaxe. Agora a condição é lida inteira, também no `@elseif`.
+- **Listagem:** a edição de número na célula (`edit-type="number"`) mostrava o decimal no formato do navegador, não no do app — num app em inglês aberto num navegador em português, 5.20 aparecia "5,20". Agora usa o separador do app, aceita ponto ou vírgula na digitação, e o valor salvo continua o mesmo.
+
+### Atenção
+
+- **Listagem:** a célula de `edit-type="number"` passou a ser um campo de texto (teclado numérico no celular). Valor fora de `edit-min`/`edit-max` volta ao limite ao sair da célula, em vez de o navegador recusar, e as setinhas de subir e descer saem. Script próprio que procurava `input[type=number]` na listagem precisa procurar a célula pela coluna.
+
 ## [5.257.0] — 2026-11-02
 
 ### Novidades

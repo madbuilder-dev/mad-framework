@@ -1043,10 +1043,14 @@ class MadGridCompiler
         // ── Extrai blocos @if/@elseif/@else/@endif com actions dentro ────
         // Converte cada branch em um bloco condicional que sera incluido
         // no actConfigs via array_merge em runtime.
+        // Condição com parênteses balanceados e strings: `@if (Conta::has('x'))`
+        // cortava no 1º `)` e o array das ações saía desequilibrado.
+        $paren = '(\((?:[^()\'"]++|\'(?:[^\'\\\\]|\\\\.)*+\'|"(?:[^"\\\\]|\\\\.)*+"|(?-1))*+\))';
+        $unwrap = static fn (string $p): string => trim(substr(trim($p), 1, -1));
         $inner = preg_replace_callback(
-            '/@if\s*\(([^)]*)\)([\s\S]*?)@endif/s',
-            function (array $m) use (&$condActBlocks): string {
-                $firstCond = trim($m[1]);
+            '/@if\s*' . $paren . '([\s\S]*?)@endif/s',
+            function (array $m) use (&$condActBlocks, $paren, $unwrap): string {
+                $firstCond = $unwrap($m[1]);
                 $body      = $m[2];
 
                 // Divide o corpo em branches: @if → primeiro branch, @elseif → branches seguintes, @else → ultimo
@@ -1054,13 +1058,13 @@ class MadGridCompiler
                 $cursor   = 0;
                 $prevCond = $firstCond;
 
-                if (preg_match_all('/@elseif\s*\(([^)]*)\)|@else\b/', $body, $marks, PREG_OFFSET_CAPTURE)) {
+                if (preg_match_all('/@elseif\s*' . $paren . '|@else\b/', $body, $marks, PREG_OFFSET_CAPTURE)) {
                     $positions = [];
                     foreach ($marks[0] as $i => $mark) {
                         $positions[] = [
                             'offset' => $mark[1],
                             'len'    => strlen($mark[0]),
-                            'cond'   => isset($marks[1][$i][0]) && $marks[1][$i][0] !== '' ? trim($marks[1][$i][0]) : null,
+                            'cond'   => isset($marks[1][$i][0]) && $marks[1][$i][0] !== '' ? $unwrap($marks[1][$i][0]) : null,
                         ];
                     }
                     foreach ($positions as $pos) {
