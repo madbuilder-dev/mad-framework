@@ -1421,7 +1421,14 @@
 
                 /** Placeholder do campo conforme a unidade ativa. */
                 discPlaceholder(unit) {
-                    return (unit || 'money') === 'percent' ? '0' : '0,00';
+                    return (unit || 'money') === 'percent' ? '0' : this.zeroMoney();
+                },
+
+                /** "0.00" / "0,00" / "0": separador e casas da moeda do app (F-A21). */
+                zeroMoney() {
+                    const c = (this.cfg && this.cfg.currency) || {};
+                    const d = Number.isInteger(c.decimals) ? c.decimals : 2;
+                    return d > 0 ? '0' + (c.decimal || ',') + '0'.repeat(d) : '0';
                 },
 
                 removeLine(i) {

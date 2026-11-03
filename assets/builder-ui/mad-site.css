@@ -280,6 +280,7 @@ body.site .site-btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 }
 .site-plan h3 { font-size: 18px; }
 .site-plan--featured { border-color: var(--site-brand); border-width: 2px; }
+.site-plan__badge { align-self: flex-start; margin: 6px 0 0; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--site-brand); border: 1px solid var(--site-brand); }
 .site-plan__price { margin: 14px 0 4px; font-size: 34px; font-weight: 680; letter-spacing: -0.02em; }
 .site-plan__price small { font-size: 15px; font-weight: 500; color: var(--site-fg-dim); }
 .site-plan__list { list-style: none; margin: 20px 0 24px; padding: 0; display: grid; gap: 9px; }

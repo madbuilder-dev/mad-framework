@@ -403,7 +403,7 @@
                         <label>
                             <span x-text="cfg.i18n.down_payment"></span>
                             <input type="text" inputmode="decimal" x-model="payDown"
-                                   :placeholder="cfg.currency.symbol + ' 0,00'">
+                                   :placeholder="cfg.currency.symbol + (cfg.currency.gap ?? ' ') + zeroMoney()">
                         </label>
                         <ul class="mad-pdv-installment-preview" x-show="installmentPreview.length" x-cloak>
                             <template x-for="p in installmentPreview" :key="p.n">

@@ -505,7 +505,7 @@ return [
         'site_plan_users'              => ':max utilizadores incluídos',
         'site_plan_users_unlimited'    => 'Utilizadores ilimitados',
         'site_plan_trial'              => ':days dias de teste gratuito',
-        'site_plan_featured'           => 'Mais escolhido',
+        'site_plan_featured'           => 'Recomendado',
         'site_start_free'              => 'Começar teste gratuito',
         'site_choose_plan'             => 'Escolher este plano',
         'site_talk_to_sales'           => 'Falar com vendas',

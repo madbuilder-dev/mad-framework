@@ -28,6 +28,12 @@
     'signupHref'  => '',
     'tone'        => 'plain',
     'class'       => '',
+    // Selo do plano em destaque: sem a prop, "Recomendado"; `featured-label=""`
+    // tira o selo (o cartão continua destacado pela borda) — fw#598.
+    'featuredLabel'     => null,
+    // Omite dos cartões os módulos que TODO plano da vitrine tem
+    // (Dashboard, Configurações…): sobra o que diferencia um plano do outro.
+    'hideCommonModules' => false,
 ])
 
 @php
@@ -65,6 +71,20 @@
     }
 
     $__hasPolicy = class_exists(\App\Service\Site\SiteSignupPolicy::class);
+
+    $__featuredLabel = $featuredLabel === null ? mad_t('mad.site_plan_featured') : trim((string) $featuredLabel);
+
+    // Módulos comuns a todos os planos: só faz sentido com 2+ cartões.
+    $__hideCommon = filter_var($hideCommonModules, FILTER_VALIDATE_BOOLEAN);
+    if ($__hideCommon && count($__cards) > 1) {
+        $__common = null;
+        foreach ($__cards as $__c) {
+            $__common = $__common === null ? $__c['modules'] : array_values(array_intersect($__common, $__c['modules']));
+        }
+        foreach ($__cards as $__i => $__c) {
+            $__cards[$__i]['modules'] = array_values(array_diff($__c['modules'], (array) $__common));
+        }
+    }
 
     /**
      * O botão de UM plano. `auto` pergunta à política de cadastro; `signup` e
@@ -154,8 +174,8 @@
                              data-plan-id="{{ $__card['id'] }}">
                         <h3>{{ $__card['name'] }}</h3>
 
-                        @if($__card['featured'])
-                            <p>{{ mad_t('mad.site_plan_featured') }}</p>
+                        @if($__card['featured'] && $__featuredLabel !== '')
+                            <p class="site-plan__badge">{{ $__featuredLabel }}</p>
                         @endif
 
                         <p class="site-plan__price">

@@ -12,6 +12,29 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.259.0] — 2026-11-03
+
+### Novidades
+
+- **Site:** `<mad-site-pricing featured-label="Best value">` troca o selo do plano em destaque, e `featured-label=""` tira o selo (o cartão continua com a borda de destaque). `hide-common-modules` omite dos cartões os módulos que todo plano tem, como Dashboard e Configurações, e deixa só o que diferencia um plano do outro.
+
+### Correções
+
+- **Assinatura:** pagar com cartão às vezes ficava parado em "Processando…" sem cobrar, principalmente ao tentar um segundo cartão no mesmo dia ou quando outro sistema usa a mesma conta da Stripe. Agora cada cartão é uma tentativa nova, e, se o pagamento falhar, o motivo aparece e o botão volta a "Pagar com cartão".
+- **Assinatura:** "pagar com o cartão salvo" na tela de pagamento falhava na Stripe. Agora cobra o cartão salvo.
+- **E-mail:** os e-mails do sistema (boas-vindas do cadastro, redefinição de senha, código de verificação e convite de usuário) saíam em português num app em inglês ou espanhol. Agora o texto padrão segue o idioma do app. App já criado recebe o texto novo ao atualizar, menos o modelo que você editou nas Preferências.
+- **E-mail:** sem remetente configurado, os e-mails saíam de `nao-responda@localhost`. Agora saem de `no-reply@` com o domínio do app (`nao-responda@` em português, `no-responder@` em espanhol).
+- **Topo do sistema:** as dicas dos botões do topo ("Chat interno", "Modo escuro", "Copilot IA", "Meus Dashboards", "Tema" e "Recolher menu lateral") apareciam em português num app em inglês ou espanhol. Agora seguem o idioma do app.
+- **Login:** a variante de login ERP no modo escuro mantinha o fundo branco com textos claros, quase ilegíveis, e o cartão do logo no menu lateral tinha o mesmo problema. Agora o lado do formulário, os rótulos, os campos e o cartão do logo ficam escuros.
+- **Caixa (PDV):** o campo de desconto e a entrada do parcelado do `<mad-pdv>` mostravam "0,00" num app em inglês. Agora o exemplo segue a moeda do app ("0.00" em dólar).
+- **Site e assinatura:** os módulos de cada plano, em `<mad-site-pricing>` e na tela de escolha de plano do app, apareciam em ordem alfabética. Agora seguem a ordem dos módulos que você definiu e, sem ordem, a ordem em que entraram no plano.
+
+### Atenção
+
+- **Site e assinatura:** o selo do plano em destaque passa de "Mais escolhido" para "Recomendado" (em inglês, "Recommended"), no site, na tela de planos e no cadastro de planos. Para manter o texto antigo no site, use `featured-label="Mais escolhido"`.
+- **Login:** a variante ERP não mostra mais "Intranet corporativa · Acesso restrito" no rodapé quando o tema não define um selo. Para mostrar um selo, preencha `login.badge` no tema do app.
+- **Textos em inglês:** "E-mail" passa a ser "Email" em todas as telas do app em inglês. Teste automático que procura "E-mail" num app em inglês precisa trocar o texto.
+
 ## [5.258.0] — 2026-11-02
 
 ### Novidades
