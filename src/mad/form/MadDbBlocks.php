@@ -155,6 +155,32 @@ class MadDbBlocks
         return array_values(array_unique($columns));
     }
 
+    /**
+     * Conexão da transação de gravar/editar/remover item. Tem de ser a mesma
+     * em que o item é lido e salvo — a do próprio Model —, senão o rollback
+     * não desfaz nada: com o modelo de dados num banco separado, a transação
+     * abria em 'business' e um item da metade de um envio de vários arquivos
+     * ficava gravado mesmo com o erro. `database` da tag continua vencendo.
+     */
+    public static function connection(array $cfg): ?string
+    {
+        $database = (string) ($cfg['database'] ?? '');
+        if ($database !== '') {
+            return $database;
+        }
+        $pivotModel = (string) ($cfg['pivotModel'] ?? '');
+        if ($pivotModel === '') {
+            return null;
+        }
+        try {
+            $model = ModelOptionsLoader::resolveModelClass($pivotModel);
+        } catch (\Throwable) {
+            return null;   // Model inválido: a própria ação falha e avisa
+        }
+
+        return class_exists($model) ? (new $model())->getConnectionName() : null;
+    }
+
     /** Carrega as linhas do pivot — via QuerySource (Eloquent/Query Builder). */
     public static function loadItems(array $cfg): array
     {

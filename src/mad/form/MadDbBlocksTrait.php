@@ -69,7 +69,7 @@ trait MadDbBlocksTrait
 
         $pivot = null;
         try {
-            $resp = DB::connection($cfg['database'])->transaction(function () use ($cfg, &$pivot) {
+            $resp = DB::connection(MadDbBlocks::connection($cfg))->transaction(function () use ($cfg, &$pivot) {
                 $pivot = new $cfg['pivotModel']();
                 $flatMode = (($cfg['mode'] ?? 'pivot') === 'flat');
                 if (!$flatMode) {
@@ -255,7 +255,7 @@ trait MadDbBlocksTrait
         $pivot   = null;
         $removed = false;
         try {
-            $resp = DB::connection($cfg['database'])->transaction(function () use ($cfg, $id, &$pivot, &$removed) {
+            $resp = DB::connection(MadDbBlocks::connection($cfg))->transaction(function () use ($cfg, $id, &$pivot, &$removed) {
                 $pivot = self::_blockFind($cfg, $id);
                 if ($pivot === null) {
                     return self::_blockNotHere($cfg, $id, 'remover');
@@ -316,7 +316,7 @@ trait MadDbBlocksTrait
         }
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
         try {
-            return DB::connection($cfg['database'])->transaction(function () use ($cfg, $id, $field, $value) {
+            return DB::connection(MadDbBlocks::connection($cfg))->transaction(function () use ($cfg, $id, $field, $value) {
                 $pivot = self::_blockFind($cfg, $id);
                 if ($pivot === null) {
                     return self::_blockNotHere($cfg, $id, 'alterar');
@@ -399,7 +399,7 @@ trait MadDbBlocksTrait
         $cfg['recordId'] = MadDbBlocks::resolveRecordId($cfg['recordId'] ?? null, $this);
 
         try {
-            return DB::connection($cfg['database'])->transaction(function () use ($cfg, $id) {
+            return DB::connection(MadDbBlocks::connection($cfg))->transaction(function () use ($cfg, $id) {
                 // Escopo: o item TEM que estar na lista do bloco — filho do pai
                 // atual (modo pivot) e dentro dos filtros da tag. Senão um id
                 // forjado editaria filho de outro registro.

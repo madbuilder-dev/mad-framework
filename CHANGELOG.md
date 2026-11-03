@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.261.2] — 2026-11-03
+
+### Correções
+
+- **`<mad-pivot-table>`:** sem `database` na tag (como o Studio grava quando o banco é o principal do projeto), a tabela dinâmica consultava o banco padrão do app, e não o do modelo de dados. Com o modelo de dados num banco próprio, a tela mostrava "Não foi possível carregar os dados". Agora ela consulta o banco do modelo de dados, e o `database` escrito na tag continua valendo.
+- **`<mad-db-blocks>`, `<mad-comments>` e `<mad-attachments>`:** com o modelo de dados num banco próprio, um erro no meio da gravação de um item (por exemplo, ao enviar vários arquivos de uma vez) deixava parte dele gravada. Agora a gravação inteira é desfeita.
+
 ## [5.261.1] — 2026-11-03
 
 ### Correções

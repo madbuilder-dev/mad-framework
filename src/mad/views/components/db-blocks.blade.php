@@ -3,7 +3,10 @@
     $label       = $label ?? '';
     $mode        = $mode ?? 'pivot';      // pivot = 1:N vinculado a parent | flat = lista master
     $pivotModel  = $pivotModel ?? '';
-    $database    = $database ?? (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
+    // `database` omitido (forma do Studio quando o banco é o padrão do
+    // projeto) = a conexão do PRÓPRIO Model, onde o item é lido e gravado
+    // (MadDbBlocks::connection). Vazio aqui, para não selar 'business' no state.
+    $database    = (isset($database) && (string) $database !== '') ? (string) $database : '';
     $foreignKey  = $foreignKey ?? '';
     $recordId    = $recordId ?? null;
     $rowView     = $rowView ?? '';

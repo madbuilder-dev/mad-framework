@@ -42,7 +42,8 @@
     $model       = $model       ?? '';
     $foreignKey  = $foreignKey  ?? '';
     $recordId    = $recordId    ?? null;
-    $database    = $database    ?? (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
+    // Vazio = a conexão do próprio Model (o <mad-db-blocks> resolve).
+    $database    = $database    ?? '';
 
     $bodyField       = $bodyField       ?? 'body';
     $dateField       = $dateField       ?? 'created_at';

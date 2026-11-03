@@ -10,7 +10,7 @@
      *
      * Props:
      *   model             string      ''            Classe ORM (ex: 'PedidoVenda')
-     *   database          string      MAIN_DATABASE Conexao DB
+     *   database          string      ''            Conexao DB (vazio = a do proprio Model)
      *   filters           array       []            Filtros inline [['campo','op','val'], ...]
      *   joins             array       []            Joins keyed by table: ['tabela' => ['fk','pk']]
      *                                                ou ['tabela' => ['fk','op','pk']]. FK sem `.`
@@ -49,7 +49,12 @@
 
     // ── Fonte ORM ──────────────────────────────────────────────────────────
     $model    = $model    ?? '';
-    $database = $database ?? (defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business');
+    // `database` omitido (forma do Studio quando o banco é o padrão do
+    // projeto): a consulta roda na conexão do PRÓPRIO Model. Cair em
+    // 'business' só funcionava quando todas as conexões apontavam para o
+    // mesmo arquivo; com o modelo de dados num banco separado o pivot
+    // consultava o banco errado. Explícito continua vencendo.
+    $database = (isset($database) && (string) $database !== '') ? (string) $database : null;
     $filters  = $filters  ?? [];
     $joins    = $joins    ?? [];
     $data     = $data     ?? null;
@@ -213,7 +218,8 @@
         try {
             // Pelo Eloquent, com os global scopes do model (unidade/tenant do
             // Multi-unidade, soft delete) — a tabela crua (DB::table) listava os
-            // registros de TODAS as unidades num SaaS. Conexão = `database`.
+            // registros de TODAS as unidades num SaaS. Conexão = `database`, ou
+            // a do Model quando a tag não diz.
             $__pmClass = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             $q = \Mad\Database\QuerySource::modelBaseQuery($__pmClass, $database);
             $q->columns = null;
