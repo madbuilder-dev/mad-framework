@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.263.2] — 2026-11-04
+
+### Correções
+
+- **Instalação:** com o app numa subpasta (`dominio.com/sistema/public`), comum em hospedagem com cPanel, a tela de instalação abria, mas o envio dos dados dava a página 404 da hospedagem. Agora o instalador envia para o endereço do app, e o endereço sugerido para o app já vem com a subpasta.
+
+### Melhorias
+
+- **Instalação:** o projeto enviado inteiro para a hospedagem (por exemplo, para `public_html`) ganha um `.htaccess` na raiz que leva o visitante para `public/` e deixa o `.env` e as pastas internas fora do alcance do navegador. A lista de requisitos passa a conferir também se `bootstrap/cache/` aceita gravação.
+
 ## [5.263.1] — 2026-11-04
 
 ### Correções
