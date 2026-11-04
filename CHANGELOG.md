@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.262.3] — 2026-11-04
+
+### Correções
+
+- **Permissões:** no modelo de importação de dados, "Usuários com acesso" reabria vazio e salvar sem mexer tirava o acesso de todos. Agora reabre com os usuários marcados e salvar mantém os vínculos.
+- **Permissões:** criar um modelo de importação novo no PostgreSQL dava "valor fora do formato esperado". Agora o modelo é salvo e guarda quem o criou.
+
 ## [5.262.2] — 2026-11-04
 
 ### Correções
