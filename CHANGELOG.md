@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.263.0] — 2026-11-04
+
+### Novidades
+
+- **Formulário:** o modelo de importação de dados ganha a coluna "Chave" no mapeamento e a opção "Se a linha já existir": pular ou atualizar. Reimportar o mesmo arquivo não duplica mais, e o resultado conta as linhas puladas e atualizadas.
+
+### Correções
+
+- **Formulário:** no modelo de importação, escolher a tabela numa linha nova do mapeamento apagava o "Campo destino" das linhas de cima e o modelo salvava só a última coluna. Agora cada linha guarda o seu campo.
+- **Permissões:** em app com várias empresas, as linhas importadas entravam sem empresa e ninguém as via. Agora entram na empresa de quem importa; sem empresa ativa, a importação é recusada com aviso.
+- **Formulário:** a importação aceitava CPF/CNPJ inválido e gravava com máscara. Agora confere o dígito, recusa a linha inválida e grava só os números; o modelo CSV traz exemplos que combinam com cada coluna.
+- **Permissões:** o detalhe de uma importação passa a abrir pelo histórico do modelo, e excluir o modelo apaga o histórico dele.
+- **Permissões:** "Grupos com acesso" do modelo de importação agora vale também para o grupo que vem do perfil do usuário, e a tela "Usar modelo" abre para quem tem acesso ao modelo, inclusive pelo endereço direto.
+- **Formulário:** sem coluna "Chave" no modelo, o resultado da importação avisa que importar o mesmo arquivo de novo cria linhas repetidas.
+
 ## [5.262.3] — 2026-11-04
 
 ### Correções

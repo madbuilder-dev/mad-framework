@@ -472,6 +472,11 @@ class PermissionGate
             "NewChatForm" => true,
             "NewChatGroupForm" => true,
             "SettingsForm" => true,
+            // Usar um modelo de importação (o botão <mad-import-btn> das telas):
+            // quem barra é o PRÓPRIO modelo (Grupos/Usuários com acesso, conferido
+            // em cada ação). Como programa só do grupo Administrador, o "Grupos
+            // com acesso" nunca valia para usuário comum (QA-B-27).
+            "DataImportUseForm" => true,
             // "MyDashboards" saiu daqui (fw#424): Meus Dashboards é programa do
             // IAM, liberado por grupo (App\Service\Iam\AiPrograms).
             // Serviços de sistema (não-controls).
