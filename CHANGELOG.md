@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.262.1] — 2026-11-04
+
+### Correções
+
+- **Permissões:** em Perfis da empresa, "Criar a partir deste" dava "Erro do servidor 500 — Perfil não encontrado nesta empresa". Agora abre um perfil novo com o nome sugerido e as permissões do modelo, gravado só no Salvar. Perfil de outra empresa mostra um aviso na cortina em vez do erro.
+
 ## [5.262.0] — 2026-11-04
 
 ### Novidades
