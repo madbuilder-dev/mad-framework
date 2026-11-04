@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => ''])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => ''])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -144,6 +144,17 @@
     if ($_permDeny) {
         $disabled = false;
         $title    = '';   // a dica do perfil vai na tag e vence o title do chamador
+    }
+    // `disabled-hint`: botão desabilitado que diz POR QUÊ ("Limite do plano:
+    // 2 unidades…"). Mesmo modo da ação sem permissão, acima: focável, clique
+    // barrado pelo mad-ui.js e a dica aparece no hover, no foco e no toque.
+    // Com `disabled` puro a dica nunca aparecia (o mouse atravessa o botão).
+    $_disabledHint = is_scalar($disabledHint) ? trim((string) $disabledHint) : '';
+    if ($disabled && $_disabledHint !== '' && ! $_permDeny) {
+        $_permDeny  = true;
+        $_permTitle = $_disabledHint;
+        $disabled   = false;
+        $title      = '';
     }
 
     // `style` da tag. Quem escreveu style em `attrs=""` continua mandando nele.

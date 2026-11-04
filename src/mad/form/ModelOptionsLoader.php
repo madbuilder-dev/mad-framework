@@ -347,14 +347,16 @@ class ModelOptionsLoader
 
     private static function renderMask(object $object, string $pattern): string
     {
-        return (string) preg_replace_callback('/\{(.*?)\}/', function ($m) use ($object) {
-            $prop = ltrim($m[1], '$');
+        // Token vazio não deixa separador sobrando ("{codigo} · {nome}" sem
+        // código = "Camiseta", não "· Camiseta") — regra única, LabelMask.
+        return \Mad\Support\LabelMask::render($pattern, function (string $token) use ($object) {
+            $prop = ltrim($token, '$');
             if (strpos($prop, '->') === false) {
                 return (string) ($object->{$prop} ?? '');
             }
 
             return self::readToken($object, $prop);
-        }, $pattern);
+        });
     }
 
     /**

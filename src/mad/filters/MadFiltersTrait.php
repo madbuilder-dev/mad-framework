@@ -1601,9 +1601,9 @@ trait MadFiltersTrait
                     if (method_exists($rec, 'render')) {
                         return (string) $rec->render($display);
                     }
-                    return (string) preg_replace_callback('/\{([^}]+)\}/', function ($m) use ($rec) {
-                        return (string) ($rec->{$m[1]} ?? '');
-                    }, $display);
+                    return \Mad\Support\LabelMask::render($display, function (string $prop) use ($rec) {
+                        return (string) ($rec->{$prop} ?? '');
+                    }, '/\{([^}]+)\}/');
                 }
                 return (string) ($rec->$display ?? $value);
             } catch (\Throwable $e) {

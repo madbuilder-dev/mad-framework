@@ -27,9 +27,10 @@ class MadRecordPath
     public static function resolve(object $record, string $source): string
     {
         if (strpos($source, '{') !== false) {
-            return preg_replace_callback('/\{([^}]+)\}/', function ($m) use ($record) {
-                return self::resolvePath($record, trim($m[1]));
-            }, $source);
+            // Token vazio não deixa separador sobrando (LabelMask).
+            return \Mad\Support\LabelMask::render($source, function (string $path) use ($record) {
+                return self::resolvePath($record, trim($path));
+            }, '/\{([^}]+)\}/');
         }
 
         return self::resolvePath($record, $source);

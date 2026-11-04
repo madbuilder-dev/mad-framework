@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.262.0] — 2026-11-04
+
+### Novidades
+
+- **Botões:** `<mad-btn>` ganha `disabled-hint`. Com `disabled`, o botão fica desabilitado mostrando a dica do porquê ao passar o mouse, no foco e no toque.
+
+### Correções
+
+- **Campos:** num campo de dinheiro com 0,00, clicar nele depois de chegar pelo Tab e digitar devolvia 0,00 (o frete digitado sumia e a venda salvava sem frete). Agora o que se digita substitui o zero. Vale também nas colunas de dinheiro de listas de itens.
+- **Combo:** com `display="{codigo} · {nome}"` e o código vazio, a opção aparecia "· Camiseta". Agora o separador some junto com o valor vazio: só o nome, só o código ou os dois, como antes. Vale para busca, auto-preenchimento e o filtro da listagem.
+- **Permissões:** em Unidades da empresa, no limite do plano o botão "Nova unidade" segue ativo e só ao salvar aparecia "Erro — Limite de 2 unidade(s) atingido". Agora o botão fica desabilitado com a dica do limite e do que fazer (mudar de plano ou desativar uma unidade), e a tentativa direta mostra o mesmo aviso.
+- **Correio:** com o envio de e-mails desligado, o cadastro de usuário dizia "Convite enviado" sem enviar nada. Agora diz que o usuário foi salvo, que o convite não saiu e como entregar o acesso (Copiar link de convite ou Reenviar convite com o e-mail ligado).
+- **Layout:** quando o servidor derrubava o carregamento do script do menu, a tela abria sem menu e sem abas. Agora o menu tenta carregar de novo sozinho.
+
 ## [5.261.3] — 2026-11-03
 
 ### Correções

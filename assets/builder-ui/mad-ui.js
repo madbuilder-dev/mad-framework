@@ -249,6 +249,23 @@ if (typeof document.addEventListener === 'function') {
 }
 
 /**
+ * Texto que entrou num campo entre `before` e `after` (digitado ou colado em
+ * qualquer ponto, ou no lugar de uma seleção). null quando nada entrou (só
+ * apagou). Usado pelos campos de dinheiro para trocar o "0,00" pelo digitado.
+ */
+function _madInsertedText(before, after) {
+    before = String(before || '');
+    after  = String(after || '');
+    if (after.length < before.length) return null;
+    var p = 0, max = before.length;
+    while (p < max && before.charAt(p) === after.charAt(p)) p++;
+    var sfx = 0;
+    while (sfx < max - p && before.charAt(before.length - 1 - sfx) === after.charAt(after.length - 1 - sfx)) sfx++;
+    var ins = after.slice(p, after.length - sfx);
+    return ins === '' ? null : ins;
+}
+
+/**
  * Separadores [decimal, milhar] do idioma do app (dicionário MAD_I18N);
  * sem dicionário, os do pt-BR: [',', '.']. Em inglês: ['.', ','].
  */
@@ -11001,11 +11018,14 @@ document.addEventListener('alpine:init', () => {
         return {
             display: '',
             _intVal: 0, // valor em centavos (inteiro)
+            // "0,00" formatado na tela, ainda não editado (ver madMoneyField._onInput).
+            _zeroShown: false,
 
             init() {
                 var initial = rowRef ? (parseFloat(rowRef[field]) || 0) : 0;
                 this._intVal = floatToInt(clamp(initial));
                 this.display = fmtFromInt(this._intVal);
+                this._zeroShown = this._intVal === 0;
                 if (this.$refs.input) this.$refs.input.value = this.display;
 
                 // Reage a mudanças externas (ex: x-effect de colunas computed)
@@ -11015,6 +11035,7 @@ document.addEventListener('alpine:init', () => {
                         if (newInt !== this._intVal) {
                             this._intVal = newInt;
                             this.display = fmtFromInt(this._intVal);
+                            this._zeroShown = this._intVal === 0;
                             if (this.$refs.input) this.$refs.input.value = this.display;
                         }
                     });
@@ -11026,6 +11047,13 @@ document.addEventListener('alpine:init', () => {
                 if (fillDir === 'left') {
                     // Digitação normal com separador decimal (port do madMoneyField)
                     var val = e.target.value;
+                    // "0,00" na tela + digitação sem seleção: substitui o zero
+                    // (ver madMoneyField._onInput, QA-A-07).
+                    if (this._zeroShown) {
+                        var ins = _madInsertedText(this.display, val);
+                        if (ins !== null) val = ins;
+                    }
+                    this._zeroShown = false;
                     var allowed = '0-9' + escRegex(decimalSep);
                     if (allowNeg) allowed += '\\-';
                     var clean = val.replace(new RegExp('[^' + allowed + ']', 'g'), '');
@@ -11079,6 +11107,7 @@ document.addEventListener('alpine:init', () => {
                 var floatVal = clamp(this._intVal / Math.pow(10, decimals));
                 this._intVal = floatToInt(floatVal);
                 this.display = fmtFromInt(this._intVal);
+                this._zeroShown = this._intVal === 0;
                 if (this.$refs.input) this.$refs.input.value = this.display;
                 if (rowRef) rowRef[field] = floatVal;
 
@@ -11178,6 +11207,9 @@ document.addEventListener('alpine:init', () => {
             display:  '',
             rawValue: '',
             _intVal:  0,
+            // O texto do campo é um ZERO formatado ("0,00") que a pessoa ainda
+            // não editou (veio do servidor, do set() ou do blur). Ver _onInput.
+            _zeroShown: false,
             // Casas decimais do campo (compute — _madCompute).
             _madDecimals: decimals,
 
@@ -11189,6 +11221,7 @@ document.addEventListener('alpine:init', () => {
                 this.rawValue = '';
                 this._intVal  = 0;
                 this.display  = '';
+                this._zeroShown = false;
             },
 
             // Valor vindo de FORA (op `val` do $this->form->set(), _syncFormInputs
@@ -11201,6 +11234,7 @@ document.addEventListener('alpine:init', () => {
                     this.rawValue = clamp(f);
                     this._intVal  = floatToInt(this.rawValue);
                     this.display  = fmtFromInt(this._intVal);
+                    this._zeroShown = this._intVal === 0;
                 }
                 if (this.$refs.input) this.$refs.input.value = this.display;
             },
@@ -11209,6 +11243,18 @@ document.addEventListener('alpine:init', () => {
                 var val = e.target.value;
 
                 if (fillDir === 'left') {
+                    // Zero formatado na tela ("0,00") e a pessoa digita ou cola
+                    // algo SEM selecionar: o texto novo substitui o zero. O Tab
+                    // seleciona o "0,00", mas o clique no campo já focado tira a
+                    // seleção e põe o cursor no fim; cada dígito virava "0,001",
+                    // a casa a mais era cortada e o campo voltava a "0,00"
+                    // (o frete digitado sumia — QA-A-07). Zero que a pessoa está
+                    // digitando ("0,0" → "0,01") não entra aqui.
+                    if (this._zeroShown) {
+                        var typed = _madInsertedText(this.display, val);
+                        if (typed !== null) val = typed;
+                    }
+                    this._zeroShown = false;
                     // Modo digitacao normal — usuario digita com separador decimal
                     var allowed = '0-9' + escRegex(decimalSep);
                     if (allowNeg) allowed += '\\-';
@@ -11292,6 +11338,7 @@ document.addEventListener('alpine:init', () => {
                     this._intVal  = floatToInt(floatVal);
                     this.rawValue = floatVal;
                     this.display  = fmtFromInt(this._intVal);
+                    this._zeroShown = this._intVal === 0;
                 }
                 if (this.$refs.input) this.$refs.input.value = this.display;
 
