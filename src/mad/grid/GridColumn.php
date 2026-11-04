@@ -1326,7 +1326,8 @@ class GridColumn
             try {
                 $d = new \DateTime((string)$value);
                 $d->setTimezone(new \DateTimeZone(date_default_timezone_get()));
-                return $d->format($this->dateFormat);
+                // Nomes de dia/mês (D, l, M, F) no idioma do app.
+                return \Mad\Support\ValueFormatter::formatDate($d, $this->dateFormat);
             } catch (\Exception $e) {
                 // fall through
             }

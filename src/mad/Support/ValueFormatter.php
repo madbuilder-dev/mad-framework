@@ -167,6 +167,60 @@ final class ValueFormatter
         return mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1, 2);
     }
 
+    /** Dia da semana abreviado com inicial maiúscula (0 = domingo): "Qua", "Wed", "Mié". */
+    public static function weekdayShort(int $weekday): string
+    {
+        $name = self::weekdayNames()[$weekday] ?? '';
+
+        return mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1, 2);
+    }
+
+    /**
+     * `DateTimeInterface::format()` com os NOMES no idioma do app. O `date()`
+     * do PHP só fala inglês: `D, d/m/Y` dava "Wed, 04/11/2026" num app em
+     * português. Aqui `D` (dia abreviado), `l` (dia por extenso), `M` (mês
+     * abreviado) e `F` (mês por extenso) saem do catálogo `mad.fmt.weekdays`/
+     * `mad.fmt.months` — "Qua, 04/11/2026" em pt, "Mié, 04/11/2026" em es e o
+     * mesmo do PHP em inglês. O resto do formato (e o `\x` escapado) é do PHP.
+     * Formato com o sufixo ordinal inglês `S` ("23rd") já é inglês de
+     * propósito: fica todo com o PHP.
+     */
+    public static function formatDate(\DateTimeInterface $dt, string $format): string
+    {
+        if (strpbrk($format, 'DlMF') === false) {
+            return $dt->format($format);
+        }
+
+        $out = '';
+        $php = '';   // trecho que o PHP formata sozinho
+        for ($i = 0, $n = strlen($format); $i < $n; $i++) {
+            $c = $format[$i];
+            if ($c === '\\') {
+                // `\D` é o D literal: segue escapado para o PHP.
+                $php .= $c . ($format[++$i] ?? '');
+                continue;
+            }
+            if ($c === 'S') {
+                return $dt->format($format);
+            }
+            $name = match ($c) {
+                'D'     => self::weekdayShort((int) $dt->format('w')),
+                'l'     => self::weekdayNames()[(int) $dt->format('w')],
+                'M'     => self::monthShort((int) $dt->format('n')),
+                'F'     => self::monthNames()[(int) $dt->format('n')],
+                default => null,
+            };
+            if ($name === null) {
+                $php .= $c;
+                continue;
+            }
+            $out .= ($php === '' ? '' : $dt->format($php)) . $name;
+            $php  = '';
+        }
+
+        return $out . ($php === '' ? '' : $dt->format($php));
+    }
+
     /** Data por extenso: "9 de março de 2026" / "March 9, 2026". */
     public static function dateLong(\DateTimeInterface $dt): string
     {

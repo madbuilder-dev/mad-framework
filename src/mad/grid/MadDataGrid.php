@@ -11548,7 +11548,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 ? $col->dateFormat
                 : static::_localeDateFormat();
 
-            return $day->format($fmt);
+            // Mesmo texto da célula: nomes de dia/mês no idioma do app.
+            return \Mad\Support\ValueFormatter::formatDate($day, $fmt);
         }
 
         if ($kind === 'number' || $kind === 'number-range') {

@@ -242,6 +242,7 @@ final class GridExportCell
         $hasTime  = false;
         $has12h   = false;
         $hasAmPm  = false;
+        $hasNames = false;
 
         $flush = function () use (&$out, &$literal): void {
             if ($literal !== '') {
@@ -267,7 +268,8 @@ final class GridExportCell
                 $flush();
                 $out .= self::PHP_DATE_TOKENS[$c];
                 if (in_array($c, ['d', 'j', 'D', 'l', 'm', 'n', 'M', 'F', 'Y', 'y'], true)) {
-                    $hasDate = true;
+                    $hasDate  = true;
+                    $hasNames = $hasNames || in_array($c, ['D', 'l', 'M', 'F'], true);
                 } else {
                     $hasTime = true;
                     $has12h  = $has12h  || $c === 'h' || $c === 'g';
@@ -293,6 +295,12 @@ final class GridExportCell
         // Hora de 12h sem AM/PM: o Excel mostraria 24h — melhor o texto exato.
         if ($out === '' || ($has12h && !$hasAmPm)) {
             return null;
+        }
+
+        // Nome de dia/mês (ddd, dddd, mmm, mmmm): no idioma do app, como a grid
+        // (ValueFormatter::formatDate) — sem o prefixo o Excel usaria o da máquina.
+        if ($hasNames) {
+            $out = self::xlsLang() . $out;
         }
 
         return [$out, $hasDate, $hasTime];
@@ -356,10 +364,7 @@ final class GridExportCell
     private static function builtinDateFormat(string $token): array
     {
         $spec = self::BUILTIN_DATE_FORMATS[$token];
-        $lang = \Mad\I18n\MadLang::t('mad.fmt.xls_lang');
-        if ($lang === 'mad.fmt.xls_lang') {
-            $lang = '[$-416]';
-        }
+        $lang = self::xlsLang();
 
         switch ($token) {
             case 'date':
@@ -382,6 +387,14 @@ final class GridExportCell
         }
 
         return $spec;
+    }
+
+    /** Prefixo de idioma do Excel do idioma do app (`[$-416]` pt-BR, `[$-409]` en…). */
+    private static function xlsLang(): string
+    {
+        $lang = \Mad\I18n\MadLang::t('mad.fmt.xls_lang');
+
+        return $lang === 'mad.fmt.xls_lang' ? '[$-416]' : $lang;
     }
 
     /** Mesmo parser do `renderValue` para colunas `date`. */

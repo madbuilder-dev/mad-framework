@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.263.1] — 2026-11-04
+
+### Correções
+
+- **Listagens:** no formato de data da coluna, o dia da semana e o mês saíam em inglês (`D, d/m/Y` mostrava "Wed, 04/11/2026"). Agora `D`, `l`, `M` e `F` seguem o idioma do app ("Qua, 04/11/2026" em português), também no rótulo do filtro e no Excel, CSV e PDF exportados.
+
 ## [5.263.0] — 2026-11-04
 
 ### Novidades
