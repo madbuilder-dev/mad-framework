@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.262.2] — 2026-11-04
+
+### Correções
+
+- **Permissões:** em Perfis da empresa, salvar com vários grupos ou telas marcados gravava só o primeiro de cada lista. Agora grava todos, e reabrir o perfil mostra o que foi marcado.
+- **Permissões:** no modelo de importação de dados, "Grupos com acesso" e "Usuários com acesso" também gravavam só o primeiro marcado. Agora gravam todos.
+
 ## [5.262.1] — 2026-11-04
 
 ### Correções
