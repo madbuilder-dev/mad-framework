@@ -234,17 +234,24 @@ class MadAppController
             $_REQUEST['class'] = $class;
 
             ob_start();
+            $bufferLevel = ob_get_level();
             try {
                 $result = $class::$method($_REQUEST);
             } catch (\TypeError|\ArgumentCountError $e) {
                 // Pedido que não serve ao método: 400, nunca 500 com arquivo e linha.
-                ob_end_clean();
+                self::closeBuffersFrom($bufferLevel);
                 \Mad\Ui\MadUserError::report($e, "{$class}::{$method}?static=1");
 
                 return new Response('400 — invalid request for this action', 400, [
                     'Content-Type'  => 'text/plain; charset=utf-8',
                     'Cache-Control' => 'no-store, private',
                 ]);
+            } catch (\Throwable $e) {
+                // Ação que responde lançando (HttpResponseException do "Sair"
+                // pelo menu lateral, abort(), erro): o buffer aberto acima
+                // ficava para trás a cada chamada. Fecha e deixa a exceção seguir.
+                self::closeBuffersFrom($bufferLevel);
+                throw $e;
             }
             $out = (string) ob_get_clean();
 
@@ -398,6 +405,17 @@ class MadAppController
         }
 
         return true;
+    }
+
+    /**
+     * Fecha o buffer de saída aberto para o método estático e os que o método
+     * deixou abertos por cima dele, descartando o conteúdo.
+     */
+    private static function closeBuffersFrom(int $level): void
+    {
+        while (ob_get_level() >= $level && ob_get_level() > 0) {
+            ob_end_clean();
+        }
     }
 
     /**

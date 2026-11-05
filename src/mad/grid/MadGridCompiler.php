@@ -1846,6 +1846,12 @@ class MadGridCompiler
         if (isset($a['group-band']))        $c[] = static::kv('groupBand',       static::qs(static::str($a, 'group-band')));
         if (isset($a['group-total-label'])) $c[] = static::kv('groupTotalLabel', static::emit($a['group-total-label']));
         if (isset($a['row-detail']))        $c[] = static::kv('rowDetail',       static::emit($a['row-detail']));
+        // window-rows="0" desliga o relatório por janelas nesta tela; N = linhas
+        // por janela (mínimo 100). Atributo nu não diz quantas: ignorado.
+        if (isset($a['window-rows']) && $a['window-rows']['type'] !== 'bool') {
+            $attr = $a['window-rows'];
+            $c[]  = static::kv('windowRows', $attr['type'] === 'php' ? '(int) (' . $attr['value'] . ')' : (string) (int) $attr['value']);
+        }
         // Título/subtítulo/arquivo da exportação declarados na própria tag
         // (o $exportTitle protegido do PHP não sobrevive ao AJAX de export).
         if (isset($a['export-title']))      $c[] = static::kv('exportTitle',     static::emit($a['export-title']));

@@ -12,6 +12,27 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.267.0] — 2026-11-05
+
+### Novidades
+
+- **Relatórios:** `<mad-grid window-rows="0">` faz o relatório grande daquela tela abrir inteiro de uma vez, sem carregar o resto conforme você rola. Com um número (`window-rows="500"`, mínimo 100), define quantas linhas cada parte traz.
+- **Download de arquivos:** `mad_download_url($caminho, 'nota.xml', attachment: true)` entrega o XML da nota fiscal (e SVG ou HTML) para baixar, sem rota própria. O arquivo sempre baixa e nunca abre na tela do app. Sem o `attachment: true`, esses tipos continuam recusados, e arquivos de programa (.php, .sh, .env…) nunca são servidos.
+- **Modelo de dados:** novo cast `Mad\Database\Casts\MadJson` para coluna `json`/`jsonb`: no código a coluna é lida como array e gravada como JSON, e formulário, listagem e API continuam mostrando o texto gravado.
+
+### Correções
+
+- **Unidades da empresa:** plano com o "Limite de unidades" vazio (ou 0) agora é sem limite: o administrador do cliente vê "Unidades da empresa" e abre quantas filiais precisar. Antes o campo vazio valia uma unidade só, e o cliente do plano ilimitado não via a tela. O selo da tela mostra "Unidades: N (sem limite)".
+- **Relatórios:** relatório sem paginação com mais de 300 linhas, que abre com as primeiras e carrega o resto conforme você rola, mostrava a faixa da quebra com o texto da máscara ("Produto: {produto->nome}") e subtotais 0,00 em grupos com valor; o total geral do rodapé também podia sair zerado. Agora rótulo, subtotais e rodapé saem iguais aos do relatório menor.
+- **Avatar do usuário:** o texto entre parênteses no nome não entra mais nas iniciais. "Juliana (vendedora e caixa)" aparece como "J" no topo, e não "JC"; "Marcos Lima (dono)" aparece como "ML". O chat e a caixa de mensagens seguem a mesma regra.
+- **Avatar (`<mad-avatar>`):** a tag sem conteúdo, como `<mad-avatar name="Ana Souza" />`, mostrava o círculo vazio. Agora mostra as iniciais, e o texto entre parênteses no nome não entra nelas ("Ana Souza (RH)" sai "AS").
+- **Organograma:** o cartão sem foto também deixa de fora o texto entre parênteses nas iniciais ("Bruno Lima (gerente comercial)" sai "BL"). Topo do app, chat, caixa de mensagens, `<mad-avatar>` e organograma seguem a mesma regra.
+- **Ações pela URL:** uma ação de tela chamada direto pelo endereço que responde com redirecionamento, como o "Sair" do menu lateral, deixava um recurso interno de saída aberto a cada chamada. Agora ele é fechado também nesse caso, e a resposta segue igual.
+
+### Atenção
+
+- **Planos:** na atualização, os planos que já existiam com o "Limite de unidades" vazio ou 0 passam a mostrar 1, que é o limite que eles já tinham; nada muda para os clientes. Para tornar um desses planos ilimitado, abra o plano em Planos, apague o valor do campo e salve.
+
 ## [5.266.0] — 2026-11-05
 
 ### Correções

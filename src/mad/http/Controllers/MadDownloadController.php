@@ -27,7 +27,11 @@ use Symfony\Component\HttpFoundation\Response;
  *    pasta custom (pessoas/avatares → 403) sem ganho real;
  *  - blocklist de extensões executáveis/sensíveis (espelha
  *    MadForm::_sanitizeUploadName — defesa em profundidade caso algo entre
- *    no diretório por fora do upload sanitizado).
+ *    no diretório por fora do upload sanitizado);
+ *  - conteúdo ATIVO (xml, svg, html…) só no MODO ANEXO (`att=1`, posto por
+ *    `mad_download_url(..., attachment: true)` e coberto pela assinatura —
+ *    fw#570): attachment + octet-stream + nosniff + CSP `sandbox`, o navegador
+ *    salva e nunca renderiza no domínio do app. Fora dele, 403.
  *
  * Todo IO passa pela API de Filesystem do Laravel via MadUploadStorage
  * (default 'mad_uploads' em storage/app/mad, ou MAD_UPLOAD_DISK=s3 etc) —
@@ -35,13 +39,22 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class MadDownloadController
 {
-    /** Extensões nunca servidas, mesmo dentro da allowlist. */
+    /** Extensões nunca servidas, em modo nenhum (executável / sensível). */
     private const FORBIDDEN_EXTENSIONS = [
         'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar',
         'cgi', 'pl', 'sh', 'htaccess', 'htpasswd', 'env', 'ini',
-        // Conteúdo ATIVO (renderiza/executa same-origin → stored XSS): nunca servir.
+    ];
+
+    /**
+     * Conteúdo ATIVO (renderiza/executa same-origin → stored XSS): só no modo
+     * anexo (`att=1` assinado, fw#570), que nunca deixa o navegador renderizar.
+     */
+    private const ACTIVE_EXTENSIONS = [
         'svg', 'svgz', 'html', 'htm', 'xhtml', 'xml', 'mathml', 'vtt',
     ];
+
+    /** CSP do modo anexo: se o arquivo for aberto mesmo assim, nada roda nem carrega. */
+    private const ATTACHMENT_CSP = "sandbox; default-src 'none'";
 
     /**
      * Únicas extensões servidas INLINE (preview de <img>/<embed>), com o MIME
@@ -62,7 +75,10 @@ class MadDownloadController
     {
         $file = (string) $request->query('file', '');
 
-        $relative = $this->validatedRelativePath($file);
+        // Modo anexo (fw#570): vem da URL assinada, o navegador não o põe.
+        $forcedAttachment = $request->boolean('att');
+
+        $relative = $this->validatedRelativePath($file, $forcedAttachment);
         $this->assertOwnerSees($relative, (string) $request->query('own', ''));
 
         // Nome de exibição: param basename (sanitizado) ou o nome real.
@@ -75,7 +91,8 @@ class MadDownloadController
         // tipo ativo same-origin). Só png/jpg/gif/webp/pdf servem inline.
         $extension  = strtolower(pathinfo($relative, PATHINFO_EXTENSION));
         $safeInline = array_key_exists($extension, self::SAFE_INLINE_MIME);
-        $asAttachment = $request->boolean('dl')
+        $asAttachment = $forcedAttachment
+            || $request->boolean('dl')
             || $request->query('basename') !== null
             || !$safeInline;
 
@@ -86,6 +103,9 @@ class MadDownloadController
             'X-Content-Type-Options' => 'nosniff',
             'Content-Type'           => $safeInline ? self::SAFE_INLINE_MIME[$extension] : 'application/octet-stream',
         ];
+        if ($forcedAttachment) {
+            $headers['Content-Security-Policy'] = self::ATTACHMENT_CSP;
+        }
         $disposition = $asAttachment ? 'attachment' : 'inline';
         // Prévia na própria tela (`<iframe src="mad_download_url($pdf)">`): o
         // arquivo inline de tipo seguro aceita moldura SÓ do próprio app. O
@@ -164,8 +184,11 @@ class MadDownloadController
         return false;
     }
 
-    /** Valida a forma do path relativo; aborta 400/403 se inválido. */
-    private function validatedRelativePath(string $file): string
+    /**
+     * Valida a forma do path relativo; aborta 400/403 se inválido. Conteúdo
+     * ativo só passa no modo anexo ({@see ACTIVE_EXTENSIONS}).
+     */
+    private function validatedRelativePath(string $file, bool $forcedAttachment = false): string
     {
         if ($file === '' || str_contains($file, "\0")) {
             abort(400, 'Invalid file parameter.');
@@ -206,7 +229,8 @@ class MadDownloadController
         }
 
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        if (in_array($extension, self::FORBIDDEN_EXTENSIONS, true)) {
+        if (in_array($extension, self::FORBIDDEN_EXTENSIONS, true)
+            || (!$forcedAttachment && in_array($extension, self::ACTIVE_EXTENSIONS, true))) {
             abort(403, 'File type not allowed.');
         }
 

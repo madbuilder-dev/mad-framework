@@ -52,6 +52,12 @@ final class GridGroupStream
     private array $open = [];
     /** @var array<string, string> `campo:valor` => rótulo (cache do _resolveGroupLabels) */
     private array $labels = [];
+    /**
+     * @var array<string, string> `campo:valor` => rótulo já resolvido por quem
+     * chama com o registro da linha (o `_groupLabelCache` do lote). Só desta
+     * janela: não vai no estado.
+     */
+    private array $known = [];
     /** @var array<string, array{acc:?float, key:?string}> fieldKey => saldo corrente */
     private array $acc = [];
     private int $delivered = 0;
@@ -119,6 +125,20 @@ final class GridGroupStream
         return $this->collecting ??= new GridGroupTotals($this->columns);
     }
 
+    /**
+     * Rótulos que quem chama já resolveu com o REGISTRO da linha — o
+     * `_groupLabelCache` que o `_resolveGroupLabels()` monta a cada lote. A
+     * linha enxuta chega sem o registro, e a máscara com `{relação->campo}`
+     * que não é coluna da tela não tem mais de onde ler: sem isto a banda saía
+     * com o token cru (fw#569). É a mesma fonte do `_flattenGroups()`.
+     *
+     * @param array<string, string> $labels `campo:valor` => rótulo
+     */
+    public function knownLabels(array $labels): void
+    {
+        $this->known = $labels;
+    }
+
     /** Todos os grupos chegaram inteiros e em sequência? (só faz sentido na coleta) */
     public function contiguous(): bool
     {
@@ -163,7 +183,10 @@ final class GridGroupStream
             }
 
             $row = $this->applyRunning($row, $keys);
-            if ($this->rowDetail !== '' && $this->collecting === null) {
+            // Linha que já chega com a descritiva (o lote da tela a materializa
+            // com o registro, como a carga de sempre) fica com ela: refazer
+            // sobre a linha enxuta deixava `{relação->campo}` cru (fw#569).
+            if ($this->rowDetail !== '' && $this->collecting === null && !array_key_exists('__detail', $row)) {
                 $row['__detail'] = ($this->mask)($this->rowDetail, $row);
             }
 
@@ -297,7 +320,8 @@ final class GridGroupStream
     /**
      * Rótulo do grupo, com a regra do `_flattenGroups()` + `_resolveGroupLabels()`:
      * máscara com `{…}` resolvida contra a 1ª linha que tem aquele valor naquele
-     * campo (cache por `campo:valor`, não por caminho); máscara sem chaves troca
+     * campo (cache por `campo:valor`, não por caminho; o rótulo que quem chama
+     * já resolveu com o registro vem antes); máscara sem chaves troca
      * os tokens pelo valor; sem máscara, o rótulo padrão do grão.
      */
     private function labelFor(int $level, string $value, array $row): string
@@ -307,7 +331,7 @@ final class GridGroupStream
         if ($mask !== '' && strpos($mask, '{') !== false) {
             $cacheKey = $field . ':' . $value;
             if (!isset($this->labels[$cacheKey])) {
-                $label = ($this->mask)($mask, $row);
+                $label = $this->known[$cacheKey] ?? ($this->mask)($mask, $row);
                 // Nível 0 nunca reaparece (grupos contíguos): o rótulo vive no
                 // grupo aberto e não precisa ficar no estado.
                 if ($level === 0) {

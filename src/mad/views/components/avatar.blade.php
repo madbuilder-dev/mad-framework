@@ -5,15 +5,12 @@
     $variant = $variant ?? '';    // primary | success
     $class   = $class   ?? '';
 
-    // Generate initials from name
-    $initials = '';
-    if ($name && !$src) {
-        $parts = explode(' ', trim($name));
-        $initials = mb_strtoupper(mb_substr($parts[0], 0, 1));
-        if (count($parts) > 1) {
-            $initials .= mb_strtoupper(mb_substr(end($parts), 0, 1));
-        }
-    }
+    // Iniciais do nome (sem o complemento entre parênteses): a mesma regra do
+    // avatar do topo e das mensagens (fw#571).
+    $initials = ($name && !$src) ? \Mad\Util\MadInitials::of((string) $name) : '';
+    // A tag sem conteúdo (`<mad-avatar name="…" />`) chega com um slot VAZIO,
+    // que não pode esconder as iniciais.
+    $slotHtml = trim((string) ($slot ?? ''));
 
     $sizeClass    = $size    ? " mad-avatar-{$size}"    : '';
     $variantClass = $variant ? " mad-avatar-{$variant}" : '';
@@ -21,7 +18,7 @@
 <div class="mad-avatar{{ $sizeClass }}{{ $variantClass }} {{ $class }}" title="{{ $name }}">
     @if($src)
         <img src="{{ $src }}" alt="{{ $name }}">
-    @elseif($slot ?? '')
+    @elseif($slotHtml !== '')
         {!! $slot !!}
     @else
         {{ $initials }}

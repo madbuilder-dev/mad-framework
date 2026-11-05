@@ -14,11 +14,18 @@ if (!function_exists('mad_download_url')) {
      * esse registro (escopos de empresa e unidade ativos) e se o caminho ainda
      * está numa coluna dele. Sem `$owner`, como sempre (compatível).
      *
-     * @param string      $path     Path relativo persistido pelo MadForm (ex: "uploads/abc_foto.jpg")
-     * @param string|null $basename Nome de exibição — presença força download (attachment)
-     * @param object|null $owner    Registro (Eloquent) dono do arquivo
+     * Com `$attachment` (fw#570), a URL assinada leva o MODO ANEXO: a rota
+     * sempre manda baixar (nunca abre na tela), com nosniff e CSP `sandbox`, e
+     * só nesse modo serve conteúdo ativo — XML de nota fiscal, SVG, HTML. Sem
+     * ele esses tipos seguem recusados (403). Executáveis (php, sh…) e
+     * arquivos sensíveis (.env, .ini…) nunca são servidos.
+     *
+     * @param string      $path       Path relativo persistido pelo MadForm (ex: "uploads/abc_foto.jpg")
+     * @param string|null $basename   Nome de exibição — presença força download (attachment)
+     * @param object|null $owner      Registro (Eloquent) dono do arquivo
+     * @param bool        $attachment Modo anexo: baixa sempre, inclusive XML/SVG/HTML
      */
-    function mad_download_url(string $path, ?string $basename = null, ?object $owner = null): string
+    function mad_download_url(string $path, ?string $basename = null, ?object $owner = null, bool $attachment = false): string
     {
         // Arquivo de campo com `public` (#244): o endereço público, fixo e sem
         // login — o mesmo que o site usa. Só imagem/PDF (o que a rota serve).
@@ -31,6 +38,10 @@ if (!function_exists('mad_download_url')) {
         $params = ['file' => $path];
         if ($basename !== null && $basename !== '') {
             $params['basename'] = $basename;
+        }
+        // Coberto pela assinatura: acrescentar `att=1` à mão invalida a URL.
+        if ($attachment) {
+            $params['att'] = 1;
         }
         if ($owner instanceof \Illuminate\Database\Eloquent\Model && $owner->exists
             && is_scalar($key = $owner->getKey()) && (string) $key !== '') {

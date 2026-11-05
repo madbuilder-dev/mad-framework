@@ -6647,6 +6647,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->rowDetail   = (string)$config['rowDetail'];
             $this->_dataLoaded = false;
         }
+        // window-rows (fw#569): linhas por janela do relatório grande, 0 = sem
+        // janelas nesta tela. Fica no exportMeta (estado): o AJAX da próxima
+        // janela decide antes de o Blade chegar. Mudou o tamanho depois do
+        // loadData do mount → recarrega com ele.
+        if (isset($config['windowRows'])) {
+            $windowRows = max(0, (int) $config['windowRows']);
+            if ($this->_windowRows() !== $windowRows) {
+                $this->_dataLoaded = false;
+            }
+            $this->exportMeta['windowRows'] = $windowRows;
+        }
         // export-title / -subtitle / -filename do Blade vencem a prop PHP: o
         // atributo é o que o editor visual mostra e reescreve.
         if (!empty($config['exportTitle']))    $this->exportTitle    = (string)$config['exportTitle'];

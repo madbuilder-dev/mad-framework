@@ -40,6 +40,7 @@ trait MadGridWindow
      * Linhas por janela (mínimo 100, o menor lote da leitura em lotes).
      * Relatório com até isso de linhas abre inteiro, como sempre; acima, abre
      * com as primeiras e carrega o resto ao rolar. 0 desliga o modo por janela.
+     * O `window-rows` da tag vence (`_windowRows()`).
      */
     protected int $reportWindowRows = 300;
 
@@ -79,7 +80,7 @@ trait MadGridWindow
     {
         $this->_window     = null;
         $this->_windowHeld = null;
-        if ($this->reportWindowRows <= 0 || $this->_loadColumns !== null || !$this->_windowAllowed($columns)) {
+        if ($this->_windowRows() <= 0 || $this->_loadColumns !== null || !$this->_windowAllowed($columns)) {
             return false;
         }
 
@@ -119,8 +120,8 @@ trait MadGridWindow
      */
     private function _windowAllowed(array $columns): bool
     {
-        if ($this->perPage > 0 || $this->selectable || $this->_usesSource() || !empty($this->exportMeta['windowOff'])
-            || $this->_keylessModel()) {
+        if ($this->_windowRows() <= 0 || $this->perPage > 0 || $this->selectable || $this->_usesSource()
+            || !empty($this->exportMeta['windowOff']) || $this->_keylessModel()) {
             return false;
         }
         if ($this->_inlineConfig === null && !empty($this->exportColConfigs)) {
@@ -306,6 +307,9 @@ trait MadGridWindow
         }
 
         $engine = $this->_windowEngine($columns, $map, $state);
+        // Rótulos da quebra que o lote resolveu COM o registro (a linha enxuta
+        // não o leva): `{relação->campo}` fora das colunas (fw#569).
+        $engine->knownLabels($this->_groupLabelCache);
         $start  = $engine->delivered();
         $last   = $engine->lastRow();
         $items  = $engine->push($rows);
@@ -349,7 +353,17 @@ trait MadGridWindow
     /** Linhas por janela: o lote da leitura em lotes não fica abaixo de 100, e o deslocamento é contado em lotes. */
     private function _windowSize(): int
     {
-        return max(100, $this->reportWindowRows);
+        return max(100, $this->_windowRows());
+    }
+
+    /**
+     * O tamanho declarado: `window-rows` da tag (congelado no exportMeta, que
+     * vai no estado — o AJAX da próxima janela lê antes do Blade chegar) ou a
+     * prop da classe. 0 = sem janelas nesta tela.
+     */
+    private function _windowRows(): int
+    {
+        return isset($this->exportMeta['windowRows']) ? max(0, (int) $this->exportMeta['windowRows']) : $this->reportWindowRows;
     }
 
     /** @param GridColumn[] $columns */
@@ -428,6 +442,7 @@ trait MadGridWindow
         $size   = max(100, $this->reportWindowBatch);
 
         $select = $this->_windowLeanSelect($q, $columns);
+        $alias  = $select === null ? [] : self::_windowLeanAliases($columns);
         $done   = false;
         if ($select !== null) {
             $lean = $size * 5;
@@ -439,7 +454,13 @@ trait MadGridWindow
                     // cursor(): o lote vira só arrays (sem a coleção de objetos ao lado).
                     $chunk = [];
                     foreach ((clone $base)->forPage($page, $lean)->cursor() as $o) {
-                        $chunk[] = (array) $o;
+                        $r = (array) $o;
+                        foreach ($alias as $key => $column) {
+                            if (array_key_exists($column, $r)) {
+                                $r[$key] = $r[$column];
+                            }
+                        }
+                        $chunk[] = $r;
                     }
                     if ($chunk !== []) {
                         $engine->push($chunk);
@@ -525,6 +546,31 @@ trait MadGridWindow
         }
 
         return array_values(array_unique($select));
+    }
+
+    /**
+     * A passada enxuta lê a coluna da tabela (`total`), mas o total e o saldo
+     * leem a linha pela chave DECLARADA da coluna — e o gerador declara
+     * `field="{total}"`. Sem a cópia, o acumulador não achava a chave e o
+     * subtotal da banda e o rodapé saíam 0,00 (fw#569).
+     *
+     * @param GridColumn[] $columns
+     * @return array<string, string> chave declarada => coluna da tabela
+     */
+    private static function _windowLeanAliases(array $columns): array
+    {
+        $alias = [];
+        foreach ($columns as $col) {
+            if (!$col instanceof GridColumn || (empty($col->totalFunc) && !$col->isRunning())) {
+                continue;
+            }
+            $bare = GridRenderHelpers::stripBraces(trim((string) $col->field));
+            if ($bare !== $col->field) {
+                $alias[$col->field] = $bare;
+            }
+        }
+
+        return $alias;
     }
 
     /**

@@ -500,17 +500,10 @@ class MadOrgChart extends MadComponent
         }
     }
 
+    /** Iniciais do cartão sem foto: regra de {@see \Mad\Util\MadInitials} (fw#571). */
     private function _initials(string $title): string
     {
-        $words = array_values(array_filter(preg_split('/\s+/', trim($title)) ?: []));
-        if (empty($words)) {
-            return '';
-        }
-        $ini = mb_strtoupper(mb_substr($words[0], 0, 1));
-        if (count($words) > 1) {
-            $ini .= mb_strtoupper(mb_substr($words[count($words) - 1], 0, 1));
-        }
-        return $ini;
+        return \Mad\Util\MadInitials::of($title);
     }
 
     // ── Actions (wire) ────────────────────────────────────────────────────
