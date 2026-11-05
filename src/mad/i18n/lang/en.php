@@ -333,6 +333,9 @@ return [
         // Screen field (or list column) that is not a table column: Save refuses the
         // platform-generated field and tells what was not saved.
         'form' => [
+            'bad_plate'              => ':label must be a license plate in the old (ABC-1234) or Mercosul (ABC-1D23) format.',
+            'bad_plate_old'          => ':label must be a license plate in the old format (ABC-1234).',
+            'bad_plate_mercosul'     => ':label must be a license plate in the Mercosul format (ABC-1D23).',
             'date_invalid'           => 'Invalid date.',
             'field_without_column'   => 'The field :field is not bound to any column of table :table: the value you typed would not be saved. Tell the system administrator (field `:name`).',
             'not_stored_title'       => 'Value not saved',

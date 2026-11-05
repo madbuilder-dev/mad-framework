@@ -6854,11 +6854,12 @@ window._madInitCnpjField = _madInitCnpjField;
    Mascaras genericas — <mad-input-field mask="...">
    ───────────────────────────────────────────────────────────────────
    Aliases prontos: cpf, cnpj, cpfcnpj, cep, phone/tel/telefone/celular,
-   date, time, datetime, placa, rg.
+   date, time, datetime, placa, placa_antiga, placa_mercosul, rg.
 
    Ou pattern literal:
-     9 = digito, A = letra (uppercase), * = alfanumerico, demais = literal
-     Ex: "999.999.999-99", "(99) 99999-9999", "AAA-9999"
+     9 = digito, A = letra (uppercase), X = letra ou digito (uppercase),
+     * = alfanumerico, demais = literal
+     Ex: "999.999.999-99", "(99) 99999-9999", "AAA-9X99"
    ─────────────────────────────────────────────────────────────── */
 
 var _MAD_MASK_PATTERNS = {
@@ -6871,7 +6872,11 @@ var _MAD_MASK_PATTERNS = {
     date:  '99/99/9999',
     time:  '99:99',
     datetime: '99/99/9999 99:99',
-    placa: 'AAA-9999',
+    // Placa (forum #231): o 5o caractere e numero na antiga (ABC-1234) e letra
+    // na Mercosul (ABC-1D23) — o token X cobre os dois. Os outros travam um so.
+    placa:          'AAA-9X99',
+    placa_antiga:   'AAA-9999',
+    placa_mercosul: 'AAA-9A99',
     rg:    '99.999.999-9'
 };
 

@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.268.0] — 2026-11-05
+
+### Novidades
+
+- **Campos:** máscaras novas `placa_antiga` (ABC-1234) e `placa_mercosul` (ABC-1D23), para o campo que aceita só um dos padrões.
+- **Campos:** ao salvar, a placa fora do padrão da máscara (pela metade, por exemplo) é recusada com uma mensagem que mostra o formato certo.
+
+### Correções
+
+- **Campos:** a máscara `placa` aceita a placa antiga (ABC-1234) e a Mercosul (ABC-1D23), com hífen ou espaço, e põe as letras em maiúscula. Antes a letra da Mercosul sumia e ficava "ABC-123". O valor salvo leva o hífen.
+
+### Atenção
+
+- **Campos:** uma placa Mercosul gravada pela metade antes desta versão ("ABC-123") passa a ser recusada quando o registro é salvo de novo. Corrija a placa no campo.
+
 ## [5.267.0] — 2026-11-05
 
 ### Novidades

@@ -12,6 +12,9 @@ return [
         // Campo do ecrã (ou coluna de uma lista) que não é coluna da tabela: o Guardar
         // recusa o campo gerado pela plataforma e avisa do que não foi gravado.
         'form' => [
+            'bad_plate'              => ':label tem de ser uma matrícula no padrão antigo (ABC-1234) ou Mercosul (ABC-1D23).',
+            'bad_plate_old'          => ':label tem de ser uma matrícula no padrão antigo (ABC-1234).',
+            'bad_plate_mercosul'     => ':label tem de ser uma matrícula no padrão Mercosul (ABC-1D23).',
             'field_without_column'   => 'O campo :field não está ligado a nenhuma coluna da tabela :table: o valor introduzido não seria gravado. Avise o administrador do sistema (campo `:name`).',
             'not_stored_title'       => 'Valor não gravado',
             'not_stored_field_one'   => 'O que foi introduzido em :fields não foi gravado: o campo não está ligado a nenhuma coluna da tabela :table.',

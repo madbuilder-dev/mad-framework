@@ -46,8 +46,25 @@ class MadMask
         'date'     => 10,
         'time'     => 5,
         'datetime' => 16,
-        'placa'    => 8,
-        'rg'       => 12,
+        'placa'          => 8,
+        'placa_antiga'   => 8,
+        'placa_mercosul' => 8,
+        'rg'             => 12,
+    ];
+
+    /**
+     * Placa de veículo (fórum #231). `placa` aceita os dois padrões: o antigo
+     * (ABC-1234) e o Mercosul (ABC-1D23) — o 5º caractere é número num e letra
+     * no outro, que é o que o token `X` do pattern `AAA-9X99` cobre. Os outros
+     * dois travam um padrão só. O valor salvo leva o hífen (ABC-1D23); com
+     * `strip-mask`, sai sem (ABC1D23). Letras sempre em maiúscula.
+     *
+     * A chave é a mensagem de `mad.form.*` da recusa no servidor.
+     */
+    private const PLATES = [
+        'placa'          => ['/^[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}$/', 'bad_plate'],
+        'placa_antiga'   => ['/^[A-Z]{3}-?[0-9]{4}$/', 'bad_plate_old'],
+        'placa_mercosul' => ['/^[A-Z]{3}-?[0-9][A-Z][0-9]{2}$/', 'bad_plate_mercosul'],
     ];
 
     /**
@@ -66,6 +83,32 @@ class MadMask
     public static function isAlias(string $mask): bool
     {
         return isset(self::ALIAS_MAX_LENGTH[strtolower(trim($mask))]);
+    }
+
+    /** A máscara é de placa (`placa`, `placa_antiga`, `placa_mercosul`)? */
+    public static function isPlate(string $mask): bool
+    {
+        return isset(self::PLATES[strtolower(trim($mask))]);
+    }
+
+    /**
+     * O valor é uma placa no padrão da máscara? Com ou sem o hífen (o
+     * `strip-mask` grava sem); minúscula ou espaço no lugar do hífen não
+     * passam — a máscara do navegador nunca manda assim.
+     */
+    public static function plateMatches(string $value, string $mask): bool
+    {
+        $plate = self::PLATES[strtolower(trim($mask))] ?? null;
+
+        return $plate !== null && preg_match($plate[0], $value) === 1;
+    }
+
+    /** Chave da mensagem de recusa (`mad.form.bad_plate*`) da máscara de placa. */
+    public static function plateMessageKey(string $mask): ?string
+    {
+        $plate = self::PLATES[strtolower(trim($mask))] ?? null;
+
+        return $plate === null ? null : 'mad.form.' . $plate[1];
     }
 
     /**

@@ -7736,6 +7736,11 @@ class MadForm
         $range = $this->_declaredRangeErrors($data, $parsedRules, $attrs, $errors);
         $errors += $range;
 
+        // Placa (fórum #231): a máscara do navegador formata, mas o servidor
+        // gravava qualquer coisa — a placa pela metade ("ABC-12") e o que uma
+        // requisição forjada mandasse.
+        $errors += $this->_declaredPlateErrors($data, $attrs, $errors);
+
         // Escolha do navegador fora da lista do campo (fw#531): a tela que
         // valida e grava por conta própria também não segue com ela.
         $choices = $this->_browserChoiceErrors();
@@ -7839,6 +7844,36 @@ class MadForm
             } elseif ($max !== null && $value > $max) {
                 $out[$name] = (string) __('validation.max.numeric', ['attribute' => $label, 'max' => (string) $props['max']]);
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Valor fora do padrão da máscara de placa do campo (`placa`,
+     * `placa_antiga`, `placa_mercosul`). Vazio passa (quem exige é o
+     * `required`); campo já recusado por outra regra fica com a mensagem dela.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string> $attrs
+     * @param  array<string, mixed>  $errors  já recusados por outra regra
+     * @return array<string, string>
+     */
+    private function _declaredPlateErrors(array $data, array $attrs, array $errors): array
+    {
+        $out = [];
+        foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
+            $name = (string) $name;
+            $mask = is_array($props) ? (string) ($props['mask'] ?? '') : '';
+            if ($mask === '' || !\Mad\Support\MadMask::isPlate($mask) || isset($errors[$name])) {
+                continue;
+            }
+            $value = $data[$name] ?? null;
+            if (!is_string($value) || $value === '' || \Mad\Support\MadMask::plateMatches($value, $mask)) {
+                continue;
+            }
+            $label      = $attrs[$name] ?? (string) ($props['label'] ?? $name);
+            $out[$name] = mad_t((string) \Mad\Support\MadMask::plateMessageKey($mask), ['label' => $label]);
         }
 
         return $out;

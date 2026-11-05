@@ -326,6 +326,9 @@ return [
         // Campo de la pantalla (o columna de una lista) que no es columna de la tabla:
         // Guardar rechaza el campo generado por la plataforma y avisa de lo no guardado.
         'form' => [
+            'bad_plate'              => ':label debe ser una placa en el formato antiguo (ABC-1234) o Mercosur (ABC-1D23).',
+            'bad_plate_old'          => ':label debe ser una placa en el formato antiguo (ABC-1234).',
+            'bad_plate_mercosul'     => ':label debe ser una placa en el formato Mercosur (ABC-1D23).',
             'date_invalid'           => 'Fecha inválida.',
             'field_without_column'   => 'El campo :field no está vinculado a ninguna columna de la tabla :table: el valor escrito no se guardaría. Avise al administrador del sistema (campo `:name`).',
             'not_stored_title'       => 'Valor no guardado',

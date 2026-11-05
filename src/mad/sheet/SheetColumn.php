@@ -54,7 +54,9 @@ class SheetColumn
         'date'     => '99/99/9999',
         'time'     => '99:99',
         'datetime' => '99/99/9999 99:99',
-        'placa'    => 'AAA-9999',
+        'placa'          => 'AAA-9X99',   // antiga (ABC-1234) ou Mercosul (ABC-1D23)
+        'placa_antiga'   => 'AAA-9999',
+        'placa_mercosul' => 'AAA-9A99',
         'rg'       => '99.999.999-9',
     ];
 
@@ -127,7 +129,7 @@ class SheetColumn
     public bool    $allowNegative = false;
 
     // ── Texto ───────────────────────────────────────────────────────────
-    /** Alias (cpf/cnpj/cpfcnpj/cep/phone/date/time/datetime/placa/rg) ou pattern 9/A/*. */
+    /** Alias (cpf/cnpj/cpfcnpj/cep/phone/date/time/datetime/placa/placa_antiga/placa_mercosul/rg) ou pattern 9/A/X/*. */
     public string $mask = '';
     public bool   $stripMask = false;
     public ?int   $maxlength = null;
