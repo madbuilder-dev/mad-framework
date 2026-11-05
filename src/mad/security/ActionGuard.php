@@ -20,7 +20,10 @@ namespace Mad\Security;
  * Tudo aqui é FAIL-OPEN, e isso é deliberado: sem tela dona, sem ação
  * reconhecível, ou com o perfil sem marcação nenhuma, o botão fica exatamente
  * como sempre foi. Só uma chave EXPLICITAMENTE negada muda alguma coisa — a
- * plataforma nunca inventa restrição que ninguém pediu.
+ * plataforma nunca inventa restrição que ninguém pediu. A exceção, decidida no
+ * gate e por isso igual no botão e no servidor: ação própria NOVA que o
+ * catálogo do programa ainda não conhece, num perfil restrito, fica negada
+ * (ver {@see PermissionGate::allows()}).
  *
  * Uso:
  *

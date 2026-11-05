@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.266.0] — 2026-11-05
+
+### Correções
+
+- **Permissões:** um botão novo numa tela que já existia ficava liberado para todo perfil até alguém refazer as permissões, mesmo para quem tem a tela restrita. Agora ele nasce negado para esses perfis.
+- **Permissões:** atualizar o app passa a trazer para Perfis e Grupos a caixinha de cada botão novo das telas, para você poder liberá-lo.
+
+### Atenção
+
+- **Permissões:** quem tem alguma ação desmarcada numa tela deixa de ver (ou vê cinza) os botões que a tela ganhou depois da última atualização de permissões. Para liberar, rode **Permissões de acesso** na Central de Comando e marque a ação no perfil. Perfil com a tela toda liberada não muda.
+
 ## [5.265.1] — 2026-11-04
 
 ### Correções

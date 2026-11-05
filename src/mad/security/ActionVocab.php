@@ -128,6 +128,23 @@ final class ActionVocab
     private const NAVIGATION_PREFIX = 'onChange';
 
     /**
+     * Respostas de {@see isOwnPermission()} já calculadas, por `Classe::metodo`.
+     * Reflexão de código: não muda entre requisições.
+     *
+     * @var array<string, bool>
+     */
+    private static array $ownPermission = [];
+
+    /** @var array<string, bool>|null ações públicas do trait de comentários/anexos */
+    private static ?array $blockActions = null;
+
+    /** Parâmetro tipado com um destes = gancho de consulta, não ação. */
+    private const QUERY_TYPES = [
+        'Illuminate\\Database\\Eloquent\\Builder',
+        'Illuminate\\Database\\Query\\Builder',
+    ];
+
+    /**
      * Chave do método quando ela NÃO depende do contexto, ou null.
      *
      * `onSave`/`onSaveDraft` devolvem null aqui de propósito — use
@@ -172,6 +189,156 @@ final class ActionVocab
         }
 
         return str_starts_with($method, self::NAVIGATION_PREFIX);
+    }
+
+    /**
+     * O método é uma AÇÃO PRÓPRIA da tela que a descoberta de ações listaria
+     * como permissão no cadastro do programa?
+     *
+     * É a mesma régua da descoberta do app (`ProgramActionDiscoveryService`),
+     * aqui no pacote porque o gate precisa dela para decidir uma ação que o
+     * catálogo do programa ainda não conhece — o método novo numa tela que já
+     * existia. Sem isso, o perfil restrito executava a ação nova até alguém
+     * refazer o catálogo.
+     *
+     * Conta como ação própria o método que:
+     *   • chama-se `onAlgumaCoisa` e não é do vocabulário (Excluir, Exportar…)
+     *     nem `onSave`/`onSaveDraft`;
+     *   • o canal reativo aceita chamar;
+     *   • não é dos blocos de comentário/anexo nem o "Executar rotina";
+     *   • não está marcado `#[MadPermission(permission: false)]`;
+     *   • não é navegação — a não ser que a tela o batize à mão
+     *     (`#[MadPermission('Trocar plano')]`);
+     *   • não recebe a consulta pronta (`Builder $q`);
+     *   • é da aplicação (não herdado de uma classe `Mad\…`).
+     *
+     * Nunca estoura: classe que não carrega, ou método que não existe nela,
+     * responde false.
+     */
+    public static function isOwnPermission(string $class, string $method): bool
+    {
+        $class  = ltrim(trim($class), '\\');
+        $method = trim($method);
+        if ($class === '' || preg_match('/^on[A-Z]/', $method) !== 1) {
+            return false;
+        }
+        if (self::staticKey($method) !== null || in_array($method, self::CONTEXTUAL, true)) {
+            return false;
+        }
+
+        $memo = $class . '::' . $method;
+        if (array_key_exists($memo, self::$ownPermission)) {
+            return self::$ownPermission[$memo];
+        }
+
+        $sim = false;
+        try {
+            $fqcn = self::resolveClass($class);
+            if ($fqcn !== null && method_exists($fqcn, $method)) {
+                $sim = self::inspectOwn($fqcn, $method);
+            }
+        } catch (\Throwable $e) {
+            $sim = false;
+        }
+
+        return self::$ownPermission[$memo] = $sim;
+    }
+
+    /** Esquece as respostas de {@see isOwnPermission()} (código da tela mudou). */
+    public static function flushOwnPermission(): void
+    {
+        self::$ownPermission = [];
+    }
+
+    private static function inspectOwn(string $fqcn, string $method): bool
+    {
+        if (!\Mad\Component\MadComponentHandler::isInvokableAction($fqcn, $method)) {
+            return false;
+        }
+        if ($method === 'onRunRoutine' || self::isBlockAction($method)) {
+            return false;
+        }
+
+        $ref = new \ReflectionMethod($fqcn, $method);
+        if (str_starts_with($ref->getDeclaringClass()->getName(), 'Mad\\')) {
+            return false;
+        }
+
+        $declarado = null;
+        foreach ($ref->getAttributes(MadPermission::class) as $atributo) {
+            $declarado = $atributo->newInstance();
+            break;
+        }
+        if ($declarado !== null && $declarado->permission === false) {
+            return false;
+        }
+
+        $batizado = $declarado !== null
+            && $declarado->label !== null
+            && trim($declarado->label) !== '';
+        if (self::isNavigation($method) && !$batizado) {
+            return false;
+        }
+
+        foreach ($ref->getParameters() as $parametro) {
+            foreach (self::typeNames($parametro->getType()) as $tipo) {
+                if (in_array($tipo, self::QUERY_TYPES, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /** FQCN da tela (classe completa ou identificador curto), ou null. */
+    private static function resolveClass(string $class): ?string
+    {
+        if (class_exists($class)) {
+            return (new \ReflectionClass($class))->getName();
+        }
+
+        $fqcn = ClassSource::locate($class)['fqcn'] ?? null;
+
+        return ($fqcn !== null && class_exists($fqcn)) ? $fqcn : null;
+    }
+
+    private static function isBlockAction(string $method): bool
+    {
+        if (self::$blockActions === null) {
+            self::$blockActions = [];
+            try {
+                $ref = new \ReflectionClass(\Mad\Form\MadDbBlocksTrait::class);
+                foreach ($ref->getMethods(\ReflectionMethod::IS_PUBLIC) as $m) {
+                    if (!str_starts_with($m->getName(), '_')) {
+                        self::$blockActions[$m->getName()] = true;
+                    }
+                }
+            } catch (\Throwable $e) {
+                self::$blockActions = [];
+            }
+        }
+
+        return isset(self::$blockActions[$method]);
+    }
+
+    /** @return string[] nomes de tipo de um parâmetro (união/interseção incluídas) */
+    private static function typeNames(?\ReflectionType $tipo): array
+    {
+        if ($tipo instanceof \ReflectionNamedType) {
+            return [ltrim($tipo->getName(), '\\')];
+        }
+
+        if ($tipo instanceof \ReflectionUnionType || $tipo instanceof \ReflectionIntersectionType) {
+            $nomes = [];
+            foreach ($tipo->getTypes() as $parte) {
+                $nomes = array_merge($nomes, self::typeNames($parte));
+            }
+
+            return $nomes;
+        }
+
+        return [];
     }
 
     /**

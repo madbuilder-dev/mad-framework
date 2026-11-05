@@ -577,6 +577,7 @@ class PermissionGate
         // a chave usada em public_classes / defaultPermissions / session('programs'). O
         // wire manda get_class() = App\Control\<Dominio>\<Nome>; idFor() devolve o
         // basename (sem isso, ação via wire = 401). Serviço/basename já pronto volta igual.
+        $original = $class; // FQCN do wire: a ação própria se confere nela
         if (class_exists(\Mad\Registry\ControlRegistry::class)) {
             $class = \Mad\Registry\ControlRegistry::idFor($class);
         }
@@ -638,6 +639,10 @@ class PermissionGate
             if ($chave !== null && self::deniedIn($acoes, $chave)) {
                 return false;
             }
+            // Ação própria que o catálogo do programa ainda não conhece.
+            if (self::deniedByOmission($acoes, $original, $method)) {
+                return false;
+            }
         }
 
         return true;
@@ -661,7 +666,9 @@ class PermissionGate
      * segundo dono que simplesmente não conhece aquela ação.
      *
      * Ação que o perfil não declara continua liberada — a plataforma nunca
-     * inventa restrição que o usuário não pediu.
+     * inventa restrição que o usuário não pediu. A exceção é a ação PRÓPRIA
+     * nova que o catálogo ainda não conhece, num perfil restrito: ver
+     * {@see deniedByOmission()}.
      */
     public static function canRunAction(object $component, string $method): bool
     {
@@ -744,8 +751,9 @@ class PermissionGate
      * pelo gate quanto pelos botões (um botão escondido tem que corresponder a
      * uma rota recusada, e vice-versa).
      *
-     * Só nega o que está explicitamente marcado como negado: chave ausente, ou
-     * programa sem nenhuma marcação, é liberado.
+     * Nega o que está explicitamente marcado como negado. Chave ausente, ou
+     * programa sem nenhuma marcação, é liberado — menos a ação PRÓPRIA nova num
+     * perfil restrito ({@see deniedByOmission()}).
      */
     public static function allows(string $class, string $key): bool
     {
@@ -753,6 +761,7 @@ class PermissionGate
             return true;
         }
 
+        $original = $class;
         if (class_exists(\Mad\Registry\ControlRegistry::class)) {
             $class = \Mad\Registry\ControlRegistry::idFor($class);
         }
@@ -764,7 +773,52 @@ class PermissionGate
             return true;
         }
 
-        return !self::deniedIn($programs_actions[$class], $key);
+        return !self::deniedIn($programs_actions[$class], $key)
+            && !self::deniedByOmission($programs_actions[$class], $original, $key);
+    }
+
+    /**
+     * Ação própria que o CATÁLOGO do programa ainda não conhece, num perfil
+     * restrito: nega.
+     *
+     * O mapa da sessão só traz as ações do catálogo (`mad_iam_program.actions`),
+     * cada uma liberada ou não pelo perfil. Um método novo numa tela que já
+     * existia fica fora do mapa até o catálogo ser refeito — e chave ausente
+     * passava. Assim um perfil sem "Substituir NFS-e" executava a ação nova
+     * marcada com `#[MadPermission('Substituir NFS-e')]`.
+     *
+     * Só nega quando as três coisas valem juntas:
+     *   1. a chave não está no mapa da tela (e o mapa existe);
+     *   2. o perfil é RESTRITO nessa tela — alguma ação marcada como negada.
+     *      Quem tem tudo liberado (ou "sem restrição") segue podendo tudo;
+     *   3. a chave é uma ação própria que a descoberta listaria como permissão
+     *      ({@see ActionVocab::isOwnPermission()}). As cinco do vocabulário,
+     *      a navegação e o que a tela marcou `permission: false` ficam como
+     *      sempre.
+     *
+     * Para liberar: rodar "Permissões de acesso" (refaz o catálogo) e marcar a
+     * ação no perfil.
+     *
+     * @param  array<string, mixed>  $acoes  mapa da tela na sessão
+     */
+    private static function deniedByOmission(array $acoes, string $class, string $key): bool
+    {
+        if ($acoes === [] || array_key_exists($key, $acoes) || in_array($key, ActionVocab::KEYS, true)) {
+            return false;
+        }
+
+        $restrito = false;
+        foreach ($acoes as $permitida) {
+            if ($permitida == false) {
+                $restrito = true;
+                break;
+            }
+        }
+        if (!$restrito) {
+            return false;
+        }
+
+        return ActionVocab::isOwnPermission($class, $key);
     }
 
     /**
