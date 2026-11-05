@@ -124,9 +124,9 @@ class MadAppController
                 // para a tela que ela indicar (o login do portal), não o do app.
                 $target = PermissionGate::isPublicPage($class) ? PermissionGate::publicGuardDenial($class) : null;
 
-                return redirect($target !== null && $target !== ''
+                return redirect(\Mad\Routing\MadRoutes::absoluteUrl($target !== null && $target !== ''
                     ? \Mad\Routing\MadRoutes::urlFor($target)
-                    : \Mad\Security\LoginDestination::loginUrl($request, $class, 'show'));
+                    : \Mad\Security\LoginDestination::loginUrl($request, $class, 'show')));
             }
 
             return MadForbidden::response($request, $class);
@@ -174,7 +174,7 @@ class MadAppController
             // O endereço do login leva a tela pedida: depois de entrar a pessoa
             // volta para ela, não para o Início.
             if (!session('logged') && $class !== 'LoginForm') {
-                return redirect(\Mad\Security\LoginDestination::loginUrl($request, $class, $method));
+                return redirect(\Mad\Routing\MadRoutes::absoluteUrl(\Mad\Security\LoginDestination::loginUrl($request, $class, $method)));
             }
 
             // Método estático pela rota JSON: a recusa em JSON (fw#413).

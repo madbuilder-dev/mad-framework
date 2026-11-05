@@ -194,6 +194,7 @@ class MadServiceProvider extends ServiceProvider
         $this->bootOversizedPostNotice();
         $this->bootOutOfMemoryTrail();
         $this->bootPaths();
+        $this->bootSubfolderUrls();
         $this->bootBlade();
         $this->bootDatabase();
         $this->bootTransactionCorrelation();
@@ -732,6 +733,35 @@ class MadServiceProvider extends ServiceProvider
             });
             $this->app->bind('db.connector.firebird', fn () => new FirebirdConnector);
         }
+    }
+
+    /**
+     * App numa subpasta (fórum #232): `redirect()`/`url()` com um caminho de
+     * tela que já traz a base (MadRoutes::loginUrl/urlFor) não repete a pasta.
+     * Ver RoutingDriver::withoutRepeatedBase. `route()` não passa por aqui (o
+     * caminho da rota nunca tem a base). Mantém um formatador que já existia.
+     */
+    private function bootSubfolderUrls(): void
+    {
+        $url = $this->app['url'];
+        if (! $url instanceof \Illuminate\Routing\UrlGenerator) {
+            return;
+        }
+
+        $previous = $url->pathFormatter();
+        $url->formatPathUsing(function ($path, $route = null) use ($previous) {
+            $path = $previous($path, $route);
+            if ($route !== null) {
+                return $path;
+            }
+
+            $generator = app('url');
+
+            return \Mad\Routing\RoutingDriver::withoutRepeatedBase(
+                (string) $path,
+                $generator->formatRoot($generator->formatScheme())
+            );
+        });
     }
 
     /** PATH = raiz do app (BACKLOG F1-06: migrar call sites pra base_path()). */

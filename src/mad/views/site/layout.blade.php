@@ -54,7 +54,7 @@
     if ($ogImagem !== '' && ! str_starts_with($ogImagem, 'http')) {
         $ogImagem = url($ogImagem);
     } elseif ($ogImagem === '' && $logoUrl !== null) {
-        $ogImagem = url($logoUrl);
+        $ogImagem = \Mad\Routing\MadRoutes::absoluteUrl($logoUrl);
     }
 
     $dados = [
@@ -63,7 +63,7 @@
             '@type'    => 'Organization',
             'name'     => $brandName,
             'url'      => url('/'),
-        ] + ($logoUrl !== null ? ['logo' => url($logoUrl)] : []),
+        ] + ($logoUrl !== null ? ['logo' => \Mad\Routing\MadRoutes::absoluteUrl($logoUrl)] : []),
         [
             '@context' => 'https://schema.org',
             '@type'    => 'WebSite',

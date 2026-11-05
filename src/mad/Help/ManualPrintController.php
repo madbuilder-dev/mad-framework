@@ -21,7 +21,7 @@ final class ManualPrintController
     public function __invoke(Request $request, string $file): Response
     {
         if (!session('logged')) {
-            return redirect(\Mad\Routing\MadRoutes::loginUrl());
+            return redirect(\Mad\Routing\MadRoutes::absoluteUrl(\Mad\Routing\MadRoutes::loginUrl()));
         }
         if (!PermissionGate::canAccess('HelpCenter')) {
             abort(403);

@@ -137,6 +137,41 @@ class RoutingDriver
         return self::basePath() . self::prefix();
     }
 
+    /**
+     * Caminho de tela do app (`<base>/app/...`, o que sai de MadRoutes) sem a
+     * base, quando a raiz que o Laravel vai pôr na frente já a traz (fórum #232).
+     *
+     * `redirect(MadRoutes::loginUrl())` passa pelo gerador de URL do Laravel,
+     * que prefixa a raiz da requisição; numa subpasta ela já tem a base e o
+     * endereço saía com a pasta duas vezes (`/app/public/app/public/app/login`).
+     * O MadServiceProvider liga isto no gerador de URL: cobre as rotas e os
+     * middlewares de apps já instalados, que a atualização do framework não
+     * troca. Código novo usa MadRoutes::absoluteUrl().
+     *
+     * Só mexe quando há base, o caminho começa pela base das telas
+     * (<base><prefix>) e a raiz termina na base. Fora disso devolve igual.
+     */
+    public static function withoutRepeatedBase(string $path, string $root): string
+    {
+        $base = self::basePath();
+        if ($base === '') {
+            return $path;
+        }
+
+        $screens = $base . self::prefix();
+        if ($path !== $screens && !str_starts_with($path, $screens . '/')) {
+            return $path;
+        }
+
+        $rootPath = rtrim((string) parse_url($root, PHP_URL_PATH), '/');
+        $rootPath = (string) preg_replace('~/index\.php$~', '', $rootPath);
+        if ($rootPath !== $base) {
+            return $path;
+        }
+
+        return substr($path, strlen($base));
+    }
+
     /** Endpoint reativo (wire) do modo web: <appBase>/_mad-wire. */
     public static function wireEndpoint(): string
     {

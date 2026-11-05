@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.268.1] — 2026-11-05
+
+### Correções
+
+- **Rotas:** com o app numa subpasta da hospedagem (por exemplo, `public_html/app`), o endereço depois de instalar ou de entrar não repete mais a pasta (`/app/public/app/public/app/login`). Quem abria e caía numa página não encontrada agora vê o login ou a tela inicial.
+- **App gerado:** o `.htaccess` da raiz do projeto não entra mais em loop de redirecionamento nas hospedagens que aplicam as regras da pasta de cima também à pasta `public/`. O `.env`, o `storage/` e o `vendor/` continuam fora do alcance do navegador.
+
+### Atenção
+
+- **App gerado:** a correção do loop vem no `.htaccess` da raiz, que a atualização do framework não troca. Em app já publicado com o problema, substitua esse arquivo pelo do app baixado de novo.
+
 ## [5.268.0] — 2026-11-05
 
 ### Novidades

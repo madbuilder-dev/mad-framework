@@ -525,6 +525,33 @@ class MadRoutes
         return RoutingDriver::appBase() . '/' . (self::seg('login', 'slug', null) ?? 'login');
     }
 
+    /**
+     * Endereço completo (esquema + domínio) de um caminho que JÁ traz a base do
+     * app: o que sai de urlFor(), loginUrl(), LoginDestination e site_url().
+     * Use em `redirect(...)` e em link que sai do app (e-mail, notificação).
+     *
+     * Não passe esses caminhos por `url()`/`redirect()` do Laravel: eles põem
+     * na frente a raiz da requisição, que numa subpasta já tem a base, e a
+     * pasta saía duas vezes (`/app/public/app/public/app/login`, fórum #232).
+     *
+     * Na raiz do domínio, e fora de uma requisição (fila, agendador, comando,
+     * onde a base vem do APP_URL e o caminho sai sem ela), usa o `url()`.
+     */
+    public static function absoluteUrl(string $path): string
+    {
+        if (preg_match('~^([a-z][a-z0-9+.\-]*:)?//~i', $path) === 1) {
+            return $path;
+        }
+
+        if (RoutingDriver::basePath() === '' || !str_starts_with($path, '/')) {
+            return url($path);
+        }
+
+        $generator = app('url');
+
+        return $generator->formatScheme() . $generator->getRequest()->getHttpHost() . $path;
+    }
+
     // ─── Internos ─────────────────────────────────────────────────────────────
 
     /**
