@@ -637,6 +637,18 @@ class MadRoutes
     }
 
     /** Slugs únicos da chave em todos os locales (inbound). */
+    /**
+     * Slugs da chave `routes.{key}.slug` em todos os idiomas registrados
+     * (ex.: `help` → ['ajuda', 'help', 'ayuda']). Para quem registra rotas
+     * próprias embaixo do slug de uma tela (a Ajuda: página e prints).
+     *
+     * @return list<string>
+     */
+    public static function slugs(string $key): array
+    {
+        return self::slugsFor($key, []);
+    }
+
     private static function slugsFor(string $key, array $opts): array
     {
         $seen = [];

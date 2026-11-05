@@ -25,7 +25,7 @@ final class SystemPromptAssembler
     /**
      * @param list<string> $linkable tabelas com tela de cadastro no app ("Abrir no sistema")
      */
-    public static function assemble(?McpManifest $manifest, array $mcpTools = [], bool $widgets = false, array $linkable = []): string
+    public static function assemble(?McpManifest $manifest, array $mcpTools = [], bool $widgets = false, array $linkable = [], bool $help = false): string
     {
         $parts = [
             $manifest !== null ? self::manifestPrompt($manifest) : '',
@@ -34,12 +34,28 @@ final class SystemPromptAssembler
             self::accessPrompt($manifest, $widgets, $mcpTools !== []),
             self::renderPrompt(),
             self::linkPrompt($linkable),
+            $help ? self::helpPrompt() : '',
             $widgets ? self::widgetPrompt() : '',
             self::toolInventory($mcpTools, $manifest),
             self::writeRules($mcpTools),
         ];
 
         return implode("\n\n", array_filter($parts, static fn ($p) => trim((string) $p) !== ''));
+    }
+
+    /**
+     * Manual do sistema (#227): pergunta de USO do sistema ("como cadastro…",
+     * "onde fica…") vai para a Ajuda publicada, não para o banco.
+     */
+    private static function helpPrompt(): string
+    {
+        return "## Manual do sistema (Ajuda)\n"
+            . "Este sistema tem um manual escrito pelo administrador. Pergunta sobre COMO USAR o sistema — como fazer\n"
+            . "uma tarefa, onde fica uma tela, o que um campo ou botão faz, quem pode fazer o quê — responda pelo manual:\n"
+            . "1. help_search com as palavras do usuário; 2. help_get no path mais provável; 3. responda em poucas frases\n"
+            . "com o que a página diz e termine com o link da página (url) em Markdown.\n"
+            . "Se o manual não cobrir, diga isso; nunca invente passo, menu ou regra que não está nele.\n"
+            . 'Pergunta sobre os DADOS (registros, totais, status) continua indo ao banco, como acima.';
     }
 
     /**

@@ -123,6 +123,9 @@ return [
         'packages/mad-framework/assets/mad-mail.js'           => 'public/lib/mad/mad-mail.js',
         'packages/mad-framework/assets/mad-mail.css'          => 'public/lib/mad/mad-mail.css',
         'packages/mad-framework/assets/mad-notify.js'         => 'public/lib/mad/mad-notify.js',
+        // Ajuda (manual do sistema, #227): botão ?, cortina e busca da /app/ajuda.
+        'packages/mad-framework/assets/mad-help.js'           => 'public/lib/mad/mad-help.js',
+        'packages/mad-framework/assets/mad-help.css'          => 'public/lib/mad/mad-help.css',
         'packages/mad-framework/assets/mad-gantt.js'          => 'public/lib/mad/mad-gantt.js',
         'packages/mad-framework/assets/mad-gantt.css'         => 'public/lib/mad/mad-gantt.css',
         'packages/mad-framework/assets/mad-sheet.js'          => 'public/lib/mad/mad-sheet.js',

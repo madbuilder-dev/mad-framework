@@ -1,4 +1,4 @@
-@props(['name' => '', 'title' => '', 'size' => 'md', 'footer' => '', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => ''])
+@props(['name' => '', 'title' => '', 'size' => 'md', 'footer' => '', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => '', 'help' => ''])
 @php
     // Mesmo contrato do <mad-drawer>: `dismissible` = X e Esc;
     // `close-on-backdrop` = clique na área escurecida (desligado na tela com
@@ -15,6 +15,8 @@
     $sizes = ['sm' => '380px', 'md' => '520px', 'lg' => '680px', 'xl' => '900px'];
     // idem drawer: `size` fora do mapa é medida livre e ia crua pro style.
     $maxW  = \Mad\Support\CssUnits::length((string) ($sizes[$size] ?? $size), $sizes['md']);
+    // `help`: igual ao <mad-drawer> (botão ? da Ajuda no cabeçalho da tela).
+    $help = is_string($help) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $help) ? $help : '';
 @endphp
 <div x-data="{ open: false }"
      @madmodal.window="$event.detail.name === '{{ $name }}' && (open = $event.detail.action === 'open')"
@@ -32,6 +34,15 @@
             @if($title)
                 <div class="mad-modal-header">
                     <div class="mad-modal-title">{{ $title }}</div>
+                    @if($help !== '')
+                        <button type="button"
+                                class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon mad-overlay-help-btn"
+                                data-mad-help-screen="{{ $help }}"
+                                title="{{ mad_t('mad.help.screen_help') }}"
+                                aria-label="{{ mad_t('mad.help.screen_help') }}">
+                            <i data-lucide="circle-help" style="width:16px;height:16px;"></i>
+                        </button>
+                    @endif
                     @if($dismissible)
                         <button type="button"
                                 class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon"

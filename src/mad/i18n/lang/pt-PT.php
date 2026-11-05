@@ -459,6 +459,33 @@ return [
         ],
 
         // Tela inicial (WelcomeView)
+        // Ajuda (manual do sistema, #227): tela /app/ajuda, botão ? e cortina.
+        'help' => [
+            'title'              => 'Ajuda',
+            'subtitle'           => 'Manual do sistema',
+            'search_placeholder' => 'Pesquisar na Ajuda…',
+            'search_hint'        => 'Escreva pelo menos 2 letras',
+            'search_empty'       => 'Nada encontrado para “:q”.',
+            'search_results'     => ':count resultado(s)',
+            'empty_title'        => 'A Ajuda ainda não foi publicada',
+            'empty_desc'         => 'Quando o manual do sistema for publicado no MadBuilder, as páginas aparecem aqui.',
+            'on_this_page'       => 'Nesta página',
+            'back'               => 'Voltar à Ajuda',
+            'prev'               => 'Anterior',
+            'next'               => 'Seguinte',
+            'pages'              => ':count página(s)',
+            'screen_help'        => 'Ajuda deste ecrã',
+            'screen_empty_title' => 'Este ecrã ainda não tem ajuda',
+            'screen_empty_desc'  => 'O manual completo continua disponível na Ajuda.',
+            'open_help'          => 'Abrir a Ajuda',
+            'open_page'          => 'Abrir a página inteira',
+            'close'              => 'Fechar',
+            'loading'            => 'A carregar…',
+            'load_error'         => 'Não foi possível carregar a ajuda.',
+            'all_pages'          => 'Todas as páginas',
+            'screens'            => 'Ecrãs',
+            'version'            => 'Versão :v',
+        ],
         'welcome' => [
             'greeting'          => 'Bem-vindo, :name',
             'access_today'      => 'Acessos hoje',

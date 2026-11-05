@@ -37,6 +37,7 @@ class MadComponentWrapper
             'size'    => $component::getSize(),
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
             'confirmClose'    => self::confirmDiscard($component),
+            'help'            => \Mad\Help\ManualRepository::headerButtonScreen($component),
         ]);
     }
 
@@ -50,6 +51,7 @@ class MadComponentWrapper
             'side'    => $component::getSide(),
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
             'confirmClose'    => self::confirmDiscard($component),
+            'help'            => \Mad\Help\ManualRepository::headerButtonScreen($component),
         ]);
     }
 

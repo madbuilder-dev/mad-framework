@@ -12,6 +12,33 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.265.1] — 2026-11-04
+
+### Correções
+
+- **App gerado:** os números que você põe sobre os prints no Studio agora aparecem na imagem, na página da Ajuda e na cortina do **?**, e acompanham a imagem quando a tela encolhe.
+- **Layout:** tela aberta em gaveta ou janela (como o **Novo** de uma listagem) ganha o **?** no cabeçalho dela; com a gaveta fechada, o **?** do topo mostra a ajuda da tela de trás.
+- **App gerado:** na Central de Comando, o contador da aba **Manual** zera junto com os cartões depois de **Puxar manual**.
+
+## [5.265.0] — 2026-11-04
+
+### Novidades
+
+- **App gerado:** a busca rápida (⌘K) também procura no manual do sistema: as páginas que casam o termo aparecem no grupo **Ajuda** e abrem direto na página.
+- **App gerado:** o Copilot responde perguntas de uso ("como cadastro…", "onde fica…") lendo o manual publicado, e termina a resposta com o link da página. Usa a IA que o Copilot já tem configurada.
+
+## [5.264.0] — 2026-11-04
+
+### Novidades
+
+- **App gerado:** nova tela **Ajuda** (`/app/ajuda`) com o manual do sistema publicado no MadBuilder: páginas por seção, busca no texto, sumário de cada página e imagens. Todo usuário logado vê o manual inteiro; quem não entrou vai para o login.
+- **Layout:** botão **?** no cabeçalho de cada tela e na barra do topo abre, numa cortina lateral, a ajuda daquela tela. Tela sem página mostra o link para a Ajuda completa. Os botões só aparecem quando o app tem manual.
+- **App gerado:** a Central de Comando ganha a aba **Manual**: mostra o que está no app, o que foi publicado no MadBuilder e o que muda, com "Ver diff", **Puxar manual (com backup)** e **Desfazer último lote**, sem refazer o app. O lote aparece no Histórico.
+
+### Atenção
+
+- **App gerado:** o texto do manual não aceita HTML: uma tag escrita na página aparece como texto, e link `javascript:` não funciona. Use Markdown e os destaques `> **Dica:**`, `> **Atenção:**` e `> **Nota:**`.
+
 ## [5.263.2] — 2026-11-04
 
 ### Correções

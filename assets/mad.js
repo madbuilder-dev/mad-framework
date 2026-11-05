@@ -4313,7 +4313,10 @@ function __mad_unblock_ui(force)  { MadLoader.hide(force === true); }
 const MadOverlayEsc = {
     /** Camadas que, abertas, são donas do Esc (ficam acima da gaveta). */
     BLOCKERS: '.mad-dialog-overlay, .mad-confirm-overlay, .mad-confirm-popover, .mad-quick-popover, '
-            + '.mad-lightbox-overlay, .mad-df-delete-popover, #mad-dump-modal-root, .mad-sel-dropdown',
+            + '.mad-lightbox-overlay, .mad-df-delete-popover, #mad-dump-modal-root, .mad-sel-dropdown, '
+            // Cortina da Ajuda (mad-help.js) aberta por cima da gaveta de tela:
+            // o Esc e o clique fora são dela.
+            + '.mad-help-overlay',
 
     _visible(el) {
         if (!el || !el.isConnected) return false;

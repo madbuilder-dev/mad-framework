@@ -220,6 +220,7 @@ final class EmbedChatController
                     $caller?->allowedTools() ?? [],
                     (bool) config('mad.ai.widgets_enabled', true),
                     $linkable,
+                    self::helpAvailable(),
                 );
                 $history = self::toMessages($messages);
 
@@ -361,6 +362,15 @@ final class EmbedChatController
         // no lugar da pergunta em prosa enterrada no texto.
         $tools[] = new \Mad\Ai\Tools\SuggestNextTool($sink);
 
+        // Manual do sistema (#227): help_search/help_get leem a Ajuda publicada
+        // (resources/manual) para responder "como faço…?". Sem LLM e sem HTTP;
+        // valem para todo usuário logado (o manual é o mesmo para todos), por
+        // isso não passam pelo gate do MCP. App sem manual: não entram.
+        if (self::helpAvailable()) {
+            $tools[] = new \Mad\Ai\Tools\HelpSearchTool($sink);
+            $tools[] = new \Mad\Ai\Tools\HelpGetTool($sink);
+        }
+
         // Micro-BI: widgets salvos com SQL determinística (tela "Meus
         // Dashboards"). Independem do manifest (db_schema degrada pra
         // introspecção nativa quando ele falta). O preview/save devolvem ao
@@ -382,6 +392,16 @@ final class EmbedChatController
         }
 
         return $tools;
+    }
+
+    /** Há manual do sistema publicado (as tools help_* entram)? Nunca lança. */
+    private static function helpAvailable(): bool
+    {
+        try {
+            return (new \Mad\Help\ManualRepository())->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

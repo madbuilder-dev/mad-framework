@@ -1,4 +1,4 @@
-@props(['name' => '', 'title' => '', 'subtitle' => '', 'icon' => '', 'side' => 'right', 'size' => 'lg', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => ''])
+@props(['name' => '', 'title' => '', 'subtitle' => '', 'icon' => '', 'side' => 'right', 'size' => 'lg', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => '', 'help' => ''])
 @php
     // `dismissible` = pode ser fechada (X e Esc). `close-on-backdrop` = fecha
     // também no clique na área escurecida — separado de propósito: formulário
@@ -21,6 +21,10 @@
     // pro style — declaração inválida, drawer na largura default do CSS.
     $width = \Mad\Support\CssUnits::length((string) ($sizes[$size] ?? $size), $sizes['lg']);
     $sideClass = $side === 'left' ? 'mad-drawer-left' : '';
+    // `help` = classe da tela para o botão ? da Ajuda (manual do sistema) no
+    // cabeçalho. Vem do wrapper de tela (MadComponentWrapper) só quando o app
+    // tem manual; vazio = sem botão.
+    $help = is_string($help) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $help) ? $help : '';
 @endphp
 <div x-data="{ open: false }"
      @maddrawer.window="$event.detail.name === '{{ $name }}' && (open = $event.detail.action === 'open')"
@@ -59,6 +63,15 @@
                                 <div class="mad-drawer-title">{{ $title }}</div>
                             </div>
                         </div>
+                        @if($help !== '')
+                            <button type="button"
+                                    class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon mad-overlay-help-btn"
+                                    data-mad-help-screen="{{ $help }}"
+                                    title="{{ mad_t('mad.help.screen_help') }}"
+                                    aria-label="{{ mad_t('mad.help.screen_help') }}">
+                                <i data-lucide="circle-help" style="width:16px;height:16px;"></i>
+                            </button>
+                        @endif
                         @if($dismissible)
                             <button type="button"
                                     class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon"

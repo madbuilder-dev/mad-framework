@@ -9,6 +9,7 @@ use League\CommonMark\Extension\HeadingPermalink\HeadingPermalinkExtension;
 use League\CommonMark\Extension\FrontMatter\FrontMatterExtension;
 use League\CommonMark\Extension\Attributes\AttributesExtension;
 use League\CommonMark\MarkdownConverter;
+use League\CommonMark\Event\DocumentParsedEvent;
 
 /**
  * MadDocMarkdown — wrapper league/commonmark para o portal de docs do MAD.
@@ -27,6 +28,209 @@ use League\CommonMark\MarkdownConverter;
 class MadDocMarkdown
 {
     private static ?MarkdownConverter $converter = null;
+
+    /** Pasta base desta instância (absoluta); null = a pasta do portal de docs. */
+    private ?string $basePath = null;
+
+    /** Opções desta instância (ver __construct). */
+    private array $options = [];
+
+    /** Conversor desta instância (montado na 1ª renderização). */
+    private ?MarkdownConverter $instanceConverter = null;
+
+    /**
+     * Instância com pasta base e regras próprias. Os métodos ESTÁTICOS seguem
+     * servindo o portal de docs como sempre (pasta fixa, HTML permitido); a
+     * instância serve conteúdo que não é do framework, como o manual do sistema.
+     *
+     * Opções:
+     *   - html_input          'allow' | 'escape' | 'strip' (padrão 'escape': HTML vira texto)
+     *   - allow_unsafe_links  bool (padrão false: javascript:/vbscript:/file:/data: saem)
+     *   - attributes          bool (padrão false: sem a sintaxe {.classe #id onclick=...})
+     *   - callouts            bool (padrão true: > **Dica:** / **Atenção:** / **Nota:**)
+     *   - image_base          ?string — `prints/x.webp` vira `{image_base}/x.webp`
+     *   - link_base           ?string — link que começa com `/app/` ganha este prefixo
+     *                          (app instalado em subpasta); null = não mexe
+     *   - empty_html          ?string — HTML quando o arquivo não existe
+     */
+    public function __construct(string $basePath, array $options = [])
+    {
+        $this->basePath = rtrim($basePath, '/');
+        $this->options  = array_merge([
+            'html_input'         => 'escape',
+            'allow_unsafe_links' => false,
+            'attributes'         => false,
+            'callouts'           => true,
+            'image_base'         => null,
+            'link_base'          => null,
+            'empty_html'         => null,
+        ], $options);
+    }
+
+    /**
+     * Instância do manual do sistema (`resources/manual`): o agente e o dev
+     * escrevem o conteúdo, então nenhum HTML cru passa (vira texto), link
+     * inseguro sai e os prints apontam para a rota logada da Ajuda.
+     */
+    public static function forManual(string $basePath, string $printsUrl, ?string $linkBase = null): self
+    {
+        return new self($basePath, [
+            'html_input'         => 'escape',
+            'allow_unsafe_links' => false,
+            'attributes'         => false,
+            'callouts'           => true,
+            'image_base'         => rtrim($printsUrl, '/'),
+            'link_base'          => $linkBase,
+        ]);
+    }
+
+    /** Pasta base desta instância. */
+    public function basePath(): string
+    {
+        return (string) $this->basePath;
+    }
+
+    /**
+     * Renderiza um arquivo da pasta base desta instância. Caminho com `..`,
+     * absoluto ou fora da pasta (link simbólico incluído) → como inexistente.
+     */
+    public function renderDocument(string $relativePath): array
+    {
+        $rel  = ltrim(str_replace('\\', '/', $relativePath), '/');
+        $full = $this->basePath . '/' . $rel;
+        $root = realpath((string) $this->basePath);
+        $real = is_file($full) ? realpath($full) : false;
+        if ($rel === '' || str_contains($rel, "\0") || in_array('..', explode('/', $rel), true)
+            || $root === false || $real === false || !str_starts_with($real, $root . DIRECTORY_SEPARATOR)) {
+            return [
+                'html'        => $this->options['empty_html'] ?? '<div class="mad-doc-empty"><p><strong>Página não encontrada.</strong></p></div>',
+                'headings'    => [],
+                'frontMatter' => [],
+                'error'       => 'file_not_found',
+            ];
+        }
+
+        return $this->renderMarkdown((string) file_get_contents($real));
+    }
+
+    /**
+     * Renderiza Markdown com as regras desta instância. Front-matter YAML no
+     * topo é separado (chave: valor e listas [a, b]) sem depender do symfony/yaml.
+     */
+    public function renderMarkdown(string $content): array
+    {
+        [$frontMatter, $body] = self::splitFrontMatter($content);
+
+        try {
+            $html = (string) $this->instanceConverter()->convert($body);
+            $html = self::promoteHeadingIds($html);
+            // O id foi para o próprio título: a âncora não repete (id duplicado).
+            $html = preg_replace('#<a id="[^"]*" (href="\#[^"]*" class="mad-doc-anchor")#', '<a $1', $html) ?? $html;
+
+            return [
+                'html'        => $html,
+                'headings'    => self::extractHeadings($html),
+                'frontMatter' => $frontMatter,
+                'error'       => null,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'html'        => '<div class="mad-doc-empty"><p><strong>Erro ao renderizar o conteúdo.</strong></p></div>',
+                'headings'    => [],
+                'frontMatter' => $frontMatter,
+                'error'       => 'render_failed',
+            ];
+        }
+    }
+
+    private function instanceConverter(): MarkdownConverter
+    {
+        if ($this->instanceConverter !== null) {
+            return $this->instanceConverter;
+        }
+
+        $html = (string) $this->options['html_input'];
+        $env  = new Environment([
+            'html_input'         => in_array($html, ['allow', 'escape', 'strip'], true) ? $html : 'escape',
+            'allow_unsafe_links' => (bool) $this->options['allow_unsafe_links'],
+            'heading_permalink'  => [
+                'html_class'        => 'mad-doc-anchor',
+                'id_prefix'         => '',
+                'fragment_prefix'   => '',
+                'insert'            => 'after',
+                'min_heading_level' => 2,
+                'max_heading_level' => 4,
+                'title'             => 'Link para esta seção',
+                'symbol'            => '#',
+            ],
+            'renderer' => ['soft_break' => "\n"],
+        ]);
+        $env->addExtension(new CommonMarkCoreExtension());
+        $env->addExtension(new GithubFlavoredMarkdownExtension());
+        $env->addExtension(new HeadingPermalinkExtension());
+        if (!empty($this->options['attributes'])) {
+            $env->addExtension(new AttributesExtension());
+        }
+        $processor = new MadDocMarkdownProcessor(
+            (bool) $this->options['callouts'],
+            $this->options['image_base'] !== null ? (string) $this->options['image_base'] : null,
+            $this->options['link_base'] !== null ? (string) $this->options['link_base'] : null,
+        );
+        $env->addEventListener(DocumentParsedEvent::class, [$processor, 'onDocumentParsed']);
+
+        return $this->instanceConverter = new MarkdownConverter($env);
+    }
+
+    /**
+     * Separa o front-matter (`---` … `---` no topo) do corpo. Entende o que o
+     * manual grava: `chave: valor`, `chave: [a, b]`, true/false e números.
+     *
+     * @return array{0: array<string,mixed>, 1: string}
+     */
+    public static function splitFrontMatter(string $content): array
+    {
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+        if (!preg_match('/\A---[ \t]*\R(.*?)\R---[ \t]*(?:\R|\z)/s', $content, $m)) {
+            return [[], $content];
+        }
+
+        $data = [];
+        foreach (preg_split('/\R/', $m[1]) ?: [] as $line) {
+            if (!preg_match('/^([A-Za-z0-9_\-]+)\s*:\s*(.*)$/', trim($line), $kv)) {
+                continue;
+            }
+            $data[$kv[1]] = self::frontMatterValue(trim($kv[2]));
+        }
+
+        return [$data, (string) substr($content, strlen($m[0]))];
+    }
+
+    private static function frontMatterValue(string $v): mixed
+    {
+        if (preg_match('/^\[(.*)\]$/s', $v, $l)) {
+            $items = trim($l[1]) === '' ? [] : array_map('trim', explode(',', $l[1]));
+
+            return array_values(array_map(static fn ($i) => self::unquote($i), $items));
+        }
+        $lower = strtolower($v);
+        if ($lower === 'true' || $lower === 'false') {
+            return $lower === 'true';
+        }
+        if (preg_match('/^-?\d+$/', $v)) {
+            return (int) $v;
+        }
+
+        return self::unquote($v);
+    }
+
+    private static function unquote(string $v): string
+    {
+        if (strlen($v) >= 2 && ($v[0] === '"' || $v[0] === "'") && substr($v, -1) === $v[0]) {
+            return substr($v, 1, -1);
+        }
+
+        return $v;
+    }
 
     private static function converter(): MarkdownConverter
     {

@@ -472,6 +472,11 @@ class PermissionGate
             "NewChatForm" => true,
             "NewChatGroupForm" => true,
             "SettingsForm" => true,
+            // Ajuda — manual do sistema (#227): todo usuário logado lê TODAS as
+            // páginas (o menu e os botões de cada tela seguem filtrados). NÃO é
+            // pública: fora de publicClasses() de propósito. Vale também para os
+            // prints (/app/ajuda/prints/*) e para a cortina do botão ?.
+            "HelpCenter" => true,
             // Usar um modelo de importação (o botão <mad-import-btn> das telas):
             // quem barra é o PRÓPRIO modelo (Grupos/Usuários com acesso, conferido
             // em cada ação). Como programa só do grupo Administrador, o "Grupos

@@ -7,10 +7,11 @@
     $closeOnBackdrop = (bool) ($closeOnBackdrop ?? false);
     // Igual à gaveta: opt-in por tela com protected static bool $confirmDiscard = true.
     $confirmClose = (bool) ($confirmClose ?? false);
+    $help    = $help    ?? '';
     $wrapId  = 'madwrap-' . preg_replace('/[^a-z0-9]/', '-', strtolower($id));
 @endphp
 <div id="{{ $wrapId }}" data-mad-wrapper="modal">
-    <mad-modal :name="$id" :title="$title" :size="$size" :close-on-backdrop="$closeOnBackdrop" :confirm-close="$confirmClose">
+    <mad-modal :name="$id" :title="$title" :size="$size" :close-on-backdrop="$closeOnBackdrop" :confirm-close="$confirmClose" :help="$help">
         {!! $content !!}
     </mad-modal>
 </div>

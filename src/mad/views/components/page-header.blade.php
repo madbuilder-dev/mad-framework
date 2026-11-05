@@ -15,6 +15,8 @@
     if ($_headerOwner !== null && method_exists($_headerOwner, '_notePageHeaderTitle')) {
         $_headerOwner->_notePageHeaderTitle($title);
     }
+    // Botão ? (Ajuda da tela, #227): só com manual publicado e numa tela de verdade.
+    $_helpScreen = \Mad\Help\ManualRepository::headerButtonScreen($_headerOwner);
 @endphp
 @if(\Mad\Ui\MadTransporter::compactShell($_embed))
     {{-- Embutida: a página de fora já mostra título e breadcrumb. Fica a barra
@@ -54,10 +56,16 @@
             @endif
         </div>
     </div>
-    @if($_hasActions)
+    @if($_hasActions || $_helpScreen !== '')
         <div class="mad-page-header-actions">
             {!! $actions !!}
             {!! $slot ?? '' !!}
+            @if($_helpScreen !== '')
+                <button type="button" class="mad-page-help-btn" data-mad-help-screen="{{ $_helpScreen }}"
+                        title="{{ mad_t('mad.help.screen_help') }}" aria-label="{{ mad_t('mad.help.screen_help') }}">
+                    <i data-lucide="circle-help"></i>
+                </button>
+            @endif
         </div>
     @endif
 </div>
