@@ -2530,11 +2530,20 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
    26. COMPONENTE — FORM SECTION (grupo de campos com header)
    ═══════════════════════════════════════════════════════════════════ */
 
-.mad-form-section              { 
-  display: flex; flex-direction: column; gap: 16px; padding-bottom: var(--mad-s4); 
+.mad-form-section              {
+  display: flex; flex-direction: column; gap: 16px; padding-bottom: var(--mad-s4);
   /* border-bottom: 1px solid var(--mad-border);  */
   margin-bottom: var(--mad-s4);
 }
+/* Espaço entre linhas do formulário (fórum #243): a distância de uma Linha
+   (<mad-form-grid>) para a Linha logo abaixo. `--mad-form-row-gap` vem do tema,
+   do <mad-form row-gap> ou da própria Linha (row-gap); a Linha também a usa
+   entre as linhas de campos dela. NÃO é declarada aqui (declarar em `:root,
+   .mad-ui` venceria o :root do tema — ver --mad-label-gap): sem valor, cada
+   lugar fica como antes — 0 no formulário, no card e na aba; 16px na seção,
+   que já separa os filhos com o gap dela (por isso a conta desconta os 16px). */
+.mad-form-grid + .mad-form-grid { margin-top: var(--mad-form-row-gap, 0px); }
+.mad-form-section > .mad-form-grid + .mad-form-grid { margin-top: calc(var(--mad-form-row-gap, 16px) - 16px); }
 .mad-form-section-header       { 
   padding-top: var(--mad-form-section-header-py, 6px);
   padding-bottom: var(--mad-form-section-header-py, 6px);

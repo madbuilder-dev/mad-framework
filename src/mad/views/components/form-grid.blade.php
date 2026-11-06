@@ -1,9 +1,20 @@
 @php
     $template = $template ?? null;
     $cols  = (int)($cols ?? 2);
+    $_gapGiven = isset($gap) && $gap !== '';
     $gap   = (int)($gap ?? 4);
     $gaps  = [0=>'0px',1=>'4px',2=>'8px',3=>'12px',4=>'16px',5=>'20px',6=>'24px',8=>'32px'];
     $gapPx = $gaps[$gap] ?? '16px';
+    // Espaço vertical entre linhas (fórum #243). `row-gap="24"` (número = px)
+    // vale para esta Linha: entre as linhas de campos dela (o campo que quebra
+    // para baixo) e acima dela, quando vem logo depois de outra Linha — a regra
+    // `.mad-form-grid + .mad-form-grid` do mad-ui.css lê a mesma custom property.
+    // Sem `row-gap`, a distância entre as linhas de campos segue o tema
+    // (`--mad-form-row-gap`) com o `gap` de sempre como reserva. `gap` escrito
+    // na Linha continua mandando nas duas direções.
+    $_rowGap    = \Mad\Support\CssUnits::length((string) ($rowGap ?? ''));
+    $_rowGapCss = ($_rowGap !== '' ? '--mad-form-row-gap:' . $_rowGap . ';' : '')
+        . ($_rowGap !== '' || !$_gapGiven ? 'row-gap:var(--mad-form-row-gap, ' . $gapPx . ');' : '');
 
     // template="140 1fr" → "140px 1fr". Sem isso o track sem unidade invalidava
     // a declaração INTEIRA e o form virava uma coluna só — o formulário todo
@@ -32,6 +43,6 @@
         $class = trim($class . ' mad-form-grid-read');
     }
 @endphp
-<div style="display:grid;grid-template-columns:{{ $gridCols }};gap:{{ $gapPx }};{{ $alignCss }}{{ $style }}" class="mad-form-grid {{ $class }}">
+<div style="display:grid;grid-template-columns:{{ $gridCols }};gap:{{ $gapPx }};{{ $_rowGapCss }}{{ $alignCss }}{{ $style }}" class="mad-form-grid {{ $class }}">
     {!! $slot !!}
 </div>

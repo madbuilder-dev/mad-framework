@@ -8,7 +8,11 @@
     // .mad-field dentro dele. Campo com o seu próprio continua ganhando — o
     // wrapper dele é o ancestral mais próximo.
     $_labelGap  = \Mad\Support\CssUnits::length((string) ($labelGap ?? ''));
+    // row-gap (fórum #243): espaço vertical entre as linhas de campos de TODO o
+    // formulário. Mesma cascata do label-gap: tema < <mad-form> < Linha.
+    $_rowGap    = \Mad\Support\CssUnits::length((string) ($rowGap ?? ''));
     $_formStyle = ($_labelGap !== '' ? '--mad-label-gap:' . $_labelGap . ';' : '')
+        . ($_rowGap !== '' ? '--mad-form-row-gap:' . $_rowGap . ';' : '')
         . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
     $_gapStyle  = $_formStyle !== '' ? ' style="' . $_formStyle . '"' : '';
     // `read` / `read="filled"` ou `$this->form->readMode()` (fw#498): os campos

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.273.0] — 2026-11-06
+
+### Novidades
+
+- **Formulário:** novo ajuste do espaço vertical entre as linhas de campos, separado do espaço entre as colunas. `<mad-form row-gap="24">` vale para a tela inteira e `<mad-form-grid row-gap="24">` para uma linha (acima dela e entre os campos que quebram para baixo). Número puro vale px.
+- **Tema:** a variável `--mad-form-row-gap` define esse espaço para o app inteiro. A tela e a linha que tiverem o seu valor vencem o tema. Sem nenhum ajuste, os formulários ficam como estavam.
+
 ## [5.272.0] — 2026-11-06
 
 ### Novidades
