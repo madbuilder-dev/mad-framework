@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.273.2] — 2026-11-06
+
+### Correções
+
+- **Formulário:** um campo com largura fixa maior que o espaço da janela (por exemplo `width="800px"` num modal de 800px) passava da borda, levava os outros campos da linha junto e o modal ganhava rolagem para o lado. Agora o campo encolhe para caber e a linha fica do tamanho da janela.
+
 ## [5.273.1] — 2026-11-06
 
 ### Correções

@@ -1798,7 +1798,10 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 /* min-width:0 — o campo é item de grid/flex e `1fr` equivale a minmax(auto,1fr):
    sem isso o min-content do conteúdo (ex.: opção longa de um mad-select) estoura
    a coluna e empurra os campos vizinhos para fora do container. */
-.mad-field   { display: flex; flex-direction: column; gap: var(--mad-label-gap, 5px); min-width: 0; }
+/* max-width: 100% (fórum #248): campo com `width` fixo maior que a coluna
+   (`width="800px"` num modal de 800px) encolhe para caber nela em vez de
+   passar da borda. `max-width` escrito no campo continua valendo (inline). */
+.mad-field   { display: flex; flex-direction: column; gap: var(--mad-label-gap, 5px); min-width: 0; max-width: 100%; }
 /* --mad-label-*: estilo do label (label-color / label-size / label-weight /
    label-italic). Como a --mad-label-gap, NÃO são declaradas aqui — só o
    fallback dentro do var(). Cascata: <mad-form label-*> (style no <form>) <

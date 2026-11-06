@@ -23,8 +23,14 @@
     if (is_string($template) && trim($template) !== '') {
         $gridCols = \Mad\Support\CssUnits::templateNetOfGap($template, (float) $gapPx);
     } else {
-        $colsMap = [1=>'repeat(1,1fr)',2=>'repeat(2,1fr)',3=>'repeat(3,1fr)',4=>'repeat(4,1fr)',5=>'repeat(5,1fr)',6=>'repeat(6,1fr)'];
-        $gridCols = $colsMap[$cols] ?? 'repeat(2,1fr)';
+        // `minmax(0,1fr)`, não `1fr` (fórum #248): `1fr` é `minmax(auto,1fr)` e
+        // a coluna crescia até a largura fixa de um campo (`width="800px"`
+        // num modal de 800px). A coluna passava da janela, levava junto os
+        // outros campos da Linha e o modal ganhava rolagem para o lado. Com
+        // mínimo 0 a coluna fica do tamanho da Linha, e o `max-width: 100%`
+        // do `.mad-field` (mad-ui.css) encolhe o campo para caber nela.
+        $colsMap = [1=>'repeat(1,minmax(0,1fr))',2=>'repeat(2,minmax(0,1fr))',3=>'repeat(3,minmax(0,1fr))',4=>'repeat(4,minmax(0,1fr))',5=>'repeat(5,minmax(0,1fr))',6=>'repeat(6,minmax(0,1fr))'];
+        $gridCols = $colsMap[$cols] ?? 'repeat(2,minmax(0,1fr))';
     }
     // valign="top|center|bottom" → align-items da linha. Só valor da lista chega
     // ao HTML; sem a prop a declaração não sai e o grid segue no `stretch` de
