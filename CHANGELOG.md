@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.273.1] — 2026-11-06
+
+### Correções
+
+- **App gerado:** no app em servidor próprio atualizado pelo card "Mad Framework" da Central de Comando, o CSS e o JavaScript das telas continuavam os da instalação, e correções visuais não apareciam. Agora o app atualiza esses arquivos sozinho no primeiro acesso.
+- **Listagem (grid):** na coluna com `transform="icon"`, alguns navegadores (Firefox antes da versão 121, Safari antes da 15.4) mostravam o ícone e o nome ao lado. Agora a célula mostra só o ícone em todos, e o nome continua na dica.
+
 ## [5.273.0] — 2026-11-06
 
 ### Novidades

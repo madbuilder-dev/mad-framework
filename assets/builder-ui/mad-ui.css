@@ -15433,13 +15433,17 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
 
 /* Só o ícone: com o desenho, o nome fica só para o leitor de tela (e na dica).
    Sem desenho, ele aparece depois de um instante: antes disso o ícone ainda
-   pode estar chegando (o Tabler baixa o balde), e o nome piscaria na troca. */
+   pode estar chegando (o Tabler baixa o balde), e o nome piscaria na troca.
+   O desenho troca o <i> por um <svg> no mesmo lugar, logo antes do nome: por
+   isso o irmão adjacente (`svg + nome`), que todo navegador entende. Com
+   `:has(> svg)` (até a 5.273.0), o navegador sem `:has()` (Firefox antes do
+   121, Safari antes do 15.4) descartava a regra e mostrava ícone e nome. */
 .mad-dg-icon:not(.mad-dg-icon--label) > .mad-dg-icon-name {
     opacity: 0;
     animation: mad-dg-icon-name-in 0s linear 1.2s forwards;
 }
 
-.mad-dg-icon:not(.mad-dg-icon--label):has(> svg) > .mad-dg-icon-name {
+.mad-dg-icon:not(.mad-dg-icon--label) > svg + .mad-dg-icon-name {
     position: absolute;
     width: 1px;
     height: 1px;

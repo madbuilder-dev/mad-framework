@@ -203,6 +203,7 @@ class MadServiceProvider extends ServiceProvider
         $this->bootSitePostLimiter();
         $this->bootRestDriver();
         $this->bootPublishing();
+        $this->bootPublicAssets();
         $this->bootTrace();
         $this->bootSchedulePause();
         $this->bootWebhooks();
@@ -1063,20 +1064,39 @@ class MadServiceProvider extends ServiceProvider
         // (fonte na raiz app/lib) e fica a cargo exclusivo do mad:sync.
         // O mapa mora no próprio pacote: vale instalado por path repo
         // (packages/mad-framework) ou pelo Packagist (vendor/madbuilder/framework).
-        $root = base_path();
-        $packageRoot = dirname(__DIR__, 2);
-        $map = require $packageRoot.'/assets/asset-map.php';
+        $this->publishes(\Mad\Support\MadPublicAssets::packageMap(base_path(), dirname(__DIR__, 2)), 'mad-assets');
+    }
 
-        $publish = [];
-        foreach (($map['package'] ?? []) as $srcRel => $dstRel) {
-            // Chaves do mapa são relativas à raiz de um app com path repo
-            // ("packages/mad-framework/assets/…"); vendor:publish quer absolutos.
-            $src = str_starts_with($srcRel, 'packages/mad-framework/')
-                ? $packageRoot.'/'.substr($srcRel, strlen('packages/mad-framework/'))
-                : $root.'/'.$srcRel;
-            $publish[$src] = $root.'/'.$dstRel;
+    /**
+     * Cópias servidas (public/) do CSS/JS do framework em dia com o pacote: o
+     * card "Mad Framework" atualiza só o vendor/, e sem isto o app em servidor
+     * próprio seguia servindo o CSS/JS da instalação (fórum #242). No console
+     * não roda: o composer já sincroniza no post-autoload-dump, e teste e fila
+     * não escrevem em public/.
+     */
+    private function bootPublicAssets(): void
+    {
+        if ($this->app->runningInConsole()) {
+            return;
         }
 
-        $this->publishes($publish, 'mad-assets');
+        try {
+            $r = \Mad\Support\MadPublicAssets::ensureFresh(
+                base_path(),
+                dirname(__DIR__, 2),
+                \Mad\Support\MadFramework::version(),
+                storage_path('framework/mad-assets.version'),
+            );
+            if ($r['failed'] !== []) {
+                \Illuminate\Support\Facades\Log::warning(
+                    '[mad] CSS/JS do framework não atualizados em public/ (sem permissão de escrita?). '
+                    .'Rode na pasta do app: php artisan vendor:publish --tag=mad-assets --force',
+                    ['arquivos' => $r['failed']]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Nunca derruba o request por causa de cópia de asset.
+            \Illuminate\Support\Facades\Log::warning('[mad] falha ao atualizar o CSS/JS do framework em public/: '.$e->getMessage());
+        }
     }
 }
