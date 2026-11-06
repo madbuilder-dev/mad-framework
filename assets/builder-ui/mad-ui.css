@@ -15395,6 +15395,57 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     border-radius: 6px;
 }
 
+/* Transformador Ícone da coluna (`transform="icon"` / `icon-label`, fórum #242):
+   a célula desenha o ícone gravado pelo <mad-icon-field>. O <i data-lucide>
+   vira <svg> pelo createIcons (Lucide e `tabler:`); nome que não existe deixa
+   o <i> vazio no lugar, e então o nome aparece. A cor segue o texto (claro e
+   escuro). */
+.mad-dg-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    vertical-align: middle;
+    line-height: 1.2;
+}
+
+.mad-dg-icon > svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.mad-dg-icon > i[data-lucide] { display: none; }
+
+.mad-dg-icon-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Só o ícone: com o desenho, o nome fica só para o leitor de tela (e na dica).
+   Sem desenho, ele aparece depois de um instante: antes disso o ícone ainda
+   pode estar chegando (o Tabler baixa o balde), e o nome piscaria na troca. */
+.mad-dg-icon:not(.mad-dg-icon--label) > .mad-dg-icon-name {
+    opacity: 0;
+    animation: mad-dg-icon-name-in 0s linear 1.2s forwards;
+}
+
+.mad-dg-icon:not(.mad-dg-icon--label):has(> svg) > .mad-dg-icon-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 1;
+    animation: none;
+}
+
+@keyframes mad-dg-icon-name-in { to { opacity: 1; } }
+
 .mad-cell-media-file {
     cursor: pointer;
     color: var(--mad-text-muted);

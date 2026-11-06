@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.270.0] — 2026-11-06
+
+### Novidades
+
+- **Listagem (grid):** novo transformador Ícone para a coluna que guarda o nome de um ícone (o que o campo de ícone grava, como `truck` ou `tabler:truck`). `<mad-col transform="icon">` desenha o ícone no lugar do nome, e `transform="icon-label"` mostra o ícone com o nome ao lado.
+- **Listagem (grid):** na coluna com ícone, valor vazio deixa a célula vazia e um nome que não existe aparece como texto. Excel, CSV e PDF levam o nome do ícone.
+
 ## [5.269.0] — 2026-11-06
 
 ### Correções

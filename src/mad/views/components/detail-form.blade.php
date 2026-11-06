@@ -108,7 +108,7 @@
     // exibir um formatado obsoleto.
     $_dfFmtCols = array_values(array_filter(
         $columns,
-        fn($c) => $c->hasTransform || $c->mediaFormat !== ''
+        fn($c) => $c->hasTransform || $c->mediaFormat !== '' || $c->iconFormat !== ''
     ));
     if ($_dfFmtCols) {
         foreach ($normalizedRows as $_dfI => $_dfRow) {
@@ -441,7 +441,7 @@
                                 // O valor da linha NUNCA é tocado: `row[chave]`
                                 // segue cru, que é o que vai no POST.
                                 $_cFmtKey = \Mad\Grid\GridRenderHelpers::fieldKeyJs($col->field);
-                                $_cSrvFmt = $col->hasTransform || $col->mediaFormat !== '';
+                                $_cSrvFmt = $col->hasTransform || $col->mediaFormat !== '' || $col->iconFormat !== '';
                                 $_cFmtJs  = $col->builtinFormat !== ''
                                     ? \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_cv)
                                     : '';

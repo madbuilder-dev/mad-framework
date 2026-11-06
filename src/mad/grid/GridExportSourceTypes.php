@@ -80,7 +80,7 @@ final class GridExportSourceTypes
     {
         return !$col->isMoney && !$col->isNumber && !$col->isDate && !$col->isBadge
             && !$col->isHtml && !$col->hasTransform && $col->builtinFormat === ''
-            && $col->mediaFormat === '' && $col->evaluate === '' && $col->running === '';
+            && $col->mediaFormat === '' && $col->iconFormat === '' && $col->evaluate === '' && $col->running === '';
     }
 
     /** true/false = fonte conhecida; null = não dá para afirmar. */

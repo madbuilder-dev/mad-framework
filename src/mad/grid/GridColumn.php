@@ -54,6 +54,8 @@ class GridColumn
     public string  $builtinFormat = '';
     /** Token de mídia (file-avatar/…) — render HTML dedicado, ver MadMediaFormatter. */
     public string  $mediaFormat = '';
+    /** Token de ícone (icon/icon-label) — desenha o ícone gravado, ver MadIconFormatter. */
+    public string  $iconFormat = '';
     /**
      * Texto da miniatura de mídia (dica, `alt`, legenda do lightbox, texto do
      * link): fixo ou com `{campo}`/`{relacao->campo}` da linha. '' = nome do
@@ -432,6 +434,12 @@ class GridColumn
         // vir ANTES do ValueFormatter, que escaparia o markup.
         if (is_string($fn) && \Mad\Support\MadMediaFormatter::isMediaToken($fn)) {
             $this->mediaFormat = strtolower(trim($fn));
+            return $this;
+        }
+        // Token de ícone (icon/icon-label, fórum #242): a coluna guarda o nome
+        // do ícone e a célula o desenha — HTML raw, como a mídia.
+        if (is_string($fn) && \Mad\Support\MadIconFormatter::isIconToken($fn)) {
+            $this->iconFormat = strtolower(trim($fn));
             return $this;
         }
         // Token built-in do formatter-select ('datetime', 'cpf', 'percent'...):
@@ -958,6 +966,9 @@ class GridColumn
      */
     public function nowrapClass(): string
     {
+        if ($this->iconFormat !== '') {
+            return ' mad-dg-cell-nowrap';
+        }
         if ($this->hasTransform || $this->mediaFormat !== '' || $this->isBadge || $this->isHtml) {
             return '';
         }
@@ -977,7 +988,7 @@ class GridColumn
     /** Coluna de valor ou número, sem transformador/HTML próprio. */
     public function isNumeric(): bool
     {
-        if ($this->hasTransform || $this->mediaFormat !== '' || $this->isBadge || $this->isHtml) {
+        if ($this->hasTransform || $this->mediaFormat !== '' || $this->iconFormat !== '' || $this->isBadge || $this->isHtml) {
             return false;
         }
 
@@ -1044,7 +1055,7 @@ class GridColumn
             if (!$col instanceof self) continue;
             $col->shape = '';
             $col->wrapWords = false;
-            if ($col->grow || $col->hasTransform || $col->transform !== null || $col->mediaFormat !== '' || $col->isBadge || $col->isHtml
+            if ($col->grow || $col->hasTransform || $col->transform !== null || $col->mediaFormat !== '' || $col->iconFormat !== '' || $col->isBadge || $col->isHtml
                 || $col->editable || $col->lines !== null || $col->nowrapClass() !== '' || $col->isNumeric()) {
                 continue;
             }
@@ -1274,6 +1285,12 @@ class GridColumn
             return \Mad\Support\MadMediaFormatter::render($value, $this->mediaFormat, $caption);
         }
 
+        // Ícone (icon/icon-label): o nome gravado vira o desenho; vazio sai
+        // vazio e o que não é nome de ícone sai como texto.
+        if ($this->iconFormat !== '') {
+            return \Mad\Support\MadIconFormatter::render($value, $this->iconFormat);
+        }
+
         // Badge — formatos suportados:
         //   'value' => 'success'                             → variant, label=value
         //   'value' => 'success:Ativo'                       → variant:label
@@ -1420,6 +1437,11 @@ class GridColumn
         // NOMES dos arquivos como texto.
         if ($this->mediaFormat !== '') {
             return htmlspecialchars(\Mad\Support\MadMediaFormatter::renderPlain($value), ENT_QUOTES);
+        }
+
+        // Ícone: o PDF não roda o Lucide — exporta o nome gravado.
+        if ($this->iconFormat !== '') {
+            return htmlspecialchars(\Mad\Support\MadIconFormatter::plain($value), ENT_QUOTES);
         }
 
         // Badges — estilos inline equivalentes ao mad-ui.css

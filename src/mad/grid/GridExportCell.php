@@ -1,6 +1,7 @@
 <?php
 namespace Mad\Grid;
 
+use Mad\Support\MadIconFormatter;
 use Mad\Support\MadMediaFormatter;
 use Mad\Support\ValueFormatter;
 
@@ -108,6 +109,12 @@ final class GridExportCell
         // 2. Mídia: a planilha não tem miniatura — o nome dos arquivos (igual ao PDF).
         if ($col->mediaFormat !== '') {
             return self::text(MadMediaFormatter::renderPlain($value));
+        }
+
+        // 2b. Ícone: a planilha não desenha — o nome gravado (`truck`, `tabler:truck`).
+        if ($col->iconFormat !== '') {
+            $name = MadIconFormatter::plain($value);
+            return $name === '' ? self::blank() : self::text($name);
         }
 
         // 3. Badge: o RÓTULO do mapa ("Ativo"), não a chave gravada ("A").
@@ -218,6 +225,9 @@ final class GridExportCell
     {
         if ($col->mediaFormat !== '' && !($col->hasTransform && is_callable($col->transform))) {
             return MadMediaFormatter::renderPlain($value);
+        }
+        if ($col->iconFormat !== '') {
+            return MadIconFormatter::plain($value);
         }
         if (!$col->hasTransform && MadMediaFormatter::looksLikeInlineFile($value)) {
             return MadMediaFormatter::renderPlain($value);
