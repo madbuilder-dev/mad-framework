@@ -15,7 +15,15 @@
         // \Mad\Support\MadFieldValue. Sem coluna no contexto o campo caía
         // sempre em false e não havia como ligar por default pela tag.
         $_default = !empty($checked) ? (string) $valueOn : (isset($value) ? $value : '');
-        $isChecked = \Mad\Support\MadFieldValue::resolve($name, $_default) === (string) $valueOn;
+        // O navegador devolve o switch como 1/0 qualquer que seja o value-on:
+        // num redesenho da tela (ação que pede o HTML inteiro), o 'Y' que abriu
+        // ligado já voltou como '1'. Mesma regra do servidor ao gravar
+        // (MadFormRegistry::_resolveBooleanValue): valor igual ao value-on ou
+        // ao value-off decide; senão 1/true/on é ligado.
+        $_raw  = \Mad\Support\MadFieldValue::resolve($name, $_default);
+        $_sraw = is_bool($_raw) ? ($_raw ? '1' : '0') : (string) $_raw;
+        $isChecked = $_sraw === (string) $valueOn
+            || ($_sraw !== (string) $valueOff && in_array(strtolower($_sraw), ['1', 'true', 'on'], true));
         $madModelAttr = 'mad:model="' . $name . '"' . ($isChecked ? ' checked' : '');
         // Prepend mad:model/checked preservando qualquer atributo passado pelo caller
         // (ex: @change, x-on:click) — antes sobrescreviamos $attrs aqui, o que

@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.269.0] — 2026-11-06
+
+### Correções
+
+- **Unidades:** cadastrar uma unidade nova numa empresa que já tem licença criava uma licença vazia só para a unidade, e a filial ficava "Sem plano" em vez de usar o plano da empresa. Agora a unidade nova herda a licença da empresa e só ganha licença própria quando você clica em "Definir licença própria".
+- **Unidades:** escolher a empresa na tela da unidade não mudava nada, e a seção de licença dava a entender que plano, validade e contratante precisavam ser preenchidos. Agora, se a empresa tem licença, a tela mostra só "Herdada da empresa" com a validade; se não tem, avisa e deixa preencher o contrato só para aquela unidade.
+- **Formulários:** um `<mad-switch-field>` com `value-on="Y"` ligado aparecia desligado quando a tela se redesenhava depois de uma ação, e salvar em seguida gravava o valor desligado. Agora o switch mantém o estado.
+
 ## [5.268.1] — 2026-11-05
 
 ### Correções
