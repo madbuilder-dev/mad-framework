@@ -25,11 +25,19 @@
     // Posição do texto: centro (padrão), esquerda ou direita.
     $_sepAlign = is_string($labelAlign ?? null) ? strtolower(trim($labelAlign)) : '';
     $_sepAlign = in_array($_sepAlign, ['left', 'right'], true) ? $_sepAlign : '';
+    // Estilo do texto (fórum #241): só no span do texto, e só quando há texto —
+    // sem os atributos o HTML não muda.
+    $_sepTextCss = $label
+        ? \Mad\Support\CssUnits::separatorTextStyle(
+            $labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false,
+            $labelUnderline ?? false, $labelUppercase ?? false, $labelLetterSpacing ?? ''
+        )
+        : '';
 @endphp
 @if($label)
 <div class="mad-sep-labeled{{ $_sepAlign !== '' ? ' mad-sep-labeled--' . $_sepAlign : '' }} {{ $class }}"@if($_sepCss !== '') style="{{ $_sepCss }}"@endif>
     <span class="mad-sep-line"></span>
-    <span class="mad-sep-text">{{ $label }}</span>
+    <span class="mad-sep-text"@if($_sepTextCss !== '') style="{{ $_sepTextCss }}"@endif>{{ $label }}</span>
     <span class="mad-sep-line"></span>
 </div>
 @elseif($vertical)

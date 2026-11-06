@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.271.0] — 2026-11-06
+
+### Novidades
+
+- **Separador:** o texto do `<mad-separator label="…">` agora pode ser formatado: `label-weight="bold"` (negrito), `label-italic` (itálico), `label-underline` (sublinhado), `label-size` (tamanho), `label-color` (cor do texto), `label-uppercase` (caixa alta) e `label-letter-spacing` (espaçamento entre letras). São os mesmos nomes do estilo do rótulo dos campos; número puro vale px. Sem esses atributos o separador fica igual ao de antes, e a linha não muda.
+
 ## [5.270.0] — 2026-11-06
 
 ### Novidades

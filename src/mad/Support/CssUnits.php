@@ -247,6 +247,77 @@ final class CssUnits
         return $dark >= $light ? self::INK_DARK : self::INK_LIGHT;
     }
 
+    /**
+     * Estilo do TEXTO do `<mad-separator label="…">`: `label-color`, `label-size`,
+     * `label-weight`, `label-italic`, `label-underline`, `label-uppercase`,
+     * `label-letter-spacing` (fórum #241).
+     *
+     * Mesmos nomes do estilo do label dos campos, mas sai como declaração direta
+     * no `<span class="mad-sep-text">`, e não como `--mad-label-*`: o separador
+     * mora dentro de um `<mad-form label-*>`, e var com o mesmo nome herdaria o
+     * estilo dos labels da tela. Nada válido → `''` e o span fica sem `style`.
+     */
+    public static function separatorTextStyle(
+        mixed $color,
+        mixed $size = null,
+        mixed $weight = null,
+        mixed $italic = null,
+        mixed $underline = null,
+        mixed $uppercase = null,
+        mixed $letterSpacing = null
+    ): string {
+        $out = '';
+
+        $c = self::color($color);
+        if ($c !== '') {
+            $out .= 'color:' . $c . ';';
+        }
+
+        $s = is_scalar($size) ? self::length((string) $size) : '';
+        if ($s !== '') {
+            $out .= 'font-size:' . $s . ';';
+        }
+
+        $w = is_scalar($weight) ? strtolower(trim((string) $weight)) : '';
+        if ($w === 'normal' || $w === 'bold') {
+            $out .= 'font-weight:' . $w . ';';
+        }
+
+        if (self::flag($italic)) {
+            $out .= 'font-style:italic;';
+        }
+        if (self::flag($underline, 'underline')) {
+            $out .= 'text-decoration:underline;';
+        }
+        if (self::flag($uppercase, 'uppercase')) {
+            $out .= 'text-transform:uppercase;';
+        }
+
+        $ls = is_scalar($letterSpacing) ? self::letterSpacing((string) $letterSpacing) : '';
+        if ($ls !== '') {
+            $out .= 'letter-spacing:' . $ls . ';';
+        }
+
+        return $out;
+    }
+
+    /**
+     * `letter-spacing`: número = px, aceita negativo (`-0.5`) e `normal`. Só
+     * medida simples — `calc()`/`var()` ficam de fora, porque aqui não há caso.
+     */
+    private static function letterSpacing(string $v): string
+    {
+        $v = trim($v);
+        if (strtolower($v) === 'normal') {
+            return 'normal';
+        }
+        if (!preg_match('/^-?\d*\.?\d+(' . self::LENGTH_UNITS . ')?$/i', $v)) {
+            return '';
+        }
+
+        return is_numeric($v) ? $v . 'px' : $v;
+    }
+
     /** `--mad-{prefix}-color/-size/-weight/-style` — compartilhado por label e input. */
     private static function textVars(string $prefix, mixed $color, mixed $size, mixed $weight, mixed $italic): string
     {
@@ -276,9 +347,11 @@ final class CssUnits
 
     /**
      * Atributo booleano de template: sem valor chega como `true`
-     * (`<mad-input-field label-italic>`); `"false"`/`"0"`/`""` desligam.
+     * (`<mad-input-field label-italic>`); `"false"`/`"0"`/`""` desligam. O próprio
+     * nome do efeito (`label-italic="italic"`, `label-underline="underline"`)
+     * também liga.
      */
-    private static function flag(mixed $v): bool
+    private static function flag(mixed $v, string $word = 'italic'): bool
     {
         if (is_bool($v)) {
             return $v;
@@ -289,7 +362,7 @@ final class CssUnits
 
         $v = strtolower(trim((string) $v));
 
-        return $v === 'italic' || filter_var($v, FILTER_VALIDATE_BOOLEAN);
+        return $v === $word || filter_var($v, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
