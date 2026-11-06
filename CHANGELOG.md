@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.272.0] — 2026-11-06
+
+### Novidades
+
+- **Empresas:** a empresa nova já nasce com a unidade principal, que leva o nome da empresa e usa a licença dela. Para cadastrar só a empresa, desligue "Criar a unidade principal" antes de salvar. A empresa já cadastrada que ainda não tem unidade mostra a mesma opção ao abrir. No modo de banco dedicado a opção não aparece: a unidade continua sendo criada depois de provisionar o banco.
+
+### Correções
+
+- **Empresas e Unidades:** no cadastro novo, o "Ativo" da licença abria desligado, e salvar sem ligá-lo gravava a licença inativa: os usuários da unidade entravam sem nenhum módulo do plano. Agora o "Ativo" da licença abre ligado.
+
 ## [5.271.0] — 2026-11-06
 
 ### Novidades
