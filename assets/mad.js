@@ -4541,6 +4541,118 @@ const MadOverlayBackdrop = {
 MadOverlayBackdrop.bind();
 // ── fim clique fora ──
 
+// ── Modal arrastável (fórum #245) ──────────────────────────────────────────
+// `<mad-modal draggable>` e a tela com `protected static bool $draggable = true`
+// ($wrapper = MODAL) marcam a janela com data-mad-draggable="1". O cabeçalho
+// vira a alça: o usuário move a janela para ver a tela de trás. Botão, link e
+// campo do cabeçalho não começam o arraste. A janela não sai da área visível
+// (nem quando o navegador encolhe ou o conteúdo cresce) e volta ao centro ao
+// reabrir: a posição é só um transform, zerado quando a modal abre. Em tela
+// estreita (até 640px, a quebra do CSS de celular) não arrasta.
+const MadModalDrag = {
+    NARROW: '(max-width: 640px)',
+    MARGIN: 8,   // px livres entre a janela e a borda da área visível
+    NO_DRAG: 'button, a, input, select, textarea, label, [contenteditable], [role="button"], .mad-no-drag',
+    _s: null,    // arraste em curso
+    _ro: null,
+
+    _offset(modal) {
+        return { x: parseFloat(modal.dataset.madDx || '0') || 0, y: parseFloat(modal.dataset.madDy || '0') || 0 };
+    },
+
+    _apply(modal, x, y) {
+        modal.dataset.madDx = String(x);
+        modal.dataset.madDy = String(y);
+        modal.style.transform = (x || y) ? `translate(${x}px, ${y}px)` : '';
+    },
+
+    /** Retângulo da janela no centro (sem o deslocamento). */
+    _base(modal) {
+        const off = MadModalDrag._offset(modal), r = modal.getBoundingClientRect();
+        return { left: r.left - off.x, right: r.right - off.x, top: r.top - off.y, bottom: r.bottom - off.y };
+    },
+
+    /** Deslocamento que mantém a janela inteira à vista (maior que a tela: fica no centro). */
+    _clamp(base, x, y) {
+        const m = MadModalDrag.MARGIN;
+        const minX = m - base.left, maxX = window.innerWidth - m - base.right;
+        const minY = m - base.top, maxY = window.innerHeight - m - base.bottom;
+        return {
+            x: minX > maxX ? 0 : Math.round(Math.min(maxX, Math.max(minX, x))),
+            y: minY > maxY ? 0 : Math.round(Math.min(maxY, Math.max(minY, y))),
+        };
+    },
+
+    onDown(e) {
+        if (e.button !== 0 || e.isPrimary === false || !e.target.closest) return;
+        const header = e.target.closest('.mad-modal-header');
+        const modal = header && header.parentElement;
+        if (!modal || !modal.matches('.mad-modal[data-mad-draggable="1"]')) return;
+        if (e.target.closest(MadModalDrag.NO_DRAG) || window.matchMedia(MadModalDrag.NARROW).matches) return;
+        const off = MadModalDrag._offset(modal);
+        MadModalDrag._s = { modal, header, id: e.pointerId, x0: e.clientX, y0: e.clientY, dx0: off.x, dy0: off.y, base: MadModalDrag._base(modal) };
+        try { header.setPointerCapture(e.pointerId); } catch (_) { /* navegador sem captura: segue pelo document */ }
+        modal.classList.add('mad-modal--dragging');
+        document.documentElement.classList.add('mad-modal-dragging');
+    },
+
+    onMove(e) {
+        const s = MadModalDrag._s;
+        if (!s || e.pointerId !== s.id) return;
+        const p = MadModalDrag._clamp(s.base, s.dx0 + e.clientX - s.x0, s.dy0 + e.clientY - s.y0);
+        MadModalDrag._apply(s.modal, p.x, p.y);
+    },
+
+    onUp(e) {
+        const s = MadModalDrag._s;
+        if (!s || e.pointerId !== s.id) return;
+        MadModalDrag._s = null;
+        s.modal.classList.remove('mad-modal--dragging');
+        document.documentElement.classList.remove('mad-modal-dragging');
+        try { s.header.releasePointerCapture(e.pointerId); } catch (_) { /* já solta */ }
+        if (MadModalDrag._ro) MadModalDrag._ro.observe(s.modal);
+    },
+
+    /** O navegador encolheu ou a janela cresceu: a janela movida continua inteira à vista. */
+    reclamp(modal) {
+        const off = MadModalDrag._offset(modal);
+        if (!off.x && !off.y) return;
+        if (window.matchMedia(MadModalDrag.NARROW).matches) return MadModalDrag._apply(modal, 0, 0);
+        const p = MadModalDrag._clamp(MadModalDrag._base(modal), off.x, off.y);
+        if (p.x !== off.x || p.y !== off.y) MadModalDrag._apply(modal, p.x, p.y);
+    },
+
+    /** Ao abrir, volta ao centro (a <mad-modal name> fica no DOM entre uma abertura e outra). */
+    onModal(e) {
+        const d = e.detail || {};
+        if (d.action !== 'open' || !d.name) return;
+        document.querySelectorAll('[data-mad-overlay="modal"]').forEach((ov) => {
+            if (ov.getAttribute('data-mad-overlay-name') !== String(d.name)) return;
+            const modal = ov.querySelector(':scope > .mad-modal[data-mad-draggable="1"]');
+            if (modal) MadModalDrag._apply(modal, 0, 0);
+        });
+    },
+
+    bind() {
+        if (window.__madModalDragBound) return;
+        window.__madModalDragBound = true;
+        document.addEventListener('pointerdown', MadModalDrag.onDown);
+        document.addEventListener('pointermove', MadModalDrag.onMove);
+        document.addEventListener('pointerup', MadModalDrag.onUp);
+        document.addEventListener('pointercancel', MadModalDrag.onUp);
+        window.addEventListener('madmodal', MadModalDrag.onModal);
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.mad-modal[data-mad-draggable="1"]').forEach(MadModalDrag.reclamp);
+        });
+        if (window.ResizeObserver) {
+            MadModalDrag._ro = new ResizeObserver((entries) => entries.forEach((en) => MadModalDrag.reclamp(en.target)));
+        }
+    },
+};
+MadModalDrag.bind();
+window.MadModalDrag = MadModalDrag;
+// ── fim modal arrastável ──
+
 // ── Expor Mad em window para acesso de scripts em outros escopos ──────────────
 // `const Mad` cria binding global, mas NAO propriedade em window. Scripts que
 // usam `window.Mad` (tipo o override de __mad_load_page em <mad-tab-bar>)

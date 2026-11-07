@@ -3719,6 +3719,14 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   gap: 12px;
 }
 .mad-modal-title { font-size: var(--mad-text-base); font-weight: 700; color: var(--mad-text); line-height: 1.3; flex: 1; }
+/* <mad-modal draggable> / $draggable da tela (fórum #245): o cabeçalho é a
+   alça (MadModalDrag, mad.js). Botões do cabeçalho mantêm o cursor deles. */
+.mad-modal[data-mad-draggable="1"] > .mad-modal-header { cursor: move; user-select: none; -webkit-user-select: none; touch-action: none; }
+.mad-modal--dragging { box-shadow: var(--mad-shadow-xl), 0 0 0 1px var(--mad-border); }
+html.mad-modal-dragging, html.mad-modal-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: move !important; }
+@media (max-width: 640px) {
+  .mad-modal[data-mad-draggable="1"] > .mad-modal-header { cursor: auto; touch-action: auto; }
+}
 .mad-modal-body  { padding: 20px; overflow-y: auto; flex: 1; }
 .mad-modal-footer {
   padding: 12px 20px;

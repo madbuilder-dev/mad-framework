@@ -1,4 +1,4 @@
-@props(['name' => '', 'title' => '', 'size' => 'md', 'footer' => '', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'class' => '', 'help' => ''])
+@props(['name' => '', 'title' => '', 'size' => 'md', 'footer' => '', 'dismissible' => true, 'closeOnBackdrop' => true, 'confirmClose' => false, 'draggable' => false, 'class' => '', 'help' => ''])
 @php
     // Mesmo contrato do <mad-drawer>: `dismissible` = X e Esc;
     // `close-on-backdrop` = clique na área escurecida (desligado na tela com
@@ -12,6 +12,11 @@
     $confirmClose = $dismissible && (is_bool($confirmClose) ? $confirmClose
         : (filter_var($confirmClose, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false));
     $confirmCloseAttrs = $confirmClose ? \Mad\Support\OverlayConfirmClose::attrs() : '';
+    // `draggable` (fórum #245): o cabeçalho vira alça e o usuário move a
+    // janela (MadModalDrag, mad.js). Sem `title` não há cabeçalho: não arrasta.
+    // Na tela com $wrapper = MODAL vem de `protected static bool $draggable`.
+    $draggable = (bool) $title && (is_bool($draggable) ? $draggable
+        : (filter_var($draggable, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? ($draggable === '')));
     $sizes = ['sm' => '380px', 'md' => '520px', 'lg' => '680px', 'xl' => '900px'];
     // idem drawer: `size` fora do mapa é medida livre e ia crua pro style.
     $maxW  = \Mad\Support\CssUnits::length((string) ($sizes[$size] ?? $size), $sizes['md']);
@@ -30,7 +35,7 @@
          data-mad-close-on-backdrop="{{ $closeOnBackdrop ? '1' : '0' }}"{!! $confirmCloseAttrs !!}
          x-show="open"
          x-transition>
-        <div class="mad-modal" style="max-width:{{ $maxW }};">
+        <div class="mad-modal" style="max-width:{{ $maxW }};"@if($draggable) data-mad-draggable="1"@endif>
             @if($title)
                 <div class="mad-modal-header">
                     <div class="mad-modal-title">{{ $title }}</div>

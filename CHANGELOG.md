@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.274.0] — 2026-11-06
+
+### Novidades
+
+- **Layout:** a tela aberta em modal pode ser arrastada pelo cabeçalho, para o usuário ver o que está atrás. Ligue com `protected static bool $draggable = true;` na tela ou `draggable` no `<mad-modal>`. A janela não sai da área visível, volta ao centro ao reabrir e no celular fica fixa.
+
 ## [5.273.2] — 2026-11-06
 
 ### Correções

@@ -37,6 +37,7 @@ class MadComponentWrapper
             'size'    => $component::getSize(),
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
             'confirmClose'    => self::confirmDiscard($component),
+            'draggable'       => self::staticFlag($component, 'draggable'),
             'help'            => \Mad\Help\ManualRepository::headerButtonScreen($component),
         ]);
     }
@@ -68,8 +69,22 @@ class MadComponentWrapper
      */
     private static function confirmDiscard(MadComponent $component): bool
     {
+        return self::staticFlag($component, 'confirmDiscard');
+    }
+
+    /**
+     * Interruptor opt-in declarado na classe da tela (`protected static bool
+     * $<nome> = true;`). Lido por reflexão, sem declaração na base: uma tela
+     * que já tem uma propriedade de instância com esse nome continua valendo
+     * (redeclarar como estática daria erro fatal) e conta como desligado.
+     *
+     *   $confirmDiscard — pergunta antes de fechar com alteração não salva.
+     *   $draggable      — modal da tela arrastável pelo cabeçalho (fórum #245).
+     */
+    private static function staticFlag(MadComponent $component, string $name): bool
+    {
         try {
-            $prop = new \ReflectionProperty($component, 'confirmDiscard');
+            $prop = new \ReflectionProperty($component, $name);
         } catch (\ReflectionException) {
             return false;
         }
