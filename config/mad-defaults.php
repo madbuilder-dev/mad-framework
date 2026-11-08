@@ -18,4 +18,8 @@ return [
     'cep' => [
         'auto_create' => filter_var(env('MAD_CEP_AUTO_CREATE', false), FILTER_VALIDATE_BOOL),
     ],
+    // Ver a doc completa no config/mad.php do template (seção 'sql_log').
+    'sql_log' => [
+        'enabled' => filter_var(env('MAD_SQL_LOG', false), FILTER_VALIDATE_BOOL),
+    ],
 ];

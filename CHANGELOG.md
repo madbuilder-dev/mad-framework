@@ -12,11 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.277.0] — 2026-11-08
+
+### Novidades
+
+- **Logs:** o **Log de SQL** agora liga sem o MadTrace, pela opção **Log de SQL** em Propriedades do projeto → Logs, no MadBuilder, ou com `MAD_SQL_LOG=true` no `.env`. Grava só INSERT, UPDATE e DELETE, como antes. Quem já usa `MADTRACE_SQL_LOG` com o MadTrace ligado não precisa mudar nada.
+
 ## [5.276.4] — 2026-11-08
 
 ### Correções
 
 - **Tema:** no layout ERP com cor própria de área de trabalho, a área abaixo do conteúdo em página curta ficava preta no modo escuro. Agora usa a cor escolhida. Republique o projeto para aplicar.
+
 
 ## [5.276.3] — 2026-11-08
 

@@ -205,6 +205,7 @@ class MadServiceProvider extends ServiceProvider
         $this->bootPublishing();
         $this->bootPublicAssets();
         $this->bootTrace();
+        $this->bootSqlLog();
         $this->bootSchedulePause();
         $this->bootWebhooks();
         $this->bootRequestLogRetention();
@@ -954,8 +955,8 @@ class MadServiceProvider extends ServiceProvider
             \MadTrace::setTransactionType($e->request->is('api/*') ? 'rest' : 'web');
         });
 
-        // Bridge Eloquent/DB facade → APM + coleta p/ modal de debug + log SQL
-        // opcional. TODAS as conexões são nativas, então QueryExecuted de qualquer
+        // Bridge Eloquent/DB facade → APM + coleta p/ modal de debug. TODAS as
+        // conexões são nativas, então QueryExecuted de qualquer
         // conexão (inclusive as MAD) chega aqui. Dispara pós-exec → tempo real.
         if (config('mad.trace.db_listen', true)) {
             DB::listen(function (QueryExecuted $q) {
@@ -967,11 +968,6 @@ class MadServiceProvider extends ServiceProvider
                     \MadTrace::recordQuery($q->sql, $q->connectionName, (float) $q->time);
                 }
                 MadSqlCollector::recordTimed($q->sql, $q->connectionName, (float) $q->time);
-
-                // Log SQL persistente (ex-slog), opt-in via mad.trace.sql_log.
-                if (config('mad.trace.sql_log', false)) {
-                    self::writeSqlLog($q);
-                }
             });
         }
 
@@ -1004,7 +1000,41 @@ class MadServiceProvider extends ServiceProvider
     }
 
     /**
-     * Log SQL persistente opt-in (mad.trace.sql_log). Substitui o antigo slog
+     * Log de SQL, separado do MadTrace (`MAD_SQL_LOG`, opção **Log de SQL** em
+     * Propriedades do projeto → Logs no Studio). Até o 5.276.4 o gravador
+     * morava no boot do MadTrace e só rodava com `MADTRACE_ENABLED=true`: para
+     * ligar o log era preciso ligar o MadTrace junto (fórum #254).
+     *
+     * A condição é lida a cada instrução, não no boot: é uma leitura de
+     * config por query, e quem liga a chave em tempo de execução é atendido.
+     * O banco `log` fica de fora para o log não registrar a si mesmo.
+     */
+    private function bootSqlLog(): void
+    {
+        DB::listen(function (QueryExecuted $q) {
+            if (($q->connectionName ?? '') !== 'log' && self::sqlLogEnabled()) {
+                self::writeSqlLog($q);
+            }
+        });
+    }
+
+    /**
+     * `MAD_SQL_LOG` liga sozinho. O caminho antigo (`MADTRACE_SQL_LOG`) vale
+     * como sempre valeu: só com o MadTrace ligado e o `MADTRACE_DB_LISTEN` em
+     * pé. Assim o app que já gravava continua gravando, e nenhum app começa a
+     * gravar sem pedir.
+     */
+    private static function sqlLogEnabled(): bool
+    {
+        return (bool) config('mad.sql_log.enabled', false)
+            || (config('mad.trace.sql_log', false)
+                && config('mad.trace.enabled', false)
+                && config('mad.trace.db_listen', true)
+                && class_exists('MadTrace'));
+    }
+
+    /**
+     * Log SQL persistente opt-in ({@see sqlLogEnabled()}). Substitui o antigo slog
      * (SqlLogService/DebugLogger plugados em Transaction) por um writer nativo
      * no DB::listen global. Grava só DML (INSERT/UPDATE/DELETE) em
      * App\Models\Log\Sql (conexão 'log'), com SQL literal e id de correlação
