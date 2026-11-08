@@ -98,6 +98,22 @@ final class ActionGuard
             return self::liberado(null);
         }
 
+        // Salvar sem saber se o registro é novo: é incluir OU editar, a mesma
+        // régua da porta ({@see PermissionGate::canAccess()}). Antes `onSave`
+        // caía como "ação própria" fora do catálogo e o botão aparecia para
+        // quem só pode visualizar.
+        if ($isNew === null && in_array($method, ActionVocab::CONTEXTUAL, true)) {
+            if (PermissionGate::allows($class, 'insert') || PermissionGate::allows($class, 'edit')) {
+                return self::liberado(null);
+            }
+
+            return [
+                'mode'  => self::mode(),
+                'key'   => 'insert',
+                'title' => ActionVocab::denyTitle('insert', $class),
+            ];
+        }
+
         $chave = self::keyOf($method, $isNew);
         if ($chave === null) {
             return self::liberado(null);

@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.280.0] — 2026-11-08
+
+### Melhorias
+
+- **Permissões:** a aba de telas do cadastro de Perfis explica que a tela marcada com ações vale sobre os grupos e módulos do perfil.
+
+### Correções
+
+- **Permissões:** no perfil que tem um módulo inteiro e também uma tela desse módulo com ações marcadas (só Visualizar, por exemplo), agora valem as ações da tela. Antes o módulo liberava tudo e a restrição da tela não valia.
+- **Permissões:** um botão de salvar desenhado fora de um formulário agora some (ou fica cinza) para quem não pode Incluir nem Editar na tela. Antes ele aparecia para quem só podia visualizar.
+
+### Atenção
+
+- **Permissões:** a tela marcada no perfil passa a valer sobre o módulo: nela o perfil fica só com as ações marcadas, inclusive as ações próprias da tela. Confira os perfis antes de atualizar. Para liberar tudo numa tela, deixe-a sem ações marcadas no perfil.
+
 ## [5.279.1] — 2026-11-08
 
 ### Correções
