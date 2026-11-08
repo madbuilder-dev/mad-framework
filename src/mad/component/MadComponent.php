@@ -438,7 +438,8 @@ abstract class MadComponent
             }
 
             $method = $cleanParams['method'] ?? null;
-            if ($method && $method !== 'show' && is_callable([$this, $method])) {
+            if ($method && $method !== 'show' && is_callable([$this, $method])
+                && MadComponentHandler::isUrlAction(static::class, $method)) {
                 // "Salvar" pela URL da ação (`Mad.exec('Tela@onSave')`): a
                 // mesma decisão do canal reativo — com a tela montada, salvar
                 // sem registro aberto é incluir, com registro é editar. A

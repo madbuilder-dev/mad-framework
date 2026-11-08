@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.278.1] — 2026-11-08
+
+### Correções
+
+- **Rotas:** o endereço da tela só executa ações públicas. Antes, `/app/Tela/metodo` também rodava método protegido ou interno da tela, sem nenhum botão apontando para ele.
+
+### Atenção
+
+- **Rotas:** método `protected` ou `private` deixa de abrir pela URL e responde 404. Se algum link, botão ou integração chama esse método pelo endereço, declare-o como `public`.
+
 ## [5.278.0] — 2026-11-08
 
 ### Novidades

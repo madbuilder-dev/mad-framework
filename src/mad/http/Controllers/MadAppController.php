@@ -189,7 +189,7 @@ class MadAppController
         // Ação que a tela não tem: 404, nos dois canais (`?static=1` e fragmento).
         // Sem isto o show() não achava o método e desenhava a tela, e quem chamou
         // recebia 200 com HTML, como se a ação tivesse rodado.
-        if ($method !== null && !self::hasAction($class, $method)) {
+        if ($method !== null && !self::hasAction($class, $method, $request)) {
             return $this->actionNotFound($request);
         }
 
@@ -343,12 +343,10 @@ class MadAppController
         return MadRenderSignal::stamp(new Response($html, 200, $headers), $screen->renderFailure());
     }
 
-    /** A classe responde a este método? Mágicos (`__call`) decidem em runtime. */
-    private static function hasAction(string $class, string $method): bool
+    /** A tela responde a este método pela URL? A regra mora em {@see MadComponentHandler::isUrlAction()}. */
+    private static function hasAction(string $class, string $method, Request $request): bool
     {
-        return method_exists($class, $method)
-            || method_exists($class, '__call')
-            || method_exists($class, '__callStatic');
+        return MadComponentHandler::isUrlAction($class, $method, (string) $request->input('static') === '1');
     }
 
     /** Navegação direta: o 404 de sempre. Fragmento/AJAX: o corpo que o Mad.exec mostra. */

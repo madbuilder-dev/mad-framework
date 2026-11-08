@@ -36,6 +36,14 @@ use Mad\Registry\MadVarRegistry;
 class MadComponentHandler
 {
     /**
+     * Métodos declarados na base que continuam abrindo pela URL.
+     * `show` é o método padrão de {@see MadAction}; `onShow` é o alvo dos links
+     * `Tela::onShow` gravados em Blade (ex.: "Trocar unidade" do casco), e a base
+     * o declara vazio para a tela que não o sobrescreve abrir normalmente.
+     */
+    private const URL_BASE_METHODS = ['show', 'onShow'];
+
+    /**
      * Ponto de entrada HTTP.
      * Deve ser chamado antes de qualquer saída HTML.
      */
@@ -1159,10 +1167,58 @@ class MadComponentHandler
             // Mesma razão: `onRunRoutine` vem do trait Mad\Routine\RunsRoutines,
             // içado na base para toda tela ter o "Executar rotina". Só roda
             // rotina marcada para botão e passa pelo PermissionGate (Editar).
-            return self::_isDbBlocksAction($method) || $method === 'onRunRoutine';
+            return self::_isBaseAction($method);
         }
 
         return true;
+    }
+
+    /**
+     * O método pode ser chamado pelo endereço da tela (`/app/<Tela>/<método>`)?
+     *
+     * Regra única das duas portas: a do controller (antes de instanciar a tela)
+     * e a do {@see MadComponent::show()} (que recebe `method` também de quem não
+     * passa pelo controller, via `$_REQUEST`). Não é a regra do canal reativo:
+     * aqui `public static` e `public` com `_` no nome valem, porque a URL sempre
+     * os aceitou.
+     *
+     *  - nome que não existe na classe: decidem `__call`/`__callStatic`;
+     *  - método que existe e não é `public`: recusado, mesmo com `__call`;
+     *  - método declarado na própria {@see MadComponent}: recusado (como no canal
+     *    reativo), salvo {@see URL_BASE_METHODS} e as ações içadas para a base;
+     *  - `$staticRoute`: o pedido é da rota `?static=1`. Método `public static` da
+     *    base segue valendo ali — quem decide se é endpoint é o controller.
+     *
+     * O nome é comparado na grafia declarada: PHP não diferencia maiúsculas em
+     * nome de método, e `/app/Tela/SHOW` é o mesmo método que `show`.
+     */
+    public static function isUrlAction(string $class, string $method, bool $staticRoute = false): bool
+    {
+        if (!method_exists($class, $method)) {
+            return method_exists($class, '__call') || method_exists($class, '__callStatic');
+        }
+
+        $ref = new \ReflectionMethod($class, $method);
+        if (!$ref->isPublic()) {
+            return false;
+        }
+
+        if ($ref->getDeclaringClass()->getName() !== MadComponent::class) {
+            return true;
+        }
+
+        if ($staticRoute && $ref->isStatic()) {
+            return true;
+        }
+
+        return in_array($ref->getName(), self::URL_BASE_METHODS, true)
+            || self::_isBaseAction($ref->getName());
+    }
+
+    /** Ações içadas para a base que continuam sendo ações de tela (ver {@see _isAllowedMethod}). */
+    private static function _isBaseAction(string $method): bool
+    {
+        return self::_isDbBlocksAction($method) || $method === 'onRunRoutine';
     }
 
     /**
