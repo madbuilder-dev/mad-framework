@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.276.3] — 2026-11-08
+
+### Correções
+
+- **Tema:** no layout ERP, as cores do tema para a barra superior e o submenu lateral (fundo, texto, hover e item selecionado) não eram aplicadas. Agora valem no claro e no escuro. Republique o projeto para aplicar.
+
 ## [5.276.2] — 2026-11-08
 
 ### Correções
