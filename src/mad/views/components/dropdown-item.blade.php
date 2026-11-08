@@ -10,12 +10,19 @@
     // como o catálogo documenta) — antes o item saía sem texto (fw#319).
     $label    = is_string($label ?? null) ? $label : '';
     $_useLabel = $label !== '' && trim((string) ($slot ?? '')) === '';
+    // Link externo: `{campo}` vem do registro e `target` diz onde abrir.
+    $_linkAttrs = '';
+    if (is_string($href) && $href !== '') {
+        $_link      = \Mad\Ui\MadRecordLink::render($href, (string) ($target ?? ''), (string) $attrs);
+        $href       = $_link['href'];
+        $_linkAttrs = $_link['attrs'];
+    }
 @endphp
 @if($href)
 <a href="{{ $href }}"
    class="mad-dropdown-item{{ $variantClass }} {{ $class }}"
    @if($disabled) aria-disabled="true" style="opacity:.45;pointer-events:none;" @endif
-   {!! $attrs !!}>
+   {!! $_linkAttrs !!} {!! $attrs !!}>
     @if($icon)<i data-lucide="{{ $icon }}" style="width:14px;height:14px;flex-shrink:0;"></i>@endif
     @if($_useLabel){{ $label }}@else{!! $slot !!}@endif
 </a>

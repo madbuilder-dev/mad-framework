@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => ''])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => ''])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -223,6 +223,14 @@
         }
         $_extraAttrs .= ' ' . $_aName . '="' . htmlspecialchars($_aValue, ENT_QUOTES) . '"';
     }
+
+    // Link externo: `{campo}` vem do registro e `target` diz onde abrir.
+    $_linkAttrs = '';
+    if (is_string($href) && $href !== '') {
+        $_link      = \Mad\Ui\MadRecordLink::render($href, (string) $target, (string) $attrs);
+        $href       = $_link['href'];
+        $_linkAttrs = $_link['attrs'];
+    }
 @endphp
 {{-- Modo "ocultos": o botão da ação sem permissão simplesmente não vai pra tela. --}}
 @if($_permMode !== 'hide')
@@ -233,7 +241,7 @@
    @if($disabled) aria-disabled="true" tabindex="-1" @endif
    @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
    @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif
-   {!! $_extraAttrs !!} {!! $attrs !!}>
+   {!! $_linkAttrs !!} {!! $_extraAttrs !!} {!! $attrs !!}>
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>
     @elseif($icon)<i data-lucide="{{ $icon }}" style="{{ $iconStyle }}"></i>@endif
     @if($label !== ''){{ $label }}@endif

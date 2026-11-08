@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.279.0] — 2026-11-08
+
+### Novidades
+
+- **Botão:** o link externo agora aceita `{campo}` com os valores do registro, já codificados para URL, como em `href="https://www.google.com/maps/search/?api=1&query={lat},{lon}"`. E `target="_blank"` abre o link em outra aba. Vale também para `<mad-dropdown-item>`.
+
 ## [5.278.1] — 2026-11-08
 
 ### Correções

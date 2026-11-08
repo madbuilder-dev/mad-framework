@@ -3879,6 +3879,26 @@ const Mad = {
     },
 
     /**
+     * Preenche o `{campo}` do link externo com o que está nos campos do
+     * formulário agora. Campo que não está na tela usa o valor do servidor.
+     * Mesma codificação do `MadRecordLink::fill` do PHP.
+     */
+    _fillRecordLink(a) {
+        let known = {};
+        try { known = JSON.parse(a.dataset.madHrefVals || '{}'); } catch (_) { known = {}; }
+        const form = a.closest('form');
+        const valueOf = (name) => {
+            const field = form && form.elements.namedItem(name);
+            return field && field.value !== undefined ? field.value : known[name];
+        };
+        a.setAttribute('href', a.dataset.madHrefTpl.replace(/\{([A-Za-z_]\w*(?:->[A-Za-z_]\w*)*)\}/g, (_tok, name, at) => {
+            const value = String(valueOf(name) ?? '');
+            if (at === 0 && /^(?:https?:\/\/|mailto:|tel:|\/(?!\/))/i.test(value)) return value;
+            return encodeURIComponent(value).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+        }));
+    },
+
+    /**
      * Gate de confirmação para elemento SEM onclick próprio (submit, reset,
      * <a href>, data-mad-click). Cancela o evento, pergunta, e re-dispara o
      * clique original se confirmado — o flag no dataset evita o loop.
@@ -4776,6 +4796,12 @@ Mad._syncFrameless = function (scope) {
 
 window.addEventListener('mad:navigated', (e) => Mad._syncFrameless(e.detail && e.detail.el));
 window.addEventListener('mad:tab-activated', (e) => Mad._syncFrameless(e.detail && e.detail.pane));
+
+// Antes do navegador usar o link (clique, botão do meio e menu do botão direito).
+['click', 'auxclick', 'contextmenu'].forEach((type) => document.addEventListener(type, (e) => {
+    const link = e.target.closest && e.target.closest('a[data-mad-href-tpl]');
+    if (link) Mad._fillRecordLink(link);
+}, true));
 
 document.addEventListener('click', (e) => {
     const btn = e.target.closest && e.target.closest('[data-mad-frameless-toggle]');

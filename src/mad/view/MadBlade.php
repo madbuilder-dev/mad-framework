@@ -799,8 +799,13 @@ class MadBladeCompiler extends BladeCompiler
                     }
                 }
 
+                // target="_blank" no botão e no item de menu é o destino do link, não uma tela.
+                $_linkTarget = $key === 'target' && $m[1] !== ':'
+                    && in_array($tag, ['btn', 'dropdown-item'], true)
+                    && \Mad\Ui\MadRecordLink::isHtmlTarget($val);
+
                 // target="Class" ou navigate="Class" → delega ao MadAction (auto-detect wrapper + forward params)
-                if ($key === 'target' || $key === 'navigate') {
+                if (!$_linkTarget && ($key === 'target' || $key === 'navigate')) {
                     $_hasNav = true;
 
                     // ALVO DINÂMICO — :target="$expr" (bind) ou target="{{ $expr }}"
