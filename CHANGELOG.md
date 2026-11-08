@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.276.1] — 2026-11-08
+
+### Correções
+
+- **Permissões:** um perfil sem **Incluir** e sem **Editar** numa tela ainda conseguia salvar por fora do formulário, pela ação da tela chamada direto. Agora salvar segue a regra do perfil por qualquer caminho: cadastro novo pede **Incluir**, registro aberto pede **Editar**.
+- **Permissões:** o botão com `navigate` para uma tela de consulta (que não salva nada) ficava cinza com "Sem permissão para incluir" para quem só pode visualizar. Agora ele abre quando o perfil tem a tela.
+- **Agenda:** no celular, a palavra do contador no canto sumia quando era longa ("7" no lugar de "7 atendimentos"). Agora ela aparece abreviada com ponto ("atendimen.") e a frase inteira fica na dica.
+- **Agenda:** um atendimento curto (10 min) ficava coberto pelo atendimento seguinte, e um bloqueio curto (pausa de 10 min) cortava o rótulo. Agora os dois cartões ficam lado a lado com o nome inteiro, e o bloqueio mostra o rótulo numa linha só.
+- **Senha:** o botão da página de definir senha dizia "Enviar". Agora diz "Definir senha" para quem chega pelo convite e "Salvar nova senha" para quem pediu para trocar.
+
+### Atenção
+
+- **Permissões:** `@canAccess('Tela', 'onSave')` passa a esconder o botão de quem não pode incluir nem editar na tela. Para o botão **Novo**, use `@canAccess('Tela', 'insert')`. `#[MadPermission]` em cima do `onSave` não cria uma permissão própria; se o envio precisa de permissão à parte (emitir, registrar), use um método próprio no `<mad-form submit="...">`.
+
 ## [5.276.0] — 2026-11-07
 
 ### Novidades

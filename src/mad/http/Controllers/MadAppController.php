@@ -298,6 +298,17 @@ class MadAppController
             $html = ob_get_clean();
         }
 
+        // Ação recusada pela permissão do perfil depois de a tela montar
+        // ("Salvar" pela URL sem poder incluir/editar): a mesma recusa do
+        // canal reativo, em JSON, com a frase do que foi recusado.
+        if (($negada = $screen->deniedAction()) !== null) {
+            return response()->json(
+                MadForbidden::wirePayload($negada, PermissionGate::actionOwners($screen)),
+                403,
+                ['Cache-Control' => 'no-store, private']
+            );
+        }
+
         // Identidade da tela no fragmento: no modo web a URL amigável não
         // carrega a classe, e o <mad-tab-bar> / breadcrumb do casco precisam
         // saber QUAL programa veio (aba por tela, rótulo). Só metadado — o

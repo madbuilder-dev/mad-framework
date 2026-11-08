@@ -115,6 +115,7 @@
     border: 1px dashed var(--mad-text-muted); color: var(--mad-text-muted); font-size: 12px;
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--mad-text-muted) 14%, transparent) 0 6px, color-mix(in srgb, var(--mad-text-muted) 6%, transparent) 6px 12px);
 }
+.mad-ag-block.is-short { padding: 0 6px; font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
 .mad-ag-block--holiday { border-color: var(--mad-warning); color: var(--mad-warning-text, var(--mad-text)); background: repeating-linear-gradient(135deg, var(--mad-warning-subtle) 0 6px, transparent 6px 12px); }
 .mad-ag-ghost {
     position: absolute; left: 3px; right: 3px; z-index: 3; pointer-events: none; padding: 2px 8px; border-radius: var(--mad-radius-md, 8px);

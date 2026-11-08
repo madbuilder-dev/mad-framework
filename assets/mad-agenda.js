@@ -107,7 +107,11 @@
     }
 
     // Lanes: eventos que se sobrepõem dividem a largura da coluna.
-    function layout(items) {
+    // minDur: duração mínima (min) que o cartão OCUPA na tela. Um evento de 10 min
+    // desenha um cartão mais alto que os 10 min; sem isto o seguinte, que começa
+    // no fim dele, era posto na mesma faixa e o cobria.
+    function layout(items, minDur) {
+        minDur = minDur || 0;
         items.sort(function (a, b) { return a.s - b.s || b.e - a.e; });
         var cluster = [], clusterEnd = -1, lanesEnd = [], cid = 0;
         function flush() {
@@ -119,10 +123,11 @@
             if (it.s >= clusterEnd && cluster.length) flush();
             var lane = 0;
             while (lane < lanesEnd.length && lanesEnd[lane] > it.s) lane++;
-            lanesEnd[lane] = it.e;
+            var ve = Math.max(it.e, it.s + minDur);
+            lanesEnd[lane] = ve;
             it.lane = lane;
             cluster.push(it);
-            clusterEnd = Math.max(clusterEnd, it.e);
+            clusterEnd = Math.max(clusterEnd, ve);
         });
         flush();
         return items;
@@ -376,16 +381,24 @@
                     this._paintNow();
                 },
 
-                // Palavra do contador no canto (58px; 46 no celular): encolhe e, se ainda
-                // não couber inteira, sai do canto e fica na dica — nunca cortada no meio.
+                // Palavra do contador no canto (58px; 46 no celular): encolhe; se ainda
+                // não couber, vira abreviação com ponto ("atend.") e a frase inteira
+                // fica na dica — nunca cortada no meio. Só sai do canto se nem três
+                // letras couberem.
                 _fitCorner: function () {
                     var sm = this.$refs.stage.querySelector('.mad-ag-corner small');
                     if (!sm || sm.scrollWidth <= sm.clientWidth + 1) return;
                     sm.classList.add('is-tight');
                     if (sm.scrollWidth <= sm.clientWidth + 1) return;
-                    var corner = sm.parentNode;
-                    corner.setAttribute('title', corner.textContent.replace(/(\d)(\D)/, '$1 $2'));
+                    var corner = sm.parentNode, word = sm.textContent.trim();
+                    corner.setAttribute('title', corner.textContent.trim().replace(/(\d)\s*(\D)/, '$1 $2'));
                     corner.setAttribute('aria-label', corner.getAttribute('title'));
+                    var fits = function () { return sm.scrollWidth <= sm.clientWidth + 1; };
+                    for (var n = word.length - 1; n >= 3; n--) {
+                        sm.textContent = word.slice(0, n).replace(/[\s.,;:-]+$/, '') + '.';
+                        if (fits()) return;
+                    }
+                    sm.textContent = word;
                     sm.hidden = true;
                 },
 
@@ -520,13 +533,18 @@
                             var e = dateOf(b.end) > c.date ? DAY : minOf(b.end);
                             s = Math.max(s, min); e = Math.min(e, max);
                             if (e <= s) return;
-                            body += '<div class="mad-ag-block mad-ag-block--' + esc(b.kind) + '" data-ag-block style="top:' + ((s - min) / 60 * hp) + 'px;height:' + ((e - s) / 60 * hp) + 'px"><span>' + esc(b.label) + '</span></div>';
+                            var bh = (e - s) / 60 * hp;
+                            // Bloqueio curto (pausa de 10 min): rótulo numa linha só, do
+                            // tamanho do bloco, e o texto inteiro na dica.
+                            body += '<div class="mad-ag-block mad-ag-block--' + esc(b.kind) + (bh < 26 ? ' is-short' : '') + '" data-ag-block'
+                                + (b.label ? ' title="' + esc(b.label + ' · ' + hhmm(s) + '–' + hhmm(e)) + '"' : '')
+                                + ' style="top:' + ((s - min) / 60 * hp) + 'px;height:' + bh + 'px' + (bh < 26 ? ';line-height:' + Math.max(0, bh - 2) + 'px' : '') + '"><span>' + esc(b.label) + '</span></div>';
                         });
                         var items = c.events.map(function (e) {
                             var s = minOf(e.start), en = dateOf(e.end) === dateOf(e.start) ? minOf(e.end) : DAY;
                             return { ev: e, s: s, e: Math.max(en, s + 1) };
                         });
-                        body += self._colEvents(layout(items), ci, colW, min, hp, isWeek);
+                        body += self._colEvents(layout(items, 22 / hp * 60), ci, colW, min, hp, isWeek);
                         body += '</div>';
                     });
 
@@ -670,7 +688,14 @@
                         }).join('');
                         var sub = e.subtitle || '';
                         if (isWeek && res && !this.resource) sub = sub ? sub + ' · ' + res.title : res.title;
-                        html += '<div class="mad-ag-ev-top"><span class="mad-ag-ev-time">' + time + '</span>' + (badges ? '<span class="mad-ag-badges">' + badges + '</span>' : '') + '</div>'
+                        // Cartão baixo (evento curto) em faixa estreita: só a hora de início,
+                        // para o nome caber; o intervalo inteiro fica na dica.
+                        var tShown = time;
+                        if (h < 38 && ((this._usedColW || 160) / it.lanes - 6) < 200) {
+                            tShown = hhmm(it.s);
+                            html = html.replace('<div class="', '<div title="' + esc(aria) + '" class="');
+                        }
+                        html += '<div class="mad-ag-ev-top"><span class="mad-ag-ev-time">' + tShown + '</span>' + (badges ? '<span class="mad-ag-badges">' + badges + '</span>' : '') + '</div>'
                             + '<div class="mad-ag-ev-title">' + (e.alert ? '<span class="mad-ag-alert" title="' + esc(e.alert) + '">!</span>' : '')
                             + (e.avatar ? '<img class="mad-ag-ev-av" src="' + esc(e.avatar) + '" alt="" loading="lazy">' : '')
                             + '<span>' + esc(e.title) + '</span></div>'

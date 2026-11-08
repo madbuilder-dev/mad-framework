@@ -230,6 +230,12 @@ abstract class MadComponent
      */
     private bool $_responseOnly = false;
 
+    /**
+     * Chave da ação recusada pela fase contextual no {@see show()} ("insert",
+     * "edit") — o `MadAppController` responde 403 com ela. Null = nada recusado.
+     */
+    private ?string $_deniedAction = null;
+
     /** Título do <mad-page-header> desta tela, anotado durante o render (ver
      *  _notePageHeaderTitle). Não serializado: todo redesenho completo passa
      *  pelo cabeçalho de novo (a exportação da listagem o congela no exportMeta). */
@@ -433,6 +439,19 @@ abstract class MadComponent
 
             $method = $cleanParams['method'] ?? null;
             if ($method && $method !== 'show' && is_callable([$this, $method])) {
+                // "Salvar" pela URL da ação (`Mad.exec('Tela@onSave')`): a
+                // mesma decisão do canal reativo — com a tela montada, salvar
+                // sem registro aberto é incluir, com registro é editar. A
+                // porta de entrada só vê o nome do método e deixava passar.
+                if (in_array($method, \Mad\Security\ActionVocab::CONTEXTUAL, true)) {
+                    $negada = \Mad\Security\PermissionGate::deniedActionKey($this, $method);
+                    if ($negada !== null) {
+                        $this->_deniedAction = $negada;
+                        $this->_responseOnly = true;
+
+                        return;
+                    }
+                }
                 try {
                     $result = $this->_resolveAndCall($method, $cleanParams);
                 } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -507,6 +526,17 @@ abstract class MadComponent
     public function respondedWithoutScreen(): bool
     {
         return $this->_responseOnly;
+    }
+
+    /**
+     * A chave da ação que o show() recusou pela permissão do perfil ("insert",
+     * "edit"), ou null. Ver {@see show()}.
+     *
+     * @internal
+     */
+    public function deniedAction(): ?string
+    {
+        return $this->_deniedAction;
     }
 
     /**

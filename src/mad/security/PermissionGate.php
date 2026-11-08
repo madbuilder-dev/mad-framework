@@ -643,6 +643,14 @@ class PermissionGate
             if (self::deniedByOmission($acoes, $original, $method)) {
                 return false;
             }
+            // Salvar é incluir OU editar — qual dos dois só a fase contextual
+            // sabe. Mas o perfil que não pode NENHUM dos dois não salva, seja
+            // qual for o contexto: a porta já recusa aqui, e o pedido nem
+            // chega a montar a tela.
+            if (in_array($method, ActionVocab::CONTEXTUAL, true)
+                && self::deniedIn($acoes, 'insert') && self::deniedIn($acoes, 'edit')) {
+                return false;
+            }
         }
 
         return true;
@@ -931,7 +939,28 @@ class PermissionGate
             return null;
         }
 
-        return ['key' => ActionVocab::staticKey($action) ?? $action, 'class' => $class];
+        $key = ActionVocab::staticKey($action);
+        if ($key === null && in_array($action, ActionVocab::CONTEXTUAL, true)) {
+            // Salvar recusado na porta (o perfil não inclui nem edita): a
+            // frase fala de incluir ou de editar, pela mesma escada do
+            // `MadComponent::_recordId()` lida no estado cifrado.
+            $key = self::stateHasRecord((array) ($decoded['state'] ?? [])) ? 'edit' : 'insert';
+        }
+
+        return ['key' => $key ?? $action, 'class' => $class];
+    }
+
+    /** O estado da tela tem registro aberto (`registroId`/`recordId`/`id`)? */
+    private static function stateHasRecord(array $state): bool
+    {
+        foreach (['registroId', 'recordId', 'id'] as $prop) {
+            $v = $state[$prop] ?? null;
+            if ((is_int($v) || is_string($v)) && $v !== '' && $v !== 0 && $v !== '0') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

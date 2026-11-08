@@ -202,8 +202,8 @@ final class ActionGuard
 
     /**
      * Abrir esta tela sem método é abrir um cadastro em branco? Não para as
-     * bases que só se abrem ({@see OPEN_ONLY_BASES}) nem para a listagem pelo
-     * nome (`…List`, a convenção do gerador). Classe que não se resolve fica
+     * bases que só se abrem ({@see OPEN_ONLY_BASES}), nem para a listagem pelo
+     * nome (`…List`, a convenção do gerador), nem para a tela sem `onSave`. Classe que não se resolve fica
      * como formulário — o comportamento de antes.
      */
     private static function opensNewRecord(string $class): bool
@@ -232,6 +232,13 @@ final class ActionGuard
             if (is_a($fqcn, $somenteAbre, true)) {
                 return false;
             }
+        }
+
+        // Tela que não salva nada (consulta, mapa, painel escrito à mão): abrir
+        // é só ver. Pedir "incluir" deixava o botão cinza para quem só pode
+        // visualizar uma tela onde não há o que incluir.
+        if (!method_exists($fqcn, 'onSave') && !method_exists($fqcn, 'onSaveDraft')) {
+            return false;
         }
 
         return true;
