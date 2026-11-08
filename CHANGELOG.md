@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.276.0] — 2026-11-07
+
+### Novidades
+
+- **Agenda:** `event-label` troca a palavra do contador da `<mad-agenda>`: `event-label="atendimento|atendimentos"` mostra "15 atendimentos" no lugar de "15 eventos".
+
+### Melhorias
+
+- **Agenda:** a data e o recurso da barra usam o campo de data e o combo do framework, com o mesmo visual dos formulários, teclado e tema escuro.
+- **Agenda:** com vários horários ao mesmo tempo, os cartões estreitos mostram a hora, o primeiro nome e o status como bolinha. Quando nem isso cabe, aparece "+N", que abre a lista do horário. Nenhum nome ou selo sai cortado no meio.
+
 ## [5.275.0] — 2026-11-07
 
 ### Novidades

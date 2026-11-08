@@ -10,6 +10,8 @@
     $agViews  = $cfg['views'];
     $agI18n   = $cfg['i18n'];
     $agRes    = $payload['resources'] ?? [];
+    $agDateMask = \Mad\Support\DateMask::date();
+    $agDatePh   = strtr($agDateMask, ['y' => mad_t('mad.ui.year_letter')]);
 @endphp
 <div class="mad-agenda" data-mad-agenda="{{ $cfg['key'] }}" x-data='madAgenda({!! $agCfgJs !!})'
      :class="{ 'is-loading': loading, 'is-mobile': mobile }"
@@ -21,7 +23,17 @@
             <button type="button" class="mad-ag-btn mad-ag-icon" @click="prev()" :aria-label="navLabel(-1)" :title="navLabel(-1)">&#8249;</button>
             <button type="button" class="mad-ag-btn mad-ag-today" @click="today()">{{ $agI18n['today'] ?? 'Hoje' }}</button>
             <button type="button" class="mad-ag-btn mad-ag-icon" @click="next()" :aria-label="navLabel(1)" :title="navLabel(1)">&#8250;</button>
-            <input type="date" class="mad-ag-date" aria-label="{{ $agI18n['go_to_date'] ?? '' }}" :value="date" @change="goDate($event.target.value)">
+            {{-- Data: o mesmo seletor do <mad-date-field> (máscara do idioma, calendário do framework). --}}
+            <div class="mad-input-group mad-ag-datepick" style="position:relative;"
+                 x-data="madDatePicker({ displayMask: @js($agDateMask), databaseMask: 'yyyy-mm-dd', initialValue: @js($payload['date'] ?? ''), onCommit: (iso) => { if (iso && iso !== date) goDate(iso) } })"
+                 @keydown.escape="close()" @click.outside="close()">
+                <input type="text" class="mad-input mad-ag-date" autocomplete="off" inputmode="numeric"
+                       aria-label="{{ $agI18n['go_to_date'] ?? '' }}" placeholder="{{ $agDatePh }}">
+                <button type="button" class="mad-datepicker-btn" tabindex="-1" aria-hidden="true" @click="toggle()">
+                    <i data-lucide="calendar" style="width:14px;height:14px;"></i>
+                </button>
+                @include('components.partials.date-popup', ['withTime' => false, 'opens' => 'left'])
+            </div>
         </div>
         <h2 class="mad-ag-title" aria-live="polite" x-text="title"></h2>
         @if (count($agViews) > 1)
@@ -32,12 +44,12 @@
                 @endforeach
             </div>
         @endif
-        <select class="mad-ag-res" aria-label="{{ $agI18n['resources'] ?? '' }}"
-                x-show="data.resources.length > 1 && (view !== 'day' || mobile)" x-cloak
-                :value="resource" @change="setResource($event.target.value)">
-            <template x-if="view !== 'day'"><option value="">{{ $agI18n['all_resources'] ?? '' }}</option></template>
-            <template x-for="r in data.resources" :key="r.id"><option :value="r.id" x-text="r.title" :selected="r.id === resource"></option></template>
-        </select>
+        {{-- Recurso: <select> com data-mad-select vira o combo do framework (mesmo do <mad-select-field>).
+             As opções são escritas pelo madAgenda (_syncResSelect) a cada carga. --}}
+        <div class="mad-ag-res" x-show="data.resources.length > 1 && (view !== 'day' || mobile)" x-cloak>
+            <select data-mad-select data-mad-nosearch data-placeholder="{{ $agI18n['all_resources'] ?? '' }}" x-ref="resSelect" aria-label="{{ $agI18n['resources'] ?? '' }}"
+                    @change="setResource($event.target.value)"></select>
+        </div>
     </div>
 
     @if ($toolbarHtml !== '')

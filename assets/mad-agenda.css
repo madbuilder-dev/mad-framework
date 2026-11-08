@@ -24,16 +24,19 @@
 /* ── Barra ───────────────────────────────────────────────────────────── */
 .mad-ag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .mad-ag-nav { display: flex; align-items: center; gap: 6px; }
-.mad-ag-btn, .mad-ag-date, .mad-ag-res {
+.mad-ag-btn {
     height: 36px; border: 1px solid var(--ag-line-strong); background: var(--ag-bg); color: var(--mad-text);
     border-radius: var(--mad-radius-md, 8px); font: inherit; font-size: 14px; cursor: pointer;
 }
 .mad-ag-icon { width: 36px; font-size: 20px; line-height: 1; padding: 0; }
 .mad-ag-today { padding: 0 14px; font-weight: 600; }
-.mad-ag-date { padding: 0 8px; }
-.mad-ag-res { padding: 0 10px; min-width: 160px; }
+/* data e recurso: componentes do framework (madDatePicker / combo data-mad-select) */
+.mad-ag-datepick { width: 150px; flex: none; }
+.mad-ag-datepick .mad-input { height: 36px; }
+.mad-ag-res { width: 190px; flex: none; }
+.mad-ag-res .mad-sel { width: 100%; }
 .mad-ag-btn:hover { border-color: var(--mad-primary); color: var(--mad-primary); }
-.mad-ag-btn:focus-visible, .mad-ag-date:focus-visible, .mad-ag-res:focus-visible, .mad-ag-view:focus-visible,
+.mad-ag-btn:focus-visible, .mad-ag-view:focus-visible, .mad-ag-more:focus-visible,
 .mad-ag-ev:focus-visible, .mad-ag-litem:focus-visible, .mad-ag-mday:focus-visible, .mad-ag-dayhead:focus-visible, .mad-ag-lhead:focus-visible {
     outline: 2px solid var(--mad-ring, var(--mad-primary)); outline-offset: 2px;
 }
@@ -64,6 +67,8 @@
     font-size: 11px; color: var(--mad-text-muted);
 }
 .mad-ag-corner strong { font-size: 18px; line-height: 1; color: var(--mad-text); }
+.mad-ag-corner small { max-width: 100%; white-space: nowrap; overflow: hidden; }
+.mad-ag-corner small.is-tight { font-size: 9px; letter-spacing: -.02em; }
 .mad-ag-colhead {
     position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px 12px;
     border: 0; border-left: 1px solid var(--ag-line); background: transparent; color: inherit; font: inherit; text-align: left;
@@ -165,6 +170,42 @@
 .mad-ag-ev.is-short .mad-ag-ev-title { font-size: 12px; }
 .mad-ag-ev.is-medium .mad-ag-ev-sub, .mad-ag-ev.is-medium .mad-ag-ev-st { display: none; }
 
+/* cartão estreito (vários sobrepostos): hora + 1ª palavra inteira, status em bolinha */
+.mad-ag-ev.is-compact { padding: 3px 4px 3px 6px; gap: 0; border-left-width: 3px; }
+.mad-ag-ev.is-compact .mad-ag-ev-top { justify-content: flex-start; gap: 4px; }
+.mad-ag-ev.is-compact .mad-ag-ev-time { font-size: 10.5px; }
+.mad-ag-ev.is-compact .mad-ag-ev-title { font-size: 11.5px; gap: 2px; }
+.mad-ag-ev.is-compact .mad-ag-ev-title > span:last-child { text-overflow: clip; }
+.mad-ag-ev.is-compact .mad-ag-alert { width: 14px; height: 14px; font-size: 10px; }
+.mad-ag-ev.is-compact.is-short { flex-direction: column; align-items: stretch; }
+.mad-ag-ev.is-compact.is-short .mad-ag-ev-title { display: none; }
+.mad-ag-dot {
+    flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: auto;
+    background: var(--mad-text-muted); box-shadow: 0 0 0 2px var(--ag-bg);
+}
+.mad-ag-dot.tone-success { background: var(--mad-success); }
+.mad-ag-dot.tone-warning { background: var(--mad-warning); }
+.mad-ag-dot.tone-danger { background: var(--mad-danger); }
+.mad-ag-dot.tone-info { background: var(--mad-info); }
+.mad-ag-dot.tone-primary { background: var(--mad-primary); }
+.mad-ag-dot.tone-muted, .mad-ag-dot.tone-neutral { background: var(--ag-line-strong); }
+
+/* "+N": grupo de sobrepostos que não cabe na coluna */
+.mad-ag-more {
+    position: absolute; z-index: 3; display: grid; place-items: center; padding: 0;
+    border: 1px dashed var(--ag-line-strong); border-radius: var(--mad-radius-md, 10px);
+    background: var(--mad-bg-muted, var(--ag-bg)); color: var(--mad-text); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.mad-ag-more:hover { border-color: var(--mad-primary); color: var(--mad-primary); }
+.mad-ag-pop {
+    position: absolute; z-index: 20; width: 280px; max-width: calc(100% - 8px); max-height: 320px; overflow: auto;
+    background: var(--ag-bg); color: var(--mad-text); border: 1px solid var(--ag-line-strong);
+    border-radius: var(--mad-radius-lg, 12px); box-shadow: var(--mad-shadow-xl, 0 16px 36px -10px rgba(0,0,0,.35));
+}
+.mad-ag-pop-head { padding: 8px 12px; font-size: 12px; font-weight: 700; color: var(--mad-text-muted); border-bottom: 1px solid var(--ag-line); }
+.mad-ag-pop .mad-ag-litem { cursor: pointer; }
+.mad-ag-pop .mad-ag-litem:focus-visible { outline: 2px solid var(--mad-ring, var(--mad-primary)); outline-offset: -2px; }
+
 /* tons (selo de status e badges) */
 .tone-success.mad-ag-ev-st, .mad-ag-badge.tone-success { background: var(--mad-success-subtle); color: var(--mad-success); }
 .tone-warning.mad-ag-ev-st, .mad-ag-badge.tone-warning { background: var(--mad-warning-subtle); color: var(--mad-warning-text, var(--mad-warning)); }
@@ -230,10 +271,10 @@
     .mad-ag-bar { gap: 8px; }
     .mad-ag-title { order: -1; flex-basis: 100%; }
     .mad-ag-nav { flex: 1 1 auto; }
-    .mad-ag-date { flex: 1 1 auto; min-width: 0; }
+    .mad-ag-datepick { flex: 1 1 auto; width: auto; min-width: 0; }
     .mad-ag-views { flex: 1 1 auto; }
     .mad-ag-view { flex: 1 1 0; padding: 0 6px; }
-    .mad-ag-res { flex: 1 1 100%; min-width: 0; }
+    .mad-ag-res { flex: 1 1 100%; width: auto; min-width: 0; }
     .mad-ag-head, .mad-ag-body,
     .mad-ag-scroll.is-week .mad-ag-head, .mad-ag-scroll.is-week .mad-ag-body {
         grid-template-columns: 46px repeat(var(--ag-cols), minmax(0, 1fr)); min-width: 0;

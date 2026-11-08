@@ -74,6 +74,7 @@ class MadAgendaCompiler
         'locked-statuses'         => 'lockedStatuses',
         'occupancy-ignore'        => 'occupancyIgnore',
         'empty-text'              => 'emptyText',
+        'event-label'             => 'eventLabel',
     ];
 
     private const INT_PROPS = [

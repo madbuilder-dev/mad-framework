@@ -103,6 +103,8 @@ class MadAgenda extends MadComponent
     protected string $lockedStatuses = '';
     protected string $occupancyIgnore = self::DEFAULT_OCC_IGNORE;
     protected string $emptyText = '';
+    /** Palavra do contador: 'atendimento|atendimentos' (singular|plural). Vazio = "evento(s)" do idioma. */
+    protected string $eventLabel = '';
     protected int $slotMinutes = 15;
     protected int $hourHeight = 64;
     protected int $weekStart = 1;
@@ -326,7 +328,7 @@ class MadAgenda extends MadComponent
         'resourceOrder', 'businessHours', 'onMove', 'onResize', 'onSlotClick', 'onEventClick',
         'onRangeChange', 'slotClickTarget', 'eventClickTarget', 'defaultView', 'views', 'date',
         'timeRange', 'height', 'statusLabels', 'statusTones', 'lockedStatuses', 'occupancyIgnore',
-        'emptyText', 'eventTemplate', 'toolbar',
+        'emptyText', 'eventLabel', 'eventTemplate', 'toolbar',
     ];
 
     private const CONFIG_KEYS = [
@@ -337,7 +339,7 @@ class MadAgenda extends MadComponent
         'resourceWhereClosure', 'businessHours', 'onMove', 'onResize', 'onSlotClick', 'onEventClick',
         'onRangeChange', 'slotClickTarget', 'eventClickTarget', 'defaultView', 'views', 'date',
         'timeRange', 'height', 'statusLabels', 'statusTones', 'lockedStatuses', 'occupancyIgnore',
-        'emptyText', 'slotMinutes', 'hourHeight', 'weekStart', 'autoRefresh', 'editable',
+        'emptyText', 'eventLabel', 'slotMinutes', 'hourHeight', 'weekStart', 'autoRefresh', 'editable',
         'showOccupancy', 'nowLine', 'eventTemplate', 'toolbar',
     ];
 
@@ -1116,8 +1118,30 @@ class MadAgenda extends MadComponent
             'slotTarget'   => $slotNav,
             'eventTarget'  => $eventNav,
             'emptyText'    => $this->emptyText,
+            'eventLabel'   => self::_eventLabel($this->eventLabel),
             'i18n'         => MadLang::group('mad.agenda'),
         ];
+    }
+
+    /**
+     * `event-label="atendimento|atendimentos"` → ['atendimento', 'atendimentos'].
+     * Uma palavra só vale para os dois. Vazio = null (o cliente usa mad.agenda.event/events).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    public static function _eventLabel(string $raw): ?array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+        $parts = array_map(static fn ($p) => mb_substr(trim(strip_tags($p)), 0, 40), explode('|', $raw, 2));
+        $one = $parts[0];
+        $many = ($parts[1] ?? '') !== '' ? $parts[1] : $one;
+        if ($one === '') {
+            $one = $many;
+        }
+        return $one === '' ? null : [$one, $many];
     }
 
     private function _renderToolbar(): string
