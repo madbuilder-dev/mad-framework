@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.276.4] — 2026-11-08
+
+### Correções
+
+- **Tema:** no layout ERP com cor própria de área de trabalho, a área abaixo do conteúdo em página curta ficava preta no modo escuro. Agora usa a cor escolhida. Republique o projeto para aplicar.
+
 ## [5.276.3] — 2026-11-08
 
 ### Correções
