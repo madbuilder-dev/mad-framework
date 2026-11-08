@@ -136,6 +136,9 @@ return [
         'packages/mad-framework/assets/mad-orgchart.css'      => 'public/lib/mad/mad-orgchart.css',
         'packages/mad-framework/assets/mad-pdv.js'            => 'public/lib/mad/mad-pdv.js',
         'packages/mad-framework/assets/mad-pdv.css'           => 'public/lib/mad/mad-pdv.css',
+        // <mad-agenda>: agenda por recurso (Alpine), carregada sob demanda.
+        'packages/mad-framework/assets/mad-agenda.js'         => 'public/lib/mad/mad-agenda.js',
+        'packages/mad-framework/assets/mad-agenda.css'        => 'public/lib/mad/mad-agenda.css',
         // MadMap (<mad-map>, <mad-map-field>): o JS carrega o Leaflet sob demanda
         // de lib/mad/leaflet/ — sem CDN em runtime.
         'packages/mad-framework/assets/mad-map.js'            => 'public/lib/mad/mad-map.js',

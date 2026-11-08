@@ -134,6 +134,13 @@ class MadBladeCompiler extends BladeCompiler
             $value = \Mad\Pdv\MadPdvCompiler::compile($value);
         }
 
+        // 1.115. Preprocessa <mad-agenda>/<mad-agenda-event|toolbar> (agenda
+        //        com uma coluna por recurso, Alpine). Lookahead nas regex
+        //        evita casar as sub-tags na tag raiz.
+        if (strpos($value, '<mad-agenda') !== false) {
+            $value = \Mad\Agenda\MadAgendaCompiler::compile($value);
+        }
+
         // 1.12. Desce o `submit` do <mad-form> para os <mad-btn type="submit">
         //       dentro dele, como perm-action. O botão "Salvar" é o único que
         //       não sabe o que faz: quem sabe é o formulário em volta, e no

@@ -125,6 +125,7 @@ final class ActionGuard
         'Mad\\Calendar\\MadCalendarComponent',
         'Mad\\Calendar\\MadGanttComponent',
         'Mad\\OrgChart\\MadOrgChart',
+        'Mad\\Agenda\\MadAgenda',
         'Mad\\Sheet\\MadSheet',
         'Mad\\Pdv\\MadPdvComponent',
         'Mad\\Reconcile\\MadReconcile',

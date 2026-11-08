@@ -67,6 +67,8 @@ final class ActionVocab
             'blockUpdate',
             'blockEdit',
             'onEventUpdate',       // agenda
+            'onAgendaMove',        // <mad-agenda>: arrastar evento
+            'onAgendaResize',      // <mad-agenda>: esticar evento
             'onTaskUpdate',        // kanban
             'onCardMove',          // kanban
             'onStageMove',         // kanban: reordenar colunas
@@ -122,6 +124,8 @@ final class ActionVocab
         'onMadGridTotals',
         // A próxima janela do relatório grande, pedida ao rolar (MadGridWindow).
         'onGridWindow',
+        // <mad-agenda>: dados de outro dia/semana/mês (navegação).
+        'onAgendaLoad',
     ];
 
     /** Prefixo dos combos dependentes (`onChangeCidade`, `onChangeEstadoId`…). */

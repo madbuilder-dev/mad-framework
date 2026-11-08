@@ -778,8 +778,30 @@ const Mad = {
     // resto em segundo plano, para HTML que entra por outro caminho.
     _lazyState: null,
 
-    _loadLazy(i) {
+    // Componentes do pacote que o casco de um app ANTIGO não registra (o
+    // libraries.blade.php é do app e não vem no `composer update`): entram
+    // na lista com a versão das URLs que o casco já publica.
+    _LAZY_BUILTINS: [
+        { test: ['madAgenda', 'mad-agenda'], css: ['lib/mad/mad-agenda.css'], js: ['lib/mad/mad-agenda.js'] },
+    ],
+
+    _lazyList() {
         const list = window.MadLazyAssets;
+        if (!Array.isArray(list)) return null;
+        if (!list.__madBuiltins) {
+            const ver = (JSON.stringify(list).match(/fwver=([^"&\\]+)/) || [])[1] || '';
+            const q = (u) => (ver ? u + '?fwver=' + ver : u);
+            this._LAZY_BUILTINS.forEach((b) => {
+                if (list.some((e) => (e.test || []).indexOf(b.test[0]) !== -1)) return;
+                list.push({ test: b.test.slice(), css: b.css.map(q), js: b.js.map(q) });
+            });
+            Object.defineProperty(list, '__madBuiltins', { value: true });
+        }
+        return list;
+    },
+
+    _loadLazy(i) {
+        const list = this._lazyList();
         if (!Array.isArray(list) || !list[i]) return Promise.resolve();
         this._lazyState = this._lazyState || {};
         if (this._lazyState[i]) return this._lazyState[i];
@@ -811,7 +833,7 @@ const Mad = {
     },
 
     ensureAssets(html) {
-        const list = window.MadLazyAssets;
+        const list = this._lazyList();
         if (!Array.isArray(list) || typeof html !== 'string' || !html) return Promise.resolve();
         const wait = [];
         list.forEach((entry, i) => {
@@ -821,7 +843,7 @@ const Mad = {
     },
 
     loadAllLazyAssets() {
-        const list = window.MadLazyAssets;
+        const list = this._lazyList();
         if (!Array.isArray(list)) return Promise.resolve();
         return Promise.all(list.map((_, i) => this._loadLazy(i)));
     },

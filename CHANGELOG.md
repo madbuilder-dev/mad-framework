@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.275.0] — 2026-11-07
+
+### Novidades
+
+- **Agenda:** nova tag `<mad-agenda>`: grade de horários com uma coluna por profissional, sala ou recurso, visões Dia, Semana e Mês, cartões com cor, status e etiquetas, linha do agora, expediente e bloqueios sombreados e % de ocupação de cada recurso.
+- **Agenda:** arrastar para remarcar e esticar pela borda, com a tela conferindo no servidor (`on-move`, `on-resize`). Se a tela recusar, o horário volta ao lugar e aparece o motivo.
+- **Agenda:** os dados vêm de um método da tela (`source-method`) ou direto do model (`model`, `resource-model` e campos); clique num horário livre (`on-slot-click`) ou no evento (`on-event-click`) chama a tela. No celular mostra um recurso por vez, sem rolagem para o lado.
+
 ## [5.274.0] — 2026-11-06
 
 ### Novidades

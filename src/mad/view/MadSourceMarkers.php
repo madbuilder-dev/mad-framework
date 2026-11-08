@@ -34,7 +34,7 @@ final class MadSourceMarkers
         // grid e parentes do MadGridCompiler: colunas/ações viram config PHP
         'grid', 'seek', 'field-list', 'detail-form', 'checklist-field', 'dbchecklist-field',
         // precompilers de tela inteira: sub-tags viram config do renderInline
-        'kanban', 'calendar', 'gantt', 'sheet', 'pdv', 'reconcile', 'org-chart',
+        'kanban', 'calendar', 'gantt', 'sheet', 'pdv', 'reconcile', 'org-chart', 'agenda',
         // blocos de filtro: o miolo vai em base64 e é re-renderizado sem os comentários
         'dash-filters', 'grid-filters', 'kanban-filters', 'calendar-filters', 'gantt-filters',
         // documento: colunas da tabela viram :columns
