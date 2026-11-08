@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.277.1] — 2026-11-08
+
+### Correções
+
+- **App gerado:** na Central de Comando, aplicar os arquivos de **Código Fonte** falhava com "Itens não encontrados na cache" depois de atualizar o status ou abrir a tela em outra aba. Agora funciona de primeira.
+
 ## [5.277.0] — 2026-11-08
 
 ### Novidades
