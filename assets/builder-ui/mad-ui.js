@@ -11200,6 +11200,32 @@ document.addEventListener('alpine:init', () => {
             return neg ? -v : v;
         }
 
+        // Número colado, em qualquer escrita ("1.234,56", "1,234.56", "1234.5",
+        // "R$ 12,50"). Havendo os dois separadores, o último é o decimal. Com um
+        // só, ele é decimal, a não ser que repita ou seja o de milhar do idioma
+        // seguido de 3 dígitos. Sem dígito nenhum, null.
+        function parsePasted(text) {
+            var s = String(text == null ? '' : text);
+            var neg = s.indexOf('-') >= 0;
+            s = s.replace(/[^\d.,]/g, '');
+            if (!/\d/.test(s)) return null;
+            var lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
+            var dec = -1;
+            if (lastDot >= 0 && lastComma >= 0) {
+                dec = Math.max(lastDot, lastComma);
+            } else if (lastDot >= 0 || lastComma >= 0) {
+                var pos = Math.max(lastDot, lastComma);
+                var sep = s.charAt(pos);
+                var repeated = s.indexOf(sep) !== pos;
+                var groupOfThousand = sep === thousandSep && s.length - pos - 1 === 3;
+                if (!repeated && !groupOfThousand) dec = pos;
+            }
+            var intPart = (dec >= 0 ? s.slice(0, dec) : s).replace(/\D/g, '');
+            var fracPart = dec >= 0 ? s.slice(dec + 1).replace(/\D/g, '') : '';
+            var v = parseFloat((intPart || '0') + '.' + (fracPart || '0')) || 0;
+            return neg ? -v : v;
+        }
+
         // Vazio é estado próprio (fw#201): rawValue '' e display '' (o
         // placeholder "0,00" aparece), o hidden posta '' e o servidor aplica o
         // `empty-as`. Antes o vazio virava 0: o campo abria "0,00" e apagar
@@ -11298,7 +11324,9 @@ document.addEventListener('alpine:init', () => {
                     // Modo right — calculadora reverse-fill (default)
                     var raw, neg = false;
                     if (allowNeg) {
-                        neg = val.indexOf('-') >= 0;
+                        // O texto já traz o "-" do valor: um segundo "-" digitado
+                        // faz par com ele e desliga o sinal.
+                        neg = (val.match(/-/g) || []).length % 2 === 1;
                         raw = val.replace(/[^\d]/g, '');
                     } else {
                         raw = val.replace(/\D/g, '');
@@ -11309,12 +11337,15 @@ document.addEventListener('alpine:init', () => {
                     var deleting = String(e.inputType || '').indexOf('delete') === 0;
                     if (raw === '' || (deleting && intV === 0)) {
                         this._setBlank();
-                        e.target.value = '';
+                        // O "-" digitado antes do número fica esperando os dígitos.
+                        if (neg && !deleting) this.display = '-';
+                        e.target.value = this.display;
                         return;
                     }
                     if (neg) intV = -intV;
                     this._intVal  = intV;
-                    this.display  = fmtFromInt(this._intVal);
+                    // -0 não existe: sem o "-" na tela, o próximo dígito perderia o sinal.
+                    this.display  = (neg && intV === 0 ? '-' : '') + fmtFromInt(this._intVal);
                     e.target.value = this.display;
                     this.rawValue = clamp(this._intVal / Math.pow(10, decimals));
                 }
@@ -11333,6 +11364,20 @@ document.addEventListener('alpine:init', () => {
                 if (el.selectionStart !== el.selectionEnd) return;
                 var len = el.value.length;
                 if (el.selectionEnd !== len) el.setSelectionRange(len, len);
+            },
+
+            // Calculadora: colar é um VALOR pronto, não dígitos para empurrar.
+            // Sem isto, "12,5" colado virava 1,25 e "1.234" virava 12,34.
+            _onPaste(e) {
+                if (fillDir !== 'right') return;
+                e.preventDefault();
+                var v = parsePasted((e.clipboardData || window.clipboardData).getData('text'));
+                if (v === null) return;
+                if (v < 0 && !allowNeg) {
+                    _madNoNegativeWarn(e.target);
+                    v = -v;
+                }
+                this.setValue(Number(v.toFixed(decimals)));
             },
 
             _onBlur() {

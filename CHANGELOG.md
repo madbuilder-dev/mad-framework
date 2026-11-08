@@ -12,11 +12,22 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.278.0] — 2026-11-08
+
+### Novidades
+
+- **Campos:** o campo numérico (`<mad-numeric-field>`) ganha `fill-direction="right"`: a vírgula aparece enquanto digita, como na edição inline (12345 vira 123,45). Sem a opção, nada muda: quem digita 10 continua gravando 10,00.
+
+### Correções
+
+- **Campos:** no campo de moeda em modo Direita, colar um valor empurrava os dígitos: 12,5 virava 1,25. Agora o valor colado entra como está. Também dá para tirar o sinal de negativo digitando o `-` de novo.
+
 ## [5.277.1] — 2026-11-08
 
 ### Correções
 
 - **App gerado:** na Central de Comando, aplicar os arquivos de **Código Fonte** falhava com "Itens não encontrados na cache" depois de atualizar o status ou abrir a tela em outra aba. Agora funciona de primeira.
+
 
 ## [5.277.0] — 2026-11-08
 

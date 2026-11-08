@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => null,'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => null,'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'fillDirection' => '', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -21,11 +21,22 @@
     // `align` alinha o valor digitado (default: esquerda). Valor fora da lista é ignorado.
     $alignCls  = in_array($align, ['center', 'right'], true) ? ' mad-text-' . $align : '';
 
+    // `fill-direction="right"`: máscara durante a digitação, como a edição
+    // inline ("12345" = 123,45; fórum #255). Usa o madMoneyField, sem símbolo.
+    // Sem a prop (ou "left"), o campo fica como sempre foi: digita o número e
+    // formata ao sair ("10" = 10,00). Trocar o padrão gravaria 0,10 no lugar
+    // de 10,00 em todo app publicado.
+    $fillRight = strtolower((string)$fillDirection) === 'right';
+    // Sem a máscara o campo aceita negativo, a não ser que o `min` proíba.
+    $allowNegative = !($min !== '' && $min !== null && (float)$min >= 0);
+
     $alpineCfg = json_encode(array_filter([
         'decimals' => $decimals,
         'value'    => $rawValue,
         'min'      => $min !== '' ? (float)$min : null,
         'max'      => $max !== '' ? (float)$max : null,
+        'fillDirection' => $fillRight ? 'right' : null,
+        'allowNegative' => $fillRight ? $allowNegative : null,
     ], fn($v) => $v !== null));
 
     \Mad\Form\MadFormRegistry::register($name, 'numeric', [
@@ -38,7 +49,7 @@
     ]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
-<div class="mad-field" x-data="madNumericField({{ $alpineCfg }})"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+<div class="mad-field" x-data="{{ $fillRight ? 'madMoneyField' : 'madNumericField' }}({{ $alpineCfg }})"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
     @endif
@@ -49,12 +60,21 @@
         <input
             id="{{ $id }}"
             type="text"
-            inputmode="decimal"
+            inputmode="{{ $fillRight ? ($allowNegative ? 'text' : 'numeric') : 'decimal' }}"
             class="mad-input{{ $alignCls }}{{ $hasError ? ' mad-input-error' : '' }}"
             placeholder="{{ $placeholder }}"
             x-ref="input"
+            @if($fillRight)
+            :value="display"
+            @input="_onInput($event)"
+            @keydown="_onKeydown($event)"
+            @paste="_onPaste($event)"
+            @blur="_onBlur()"
+            @focus="madSelectOnFocus($event)"
+            @else
             @focus="onFocus($event)"
             @blur="onBlur($event)"
+            @endif
             @keydown.enter="$event.target.blur()"
             @if($required) required @endif
             @if($disabled) disabled @endif

@@ -84,6 +84,7 @@
             :value="display"
             @input="_onInput($event)"
             @keydown="_onKeydown($event)"
+            @paste="_onPaste($event)"
             @blur="_onBlur()"
             @focus="madSelectOnFocus($event)"
             @keydown.enter="$event.target.blur()"
