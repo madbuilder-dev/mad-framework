@@ -69,6 +69,12 @@
         root.Mad.go(target['class'], target.method || 'show', params, url || undefined);
     }
 
+    // Mad.go ignora params quando recebe URL pronta: o horário vai na query.
+    function withQuery(target, params) {
+        if (!target || !target.url) return target;
+        return Object.assign({}, target, { url: target.url + (target.url.indexOf('?') < 0 ? '?' : '&') + new URLSearchParams(params).toString() });
+    }
+
     // Faixas de expediente → minutos fechados dentro de [min, max].
     function closedRanges(open, min, max) {
         if (!open) return [];
@@ -150,6 +156,7 @@
                 loading: false,
                 mobile: false,
                 title: '',
+                countOut: '',
                 _loadedAt: Date.now(),
                 _drag: null,
                 _seq: 0,
@@ -378,28 +385,51 @@
                     this.closeMore();
                     stage.innerHTML = html;
                     this._fitCorner();
+                    this._fitCards();
                     this._paintNow();
                 },
 
-                // Palavra do contador no canto (58px; 46 no celular): encolhe; se ainda
-                // não couber, vira abreviação com ponto ("atend.") e a frase inteira
-                // fica na dica — nunca cortada no meio. Só sai do canto se nem três
-                // letras couberem.
+                // Palavra do contador no canto (58px; 46 no celular): encolhe e, se ainda
+                // não couber inteira, o contador sai do canto e vai por extenso ao lado do
+                // título da barra — palavra nunca cortada nem abreviada.
                 _fitCorner: function () {
+                    this.countOut = '';
                     var sm = this.$refs.stage.querySelector('.mad-ag-corner small');
                     if (!sm || sm.scrollWidth <= sm.clientWidth + 1) return;
                     sm.classList.add('is-tight');
                     if (sm.scrollWidth <= sm.clientWidth + 1) return;
-                    var corner = sm.parentNode, word = sm.textContent.trim();
-                    corner.setAttribute('title', corner.textContent.trim().replace(/(\d)\s*(\D)/, '$1 $2'));
-                    corner.setAttribute('aria-label', corner.getAttribute('title'));
-                    var fits = function () { return sm.scrollWidth <= sm.clientWidth + 1; };
-                    for (var n = word.length - 1; n >= 3; n--) {
-                        sm.textContent = word.slice(0, n).replace(/[\s.,;:-]+$/, '') + '.';
-                        if (fits()) return;
-                    }
-                    sm.textContent = word;
-                    sm.hidden = true;
+                    var corner = sm.parentNode, n = corner.querySelector('strong');
+                    this.countOut = (n ? n.textContent.trim() + ' ' : '') + sm.textContent.trim();
+                    corner.innerHTML = '';
+                },
+
+                // Selo e etiquetas do cartão, pelo espaço REAL (depois de desenhar): selo na
+                // linha da hora; não coube, numa linha própria embaixo; sem altura para isso,
+                // bolinha de cor. Etiqueta que não cabe inteira sai e fica na dica. Nada fica
+                // por cima do texto nem cortado no meio.
+                _fitCards: function () {
+                    this.$refs.stage.querySelectorAll('.mad-ag-ev:not(.is-compact)').forEach(function (card) {
+                        var top = card.querySelector(':scope > .mad-ag-ev-top');
+                        if (!top) return;
+                        var st = top.querySelector('.mad-ag-ev-st'), dot = top.querySelector('.mad-ag-dot');
+                        var short = card.classList.contains('is-short'), fora = [];
+                        var over = function () { return top.scrollWidth > top.clientWidth + 1; };
+                        if (short) {
+                            if (dot) dot.classList.remove('is-off');
+                        } else if (st && over()) {
+                            st.classList.add('is-foot');
+                            card.appendChild(st);
+                            if (card.scrollHeight > card.clientHeight + 1) {
+                                st.remove();
+                                if (dot) dot.classList.remove('is-off');
+                            }
+                        }
+                        var bs = top.querySelectorAll('.mad-ag-badge');
+                        for (var i = bs.length - 1; i >= 0 && over(); i--) { fora.unshift(bs[i].textContent); bs[i].remove(); }
+                        if (fora.length || (dot && !dot.classList.contains('is-off')) || card.querySelector('.mad-ag-ev-sub, .mad-ag-ev-title > span:last-child') && Array.prototype.some.call(card.querySelectorAll('.mad-ag-ev-sub, .mad-ag-ev-title > span:last-child'), function (t) { return t.scrollWidth > t.clientWidth + 1; })) {
+                            card.setAttribute('title', card.getAttribute('aria-label') + (fora.length ? ' · ' + fora.join(' · ') : ''));
+                        }
+                    });
                 },
 
                 _resById: function () {
@@ -548,7 +578,11 @@
                         body += '</div>';
                     });
 
-                    var style = '--ag-cols:' + cols.length + ';--ag-hour:' + hp + 'px';
+                    // Linhas da grade pelo passo do encaixe (slot-minutes). Passo que daria
+                    // linhas a menos de 8px (5 min) dobra, para a grade não virar borrão.
+                    var lineStep = cfg.slot || 15;
+                    while (lineStep / 60 * hp < 8) lineStep *= 2;
+                    var style = '--ag-cols:' + cols.length + ';--ag-hour:' + hp + 'px;--ag-slot:' + (lineStep / 60 * hp) + 'px';
                     return '<div class="mad-ag-scroll' + (isWeek ? ' is-week' : '') + '" style="' + style + '" role="grid" aria-label="' + esc(this.title) + '">'
                         + head + '<div class="mad-ag-body" style="height:' + height + 'px">' + gutter + body
                         + '<div class="mad-ag-now" hidden><span></span></div></div></div>';
@@ -695,12 +729,13 @@
                             tShown = hhmm(it.s);
                             html = html.replace('<div class="', '<div title="' + esc(aria) + '" class="');
                         }
-                        html += '<div class="mad-ag-ev-top"><span class="mad-ag-ev-time">' + tShown + '</span>' + (badges ? '<span class="mad-ag-badges">' + badges + '</span>' : '') + '</div>'
+                        var pill = e.status_label ? '<span class="mad-ag-ev-st' + (e.status_tone ? ' tone-' + e.status_tone : '') + '">' + esc(e.status_label) + '</span>' : '';
+                        var stDot = (e.status_label || e.status) ? '<span class="mad-ag-dot is-off' + (e.status_tone ? ' tone-' + e.status_tone : '') + '" title="' + esc(e.status_label || e.status) + '"></span>' : '';
+                        html += '<div class="mad-ag-ev-top"><span class="mad-ag-ev-time">' + tShown + '</span><span class="mad-ag-ev-flags">' + (badges ? '<span class="mad-ag-badges">' + badges + '</span>' : '') + pill + stDot + '</span></div>'
                             + '<div class="mad-ag-ev-title">' + (e.alert ? '<span class="mad-ag-alert" title="' + esc(e.alert) + '">!</span>' : '')
                             + (e.avatar ? '<img class="mad-ag-ev-av" src="' + esc(e.avatar) + '" alt="" loading="lazy">' : '')
                             + '<span>' + esc(e.title) + '</span></div>'
-                            + (sub ? '<div class="mad-ag-ev-sub">' + esc(sub) + '</div>' : '')
-                            + (e.status_label ? '<span class="mad-ag-ev-st' + (e.status_tone ? ' tone-' + e.status_tone : '') + '">' + esc(e.status_label) + '</span>' : '');
+                            + (sub ? '<div class="mad-ag-ev-sub">' + esc(sub) + '</div>' : '');
                     }
                     if (e.resizable) html += '<span class="mad-ag-rz" data-ag-rz aria-hidden="true"></span>';
                     return html + '</div>';
@@ -855,7 +890,7 @@
                     var m = this._slotAt(col, e.clientY), d = col.getAttribute('data-date'), res = col.getAttribute('data-res') || '';
                     var p = { start: dt(d, m), end: dt(d, m + (cfg.slot || 15)), date: d, time: hhmm(m), resource: res };
                     if (cfg.slotClick) root.Mad && root.Mad.call && root.Mad.call(cfg.slotClick, p, this.$el);
-                    else go(cfg.slotTarget, p);
+                    else go(withQuery(cfg.slotTarget, p), p);
                 },
                 eventClick: function (id, el) {
                     if (el && el.closest && el.closest('.mad-ag-pop')) this.closeMore();

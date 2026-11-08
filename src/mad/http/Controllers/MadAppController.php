@@ -186,6 +186,13 @@ class MadAppController
             return MadForbidden::response($request, $class);
         }
 
+        // Ação que a tela não tem: 404, nos dois canais (`?static=1` e fragmento).
+        // Sem isto o show() não achava o método e desenhava a tela, e quem chamou
+        // recebia 200 com HTML, como se a ação tivesse rodado.
+        if ($method !== null && !self::hasAction($class, $method)) {
+            return $this->actionNotFound($request);
+        }
+
         // Métodos PHP-ESTÁTICOS via ?static=1 — widgets JS consomem o echo
         // direto do método, sem shell e sem show() (ex.: FullCalendar monta
         // /app/TesteCalendario/getEvents?static=1 pra buscar o feed JSON).
@@ -334,6 +341,27 @@ class MadAppController
         // cabeçalho, para o teste de tela do agente de IA não ler a tela
         // quebrada como boa; num app publicado nada é acrescentado.
         return MadRenderSignal::stamp(new Response($html, 200, $headers), $screen->renderFailure());
+    }
+
+    /** A classe responde a este método? Mágicos (`__call`) decidem em runtime. */
+    private static function hasAction(string $class, string $method): bool
+    {
+        return method_exists($class, $method)
+            || method_exists($class, '__call')
+            || method_exists($class, '__callStatic');
+    }
+
+    /** Navegação direta: o 404 de sempre. Fragmento/AJAX: o corpo que o Mad.exec mostra. */
+    private function actionNotFound(Request $request)
+    {
+        if ($this->isDirectNavigation($request) && (string) $request->input('static') !== '1') {
+            abort(404);
+        }
+
+        return new Response(\Mad\Ui\MadErrorPage::actionNotFound(), 404, [
+            'Content-Type'  => 'text/html; charset=utf-8',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 
     /** GET sem X-Mad-Partial = navegação direta do browser. */

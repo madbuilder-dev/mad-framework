@@ -69,6 +69,8 @@
 .mad-ag-corner strong { font-size: 18px; line-height: 1; color: var(--mad-text); }
 .mad-ag-corner small { max-width: 100%; white-space: nowrap; overflow: hidden; }
 .mad-ag-corner small.is-tight { font-size: 9px; letter-spacing: -.02em; }
+.mad-ag-count { font-size: 13px; font-weight: 500; color: var(--mad-text-muted); white-space: nowrap; }
+.mad-ag-count::before { content: ' · '; }
 .mad-ag-colhead {
     position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px 12px;
     border: 0; border-left: 1px solid var(--ag-line); background: transparent; color: inherit; font: inherit; text-align: left;
@@ -98,9 +100,9 @@
 .mad-ag-col {
     position: relative; border-left: 1px solid var(--ag-line); cursor: default;
     background-image:
-        linear-gradient(to bottom, var(--ag-line) 1px, transparent 1px),
-        linear-gradient(to bottom, transparent calc(var(--ag-hour) / 2 - 1px), color-mix(in srgb, var(--ag-line) 55%, transparent) calc(var(--ag-hour) / 2 - 1px), color-mix(in srgb, var(--ag-line) 55%, transparent) calc(var(--ag-hour) / 2), transparent calc(var(--ag-hour) / 2));
-    background-size: 100% var(--ag-hour);
+        linear-gradient(to bottom, var(--ag-line-strong) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in srgb, var(--ag-line) 70%, transparent) 1px, transparent 1px);
+    background-size: 100% var(--ag-hour), 100% var(--ag-slot, calc(var(--ag-hour) / 4));
 }
 .mad-ag-col.is-today { background-color: color-mix(in srgb, var(--mad-primary) 3%, transparent); }
 .mad-ag-col.is-off { cursor: not-allowed; }
@@ -145,8 +147,9 @@
 @keyframes mad-ag-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 @media (prefers-reduced-motion: reduce) { .mad-ag-ev.is-refused { animation: none; } .mad-ag-dragging { transform: none; } }
 .mad-ag-ev-top { display: flex; justify-content: space-between; align-items: center; gap: 4px; min-width: 0; }
+.mad-ag-ev-flags { display: inline-flex; align-items: center; gap: 3px; flex: none; }
 .mad-ag-ev-time { font-size: 11px; font-weight: 600; white-space: nowrap; color: color-mix(in srgb, var(--ag-c) 70%, var(--mad-text)); }
-.mad-ag-badges { display: flex; gap: 3px; min-width: 0; overflow: hidden; }
+.mad-ag-badges { display: flex; gap: 3px; flex: none; }
 .mad-ag-badge {
     font-size: 9.5px; line-height: 15px; padding: 0 5px; border-radius: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     background: var(--ag-bg); color: var(--mad-text-muted); white-space: nowrap;
@@ -157,10 +160,13 @@
 .mad-ag-alert { flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--mad-danger); color: var(--mad-danger-fg, #fff); }
 .mad-ag-ev-sub { font-size: 12px; color: var(--mad-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mad-ag-ev-st {
-    position: absolute; right: 6px; bottom: 5px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px;
+    flex: none; font-size: 10px; line-height: 13px; font-weight: 700; padding: 1px 6px; border-radius: 8px; white-space: nowrap;
     background: var(--ag-bg); color: var(--mad-text-muted);
 }
-.mad-ag-litem .mad-ag-ev-st { position: static; flex: none; }
+/* linhas do cartão não encolhem: sem altura, o selo vira bolinha (ver _fitCards) */
+.mad-ag-ev:not(.is-short) > * { flex-shrink: 0; }
+.mad-ag-ev-st.is-foot { align-self: flex-end; margin-top: auto; }
+.mad-ag-dot.is-off { display: none; }
 .mad-ag-ev-custom { min-width: 0; height: 100%; overflow: hidden; }
 .mad-ag-rz { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; touch-action: none; }
 .mad-ag-rz::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 22px; height: 3px; margin-left: -11px; border-radius: 3px; background: color-mix(in srgb, var(--ag-c) 45%, transparent); opacity: 0; }
@@ -169,7 +175,7 @@
 .mad-ag-ev.is-short .mad-ag-badges, .mad-ag-ev.is-short .mad-ag-ev-sub, .mad-ag-ev.is-short .mad-ag-ev-st { display: none; }
 .mad-ag-ev.is-short .mad-ag-ev-top { flex: none; }
 .mad-ag-ev.is-short .mad-ag-ev-title { font-size: 12px; }
-.mad-ag-ev.is-medium .mad-ag-ev-sub, .mad-ag-ev.is-medium .mad-ag-ev-st { display: none; }
+.mad-ag-ev.is-medium .mad-ag-ev-sub { display: none; }
 
 /* cartão estreito (vários sobrepostos): hora + 1ª palavra inteira, status em bolinha */
 .mad-ag-ev.is-compact { padding: 3px 4px 3px 6px; gap: 0; border-left-width: 3px; }
@@ -270,7 +276,9 @@
 /* ── Celular: um recurso por vez, sem rolagem lateral ────────────────── */
 @media (max-width: 640px) {
     .mad-ag-bar { gap: 8px; }
-    .mad-ag-title { order: -1; flex-basis: 100%; }
+    .mad-ag-title { order: -1; flex-basis: 100%; white-space: normal; }
+    .mad-ag-count { display: block; }
+    .mad-ag-count::before { content: none; }
     .mad-ag-nav { flex: 1 1 auto; }
     .mad-ag-datepick { flex: 1 1 auto; width: auto; min-width: 0; }
     .mad-ag-views { flex: 1 1 auto; }

@@ -1098,7 +1098,8 @@ class MadAgenda extends MadComponent
     public function _clientConfig(): array
     {
         $nav = fn (string $t) => $t === '' ? null : \Mad\Ui\MadAction::navTarget($t, 'show', ['id']);
-        $slotNav  = $nav($this->slotClickTarget);
+        // Horário livre não tem registro: sem marcador de id na URL (ele virava o 1º argumento do método).
+        $slotNav  = $this->slotClickTarget === '' ? null : \Mad\Ui\MadAction::navTarget($this->slotClickTarget, 'show', []);
         $eventNav = $nav($this->eventClickTarget);
 
         return [

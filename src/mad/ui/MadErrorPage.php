@@ -195,6 +195,13 @@ class MadErrorPage
         );
     }
 
+    /** Corpo do 404 de ação inexistente: o `Mad.exec` mostra o título e o texto. */
+    public static function actionNotFound(): string
+    {
+        return '<h1>' . self::esc(self::t('mad.action_not_found_title', 'Ação não encontrada')) . '</h1>'
+            . '<p>' . self::esc(self::t('mad.action_not_found_body', 'Esta tela não tem a ação pedida. Atualize a página e tente de novo.')) . '</p>';
+    }
+
     /**
      * Registro que não existe — ou que um escopo/trava esconde de quem abriu —
      * pedido pelo método de entrada da tela (`/…/onEdit?id=N`, o botão Editar da

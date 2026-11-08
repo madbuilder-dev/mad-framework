@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.276.2] — 2026-11-08
+
+### Correções
+
+- **`<mad-agenda>`:** o selo de status cobria a segunda linha do cartão no dia. Agora ele fica na linha da hora; sem espaço, desce para o rodapé do cartão ou vira uma bolinha com o texto na dica.
+- **`<mad-agenda>`:** com `slot-minutes="15"` a grade seguia desenhando de 30 em 30 minutos. Agora as linhas acompanham o `slot-minutes`, com a linha de hora mais forte.
+- **`<mad-agenda>`:** no celular, o contador saía cortado ("atendimen."). Agora a palavra aparece inteira, abaixo do título quando não cabe no canto.
+- **`<mad-agenda>`:** com `slot-click-target="Tela::onCreate"`, clicar num horário livre dava tela de erro e o formulário não recebia o horário. Agora o método recebe `start`, `end`, `date`, `time` e `resource` por nome.
+- **Telas:** chamar uma ação que a tela não tem, como `Mad.exec('Tela@metodoQueNaoExiste')`, respondia como se tivesse dado certo e desenhava a tela. Agora volta "Ação não encontrada".
+- **Assinatura:** com o pagamento online desligado, os avisos de limite terminavam numa tela que só dizia que a cobrança fica com a empresa. Agora Minha conta › Assinatura mostra os planos à venda e o contato de suporte da Cobrança, e o aviso de tela bloqueada já traz os botões de e-mail e WhatsApp.
+
 ## [5.276.1] — 2026-11-08
 
 ### Correções

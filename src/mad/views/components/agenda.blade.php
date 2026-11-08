@@ -35,7 +35,7 @@
                 @include('components.partials.date-popup', ['withTime' => false, 'opens' => 'left'])
             </div>
         </div>
-        <h2 class="mad-ag-title" aria-live="polite" x-text="title"></h2>
+        <h2 class="mad-ag-title" aria-live="polite"><span x-text="title"></span><span class="mad-ag-count" x-show="countOut" x-text="countOut" x-cloak></span></h2>
         @if (count($agViews) > 1)
             <div class="mad-ag-views" role="tablist" aria-label="{{ $agI18n['view_by'] ?? '' }}">
                 @foreach ($agViews as $v)
