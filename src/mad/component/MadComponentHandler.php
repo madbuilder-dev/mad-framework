@@ -1140,8 +1140,8 @@ class MadComponentHandler
             return false;
         }
 
-        $ref = new \ReflectionMethod($class, $method);
-        if (!$ref->isPublic() || $ref->isStatic() || $ref->isAbstract()) {
+        $ref = self::_declaredMethod($class, $method);
+        if ($ref === null || !$ref->isPublic() || $ref->isStatic() || $ref->isAbstract()) {
             return false;
         }
 
@@ -1187,10 +1187,8 @@ class MadComponentHandler
      *  - método declarado na própria {@see MadComponent}: recusado (como no canal
      *    reativo), salvo {@see URL_BASE_METHODS} e as ações içadas para a base;
      *  - `$staticRoute`: o pedido é da rota `?static=1`. Método `public static` da
-     *    base segue valendo ali — quem decide se é endpoint é o controller.
-     *
-     * O nome é comparado na grafia declarada: PHP não diferencia maiúsculas em
-     * nome de método, e `/app/Tela/SHOW` é o mesmo método que `show`.
+     *    base segue valendo ali — quem decide se é endpoint é o controller;
+     *  - nome em grafia diferente da declarada: recusado ({@see _declaredMethod()}).
      */
     public static function isUrlAction(string $class, string $method, bool $staticRoute = false): bool
     {
@@ -1198,8 +1196,8 @@ class MadComponentHandler
             return method_exists($class, '__call') || method_exists($class, '__callStatic');
         }
 
-        $ref = new \ReflectionMethod($class, $method);
-        if (!$ref->isPublic()) {
+        $ref = self::_declaredMethod($class, $method);
+        if ($ref === null || !$ref->isPublic()) {
             return false;
         }
 
@@ -1213,6 +1211,25 @@ class MadComponentHandler
 
         return in_array($ref->getName(), self::URL_BASE_METHODS, true)
             || self::_isBaseAction($ref->getName());
+    }
+
+    /**
+     * O método que o pedido nomeou, desde que na grafia em que foi declarado;
+     * null quando veio com outra.
+     *
+     * O PHP não diferencia maiúsculas ao chamar um método, mas a permissão por
+     * ação ({@see PermissionGate}, {@see \Mad\Security\ActionVocab}) e as listas
+     * de método comparam o nome exato. Sem esta recusa, o mesmo método pedido em
+     * outra grafia não casava com nenhuma regra e executava mesmo assim.
+     *
+     * É a regra única das portas de exposição: endereço da tela
+     * ({@see isUrlAction()}) e canal reativo ({@see _isAllowedMethod()}).
+     */
+    private static function _declaredMethod(string $class, string $method): ?\ReflectionMethod
+    {
+        $ref = new \ReflectionMethod($class, $method);
+
+        return $ref->getName() === $method ? $ref : null;
     }
 
     /** Ações içadas para a base que continuam sendo ações de tela (ver {@see _isAllowedMethod}). */
