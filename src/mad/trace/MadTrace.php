@@ -300,6 +300,12 @@ class MadTrace
         self::$installed = true;
     }
 
+    /** O MadTrace está instalado (config mad.trace.enabled)? Sem isso nada é capturado. */
+    public static function isInstalled(): bool
+    {
+        return self::$installed;
+    }
+
     /**
      * Re-stampa o fim do boot (chamado de $app->booted() no provider) —
      * boot_ms passa a medir o bootstrap REAL do Laravel, não "até o
@@ -484,9 +490,14 @@ class MadTrace
 
     /**
      * @param \Throwable $exception
-     * @param array $extra contexto adicional
+     * @param array $extra contexto adicional. `error_id` (o código de erro que a
+     *                     tela mostrou ao usuário) sobe para o campo próprio
+     *                     `error_id` do evento e passa pelo filtro de nível e pela
+     *                     amostragem: o que o usuário viu na tela tem que existir.
+     * @param string|null $message texto no lugar de "Classe: mensagem" (a tela de
+     *                     erro passa a mensagem já sem segredos)
      */
-    public static function captureException($exception, array $extra = [])
+    public static function captureException($exception, array $extra = [], ?string $message = null)
     {
         try {
             $trace = self::formatTrace($exception->getTrace());
@@ -506,7 +517,7 @@ class MadTrace
 
             self::report(
                 $level,
-                get_class($exception) . ': ' . $exception->getMessage(),
+                $message ?? (get_class($exception) . ': ' . $exception->getMessage()),
                 $exception->getFile(),
                 $exception->getLine(),
                 $trace,
@@ -581,23 +592,31 @@ class MadTrace
 
     private static function report($level, $message, $file, $line, $trace, $kind, $severity = null, array $extra = [])
     {
+        // código de erro mostrado ao usuário (campo próprio do evento, fora do `extra`)
+        $errorId = self::cleanErrorId($extra['error_id'] ?? null);
+        unset($extra['error_id']);
+
         // teto anti-flood
         if (count(self::$seen) >= self::$config['max_per_request']) {
             return;
         }
 
-        // filtro de nível mínimo
+        // filtro de nível mínimo (com código de erro não filtra: a tela já o mostrou)
         $order = ['info' => 0, 'warning' => 1, 'error' => 2, 'fatal' => 3];
         $min = $order[self::$config['min_level']] ?? 1;
-        if (($order[$level] ?? 2) < $min) {
+        if ($errorId === null && ($order[$level] ?? 2) < $min) {
             return;
         }
 
         // fingerprint: agrupa eventos iguais
         $fingerprint = md5($kind . '|' . $level . '|' . self::normalize($message) . '|' . basename((string) $file) . '|' . $line);
 
-        // dedup dentro da mesma request
+        // dedup dentro da mesma request. Se o mesmo erro já foi capturado (ex.: pelo
+        // manipulador global) e ainda não saiu, o evento dele ganha o código.
         if (isset(self::$seen[$fingerprint])) {
+            if ($errorId !== null) {
+                self::attachErrorId($fingerprint, $errorId);
+            }
             return;
         }
         self::$seen[$fingerprint] = true;
@@ -607,29 +626,30 @@ class MadTrace
             self::$errorCount++;
         }
 
-        // amostragem (determinística por fingerprint)
-        if (self::$config['sample_rate'] < 1.0) {
+        // amostragem (determinística por fingerprint); evento com código de erro não é amostrado
+        if ($errorId === null && self::$config['sample_rate'] < 1.0) {
             $h = hexdec(substr($fingerprint, 0, 8)) / 0xffffffff;
             if ($h > self::$config['sample_rate']) {
                 return;
             }
         }
 
-        $event = self::buildEvent($level, $message, $file, $line, $trace, $kind, $severity, $fingerprint, $extra);
+        $event = self::buildEvent($level, $message, $file, $line, $trace, $kind, $severity, $fingerprint, $extra, $errorId);
 
         // fallback SEMPRE: error_log local (resiliência se o endpoint cair)
-        @error_log('[MadTrace][' . $level . '] ' . $message . ' @ ' . $file . ':' . $line . ' fp=' . substr($fingerprint, 0, 8));
+        @error_log('[MadTrace][' . $level . '] ' . $message . ' @ ' . $file . ':' . $line . ' fp=' . substr($fingerprint, 0, 8)
+            . ($errorId !== null ? ' error_id=' . $errorId : ''));
 
         // NÃO envia agora — enfileira p/ envio no shutdown (após o flush da
         // resposta). Evita curl no meio da request e flush prematuro da página.
         self::$pending[] = $event;
     }
 
-    private static function buildEvent($level, $message, $file, $line, $trace, $kind, $severity, $fingerprint, $extra)
+    private static function buildEvent($level, $message, $file, $line, $trace, $kind, $severity, $fingerprint, $extra, $errorId = null)
     {
         $cfg = self::$config;
 
-        return [
+        $event = [
             'schema'      => 1,
             'event_id'    => self::uuid4(),
             'timestamp'   => gmdate('Y-m-d\TH:i:s\Z'),
@@ -654,6 +674,31 @@ class MadTrace
             'sdk'         => ['name' => 'madtrace-php', 'version' => '2.0'],
             'php_version' => PHP_VERSION,
         ];
+
+        // Código de erro da tela (MadErrorPage): o usuário o lê e o suporte o cola
+        // na busca do Mad Trace. Só vai no evento que teve tela de erro.
+        if ($errorId !== null) {
+            $event['error_id'] = $errorId;
+        }
+
+        return $event;
+    }
+
+    /** Código de erro válido (4 a 32 letras, números, `-` ou `_`) ou null. */
+    private static function cleanErrorId($value)
+    {
+        return (is_string($value) && preg_match('/^[A-Za-z0-9_-]{4,32}$/', $value)) ? $value : null;
+    }
+
+    /** Põe o código no evento ainda não enviado que tem este fingerprint. */
+    private static function attachErrorId($fingerprint, $errorId)
+    {
+        foreach (self::$pending as $i => $event) {
+            if (($event['fingerprint'] ?? null) === $fingerprint && empty($event['error_id'])) {
+                self::$pending[$i]['error_id'] = $errorId;
+                return;
+            }
+        }
     }
 
     private static function collectRequest()

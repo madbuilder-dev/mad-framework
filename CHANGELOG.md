@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.284.0] — 2026-11-09
+
+### Novidades
+
+- **Telas de erro:** com o MadTrace ligado, o **Código do erro** que a tela "Algo deu errado nesta tela" mostra também vai no evento do MadTrace, e o suporte acha a ocorrência colando o código na busca de Issues. O evento é criado mesmo quando a tela trata o erro sozinha. Sem o MadTrace, o código continua na tela e no log do app, e o que o usuário vê não muda.
+
 ## [5.283.0] — 2026-11-09
 
 ### Melhorias

@@ -20,10 +20,11 @@ namespace Mad\Ui;
  * reserva para o caso do CSS não ter carregado) e SEMPRE com uma saída — sem
  * botão de volta, uma tela de erro é um beco.
  *
- * O detalhe técnico não desaparece: vai para o log pelo `report()` do Laravel,
- * e o usuário recebe um IDENTIFICADOR CURTO que o suporte usa para achar a
- * linha certa (`errorId()`). É o mesmo contrato do Ignition/Flare, sem expor
- * nada.
+ * O detalhe técnico não desaparece: vai para o log pelo `report()` do Laravel
+ * e, com o MadTrace ligado, para o Mad Trace (campo `error_id`), e o usuário
+ * recebe um IDENTIFICADOR CURTO que o suporte usa para achar a linha do log ou
+ * o evento do Mad Trace (`errorId()`). É o mesmo contrato do Ignition/Flare,
+ * sem expor nada.
  *
  * Retrocompatibilidade: com `app.debug` ligado nada muda — quem chama continua
  * recebendo a tela rica. Esta classe só entra quando o debug está desligado.
@@ -48,13 +49,31 @@ class MadErrorPage
     }
 
     /**
-     * Manda a exceção para o log do Laravel com o identificador colado.
+     * Manda a exceção para o log do Laravel com o identificador colado e, com o
+     * MadTrace ligado, para o Mad Trace com o MESMO código.
+     *
+     * A tela de erro captura a exceção ela mesma, então o manipulador global do
+     * Laravel (que alimenta o Mad Trace) nunca a via: o usuário lia o código na
+     * tela e a busca no Mad Trace não achava nada. Agora o evento nasce aqui, com
+     * o código no campo `error_id`.
      *
      * FAIL-SAFE: esta função é chamada de dentro de um `catch` que já está
-     * tratando um erro; se o próprio log falhar, ela não pode lançar e derrubar
-     * a página de erro.
+     * tratando um erro; se o próprio log ou o Mad Trace falhar, ela não pode
+     * lançar e derrubar a página de erro. Um não depende do outro.
      */
     public static function report(\Throwable $e, string $errorId, array $context = []): void
+    {
+        // O nome de uma classe anônima do PHP leva um byte NUL (`Classe@anonymous\0/caminho`):
+        // o jsonb do PostgreSQL recusa e o log fica ilegível. Fica só o que vem antes.
+        if (isset($context['component']) && is_string($context['component'])) {
+            $context['component'] = explode("\0", $context['component'])[0];
+        }
+
+        self::log($e, $errorId, $context);
+        self::trace($e, $errorId, $context);
+    }
+
+    private static function log(\Throwable $e, string $errorId, array $context): void
     {
         try {
             if (function_exists('logger')) {
@@ -73,6 +92,23 @@ class MadErrorPage
             }
             if (function_exists('report')) {
                 report($e);
+            }
+        } catch (\Throwable $ignored) {
+            // silêncio deliberado
+        }
+    }
+
+    /**
+     * Evento do Mad Trace com o código da tela. Só com o MadTrace instalado
+     * (`mad.trace.enabled`); desligado, nada muda e o log segue como sempre.
+     * A mensagem sai pelo mesmo redator do log (sem valor de SQL sensível); o
+     * trace do MadTrace já não leva argumentos.
+     */
+    private static function trace(\Throwable $e, string $errorId, array $context): void
+    {
+        try {
+            if (class_exists('MadTrace') && \MadTrace::isInstalled()) {
+                \MadTrace::captureException($e, $context + ['error_id' => $errorId], MadErrorRedactor::describe($e));
             }
         } catch (\Throwable $ignored) {
             // silêncio deliberado
