@@ -423,6 +423,10 @@ class MadAppController
      */
     private function renderShell(): Response
     {
+        // Tema e logo que chegaram pela aba Código Fonte (app/sync/*.b64) vão
+        // para app/ e public/ antes de o casco ler o tema (fórum #271).
+        \Mad\Support\MadSyncedFiles::refresh(base_path(), storage_path('framework/mad-synced-files.json'));
+
         $shell = app(\App\Http\Controllers\ShellController::class);
 
         switch ($this->resolveShellKind()) {

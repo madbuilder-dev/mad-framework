@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.285.0] — 2026-11-09
+
+### Novidades
+
+- **Tema:** o tema e o logo do projeto chegam ao app pela aba **Código Fonte** da Central de Comando, sem SSH e sem publicar o projeto inteiro: depois de **Aplicar**, basta recarregar a página. Imagem trocada à mão no servidor é mantida.
+
 ## [5.284.1] — 2026-11-09
 
 ### Correções
