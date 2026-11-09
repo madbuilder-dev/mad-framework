@@ -458,11 +458,13 @@ final class MadUploadRules
             foreach (['name', 'type', 'tmp_name', 'error', 'size'] as $key) {
                 $part[$key] = is_array($cells[$key] ?? null) ? ($cells[$key][$cell] ?? null) : null;
             }
-            [$max, $accept] = self::cellRules((string) $cell);
+            [$max, $accept, $public] = self::cellRules((string) $cell);
             foreach (self::entries($part) as $file) {
                 $problem = self::phpProblem((int) $file['error'], (string) $file['name']);
-                if ($problem === null && ($max > 0 || $accept !== '') && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
-                    $problem = self::fileProblem($file, $max, $accept, false);
+                if ($problem === null && ($max > 0 || $accept !== '' || $public) && (int) $file['error'] === UPLOAD_ERR_OK && (string) $file['tmp_name'] !== '') {
+                    // Coluna com `public` (fórum #274): só imagem/PDF de verdade,
+                    // com a mesma mensagem do campo do formulário.
+                    $problem = self::fileProblem($file, $max, $accept, $public, $public);
                 }
                 if ($problem !== null) {
                     $errors['mad_fl_files'] = $problem;
@@ -484,7 +486,7 @@ final class MadUploadRules
      * impressão delas que o estado da tela guarda (detailFilesPrint): um
      * formulário recebido sem ele não grava as linhas.
      *
-     * @return array{0: int, 1: string}
+     * @return array{0: int, 1: string, 2: bool} Tamanho máximo, Tipos aceitos e `public`
      */
     private static function cellRules(string $cell): array
     {
@@ -504,12 +506,13 @@ final class MadUploadRules
                     return [
                         max(0, (int) ($columns[$column]['maxBytes'] ?? 0)),
                         trim((string) ($columns[$column]['accept'] ?? '')),
+                        !empty($columns[$column]['public']) && ($columns[$column]['storage'] ?? 'disk') !== 'db',
                     ];
                 }
             }
         }
 
-        return [0, ''];
+        return [0, '', false];
     }
 
     /**

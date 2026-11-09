@@ -11206,7 +11206,9 @@ class MadForm
             $paths = [];
             foreach ($files as $file) {
                 $fileName = $this->_buildFileName($file['name'], $meta['fileName'] ?? 'prefix', $instance);
-                $dest     = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                // Mesmo caminho do campo do formulário: com `public`, a pasta
+                // pública e o endereço fixo (fórum #274).
+                $dest     = $this->_uploadKey($folder, $fileName, $meta);   // relativo (banco)
                 if ($this->_storeFile($file['tmp_name'], $dest, $instance, $unique)) {
                     $paths[] = $dest;
                 }
@@ -11356,7 +11358,7 @@ class MadForm
             $unique = self::_uniqueFileNames($meta['fileName'] ?? 'prefix');
             foreach ($files as $file) {
                 $fileName = $this->_buildFileName($file['name'], $meta['fileName'] ?? 'prefix', $instance);
-                $dest     = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                $dest     = $this->_uploadKey($folder, $fileName, $meta);   // relativo (banco)
                 if (!$this->_storeFile($file['tmp_name'], $dest, $instance, $unique)) {
                     continue;
                 }
@@ -11500,7 +11502,7 @@ class MadForm
             $unique = self::_uniqueFileNames($meta['fileName'] ?? 'prefix');
             foreach ($files as $file) {
                 $fileName = $this->_buildFileName($file['name'], $meta['fileName'] ?? 'prefix', $itemInstance);
-                $dest     = rtrim($folder, '/') . '/' . $fileName;   // relativo (banco)
+                $dest     = $this->_uploadKey($folder, $fileName, $meta);   // relativo (banco)
                 $gc       = new $model();
                 if ($this->_storeFile($file['tmp_name'], $dest, $gc, $unique)) {
                     $gc->$fk = $itemId;

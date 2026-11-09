@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.286.1] — 2026-11-09
+
+### Correções
+
+- **Upload:** num `<mad-detail-form>`, o `<mad-file-field>` com `public` gravava o arquivo da linha na pasta privada, sem endereço fixo e sem aviso, e aceitava qualquer tipo. Agora a linha grava como o campo do formulário: imagem e PDF na pasta pública, com endereço fixo, e outro tipo é recusado no Salvar com a mesma mensagem. Os Tipos aceitos e o Tamanho máximo do campo também passam a valer na linha.
+
 ## [5.286.0] — 2026-11-09
 
 ### Correções

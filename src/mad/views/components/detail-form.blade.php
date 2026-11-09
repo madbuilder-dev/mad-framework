@@ -289,7 +289,14 @@
                 'fileName'   => $_dfFp['fileName'] ?? 'prefix',
                 'nameColumn' => $_dfFp['nameColumn'] ?? '',
                 'multi'      => !empty($_dfFp['multiple']),
-            ];
+            ] + array_filter([
+                // `public` (#244), Tipos aceitos e Tamanho máximo do campo valem
+                // para o arquivo da linha como no formulário principal (fórum
+                // #274: o arquivo ia para a pasta privada, sem conferir o tipo).
+                'public'   => !empty($_dfFp['public']),
+                'accept'   => (string) ($_dfFp['accept'] ?? ''),
+                'maxBytes' => (int) ($_dfFp['maxBytes'] ?? 0),
+            ]);
         }
     }
     // Sempre, mesmo sem campo de arquivo no editor: o formulário da tela anota

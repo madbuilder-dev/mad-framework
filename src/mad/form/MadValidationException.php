@@ -79,10 +79,18 @@ class MadValidationException extends \RuntimeException
 
         return array_filter(
             $this->errors,
-            fn (string $field) => ! in_array($field, $this->formFields, true),
+            fn (string $field) => $field !== self::ROW_FILES && ! in_array($field, $this->formFields, true),
             ARRAY_FILTER_USE_KEY,
         );
     }
+
+    /**
+     * Chave do erro de um arquivo das LINHAS de uma Lista de itens / Detail Form
+     * (`mad_fl_files`, MadUploadRules::check): não é campo do formulário, mas
+     * também não é campo que falta na tela — a mensagem já diz qual arquivo e
+     * por quê (fórum #274).
+     */
+    private const ROW_FILES = 'mad_fl_files';
 
     // ── Métodos de exibição ───────────────────────────────────────────────────
 
@@ -114,6 +122,15 @@ class MadValidationException extends \RuntimeException
         $isDefault = $toast === self::DEFAULT_TOAST;
         if ($isDefault) {
             $toast = self::uiText('fix_errors', self::DEFAULT_TOAST);
+        }
+
+        // Arquivo de uma linha recusado: não pinta campo nenhum, então a
+        // mensagem vai inteira para o aviso, sem o "campo não está nesta tela".
+        $rowFiles = (string) ($this->errors[self::ROW_FILES] ?? '');
+        if ($rowFiles !== '' && ! in_array(self::ROW_FILES, $this->formFields, true)) {
+            $toast = $isDefault && count($this->errors) === 1
+                ? trim(self::uiText('save_failed', 'Não foi possível salvar.') . ' ' . $rowFiles)
+                : trim($toast . ' ' . $rowFiles);
         }
 
         $orphans = $this->orphanErrors();
