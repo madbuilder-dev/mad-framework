@@ -239,7 +239,19 @@ class MadTrace
             // bloqueia o usuário), 1500ms p/ não dropar o trace.
             'perf_timeout_ms'    => 1500,
             'before_send'        => null,   // callable(array $payload): ?array — use setBeforeSend() (config:cache não aceita closure)
-            'ignore_routes'      => [],     // rotas a não rastrear
+            // rotas a não rastrear no APM (só a transação; erro continua
+            // sendo capturado). Casa exato ou curinga (fnmatch), sem ligar
+            // para a `\` inicial da action. Padrão: chamadas automáticas de
+            // toda tela aberta — o sino de notificações consulta a cada 30 s
+            // e o broadcast autoriza o canal a cada página/reconexão. Em
+            // nov/2026 eram 36% de todos os eventos MadTrace da plataforma
+            // (até 47% num app), comendo a cota mensal sem dizer nada útil.
+            'ignore_routes'      => [
+                'NotificationList::menu',
+                'App\\Http\\Controllers\\Comm\\ChatBroadcastAuthController@authenticate',
+                'App\\Http\\Controllers\\Comm\\NotificationBroadcastAuthController@authenticate',
+                'App\\Http\\Controllers\\Comm\\MailBroadcastAuthController@authenticate',
+            ],
             // caminhos da URL a não rastrear no APM (só a transação; erro
             // continua sendo capturado). `/up` é o health check do Laravel:
             // o healthcheck do container bate nele a cada 30 s e, amostrado,
@@ -1057,10 +1069,8 @@ class MadTrace
         }
 
         // ignore_routes
-        foreach ((array) self::$config['ignore_routes'] as $pat) {
-            if ($route === $pat || (function_exists('fnmatch') && @fnmatch($pat, $route))) {
-                return;
-            }
+        if (self::isIgnoredRoute($route)) {
+            return;
         }
 
         // ignore_paths — casa pelo CAMINHO da URL, não pela rota: rota de
@@ -1371,6 +1381,28 @@ class MadTrace
             return $method !== '' ? "{$class}::{$method}" : $class;
         }
         return null;
+    }
+
+    /**
+     * A rota está em `ignore_routes`? A action do Laravel chega com ou sem a
+     * `\` inicial conforme a rota foi declarada (`'\App\…@m'` × `[X::class,
+     * 'm']`), então os dois lados perdem a barra antes de comparar. No
+     * curinga, FNM_NOESCAPE: sem ele o fnmatch lê a `\` do namespace como
+     * escape e `App\Http\*` nunca casa.
+     */
+    private static function isIgnoredRoute(string $route): bool
+    {
+        $route = ltrim($route, '\\');
+        foreach ((array) (self::$config['ignore_routes'] ?? []) as $pat) {
+            $pat = ltrim((string) $pat, '\\');
+            if ($pat === '') {
+                continue;
+            }
+            if ($route === $pat || (function_exists('fnmatch') && @fnmatch($pat, $route, FNM_NOESCAPE))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** O caminho da request atual está em `ignore_paths`? (query string não conta) */

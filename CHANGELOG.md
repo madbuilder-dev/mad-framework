@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.283.0] — 2026-11-09
+
+### Melhorias
+
+- **MadTrace:** a consulta automática do sino de notificações e a autorização do chat e das notificações em tempo real não contam mais como medição de desempenho. Elas se repetem sozinhas enquanto a tela fica aberta e chegavam a um terço dos eventos do mês, gastando a cota sem mostrar nada útil. Um erro nessas chamadas continua aparecendo no MadTrace.
+
 ## [5.282.0] — 2026-11-09
 
 ### Novidades
