@@ -15,6 +15,12 @@
         . ($_rowGap !== '' ? '--mad-form-row-gap:' . $_rowGap . ';' : '')
         . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
     $_gapStyle  = $_formStyle !== '' ? ' style="' . $_formStyle . '"' : '';
+    // switch-label-position="top" (fórum #266): o texto de TODOS os switches deste
+    // formulário vai acima da chave. A classe mira o CSS (mad-ui.css); o switch com
+    // posição própria (right) mantém a dele.
+    if (is_string($switchLabelPosition ?? null) && strtolower(trim($switchLabelPosition)) === 'top') {
+        $class = trim($class . ' mad-form--switch-top');
+    }
     // `read` / `read="filled"` ou `$this->form->readMode()` (fw#498): os campos
     // já saíram em rótulo e valor; a classe trava o que não conhece o modo.
     $_read = \Mad\Form\ReadMode::mode($__env);

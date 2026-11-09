@@ -38,10 +38,14 @@
     $rowClass = 'mad-switch-row';
     if ($description) { $rowClass .= ' mad-switch-card'; }
     // label-position="right": chave primeiro, texto colado depois (como no
-    // checkbox). Qualquer outro valor mantém o layout publicado: texto à
-    // esquerda e chave na ponta direita da coluna.
-    if (is_string($labelPosition) && strtolower(trim($labelPosition)) === 'right') {
+    // checkbox). label-position="top": texto acima e chave abaixo, como o label
+    // dos outros campos (fórum #266). Qualquer outro valor mantém o layout
+    // publicado: texto à esquerda e chave na ponta direita da coluna.
+    $_labelPos = is_string($labelPosition) ? strtolower(trim($labelPosition)) : '';
+    if ($_labelPos === 'right') {
         $rowClass .= ' mad-switch-row--label-right';
+    } elseif ($_labelPos === 'top') {
+        $rowClass .= ' mad-switch-row--label-top';
     }
     // readonly via prop ou contexto: pointer-events:none + opacity .75 no field todo
     // (mantem name + value postando; impede toggle pelo usuario)

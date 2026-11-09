@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.281.0] — 2026-11-09
+
+### Novidades
+
+- **Formulários:** `label-position="top"` no `<mad-switch-field>` põe o texto acima da chave, como o rótulo dos outros campos, com o mesmo asterisco de obrigatório, dica e mensagem de erro. Sem a prop nada muda.
+- **Formulários:** `switch-label-position="top"` no `<mad-form>` faz o mesmo em todos os switches do formulário, sem escrever em cada um. O switch com `label-position="right"` mantém a posição dele.
+
 ## [5.280.1] — 2026-11-09
 
 ### Correções
