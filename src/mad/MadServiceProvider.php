@@ -78,6 +78,10 @@ class MadServiceProvider extends ServiceProvider
         // que o PSR-4 falhou, então não intercepta nada que já resolva.
         \Mad\Registry\ControlNamespaceFallback::register();
 
+        // Cache de rotas mais velho que as rotas do app/framework: apaga antes de
+        // o Laravel decidir entre carregar o cache ou as rotas (fórum #270).
+        \Mad\Support\MadRouteCacheGuard::forgetStale($this->app);
+
         // Defaults de config do pacote (chaves novas p/ apps que só atualizam o
         // vendor). Nível raiz apenas; skip quando config:cache — ver o arquivo.
         $this->mergeConfigFrom(__DIR__ . '/../../config/mad-defaults.php', 'mad');

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.284.1] — 2026-11-09
+
+### Correções
+
+- **Rotas:** item do menu (como o **Perfil**) que abria "404 Not Found" depois de atualizar o app numa hospedagem que guarda o cache de rotas (`php artisan route:cache`, comum no cPanel) volta a abrir: o cache mais velho que as rotas do app ou que o framework é descartado sozinho.
+- **App gerado:** tela que o endereço conhece mas não consegue carregar (arquivo ausente ou com outro nome) mostra a tela de erro com o **Código do erro**, e o motivo fica no log. Antes aparecia "404 Not Found" sem nenhum registro.
+
 ## [5.284.0] — 2026-11-09
 
 ### Novidades

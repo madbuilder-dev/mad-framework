@@ -158,8 +158,19 @@ class MadAppController
         $method = $route->parameter('method');
         $method = is_string($method) && $method !== '' ? $method : null;
 
-        if (!class_exists($class) || !is_subclass_of($class, MadComponent::class)) {
-            abort(404);
+        // A rota existe e aponta para uma tela que não carrega: não é "página que
+        // não existe" (isso nem chega aqui, o roteador responde 404 antes), é
+        // instalação incompleta ou desatualizada. Antes saía um 404 mudo, sem
+        // nada no log — fórum #270, o "Perfil" do menu abrindo "404 Not Found".
+        $loadError = null;
+        try {
+            $loadable = $class !== '' && class_exists($class) && is_subclass_of($class, MadComponent::class);
+        } catch (\Throwable $e) {
+            $loadable  = false;
+            $loadError = $e;
+        }
+        if (!$loadable) {
+            return $this->screenUnavailable($request, $class, $loadError);
         }
 
         // APM (MadTrace) — route real do programa ("TesteListagem::onSearch"),
@@ -357,6 +368,43 @@ class MadAppController
         }
 
         return new Response(\Mad\Ui\MadErrorPage::actionNotFound(), 404, [
+            'Content-Type'  => 'text/html; charset=utf-8',
+            'Cache-Control' => 'no-store, private',
+        ]);
+    }
+
+    /**
+     * A rota registrou a tela `$class`, mas a classe não carrega (arquivo ausente
+     * ou com outra caixa de letras, autoload do Composer desatualizado, tela de
+     * outra versão do app). Responde com a tela de erro de produção e o código
+     * curto, e deixa no log o que o suporte precisa para achar a causa.
+     * Sem classe na rota não há o que diagnosticar: segue o 404 de sempre.
+     */
+    private function screenUnavailable(Request $request, string $class, ?\Throwable $loadError)
+    {
+        if ($class === '') {
+            abort(404);
+        }
+
+        $route   = $request->route();
+        $errorId = \Mad\Ui\MadErrorPage::errorId($loadError);
+        $reason  = $loadError !== null
+            ? 'o autoload falhou: ' . $loadError->getMessage()
+            : (class_exists($class, false) ? 'a classe existe, mas não é uma tela (não estende MadComponent)' : 'a classe não foi encontrada');
+
+        \Mad\Ui\MadErrorPage::report(
+            $loadError ?? new \RuntimeException("Tela \"{$class}\" registrada na rota não carrega: {$reason}."),
+            $errorId,
+            [
+                'screen'        => $class,
+                'uri'           => $route ? $route->uri() : $request->path(),
+                'routes_cached' => app()->routesAreCached(),
+                'hint'          => 'Confira se o arquivo da tela existe em app/control (mesmo nome e mesmas maiúsculas), '
+                    . 'rode "php artisan optimize:clear" e, se o app usa autoload otimizado, "composer dump-autoload".',
+            ]
+        );
+
+        return new Response(\Mad\Ui\MadErrorPage::internal($errorId), 500, [
             'Content-Type'  => 'text/html; charset=utf-8',
             'Cache-Control' => 'no-store, private',
         ]);
