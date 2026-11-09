@@ -129,8 +129,10 @@ class MadForbidden
      *
      * @param  Request|null  $request  quando ausente, cai no `request()` global
      * @param  string|null   $screen   a tela negada (classe), repassada a quem explica a recusa
+     * @return Response|\Illuminate\Http\JsonResponse  JSON para quem pede JSON (fw#413). O tipo
+     *         declarado é o pai das duas: com `Response` o ramo JSON estourava TypeError (500).
      */
-    public static function response(?Request $request = null, ?string $screen = null): Response
+    public static function response(?Request $request = null, ?string $screen = null): \Symfony\Component\HttpFoundation\Response
     {
         $request = $request ?? (function_exists('request') ? request() : null);
 

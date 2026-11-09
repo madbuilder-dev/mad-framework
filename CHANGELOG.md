@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.280.1] — 2026-11-09
+
+### Correções
+
+- **Permissões:** tela sem acesso chamada por uma requisição que espera JSON agora responde "sem acesso" (403) em vez de erro 500.
+
 ## [5.280.0] — 2026-11-08
 
 ### Melhorias
