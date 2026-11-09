@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.286.0] — 2026-11-09
+
+### Correções
+
+- **Cobrança:** quem criava a conta pelo cadastro do site não conseguia pagar a primeira fatura: o Pix e o boleto davam "Não conseguimos gerar a cobrança", mesmo depois de preencher Minha conta › Dados de cobrança. Agora a tela de pagamento pede ali mesmo o que falta (CPF ou CNPJ e, no boleto, o endereço), guarda nos dados de cobrança e já mostra o Pix ou o boleto.
+- **Cobrança:** o formulário de cartão do Mercado Pago não aparecia e a tela dizia "Não foi possível carregar o formulário de cartão". Agora ele monta assim que o Mercado Pago carrega.
+- **Cobrança:** quando o provedor recusa a cobrança, a tela mostra o motivo que ele deu (por exemplo, e-mail não aceito) em vez de "Tente de novo em instantes".
+
+### Melhorias
+
+- **Cobrança:** a tela de pagamento abre no Pix. O cartão só vem primeiro quando há um cartão salvo que o provedor cobra sem pedir o código de segurança.
+
 ## [5.285.1] — 2026-11-09
 
 ### Correções
