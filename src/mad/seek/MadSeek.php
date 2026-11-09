@@ -105,6 +105,21 @@ class MadSeek
             'display'        => (string) ($config['display'] ?? ''),
         ]);
 
+        // De onde sai o texto do valor (chave do Model, como a grade da busca):
+        // no editor do <mad-detail-form> o valor chega da linha ao editar, sem
+        // texto — ver \Mad\Form\DetailRowLabels (fórum #273).
+        $seekName = (string) ($config['seekName'] ?? '');
+        $seekModel = (string) ($config['model'] ?? '');
+        $seekDisplay = (string) ($config['display'] ?? '');
+        if ($seekName !== '' && $seekModel !== '' && $seekDisplay !== '' && empty($config['query_sql'])) {
+            try {
+                $class = class_exists($seekModel) ? $seekModel : \Mad\Form\ModelOptionsLoader::resolveModelClass($seekModel);
+                \Mad\Form\MadFormRegistry::labelSource($seekName, $class, (new $class())->getKeyName(), $seekDisplay);
+            } catch (\Throwable $e) {
+                // Model que não resolve: o campo segue como antes (a busca mostra o erro).
+            }
+        }
+
         return MadBlade::render('components.dbseek-field', [
             'name'        => $config['seekName']    ?? '',
             'label'       => $config['label']       ?? '',

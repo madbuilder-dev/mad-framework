@@ -12397,6 +12397,12 @@ document.addEventListener('alpine:init', () => {
             columns:   cfg.columns || [],
             mode:      cfg.mode || 'inline',
             name:      cfg.name || 'detail',
+            // Texto dos valores das linhas nos campos de busca no banco
+            // ({campo: {valor: texto}}): vem do servidor para as linhas
+            // carregadas (DetailRowLabels) e cresce com o que se escolhe no
+            // editor. Ao editar, a opção entra com o texto antes do valor
+            // (fórum #273: o campo mostrava só a chave).
+            labels:    cfg.labels || {},
             beforeAdd:    cfg.beforeAdd || '',    // método PHP para validação server-side
             beforeDelete: cfg.beforeDelete || '', // método PHP para validação server-side ao deletar
             perPage:      cfg.perPage || 0,
@@ -12603,6 +12609,12 @@ document.addEventListener('alpine:init', () => {
                             group.forEach(el => { el.checked = keys.includes(el.value); });
                             group.forEach(el => el.dispatchEvent(new Event('change', { bubbles: true })));
                         } else if (inp._madSelect) {
+                            const knownMulti = (this.labels || {})[multi];
+                            if (knownMulti && typeof inp._madSelect.addOption === 'function') {
+                                keys.forEach(k => {
+                                    if (knownMulti[k] != null) inp._madSelect.addOption({ value: k, text: knownMulti[k] });
+                                });
+                            }
                             inp._madSelect.setValue(keys, true);
                         } else if (inp.tagName === 'SELECT') {
                             Array.from(inp.options || []).forEach(o => { o.selected = keys.includes(o.value); });
@@ -12653,8 +12665,11 @@ document.addEventListener('alpine:init', () => {
                                     // displayText precisa ser passado separadamente se disponível
                                     const displayField = field.replace(/_id$/, '_nome')
                                                       || field.replace(/_id$/, '_name');
+                                    const knownSeek = ((this.labels || {})[field] || {})[String(val)];
                                     if (this.formData[displayField]) {
                                         ad.displayText = this.formData[displayField];
+                                    } else if (knownSeek != null) {
+                                        ad.displayText = knownSeek;
                                     }
                                     return;
                                 }
@@ -12668,6 +12683,13 @@ document.addEventListener('alpine:init', () => {
 
                     // ── MAD Select (select, dbcombo, multi-search, unique-search)
                     if (inp._madSelect) {
+                        // Busca no banco não traz a opção do valor da linha: sem
+                        // o texto conhecido, o campo mostrava só a chave.
+                        const sv = String(val);
+                        const known = (this.labels || {})[field];
+                        if (sv !== '' && known && known[sv] != null && typeof inp._madSelect.addOption === 'function') {
+                            inp._madSelect.addOption({ value: sv, text: known[sv] });
+                        }
                         inp._madSelect.setValue(val, true);
                         return;
                     }
@@ -12847,8 +12869,22 @@ document.addEventListener('alpine:init', () => {
 
                     // Seleção múltipla (`campo[]`): a coluna é `campo` (fw#237).
                     const multi = /\[\]$/.test(field) ? field.slice(0, -2) : null;
+                    // Texto das opções escolhidas na busca no banco: editar a
+                    // linha de novo mostra o texto mesmo depois de outra busca
+                    // ter trocado as opções do campo.
+                    const remember = (col) => {
+                        if (!inp._madSelect || !inp.options) return;
+                        Array.from(inp.options).forEach(o => {
+                            if (!o.selected || o.value === '' || (o.hasAttribute && o.hasAttribute('data-mad-synthetic'))) return;
+                            const t = (o.textContent || '').trim();
+                            if (t === '' || t === o.value) return;
+                            if (!this.labels) this.labels = {};
+                            (this.labels[col] = this.labels[col] || {})[o.value] = t;
+                        });
+                    };
                     if (multi) {
                         this.formData[multi] = this._dfMultiValue(container, field);
+                        remember(multi);
                         return;
                     }
 
@@ -12872,6 +12908,11 @@ document.addEventListener('alpine:init', () => {
                                     this.formData[field] = ad.rawValue;
                                     return;
                                 }
+                                // madDbSeek: guarda o texto escolhido para editar a linha de novo.
+                                if (ad && 'selectedId' in ad && ad.selectedId && ad.displayText) {
+                                    if (!this.labels) this.labels = {};
+                                    (this.labels[field] = this.labels[field] || {})[String(ad.selectedId)] = String(ad.displayText);
+                                }
                             } catch(e) {}
                         }
                     }
@@ -12883,6 +12924,7 @@ document.addEventListener('alpine:init', () => {
                         this.formData[field] = inp.checked ? (inp.value || '1') : (inp.getAttribute('data-value-off') ?? '');
                     } else if (inp._madSelect) {
                         this.formData[field] = inp._madSelect.getValue();
+                        remember(field);
                     } else {
                         this.formData[field] = inp.value;
                     }

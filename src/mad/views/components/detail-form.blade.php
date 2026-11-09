@@ -189,6 +189,18 @@
     }
     unset($_form);
 
+    // Texto dos valores que as linhas já têm nos campos de busca no banco do
+    // editor (fórum #273): o campo é desenhado vazio e, ao editar a linha, só
+    // recebia a chave — mostrava "1619" no lugar de "1619 - Supermercado...".
+    $_dfLabels = \Mad\Form\DetailRowLabels::resolve(
+        array_values(array_diff(array_keys(\Mad\Form\MadFormRegistry::getFields()), $_dfFieldsBefore)),
+        $normalizedRows
+    );
+    if ($_dfLabels) {
+        $alpineCfg['labels'] = $_dfLabels;
+    }
+    unset($_dfLabels);
+
     // ── Ações da linha que só valem em algumas linhas (fw#363) ──────────────
     // `when-*`/`disabled-*` o navegador avalia na linha como ela está (também a
     // adicionada ali); `display-condition` e `disabled` por método são PHP:

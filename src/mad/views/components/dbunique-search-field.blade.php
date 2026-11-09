@@ -148,6 +148,9 @@
             'dependsColumn' => (string) $dependsColumn,
         ] : '',
     ]);
+    // De onde sai o texto do valor: no editor do <mad-detail-form> o valor chega
+    // da linha ao editar, depois do desenho (ver \Mad\Form\DetailRowLabels).
+    \Mad\Form\MadFormRegistry::labelSource((string) $name, (string) $model, (string) $keyField, (string) $display);
 
     // Fonte do filtro → SEMPRE compila pra query_sql/query_bindings (parametrizado),
     // sem serialize de objeto no token. Aceita :query (builder Eloquent) e

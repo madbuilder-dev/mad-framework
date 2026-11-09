@@ -156,6 +156,11 @@
             ? ((empty($noResultsCreateAction) && empty($noResultsQuickRegisterAction)) ? ['query' => $query, 'key' => $keyField] : '')
             : ($model ? ['model' => $model, 'key' => $keyField] : '')),
     ]);
+    // De onde sai o texto dos valores: no editor do <mad-detail-form> eles chegam
+    // da linha ao editar, depois do desenho (ver \Mad\Form\DetailRowLabels).
+    if ($mode !== 'manual') {
+        \Mad\Form\MadFormRegistry::labelSource((string) $name, (string) $model, (string) $keyField, (string) $display);
+    }
 
     // Fonte do filtro → SEMPRE compila pra query_sql/query_bindings (parametrizado).
     // Aceita :query (builder) e :filters (DSL), compilados via QuerySource no render.

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.285.1] — 2026-11-09
+
+### Correções
+
+- **Formulários:** ao editar uma linha de um `<mad-detail-form>`, os campos `<mad-dbunique-search-field>`, `<mad-dbmulti-search-field>` e `<mad-seek>` mostravam só o código do registro escolhido (por exemplo, "1619"). Agora mostram o texto do `display`, como na listagem, e salvar sem mexer mantém o mesmo registro.
+
 ## [5.285.0] — 2026-11-09
 
 ### Novidades

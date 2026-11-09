@@ -54,6 +54,17 @@ class MadFormRegistry
      */
     private static array $captures = [];
 
+    /**
+     * De onde sai o TEXTO do valor de um campo de busca no banco (Model, chave
+     * e display), por nome do campo. Só no servidor, durante o render: nunca
+     * vai para o estado nem para o formulário `__mad_form`. O `<mad-detail-form>`
+     * usa para mostrar, ao editar uma linha, o texto do valor que ela já tem
+     * (ver DetailRowLabels).
+     *
+     * @var array<string, array{model: string, key: string, display: string}>
+     */
+    private static array $labelSources = [];
+
     /** @var string Chave secreta para AES-256-CBC */
     private static string $secret = '';
 
@@ -183,6 +194,34 @@ class MadFormRegistry
         self::$fieldLists        = [];
         self::$detailFileColumns = [];
         self::$captures          = [];
+        self::$labelSources      = [];
+    }
+
+    /**
+     * Anota de onde sai o texto do valor do campo `$name` (Model, chave e
+     * display). Chamado pelos campos de busca no banco (`<mad-dbunique-search-field>`,
+     * `<mad-dbmulti-search-field>`), que só carregam a opção do valor salvo
+     * quando ele vem do registro: no editor do `<mad-detail-form>` o valor
+     * chega depois, da linha, e sem isto o campo mostrava a chave.
+     *
+     * @internal chamado pelas views dos campos
+     */
+    public static function labelSource(string $name, string $model, string $key, string $display): void
+    {
+        if ($name === '' || $model === '' || $key === '' || $display === '') {
+            return;
+        }
+        self::$labelSources[$name] = ['model' => $model, 'key' => $key, 'display' => $display];
+    }
+
+    /**
+     * Origem do texto anotada para `$name` (ver labelSource()), ou null.
+     *
+     * @return array{model: string, key: string, display: string}|null
+     */
+    public static function labelSourceOf(string $name): ?array
+    {
+        return self::$labelSources[$name] ?? null;
     }
 
     /**
