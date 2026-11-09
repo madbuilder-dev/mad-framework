@@ -83,6 +83,10 @@
         'storage'    => $storage,
         'folder'     => $folder,
         'nameColumn' => $nameColumn,
+        // Otimização da imagem enviada (fórum #269): dimensão máxima (px) e qualidade (1 a 100).
+        // Só vale com storage="disk"; ver \\Mad\\Service\\MadImageOptimizer.
+        'imageMaxDimension' => $imageMaxDimension ?? '',
+        'imageQuality'      => $imageQuality ?? '',
         // Só o que a tag declarou: o servidor confere no Salvar (MadUploadRules::check).
         'accept'     => $_acceptDeclared,
         'maxBytes'   => $_declaredBytes ?: '',

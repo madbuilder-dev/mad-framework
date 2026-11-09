@@ -5623,6 +5623,35 @@ class MadForm
     }
 
     /**
+     * Otimiza a imagem de um upload ANTES de ela ir para o disco (fórum #269):
+     * `image-max-dimension` e `image-quality` do campo. Sem elas, ou com um
+     * arquivo que não é imagem otimizável (GIF, SVG, animada, PDF…), devolve o
+     * próprio temporário. Quem recebe tem de chamar {@see _releaseUpload()}.
+     *
+     * @param array<string,mixed> $props props do campo
+     * @return array{path:string,size:int,temp:bool} `size` = bytes de `path`; `temp` = o arquivo é um temporário novo
+     */
+    private function _optimizedUpload(string $tmpPath, array $props): array
+    {
+        $unchanged = ['path' => $tmpPath, 'size' => is_file($tmpPath) ? (int) filesize($tmpPath) : 0, 'temp' => false];
+        $opts = \Mad\Service\MadImageOptimizer::options($props);
+        if ($opts === null) {
+            return $unchanged;
+        }
+        $r = \Mad\Service\MadImageOptimizer::optimize($tmpPath, $opts);
+
+        return $r['changed'] ? ['path' => $r['path'], 'size' => $r['size'], 'temp' => true] : $unchanged;
+    }
+
+    /** Apaga o temporário que {@see _optimizedUpload()} criou (o upload original o PHP apaga). */
+    private function _releaseUpload(array $upload): void
+    {
+        if (!empty($upload['temp']) && is_file($upload['path'])) {
+            @unlink($upload['path']);
+        }
+    }
+
+    /**
      * Grava no disco um arquivo enviado, acompanhando a transação do Salvar:
      *
      *  - caminho novo (nome sorteado — `$unique`: os modos `prefix` e `unique`
@@ -6080,7 +6109,13 @@ class MadForm
         $fileName = $this->_buildFileName($originalName, $props['fileName'] ?? 'prefix', $record);
         $relPath  = $this->_uploadKey($folder, $fileName, $props);   // path relativo gravado no banco
 
-        if (!$this->_storeFile($file['tmp_name'], $relPath, $record, self::_uniqueFileNames($props['fileName'] ?? 'prefix'))) {
+        $upload = $this->_optimizedUpload($file['tmp_name'], $props);
+        try {
+            $stored = $this->_storeFile($upload['path'], $relPath, $record, self::_uniqueFileNames($props['fileName'] ?? 'prefix'));
+        } finally {
+            $this->_releaseUpload($upload);
+        }
+        if (!$stored) {
             return;
         }
         // O antigo sai quando a transação confirmar (e não sai se o novo
@@ -7436,7 +7471,12 @@ class MadForm
                     // _buildFileName ja sanitiza e bloqueia extensoes proibidas.
                     $fileName  = $this->_buildFileName($files['name'][$i], $props['fileName'] ?? 'prefix', $record);
                     $filePath  = $this->_uploadKey($folder, $fileName, $props);   // relativo (banco)
-                    $this->_storeFile($files['tmp_name'][$i], $filePath, $record, $unique);
+                    $upload = $this->_optimizedUpload($files['tmp_name'][$i], $props);
+                    try {
+                        $this->_storeFile($upload['path'], $filePath, $record, $unique);
+                    } finally {
+                        $this->_releaseUpload($upload);
+                    }
                     $newPaths[] = $filePath;
                     if (!in_array($filePath, $final, true)) {
                         $final[] = $filePath;
@@ -7598,17 +7638,29 @@ class MadForm
                 // empurrando o dev pro upload manual. Mapeamento explícito via
                 // props (`original-name-column` etc.) ou, sem prop, por
                 // CONVENÇÃO quando a coluna existe na tabela filha.
-                $this->_fillUploadMeta($child, $props, [
-                    'original' => $originalName,
-                    'size'     => (int) ($files['size'][$i] ?? 0),
-                    'mime'     => (string) ($files['type'][$i] ?? ''),
-                    'tmp'      => (string) $files['tmp_name'][$i],
-                ]);
+                // Imagem otimizada (fórum #269): o tamanho gravado é o do arquivo que vai
+                // para o disco. Só `storage="disk"`; no banco o arquivo segue como veio.
+                $upload = $storage === 'disk'
+                    ? $this->_optimizedUpload((string) $files['tmp_name'][$i], $props)
+                    : ['path' => (string) $files['tmp_name'][$i], 'size' => 0, 'temp' => false];
+                try {
+                    $this->_fillUploadMeta($child, $props, [
+                        'original' => $originalName,
+                        'size'     => $upload['temp'] ? $upload['size'] : (int) ($files['size'][$i] ?? 0),
+                        'mime'     => (string) ($files['type'][$i] ?? ''),
+                        'tmp'      => $upload['path'],
+                    ]);
+
+                    if ($storage === 'disk') {
+                        $fileName = $this->_buildFileName($originalName, $props['fileName'] ?? 'prefix', $record);
+                        $filePath = $this->_uploadKey($folder, $fileName, $props);   // relativo (banco)
+                        $this->_storeFile($upload['path'], $filePath, $child, $unique);
+                    }
+                } finally {
+                    $this->_releaseUpload($upload);
+                }
 
                 if ($storage === 'disk') {
-                    $fileName = $this->_buildFileName($originalName, $props['fileName'] ?? 'prefix', $record);
-                    $filePath = $this->_uploadKey($folder, $fileName, $props);   // relativo (banco)
-                    $this->_storeFile($files['tmp_name'][$i], $filePath, $child, $unique);
                     $child->$pathColumn = $filePath;
                     $child->save();
                     $newPaths[] = $filePath;

@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Mad\Console\GridPurgeExportsCommand;
+use Mad\Console\UploadsPruneEmptyCommand;
 use Mad\Console\RestDriverInstallCommand;
 use Mad\Console\TraceFlushCommand;
 use Mad\Console\TraceInfraCommand;
@@ -89,6 +90,7 @@ class MadServiceProvider extends ServiceProvider
                 TraceFlushCommand::class,
                 TraceInfraCommand::class,
                 GridPurgeExportsCommand::class,
+                UploadsPruneEmptyCommand::class,
                 RestDriverInstallCommand::class,
                 \Mad\Console\RequestLogPurgeCommand::class,
             ]);

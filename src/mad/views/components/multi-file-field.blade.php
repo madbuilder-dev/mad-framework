@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
 @php
     $required   = !empty($required);
     $disabled   = !empty($disabled);
@@ -129,6 +129,10 @@
         'pathColumn' => $pathColumn,
         'nameColumn' => $nameColumn,
         'fileName'   => $fileName ?? 'prefix',
+        // Otimização da imagem enviada (fórum #269): dimensão máxima (px) e qualidade (1 a 100).
+        // Só vale com storage="disk"; ver \\Mad\\Service\\MadImageOptimizer.
+        'imageMaxDimension' => $imageMaxDimension ?? '',
+        'imageQuality'      => $imageQuality ?? '',
         // Limites: o servidor os confere no Salvar (MadUploadRules::check).
         // `max-size` é em KB; `*` (o padrão) aceita qualquer tipo.
         'accept'     => trim((string) $accept) === '*' ? '' : (string) $accept,

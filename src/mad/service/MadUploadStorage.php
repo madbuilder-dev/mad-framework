@@ -254,7 +254,17 @@ final class MadUploadStorage
         }
     }
 
-    /** Remove o arquivo do disco de uploads (idempotente; false engolido). */
+    /** Pasta própria de um arquivo público: `_public/<pasta>/<hmac>` (ver MadPublicUpload). */
+    private const PUBLIC_FOLDER = '#^' . MadPublicUpload::PREFIX . '/(?:[^/]+/)+[0-9a-f]{24}$#';
+
+    /**
+     * Remove o arquivo do disco de uploads (idempotente; false engolido).
+     *
+     * Arquivo público (`_public/<pasta>/<hmac>/<nome>`, #244): a pasta do
+     * `<hmac>` existe só para ele e sobrava vazia depois da exclusão (fórum
+     * #269). Sai junto, se ficou vazia. Nunca sobe além dela: `_public/<pasta>`
+     * e o resto ficam como estão.
+     */
     public static function delete(string $relPath): void
     {
         if ($relPath === '') {
@@ -262,6 +272,88 @@ final class MadUploadStorage
         }
 
         self::disk()->delete($relPath);
+
+        if (MadPublicUpload::isPublicPath($relPath)) {
+            self::removeIfEmpty(dirname($relPath));
+        }
+    }
+
+    /**
+     * Pastas de arquivo público JÁ vazias no disco de uploads (sobras de
+     * exclusões de antes do #269): `_public/<pasta>/<hmac>` sem arquivo e sem
+     * subpasta. Só olha — não remove.
+     *
+     * @return list<string>
+     */
+    public static function emptyPublicFolders(): array
+    {
+        $disk  = self::disk();
+        $empty = [];
+        foreach ($disk->allDirectories(MadPublicUpload::PREFIX) as $dir) {
+            if (preg_match(self::PUBLIC_FOLDER, $dir) === 1 && self::isEmptyFolder($dir)) {
+                $empty[] = $dir;
+            }
+        }
+        sort($empty);
+
+        return $empty;
+    }
+
+    /**
+     * Remove as pastas de {@see emptyPublicFolders()}. Pasta que ganhou arquivo
+     * no meio do caminho fica. Devolve as que saíram.
+     *
+     * @return list<string>
+     */
+    public static function pruneEmptyPublicFolders(): array
+    {
+        $removed = [];
+        foreach (self::emptyPublicFolders() as $dir) {
+            if (self::removeIfEmpty($dir)) {
+                $removed[] = $dir;
+            }
+        }
+
+        return $removed;
+    }
+
+    private static function isEmptyFolder(string $dir): bool
+    {
+        $disk = self::disk();
+
+        return $disk->files($dir) === [] && $disk->directories($dir) === [];
+    }
+
+    /**
+     * Remove a pasta se, e só se, estiver vazia. No disco local usa `rmdir`,
+     * que recusa pasta com conteúdo (sem janela entre conferir e remover: um
+     * arquivo que chegou agora não é apagado). Em S3 e afins a "pasta" é só um
+     * prefixo, e o que sobra é, no máximo, o marcador dela.
+     *
+     * Nunca lança: o arquivo já saiu, e uma pasta que fica não é erro.
+     */
+    private static function removeIfEmpty(string $dir): bool
+    {
+        if ($dir === '' || $dir === '.' || $dir === '/') {
+            return false;
+        }
+
+        try {
+            $disk = self::disk();
+            if ($disk->getAdapter() instanceof \League\Flysystem\Local\LocalFilesystemAdapter) {
+                $abs = $disk->path($dir);
+
+                return is_dir($abs) && @rmdir($abs);
+            }
+            if (! self::isEmptyFolder($dir)) {
+                return false;
+            }
+            $disk->deleteDirectory($dir);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

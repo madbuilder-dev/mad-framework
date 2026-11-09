@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.282.0] — 2026-11-09
+
+### Novidades
+
+- **Upload:** `<mad-file-field>`, `<mad-image-field>`, `<mad-avatar-field>` e `<mad-multi-file-field>` ganham `image-max-dimension` (maior lado, em pixels) e `image-quality` (1 a 100) para reduzir a foto antes de gravar. Mantém a proporção, não amplia e a original grande não fica guardada. Vale para JPEG, PNG e WebP com `storage="disk"`; GIF, SVG e imagem animada não são alterados. Sem as props nada muda.
+- **Upload:** o comando `php artisan mad:uploads:prune-empty` lista as pastas vazias de arquivo público que sobraram de exclusões antigas e, com `--delete`, remove.
+
+### Correções
+
+- **Upload:** ao excluir ou trocar um arquivo de um campo com `public`, a pasta de nome aleatório que guardava o arquivo agora sai junto. Antes ela ficava vazia no armazenamento.
+
 ## [5.281.0] — 2026-11-09
 
 ### Novidades

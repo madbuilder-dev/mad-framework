@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'file-name' => 'prefix', 'auto-fill-name' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'auto-fill-name' => ''])
 @php
     $multiple   = !empty($multiple);
     $required   = !empty($required);
@@ -41,6 +41,10 @@
         'folder'     => $folder,
         'nameColumn' => $nameColumn,
         'fileName'   => $fileName ?? 'prefix',
+        // Otimização da imagem enviada (fórum #269): dimensão máxima (px) e qualidade (1 a 100).
+        // Só vale com storage="disk"; ver \\Mad\\Service\\MadImageOptimizer.
+        'imageMaxDimension' => $imageMaxDimension ?? '',
+        'imageQuality'      => $imageQuality ?? '',
     ]);
 
     // Câmera no celular (fw#495): com o campo aceitando imagem, "Tirar foto"
