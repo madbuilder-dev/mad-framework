@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.286.2] — 2026-11-09
+
+### Melhorias
+
+- **Permissões:** telas abrem bem mais rápido para quem está em muitos grupos ou perfis. As permissões do usuário são lidas de uma vez e reaproveitadas durante a requisição, em vez de consultadas de novo a cada verificação.
+
 ## [5.286.1] — 2026-11-09
 
 ### Correções
