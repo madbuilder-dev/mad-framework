@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.288.1] — 2026-11-10
+
+### Correções
+
+- **Campos:** no `<mad-spinner-field>` com início e fim (por exemplo, de 2026 a 2040), o botão "−" continuava desabilitado depois de somar, e o "+" não parava no fim. Agora os dois botões acompanham o valor a cada clique, digitação ou valor preenchido pela tela.
+- **Listagem (grid):** na coluna editável do tipo spinner com edição ao clicar na célula, o "+" e o "−" mostravam o número novo e salvavam o anterior. Agora salvam o número que está na tela.
+
 ## [5.288.0] — 2026-11-10
 
 ### Novidades

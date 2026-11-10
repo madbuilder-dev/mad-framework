@@ -4847,8 +4847,8 @@ function _madSyncMaskedField(el) {
         // formata — `rawValue` (numeric/money, `name` no hidden) ou
         // `selectedDate` (date/datetime, `name` no input visível).
         // O par é proposital: o madSpinnerField também tem `setValue()`, mas
-        // escreve no próprio input e dispara `change` — entraria em eco com o
-        // evento que o chamador dispara na sequência.
+        // escreve no próprio input e dispara `input`/`change` — entraria em eco
+        // com o evento que o chamador dispara na sequência.
         if (ad && typeof ad.setValue === 'function'
             && ('rawValue' in ad || 'selectedDate' in ad)) {
             ad.setValue(el.value);
@@ -5973,28 +5973,101 @@ function _madUploadSlot(root, name) {
     return null;
 }
 
+/** Número da caixa do spinner; vazio ou inválido → null. */
+function _madSpinParse(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    var v = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(',', '.'));
+    return isNaN(v) ? null : v;
+}
+
+/** Casas decimais de um número ("0.25" → 2, "1e-7" → 7). */
+function _madSpinDecimals(n) {
+    var s = String(n);
+    var e = s.indexOf('e-');
+    if (e !== -1) return parseInt(s.slice(e + 2), 10) || 0;
+    var dot = s.indexOf('.');
+    return dot === -1 ? 0 : s.length - dot - 1;
+}
+
+/**
+ * Chama `el.__madValueCb` quando o código escreve `el.value` direto, sem
+ * evento (x-model do editor da listagem, script do dev, reset). O getter/setter
+ * fica só NESTE input, por cima do nativo; o callback mora no elemento para o
+ * componente que reiniciar no mesmo nó trocar o seu.
+ */
+function _madTrackInputValue(el, cb) {
+    if (!el) return;
+    el.__madValueCb = cb;
+    if (el.__madValueTracked) return;
+    var proto = Object.getPrototypeOf(el), d = null;
+    while (proto && !(d = Object.getOwnPropertyDescriptor(proto, 'value'))) proto = Object.getPrototypeOf(proto);
+    if (!d || typeof d.get !== 'function' || typeof d.set !== 'function') return;
+    try {
+        Object.defineProperty(el, 'value', {
+            configurable: true,
+            enumerable: d.enumerable,
+            get: function () { return d.get.call(this); },
+            set: function (v) { d.set.call(this, v); if (typeof this.__madValueCb === 'function') this.__madValueCb(); },
+        });
+        el.__madValueTracked = true;
+    } catch (e) { /* sem como ligar: fica com os eventos */ }
+}
+
 document.addEventListener('alpine:init', () => {
 
-    /* madSpinnerField — TSpinner */
+    /* madSpinnerField — TSpinner (formulário e os dois editores da listagem)
+     *
+     * Os botões − e + seguem o número da caixa: o `:disabled` lê `val`, estado
+     * do Alpine. Ler `$refs.input.value` direto não é reativo, e o disabled era
+     * calculado uma vez, na abertura (fórum #279: de 2026 a 2040, a caixa vazia
+     * valia 0 e o − ficava desabilitado para sempre). O `val` acompanha o
+     * clique, a digitação e o form->set do servidor (`input`/`change`) e a
+     * escrita direta no campo, sem evento.
+     * Vazio conta como 0, como na célula da lista de itens (madSpinnerCell).
+     */
     Alpine.data('madSpinnerField', (cfg = {}) => ({
         min:  cfg.min  ?? null,
         max:  cfg.max  ?? null,
         step: cfg.step ?? 1,
+        val:  null,
+
+        init() {
+            const inp = this.$refs.input;
+            if (!inp) return;
+            const sync = () => { this.val = _madSpinParse(inp.value); };
+            sync();
+            inp.addEventListener('input', sync);
+            inp.addEventListener('change', sync);
+            _madTrackInputValue(inp, sync);
+            if (inp.form) inp.form.addEventListener('reset', () => setTimeout(sync, 0));
+        },
 
         getValue() {
-            const v = parseFloat(this.$refs.input.value);
-            return isNaN(v) ? 0 : v;
+            const v = _madSpinParse(this.$refs.input.value);
+            return v === null ? 0 : v;
         },
         setValue(v) {
             if (this.min !== null) v = Math.max(this.min, v);
             if (this.max !== null) v = Math.min(this.max, v);
-            this.$refs.input.value = v;
-            this.$refs.input.dispatchEvent(new Event('change', { bubbles: true }));
+            const inp = this.$refs.input;
+            inp.value = v;
+            this.val = v;
+            // `input` para o x-model do editor da listagem (só escuta input; sem
+            // ele o + mostrava o número novo e salvava o antigo); `change` para
+            // o on-change do campo e o commit da listagem.
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
         },
-        increment() { this.setValue(this.getValue() + this.step); },
-        decrement() { this.setValue(this.getValue() - this.step); },
-        isAtMin()   { return this.min !== null && this.getValue() <= this.min; },
-        isAtMax()   { return this.max !== null && this.getValue() >= this.max; },
+        increment() { this._stepBy(1); },
+        decrement() { this._stepBy(-1); },
+        // O passo soma sem o lixo do ponto flutuante (0.1 + 0.2).
+        _stepBy(dir) {
+            const cur  = this.getValue();
+            const prec = Math.max(_madSpinDecimals(this.step), _madSpinDecimals(cur));
+            this.setValue(Number((cur + dir * this.step).toFixed(prec)));
+        },
+        isAtMin() { return this.min !== null && (this.val ?? 0) <= this.min; },
+        isAtMax() { return this.max !== null && (this.val ?? 0) >= this.max; },
     }));
 
     /* madColorField — input hex + swatch com Pickr popover */
