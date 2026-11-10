@@ -148,13 +148,14 @@ final class MadRecordInUse
     /**
      * O que o banco exclui JUNTO com o registro (`on delete cascade`), com a
      * quantidade — para quem exclui saber antes. Registro com lixeira
-     * (SoftDeletes) não leva nada: a exclusão só o marca.
+     * (SoftDeletes, ou HasMadSoftDeletes com a coluna configurada) não leva
+     * nada: a exclusão só o marca, e as filhas ficam como estão (fórum #274).
      *
      * @return list<array{label:string,count:int}>
      */
     public static function alongWith(Model $record): array
     {
-        if (in_array(SoftDeletes::class, class_uses_recursive($record), true)) {
+        if (self::goesToTrash($record)) {
             return [];
         }
 
@@ -174,6 +175,20 @@ final class MadRecordInUse
     }
 
     // ── Internos ────────────────────────────────────────────────────────
+
+    /** A exclusão de `$record` só o marca (lixeira), sem tirar a linha do banco? */
+    private static function goesToTrash(Model $record): bool
+    {
+        $traits = class_uses_recursive($record);
+        if (in_array(SoftDeletes::class, $traits, true)) {
+            return ! $record->isForceDeleting();
+        }
+        if (in_array(\Mad\Database\Concerns\HasMadSoftDeletes::class, $traits, true)) {
+            return $record->getDeletedAtColumn() !== null && ! $record->isForceDeleting();
+        }
+
+        return false;
+    }
 
     /**
      * Quem usa o registro e o que vai junto, numa passada.

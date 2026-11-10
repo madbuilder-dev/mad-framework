@@ -20,6 +20,8 @@ namespace Mad\Database\Concerns;
  * Forma antiga (fallback; null = hard delete, comportamento padrão):
  *   protected ?string $deletedAtColumn = 'deleted_at'; // ...deletedByColumn, etc.
  *
+ * Exclusão de verdade, com a lixeira configurada: `$registro->forceDelete()`.
+ *
  * Constantes legadas (DELETEDAT, DELETED_BY, DELETED_BY_USER_ID) têm
  * precedência (compat). Nome do scope idêntico ao legado ('madSoftDelete')
  * para withoutGlobalScope() funcionar igual nos dois mundos.
@@ -64,11 +66,37 @@ trait HasMadSoftDeletes
         return null;
     }
 
+    /** Dentro de {@see forceDelete()}: a exclusão tira a linha do banco, mesmo com a lixeira. */
+    protected bool $madIsForceDeleting = false;
+
+    /**
+     * Exclui DE VERDADE, mesmo com a coluna da lixeira configurada (fórum #274):
+     * a linha sai do banco, com os eventos `deleting`/`deleted` de sempre. No
+     * `deleting`, {@see isForceDeleting()} diz que é essa exclusão — é por ele
+     * que o Model gerado leva junto (ou solta) as filhas só aqui, e não quando
+     * o registro vai para a lixeira.
+     */
+    public function forceDelete(): ?bool
+    {
+        $this->madIsForceDeleting = true;
+        try {
+            return $this->delete();
+        } finally {
+            $this->madIsForceDeleting = false;
+        }
+    }
+
+    /** A exclusão em curso é a de verdade ({@see forceDelete()})? */
+    public function isForceDeleting(): bool
+    {
+        return $this->madIsForceDeleting;
+    }
+
     /** Soft delete quando a coluna está configurada; senão delega ao Eloquent. */
     protected function performDeleteOnModel()
     {
         $col = $this->getDeletedAtColumn();
-        if (!$col) {
+        if (!$col || $this->madIsForceDeleting) {
             return parent::performDeleteOnModel();
         }
 

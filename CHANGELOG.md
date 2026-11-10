@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.291.0] — 2026-11-10
+
+### Novidades
+
+- **App gerado:** num Model com lixeira, `$registro->forceDelete()` exclui de verdade: a linha sai do banco. O `delete()` continua só mandando o registro para a lixeira.
+
+### Correções
+
+- **Listagem (grid):** excluir um registro que vai para a lixeira não pergunta mais "Excluir tudo?" listando as filhas. Elas não vão junto: ficam como estão, e restaurar o registro as encontra.
+
 ## [5.290.0] — 2026-11-10
 
 ### Melhorias
