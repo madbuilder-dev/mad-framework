@@ -27,7 +27,18 @@ final class InstallToken
      */
     public static function fromEnv(): bool
     {
-        return (string) env('INSTALL_TOKEN', '') !== '';
+        return self::envToken() !== '';
+    }
+
+    /**
+     * INSTALL_TOKEN pelo config (`mad.install.token`), que vale com o cache de
+     * configuração; o env() direto fica para o config/mad.php anterior à chave.
+     */
+    private static function envToken(): string
+    {
+        $value = function_exists('config') ? config('mad.install.token') : null;
+
+        return (string) ($value ?? env('INSTALL_TOKEN', ''));
     }
 
     /**
@@ -36,7 +47,7 @@ final class InstallToken
     public static function ensure(): string
     {
         if (self::fromEnv()) {
-            return (string) env('INSTALL_TOKEN');
+            return self::envToken();
         }
 
         $path = self::path();

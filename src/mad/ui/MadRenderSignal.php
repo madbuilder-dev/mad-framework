@@ -61,7 +61,13 @@ final class MadRenderSignal
     public static function enabled(): bool
     {
         try {
-            return function_exists('env') && (bool) env('MAD_FRAMEABLE', false);
+            // config('mad.frameable') vale com o cache de configuração; o env()
+            // direto fica só para o app cujo config/mad.php é anterior à chave.
+            $value = function_exists('config') ? config('mad.frameable') : null;
+
+            return $value !== null
+                ? (bool) $value
+                : function_exists('env') && (bool) env('MAD_FRAMEABLE', false);
         } catch (\Throwable) {
             return false;
         }

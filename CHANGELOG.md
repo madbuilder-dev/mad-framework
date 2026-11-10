@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.286.3] — 2026-11-09
+
+### Melhorias
+
+- **Desempenho:** o app passa a funcionar com o cache de configuração do Laravel (`php artisan optimize`), o que deixa cada tela mais rápida. Antes, com o cache ligado, a atualização do banco pulava as tabelas dos modelos de dados, o token fixo do instalador era ignorado e o app saía do quadro de prévia do Teste Online. Instalar pelo `/install` com o cache ligado também passa a usar o banco novo na hora.
+
 ## [5.286.2] — 2026-11-09
 
 ### Melhorias
