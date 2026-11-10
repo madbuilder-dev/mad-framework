@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.287.1] — 2026-11-10
+
+### Correções
+
+- **App gerado:** em app instalado em subpasta (hospedagem cPanel, como `public_html/app/public`), **Perfil** e **Trocar unidade** no menu do usuário e os links das mensagens no topo abriam "404 Not Found". Agora abrem a tela, também nos apps já instalados depois de atualizar o framework.
+
 ## [5.287.0] — 2026-11-10
 
 ### Novidades

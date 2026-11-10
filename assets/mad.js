@@ -703,6 +703,7 @@ const Mad = {
     },
 
     async navigate(url, callback, opts) {
+        url = this._withAppBase(url);
         MadLoader.show();
         try {
             const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
@@ -727,6 +728,7 @@ const Mad = {
      * URL não é empilhada de novo: o navegador já está nessa entrada.
      */
     async load(url, callback, opts) {
+        url = this._withAppBase(url);
         opts = opts || {};
         // Rota amigável (/app/...) vai direto com X-Mad-Partial (senão o
         // resolver devolve o casco). URL em formato de query (?class=) é
@@ -928,6 +930,25 @@ const Mad = {
         return (window.MadShell && window.MadShell.appBase)
             ? String(window.MadShell.appBase).replace(/\/+$/, '')
             : null;
+    },
+
+    /**
+     * Caminho de tela escrito fixo (`'/app/conta/configuracoes'`) num app
+     * instalado em SUBPASTA (fórum #271): a base é `/<pasta>/app` e o pedido ia
+     * para a raiz do domínio, que devolvia 404 ("Perfil" do menu do usuário,
+     * mensagens do cabeçalho). Aqui o caminho ganha a pasta. App na raiz
+     * (base `/app`), URL que já tem a base, endereço completo ou relativo:
+     * como veio.
+     */
+    _withAppBase(url) {
+        const b = this._appBase();
+        if (!b || b === '/app' || typeof url !== 'string' || !/\/app$/.test(b)) return url;
+        if (!/^\/app(?:[\/?#]|$)/.test(url)) return url;
+        if (url.indexOf(b) === 0 && (url.length === b.length || '/?#'.indexOf(url.charAt(b.length)) >= 0)) return url;
+        const pasta = b.slice(0, -'/app'.length);
+        // Já com a pasta (`/app/public/...`). Pasta `/app` é ambígua: aí só a base inteira conta.
+        if (pasta !== '/app' && (url === pasta || url.indexOf(pasta + '/') === 0)) return url;
+        return pasta + url;
     },
 
     /** A URL já é uma rota amigável /app/... (não é URL do dispatcher class=)? */
