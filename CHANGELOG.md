@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.287.0] — 2026-11-10
+
+### Novidades
+
+- **Combo:** `image-column` no `<mad-dbcombo-field>`, `<mad-dbunique-search-field>` e `<mad-dbmulti-search-field>` mostra a imagem de cada registro (o logo do banco) pequena antes do texto, na lista, na busca e no valor escolhido. Vale o arquivo de um campo de Imagem, um arquivo do app ou um endereço https://.
+- **Combo:** `:images` no `<mad-select-field>` dá uma imagem a cada item fixo (`:images="['itau' => 'https://…/itau.png']"`), ou a chave `image` na lista de itens. Item sem imagem fica só com o texto.
+
 ## [5.286.3] — 2026-11-09
 
 ### Melhorias

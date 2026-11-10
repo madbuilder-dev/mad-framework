@@ -51,6 +51,10 @@
      *     :option-highlights="[['when' => ['field' => 'status', 'op' => 'eq', 'value' => 'inativo'], 'tone' => 'danger']]"
      *     Ver \Mad\Form\MadOptionHighlightCompiler.
      *     Vale na lista da busca, nas opções dos itens já gravados e em cada item escolhido (bolinha).
+     *   image-column string  Coluna do model com a imagem da opção (o logo do banco): arquivo
+     *       gravado por um campo de Upload/Imagem, arquivo do app em public/ ou endereço http(s).
+     *       Imagem pequena antes do texto, na lista da busca e no valor escolhido; registro sem
+     *       imagem fica só com o texto. Ver \Mad\Form\OptionImages.
      */
 
     $name          = $name          ?? '';
@@ -108,6 +112,11 @@
     $__hlRules = \Mad\Form\OptionHighlights::forField($optionHighlights ?? []);
     $__hlMarks = [];
     $__hlEach  = \Mad\Form\OptionHighlights::collector($__hlRules, $__hlMarks);
+    // `image-column`: imagem de cada opção (fórum #275). A busca no servidor lê a
+    // coluna pelo token; aqui vale para o valor já gravado.
+    $__imgCol  = \Mad\Form\OptionImages::column($imageColumn ?? '');
+    $__imgs    = [];
+    $__optEach = \Mad\Form\OptionImages::each($__hlEach, \Mad\Form\OptionImages::collector($__imgCol, $__imgs));
     if ($name && strpos($attrs, 'mad:model') === false && strpos($attrs, 'data-mad-model') === false) {
         $attrs = 'mad:model="' . $name . '" ' . $attrs;
     }
@@ -222,7 +231,7 @@
             'limit'          => 500,
             // Regras do destaque das opções: a busca marca cada resultado no
             // servidor; o navegador só recebe a marca (só existe com regras).
-        ] + ($__hlRules ? ['highlights' => $__hlRules] : []));
+        ] + ($__hlRules ? ['highlights' => $__hlRules] : []) + ($__imgCol !== '' ? ['image_column' => $__imgCol] : []));
     }
 
     // Token depends-on
@@ -267,7 +276,7 @@
         try {
             $__pm = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
             $preloadOptions = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display, null, 'asc', $__optMissing, $__hlEach
+                $__pm::query()->whereIn($keyField, (array) $selected), $keyField, $display, null, 'asc', $__optMissing, $__optEach
             );
         } catch (\Exception $e) {
             $preloadOptions = [];
@@ -313,7 +322,7 @@
         {!! $attrs !!}
     >
         @foreach($preloadOptions as $optKey => $optLabel)
-            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}
+            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}{!! $__imgs ? \Mad\Form\OptionImages::attr($__imgs[(string) $optKey] ?? null) : '' !!}
                 @if(in_array((string)$optKey, $selected)) selected @endif>
                 {{ $optLabel }}
             </option>

@@ -67,6 +67,11 @@ class MadDbSearchService extends MadComponent
                 // Regras do <mad-option-highlights>, cunhadas no token pelo campo.
                 $hlRules  = \Mad\Form\OptionHighlights::normalize($config['highlights'] ?? []);
                 $hlRecord = $hlRules ? \Mad\Form\OptionHighlights::hydrator($model, $database) : null;
+                // `image-column` do campo (fórum #275): o endereço da imagem de
+                // cada resultado sai pronto em `img`; o registro é o model, dono
+                // do arquivo no endereço assinado.
+                $imgCol    = \Mad\Form\OptionImages::column($config['image_column'] ?? '');
+                $imgRecord = $imgCol !== '' ? ($hlRecord ?? \Mad\Form\OptionHighlights::hydrator($model, $database)) : null;
 
                 if ($querySql !== '' || $model !== '') {
                     try {
@@ -253,6 +258,10 @@ class MadDbSearchService extends MadComponent
                                 if ($hlRecord !== null
                                     && ($hl = \Mad\Form\OptionHighlights::markFor($hlRules, $hlRecord($object))) !== null) {
                                     $result['hl'] = $hl;
+                                }
+                                if ($imgRecord !== null
+                                    && ($img = \Mad\Form\OptionImages::fromRecord($imgCol, $imgRecord($object))) !== null) {
+                                    $result['img'] = $img;
                                 }
                                 $results[] = $result;
                             }

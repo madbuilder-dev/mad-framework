@@ -56,6 +56,10 @@
      *
      *   color-column string  Coluna do model com a cor da opção (`success`, `primary`, `#16a34a`):
      *       ponto colorido antes do texto, na lista e no valor escolhido.
+     *   image-column string  Coluna do model com a imagem da opção (o logo do banco): arquivo
+     *       gravado por um campo de Upload/Imagem, arquivo do app em public/ ou endereço http(s).
+     *       Imagem pequena antes do texto, na lista e no valor escolhido; registro sem imagem
+     *       fica só com o texto. Ver \Mad\Form\OptionImages.
      *   option-highlights array  Destaque das opções por condição. Em geral vem da tag filha:
      *       <mad-option-highlights>
      *           <mad-option-highlight when-field="status" when-value="inativo" tone="danger" badge="Inativo" />
@@ -95,6 +99,10 @@
     $__hlRules     = \Mad\Form\OptionHighlights::withColorColumn(\Mad\Form\OptionHighlights::forField($optionHighlights ?? []), $colorColumn ?? '');
     $__hlMarks     = [];
     $__hlEach      = \Mad\Form\OptionHighlights::collector($__hlRules, $__hlMarks);
+    // `image-column`: imagem de cada opção, lida na MESMA consulta (fórum #275).
+    $__imgCol      = \Mad\Form\OptionImages::column($imageColumn ?? '');
+    $__imgs        = [];
+    $__optEach     = \Mad\Form\OptionImages::each($__hlEach, \Mad\Form\OptionImages::collector($__imgCol, $__imgs));
 
     // Largura — width / max-width (aceita calc(), %, px, ...) aplicados ao
     // wrapper .mad-field. Espelha o input-field e o preview do builder.
@@ -260,7 +268,7 @@
                 $keyField,
                 $display,
                 $orderBy ?: null, $orderDir ?: 'asc',
-                $__optMissing, $__hlEach
+                $__optMissing, $__optEach
             );
         } catch (\Throwable $e) {
             $options = [];
@@ -302,7 +310,7 @@
                     $__cq->where($dependsColumn, '=', $parentValue);
                 }
                 $options = \Mad\Form\ModelOptionsLoader::itemsFromQuery(
-                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing, $__hlEach
+                    $__cq, $keyField, $display, $orderBy ?: null, $orderDir ?: 'asc', $__optMissing, $__optEach
                 );
             } catch (\Throwable $e) {
                 $options = [];
@@ -343,7 +351,7 @@
             'filters'  => $filters,
             // Regras do destaque das opções: a recarga marca as opções novas
             // com as MESMAS regras do 1º desenho (só existe com regras).
-        ] + ($__hlRules ? ['highlights' => $__hlRules] : []));
+        ] + ($__hlRules ? ['highlights' => $__hlRules] : []) + ($__imgCol !== '' ? ['image_column' => $__imgCol] : []));
     }
 
     // Auto-fill (<fill>): cifra a config (model/key/db + query_sql do filtro do
@@ -445,7 +453,7 @@
             <option value="" disabled data-mad-options-error>{{ $__optError }}</option>
         @endif
         @foreach($options as $optKey => $optLabel)
-            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}
+            <option value="{{ $optKey }}"{!! $__hlMarks ? \Mad\Form\OptionHighlights::attrs($__hlMarks[(string) $optKey] ?? null) : '' !!}{!! $__imgs ? \Mad\Form\OptionImages::attr($__imgs[(string) $optKey] ?? null) : '' !!}
                     @if((string)$optKey === (string)$selected) selected @endif>
                 {{ $optLabel }}
             </option>

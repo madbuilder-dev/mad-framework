@@ -1731,6 +1731,19 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
   background: var(--mad-sel-hl-accent, var(--mad-warning));
 }
 .mad-sel-chip > .mad-sel-dot { overflow: visible; }
+/* Imagem da opção (`image-column` / `:images`, fórum #275): tamanho fixo, a
+   lista abre na hora e a imagem chega depois sem mexer na linha. Logo largo
+   cabe inteiro (contain). Opção sem imagem: só o texto, sem espaço vazio. */
+.mad-sel-img {
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  object-fit: contain;
+  border-radius: 3px;
+  display: block;
+}
+.mad-sel-chip > .mad-sel-img { width: 16px; height: 16px; overflow: visible; }
+.mad-sel-control > .mad-sel-img { margin-right: 2px; }
+.mad-sel-img.is-broken { display: none !important; }
 /* Cor por opção (`colors` do select, `color-column` do combo): só o ponto antes
    do texto, sem pintar a linha. Na lista com checkbox o ponto vem depois dele. */
 .mad-sel-option[data-mad-hl="dot"]::before {

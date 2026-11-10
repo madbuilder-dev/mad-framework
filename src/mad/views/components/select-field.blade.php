@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => mad_t('mad.ui.create_new'), 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => mad_t('mad.ui.add'), 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => '', 'colors' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'items' => [], 'selected' => null, 'value' => '','placeholder' => '', 'multiple' => false, 'noSearch' => false, 'allowEmpty' => false, 'noEmpty' => false, 'noResultsCreateAction' => '', 'noResultsCreateLabel' => mad_t('mad.ui.create_new'), 'noResultsCreateIcon' => 'plus', 'noResultsCreateClass' => 'mad-btn mad-btn-primary mad-btn-sm', 'noResultsQuickRegisterAction' => '', 'noResultsQuickRegisterLabel' => mad_t('mad.ui.add'), 'noResultsQuickRegisterIcon' => 'check', 'noResultsQuickRegisterClass' => 'mad-btn mad-btn-success mad-btn-sm', 'noResultsQuickFields' => [], 'noResultsMessage' => '', 'colors' => '', 'images' => []])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -26,6 +26,9 @@
     // Cor por opção (ponto na lista e no valor): prop `colors`, par de selo
     // `['aberto' => ['Aberto', 'info']]` ou `color` na lista de objetos.
     $__colorMarks = \Mad\Form\OptionHighlights::staticMarks($colors ?? '', $items);
+    // Imagem por opção (fórum #275): prop `:images` (valor => imagem) ou a chave
+    // `image` na lista de objetos. Sem imagem, a option sai byte a byte igual.
+    $__optImages  = \Mad\Form\OptionImages::staticImages($images ?? [], $items);
     $items = \Mad\Support\MadItems::normalize($items);
     $_isHidden   = $name && \Mad\Component\MadRenderContext::isHidden($name);
     // `readonly` / `:readonly` da tag trava como o do formulário (fw#315).
@@ -156,7 +159,7 @@
                         $optLabel = method_exists($optLabel, '__toString') ? (string)$optLabel : '';
                     }
                 @endphp
-                <option value="{{ $optKey }}"{!! $__colorMarks ? \Mad\Form\OptionHighlights::attrs($__colorMarks[(string) $optKey] ?? null) : '' !!} @if($_slotMultiple ? in_array((string)$optKey, $_slotValues, true) : (string)$optKey === (string)$selected) selected @endif>{{ $optLabel }}</option>
+                <option value="{{ $optKey }}"{!! $__colorMarks ? \Mad\Form\OptionHighlights::attrs($__colorMarks[(string) $optKey] ?? null) : '' !!}{!! $__optImages ? \Mad\Form\OptionImages::attr($__optImages[(string) $optKey] ?? null) : '' !!} @if($_slotMultiple ? in_array((string)$optKey, $_slotValues, true) : (string)$optKey === (string)$selected) selected @endif>{{ $optLabel }}</option>
             @endforeach
         @else
             {{-- Slot: quem escreve as <option> escreve também a em branco; só o

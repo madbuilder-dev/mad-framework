@@ -1746,6 +1746,7 @@ function _madRefreshQuickCombos(pop) {
                     opt.value = String(o.value);
                     opt.textContent = String(o.label);
                     if (o.hl) _madSelSetHl(opt, o.hl);
+                    if (o.img) _madSelSetImg(opt, o.img);
                     if (prev && opt.value === prev) { opt.selected = true; found = true; }
                     sel.appendChild(opt);
                 });
@@ -2203,6 +2204,30 @@ function _madSelSetHl(opt, hl) {
 }
 window._madSelSetHl = _madSelSetHl;
 
+/* Imagem da opção (`image-column` dos campos de banco, `:images` do select —
+   fórum #275): o servidor grava o endereço já pronto em `data-mad-img`. Aqui só
+   se confere de novo que é endereço de imagem — http(s), caminho do próprio
+   site ou `data:image/png|jpeg|gif|webp` —, nunca `javascript:` e afins. */
+var _MAD_SEL_IMG_DATA = /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+\/=\s]+$/i;
+function _madSelImgNorm(v) {
+    if (typeof v !== 'string') return '';
+    v = v.trim();
+    if (!v || /[\x00-\x1F\x7F"'<>`\\]/.test(v)) return '';
+    if (/^data:/i.test(v)) return v.length <= 200000 && _MAD_SEL_IMG_DATA.test(v) ? v : '';
+    if (/^https?:\/\/[^\/?#\s]+/i.test(v)) return v;
+    if (/^[a-z][a-z0-9+.\-]*:/i.test(v) || v.indexOf('//') === 0) return '';
+    return v.length <= 2048 ? v : '';
+}
+function _madSelImg(opt) {
+    return opt && typeof opt.getAttribute === 'function' ? _madSelImgNorm(opt.getAttribute('data-mad-img')) : '';
+}
+function _madSelSetImg(opt, v) {
+    if (!opt || typeof opt.setAttribute !== 'function') return;
+    v = _madSelImgNorm(v);
+    if (v) opt.setAttribute('data-mad-img', v); else opt.removeAttribute('data-mad-img');
+}
+window._madSelSetImg = _madSelSetImg;
+
 /* A opção em branco do <select>: a primeira `<option value="">` HABILITADA.
    A desabilitada de value vazio é o aviso de lista que não carregou
    (`data-mad-options-error`) — não é placeholder nem escolha. */
@@ -2234,7 +2259,7 @@ function _madSelectFactory() {
         noResultsMsg: madT('no_records', 'Nenhum registro encontrado.'), noResCfg: null,
         // ── estado transiente de UI ──
         open: false, query: '', activeIndex: -1, loading: false, results: [],
-        _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {},
+        _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {}, _imgMap: {},
         _listeners: {}, _outside: null, _onScroll: null, _ctrlRect: null,
         _isTouch: false, _uid: '', _native: null, _taBuf: '', _taTimer: null,
         _kbPick: false, _onFocusOut: null,
@@ -2341,6 +2366,12 @@ function _madSelectFactory() {
             var o = _madSelOpt(this._native, v);
             return (o && _madSelHl(o)) || this._hlMap[v] || null;
         },
+        // Imagem de um valor: a da <option>; sem option ainda (resultado da
+        // busca), a que veio na resposta. '' = só o texto.
+        _imgFor(v) {
+            var o = _madSelOpt(this._native, v);
+            return (o && _madSelImg(o)) || this._imgMap[v] || '';
+        },
         // Aplica a marca num elemento da lista/do controle: `data-mad-hl`
         // (row|badge), `data-mad-hl-tone` (o tom, ou "color") e a cor livre
         // em --mad-sel-hl-color. Sem marca, o elemento fica como era.
@@ -2368,16 +2399,18 @@ function _madSelectFactory() {
         get displayItems() {
             this._v;
             var self = this;
-            return this.selectedValues.map(function (v) { return { value: v, text: self._labelFor(v), hl: self._hlFor(v) }; });
+            return this.selectedValues.map(function (v) { return { value: v, text: self._labelFor(v), hl: self._hlFor(v), img: self._imgFor(v) }; });
         },
         get hasValue() { return this.selectedValues.length > 0; },
         // Marca do valor escolhido no single (a bolinha antes do texto).
         get singleHl() { var d = this.displayItems; return d.length ? d[0].hl : null; },
+        // Imagem do valor escolhido no single (antes do texto).
+        get singleImg() { var d = this.displayItems; return d.length ? d[0].img : ''; },
         get nativeOptions() {
             this._v;
             var el = this._native; if (!el) return [];
             var out = [], o = el.options;
-            for (var i = 0; i < o.length; i++) { if (o[i].value !== '') out.push({ value: o[i].value, text: o[i].textContent, hl: _madSelHl(o[i]) }); }
+            for (var i = 0; i < o.length; i++) { if (o[i].value !== '') out.push({ value: o[i].value, text: o[i].textContent, hl: _madSelHl(o[i]), img: _madSelImg(o[i]) }); }
             return out;
         },
         // Opção em branco como linha da lista: sem ela, depois de escolher um
@@ -2628,6 +2661,9 @@ function _madSelectFactory() {
                         // <option> que nasce quando o resultado é escolhido.
                         r.hl = _madSelHlNorm(r.hl);
                         if (r.hl) self._hlMap[r.value] = r.hl; else delete self._hlMap[r.value];
+                        // Imagem (`image-column`): idem, para a <option> que nasce na escolha.
+                        r.img = _madSelImgNorm(r.img);
+                        if (r.img) self._imgMap[r.value] = r.img; else delete self._imgMap[r.value];
                     });
                     self.activeIndex = self.results.length ? 0 : -1; self._kbPick = false;
                 })
@@ -2794,6 +2830,7 @@ function _madSelectFactory() {
             if (!o) {
                 o = document.createElement('option'); o.value = v; o.textContent = this._labelFor(v); o.setAttribute('data-mad-synthetic', '');
                 if (this._hlMap[v]) _madSelSetHl(o, this._hlMap[v]);
+                if (this._imgMap[v]) _madSelSetImg(o, this._imgMap[v]);
                 el.appendChild(o);
             }
             return o;
@@ -2868,12 +2905,17 @@ function _madSelectFactory() {
                 if (hl) this._hlMap[o.value] = hl; else delete this._hlMap[o.value];
                 _madSelSetHl(_madSelOpt(el, o.value), hl);
             }
+            if (o.img !== undefined) {
+                var img = _madSelImgNorm(o.img);
+                if (img) this._imgMap[o.value] = img; else delete this._imgMap[o.value];
+                _madSelSetImg(_madSelOpt(el, o.value), img);
+            }
             this._labelMap[o.value] = lbl; this._v++;
         },
         addOptions(arr) { var self = this; (arr || []).forEach(function (o) { self.addOption(o); }); },
         clearOptions() {
             var el = this._native, keep = _madSelOpt(el, '');
-            el.innerHTML = ''; if (keep) el.appendChild(keep); this._labelMap = {}; this._hlMap = {}; this._v++;
+            el.innerHTML = ''; if (keep) el.appendChild(keep); this._labelMap = {}; this._hlMap = {}; this._imgMap = {}; this._v++;
         },
         refreshOptions(silent) { this._seedLabels(); this._v++; },
         refreshFromSelect() { this._seedLabels(); this._v++; },
@@ -2905,6 +2947,9 @@ var _MAD_SEL_CONTROL_TPL =
   '<template x-if="!multiple && !checkbox && singleHl">' +
     '<span class="mad-sel-dot" aria-hidden="true" x-show="!open || !searchable" x-effect="paintHl($el, singleHl)"></span>' +
   '</template>' +
+  '<template x-if="!multiple && !checkbox && singleImg">' +
+    '<img class="mad-sel-img" alt="" aria-hidden="true" width="20" height="20" loading="lazy" decoding="async" :src="singleImg" @error="$el.classList.add(\'is-broken\')" x-show="!open || !searchable">' +
+  '</template>' +
   '<template x-if="!multiple && !checkbox">' +
     '<span class="mad-sel-single" x-show="!open || !searchable" :class="{\'is-placeholder\':!hasValue}" x-text="hasValue?displayItems[0].text:placeholder"></span>' +
   '</template>' +
@@ -2913,6 +2958,7 @@ var _MAD_SEL_CONTROL_TPL =
       '<template x-for="item in displayItems" :key="item.value">' +
         '<span class="mad-sel-chip">' +
         '<template x-if="item.hl"><span class="mad-sel-dot" aria-hidden="true" x-effect="paintHl($el, item.hl)"></span></template>' +
+        '<template x-if="item.img">' + '<img class="mad-sel-img" alt="" aria-hidden="true" width="20" height="20" loading="lazy" decoding="async" :src="item.img" @error="$el.classList.add(\'is-broken\')">' + '</template>' +
         '<span x-text="item.text"></span>' +
         '<span class="mad-sel-chip-x" role="button" tabindex="-1" aria-label="' + _madTE('remove', 'Remover') + '" @mousedown.prevent.stop="_readonly() || removeItem(item.value)">&times;</span></span>' +
       '</template>' +
@@ -2938,6 +2984,7 @@ var _MAD_SEL_CONTROL_TPL =
             '<li class="mad-sel-option" role="option" :class="{\'is-active\':i===activeIndex,\'is-selected\':isSelected(opt.value),\'is-empty\':opt.empty}" ' +
               '@mouseenter="activeIndex=i" @mousedown.prevent="selectOption(opt.value)" x-effect="paintHl($el, opt.hl)">' +
               '<template x-if="checkbox"><input type="checkbox" class="mad-sel-checkbox" tabindex="-1" :checked="isSelected(opt.value)" @click.prevent></template>' +
+              '<template x-if="opt.img">' + '<img class="mad-sel-img" alt="" aria-hidden="true" width="20" height="20" loading="lazy" decoding="async" :src="opt.img" @error="$el.classList.add(\'is-broken\')">' + '</template>' +
               '<span class="mad-sel-option-text" x-html="highlight(opt.text)"></span>' +
               '<template x-if="opt.hl && opt.hl.badge"><span class="mad-sel-badge" x-text="opt.hl.badge"></span></template>' +
             '</li>' +
@@ -4320,11 +4367,14 @@ document.addEventListener('change', function(e) {
                 }
                 // Destaque das opções: a marca de cada chave vem ao lado, em `marks`.
                 var marks = data.marks || null;
+                // Imagem das opções (`image-column`): o endereço vem em `images`.
+                var images = data.images || null;
                 Object.keys(options).forEach(function(k) {
                     var opt = document.createElement('option');
                     opt.value = k;
                     opt.textContent = options[k];
                     if (marks && marks[k]) _madSelSetHl(opt, marks[k]);
+                    if (images && images[k]) _madSelSetImg(opt, images[k]);
                     dep.appendChild(opt);
                 });
                 dep.value = (wanted !== '' && Object.prototype.hasOwnProperty.call(options, wanted)) ? wanted : '';

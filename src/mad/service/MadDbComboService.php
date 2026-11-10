@@ -40,6 +40,7 @@ class MadDbComboService extends MadComponent
 
         $options = [];
         $marks   = []; // chave da opção => marca do destaque (só com regras no token)
+        $images  = []; // chave da opção => endereço da imagem (só com `image_column` no token)
         // Aviso da falha (só com APP_DEBUG; ver \Mad\Form\OptionsLoadError). O
         // combo filho continua vazio, mas o motivo vai para o log — antes o catch
         // engolia tudo e a cascata "não carregava" sem rastro (fórum #41).
@@ -89,7 +90,10 @@ class MadDbComboService extends MadComponent
                             \Mad\Form\OptionHighlights::normalize($config['highlights'] ?? []),
                             $hlMarks
                         );
-                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir, $missing, $hlEach);
+                        // Imagem de cada opção (`image-column`, fórum #275).
+                        $imgMap  = [];
+                        $imgEach = \Mad\Form\OptionImages::collector(\Mad\Form\OptionImages::column($config['image_column'] ?? ''), $imgMap);
+                        $items = ModelOptionsLoader::itemsFromQuery($__q, $key, $display, $order ?: null, $orderDir, $missing, \Mad\Form\OptionImages::each($hlEach, $imgEach));
                         $error = OptionsLoadError::handleMissing($missing, 'mad-dbcombo-field (recarga)', [
                             'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
                         ]);
@@ -103,15 +107,20 @@ class MadDbComboService extends MadComponent
                                 if (isset($hlMarks[(string)$k])) {
                                     $option['hl'] = $hlMarks[(string)$k];
                                 }
+                                if (isset($imgMap[(string)$k])) {
+                                    $option['img'] = $imgMap[(string)$k];
+                                }
                                 $options[] = $option;
                             }
                         } else {
                             $options = $items;
                             $marks   = $hlMarks;
+                            $images  = $imgMap;
                         }
                     } catch (\Throwable $e) {
                         $options = [];
                         $marks   = [];
+                        $images  = [];
                         $error = OptionsLoadError::handle($e, 'mad-dbcombo-field (recarga)', [
                             'model' => $model, 'database' => $database, 'display' => $display, 'order_by' => $order,
                         ]);
@@ -125,6 +134,9 @@ class MadDbComboService extends MadComponent
         if ($marks !== []) {
             // Objeto, não lista: chave numérica em sequência viraria array no JSON.
             $payload['marks'] = (object) $marks;
+        }
+        if ($images !== []) {
+            $payload['images'] = (object) $images;
         }
         if ($error !== null) {
             $payload['error'] = $error;
