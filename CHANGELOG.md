@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.290.0] — 2026-11-10
+
+### Melhorias
+
+- **Listagem (grid):** o filtro da coluna e o filtro avançado (`<mad-custom-filters>`) passam a aceitar campo com até 5 níveis de relação, como `{produto->divisao->subgrupo->grupo->nome}`. Antes, acima de 3 níveis o filtro era ignorado e a listagem vinha inteira.
+
 ## [5.289.0] — 2026-11-10
 
 ### Novidades

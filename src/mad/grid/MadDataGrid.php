@@ -10063,6 +10063,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected const REL_ID_CAP = 5000;
 
     /**
+     * Teto de saltos de relação de uma chain em filtro de coluna e em filtro
+     * avançado (`{a->b->c->d->e->col}` = 5). Eram 3 até a 5.290.0; o editor
+     * passou a oferecer o campo com 4 e 5 saltos (fórum #282) e o filtro dele
+     * era ignorado em silêncio. Mais que isso continua fail-closed. Gêmeos:
+     * `MadGridCompiler::normalizeCustomFilterField` e, no MadBuilder,
+     * `ATTRIBUTE_CHAIN_MAX_HOPS`.
+     */
+    protected const CHAIN_FILTER_MAX_HOPS = 5;
+
+    /**
      * Operadores aceitos num filtro de coluna. Allowlist DURA: o `where()` do
      * Laravel rebaixa operador desconhecido a VALOR — `where($f,'=','between')`
      * — em silêncio, então validar aqui é a diferença entre "não filtra" e
@@ -10413,7 +10423,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * Quem só sabe traduzir 1 nível (busca global) checa `count($parts) === 2`
      * e cai no próprio fail-closed — emitir SQL para um caminho que não se sabe
      * percorrer filtraria pela relação errada. O filtro de coluna percorre até
-     * 3 saltos (ver _applyColWhere).
+     * 5 saltos (ver _applyColWhere e CHAIN_FILTER_MAX_HOPS).
      */
     protected static function _chainParts(string $field): ?array
     {
@@ -10663,8 +10673,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * Eloquent interpreta '->' como JSON path e as chaves viram SQL malformado
      * (json_extract("{cliente", '$."nome}"')). Chain de 1 nível vira whereHas
      * (mesma conexão) ou whereIn de ids materializados (conexões distintas);
-     * de 2 a 3 saltos vira whereHas aninhado ('a.b.c'), só na mesma conexão.
-     * Caminho que não se sabe percorrer, mais de 3 saltos ou field
+     * de 2 a 5 saltos vira whereHas aninhado ('a.b.c'), só na mesma conexão.
+     * Caminho que não se sabe percorrer, mais de 5 saltos ou field
      * não-identificador é fail-closed (não filtra, não quebra a listagem).
      */
     protected function _applyColWhere($q, string $field, string $op, mixed $value): void
@@ -10740,13 +10750,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return;
         }
 
-        // Chain de 2 a 3 saltos ('{cidade->estado->nome}'): whereHas aninhado
+        // Chain de 2 a 5 saltos ('{cidade->estado->nome}'): whereHas aninhado
         // ('cidade.estado'), desde que CADA salto seja relação declarada na
         // mesma conexão do grid. Qualquer outra coisa (salto desconhecido,
-        // relação em outro banco, mais de 3 saltos) é fail-closed: o filtro
+        // relação em outro banco, mais de 5 saltos) é fail-closed: o filtro
         // é ignorado em vez de filtrar pela relação errada.
         if ($chain !== null) {
-            if (count($chain) > 4) {
+            if (count($chain) > static::CHAIN_FILTER_MAX_HOPS + 1) {
+                static::_warnOnce(
+                    'filter-chain-depth:' . $field,
+                    'filtro por "' . $field . '" ignorado: mais de '
+                    . static::CHAIN_FILTER_MAX_HOPS . ' saltos de relação.'
+                );
                 return;
             }
             $col  = array_pop($chain);

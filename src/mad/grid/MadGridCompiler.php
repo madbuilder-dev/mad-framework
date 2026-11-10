@@ -146,7 +146,7 @@ use Mad\View\MadBlade;
  * │  label="Filtros"          Texto do botão (default traduzido)                │
  * │                                                                              │
  * │  <mad-custom-filter field="{cidade->nome}" label="Cidade" />                │
- * │    field       coluna, ref {x} ou chain {a->b->c} (até 3 saltos)            │
+ * │    field       coluna, ref {x} ou chain {a->b->c} (até 5 saltos)            │
  * │    type        text|number|date|datetime|bool|select|dbcombo|dbsearch      │
  * │    ops="=,in"  restringe os operadores do tipo (intersecção)                │
  * │    opts / :opts        select — "A:Ativo|I:Inativo" ou expressão PHP        │
@@ -2430,7 +2430,8 @@ class MadGridCompiler
 
     /**
      * Normaliza o `field` de um filtro avançado: aceita coluna crua, ref do
-     * editor (`{nome}`) e chain (`{cidade->estado->nome}`, até 3 saltos).
+     * editor (`{nome}`) e chain (`{cidade->estado->nome}`, até 5 saltos — eram 3
+     * até a 5.290.0; gêmeo de `MadDataGrid::CHAIN_FILTER_MAX_HOPS`).
      * Devolve a forma SEM chaves (`cidade->estado->nome`) — é ela que vira a
      * chave da regra —, ou null quando não é identificador/caminho válido.
      */
@@ -2442,7 +2443,7 @@ class MadGridCompiler
         }
         $ident = '[A-Za-z_][A-Za-z0-9_]*';
 
-        return preg_match('/^' . $ident . '(?:->' . $ident . '){0,3}$/', $f) ? $f : null;
+        return preg_match('/^' . $ident . '(?:->' . $ident . '){0,5}$/', $f) ? $f : null;
     }
 
     /**
