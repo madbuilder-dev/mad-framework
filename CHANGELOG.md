@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.289.0] — 2026-11-10
+
+### Novidades
+
+- **Campos:** `align="left|center|right"` alinha o valor digitado e o placeholder em `<mad-input-field>`, `<mad-password-field>`, `<mad-textarea-field>`, `<mad-cep-field>`, `<mad-cnpj-field>`, `<mad-date-field>`, `<mad-time-field>`, `<mad-datetime-field>` e `<mad-spinner-field>`, como já faziam Número, Numérico e Moeda. Sem o atributo, nada muda.
+- **Listagem (grid):** na edição em linha, o valor digitado segue o `align` da coluna (`<mad-col align="right">`). Coluna sem `align` continua como antes.
+- **Upload:** o arquivo `.json` pode ter endereço público (`public`), como as imagens e o PDF, para uma animação Lottie, por exemplo. O conteúdo precisa ser um JSON válido, e ele é entregue só como dado, nunca como página.
+- **Upload:** sem Tamanho máximo no campo, o `.json` público pode ter até 5 MB.
+
+### Correções
+
+- **Detalhe:** a linha do Detail Form excluída no Salvar agora leva junto o arquivo dela, público ou privado, com a pasta do público. Antes, o arquivo ficava no servidor sem dono.
+- **Detalhe:** o arquivo fica quando a exclusão é lógica (a linha continua no banco, marcada como excluída), quando o Salvar falha e quando outra linha ainda usa o mesmo arquivo.
+
 ## [5.288.1] — 2026-11-10
 
 ### Correções

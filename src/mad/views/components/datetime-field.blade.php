@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '',
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'width' => '', 'maxWidth' => '',
     'label' => '',
     'name' => '',
     'value' => '',
@@ -108,7 +108,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="text"
-            class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             value="{{ $value }}"
             placeholder="{{ $placeholder }}"
             autocomplete="off"

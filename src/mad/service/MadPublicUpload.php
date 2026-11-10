@@ -38,12 +38,18 @@ final class MadPublicUpload
         'gif'  => 'image/gif',
         'webp' => 'image/webp',
         'pdf'  => 'application/pdf',
+        // Fórum #274 (Lottie): só DADO — servido como application/json, com
+        // nosniff e CSP sem nada; o conteúdo precisa ser um JSON válido.
+        'json' => 'application/json',
     ];
+
+    /** Teto do `.json` público quando o campo não tem Tamanho máximo (5 MB). */
+    public const JSON_MAX_BYTES = 5 * 1024 * 1024;
 
     private const MAC_LEN = 24;
 
-    /** Quantos bytes do início bastam para reconhecer os tipos de MIME. */
-    public const SNIFF_BYTES = 16;
+    /** Quantos bytes do início bastam para reconhecer os tipos de MIME (e o começo de um JSON indentado). */
+    public const SNIFF_BYTES = 64;
 
     /** Caminho público de um arquivo novo: `_public/<pasta>/<hmac>/<nome>`. */
     public static function path(string $folder, string $fileName): string
@@ -114,11 +120,70 @@ final class MadPublicUpload
 
     /**
      * O arquivo enviado pode ter endereço público? Extensão E conteúdo na
-     * lista (png/jpg/gif/webp/pdf) — os dois, senão o arquivo é recusado.
+     * lista (png/jpg/gif/webp/pdf; json) — os dois, senão o arquivo é
+     * recusado. O `.json` precisa ser um JSON válido de ponta a ponta (um HTML
+     * ou JS renomeado não passa); imagem/PDF com conteúdo JSON também não.
      */
     public static function acceptsUpload(string $fileName, string $localPath): bool
     {
-        return self::mimeFor($fileName) !== null && self::sniffFile($localPath) !== null;
+        $byName = self::mimeFor($fileName);
+        if ($byName === null) {
+            return false;
+        }
+        if ($byName === self::MIME['json']) {
+            return self::isJsonFile($localPath);
+        }
+
+        return self::sniffFile($localPath) !== null;
+    }
+
+    /** O arquivo local é um JSON válido (objeto ou lista)? */
+    public static function isJsonFile(string $localPath): bool
+    {
+        if ($localPath === '' || !is_file($localPath)) {
+            return false;
+        }
+        $raw = @file_get_contents($localPath);
+        if (!is_string($raw)) {
+            return false;
+        }
+        $raw = self::withoutBom($raw);
+        $first = ltrim($raw)[0] ?? '';
+        if ($first !== '{' && $first !== '[') {
+            return false;
+        }
+        try {
+            json_decode($raw, false, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Com que tipo a rota pública serve o arquivo, pelo nome E pelo começo do
+     * conteúdo: o `.json` só como application/json, e só se o conteúdo começa
+     * como JSON; imagem/PDF pela assinatura ({@see sniff()}). Null = 404.
+     */
+    public static function servedMime(string $path, string $head): ?string
+    {
+        $byName = self::mimeFor($path);
+        if ($byName === null) {
+            return null;
+        }
+        if ($byName === self::MIME['json']) {
+            $first = ltrim(self::withoutBom($head))[0] ?? '';
+
+            return ($first === '{' || $first === '[') ? $byName : null;
+        }
+
+        return self::sniff($head);
+    }
+
+    private static function withoutBom(string $raw): string
+    {
+        return str_starts_with($raw, "\xEF\xBB\xBF") ? substr($raw, 3) : $raw;
     }
 
     /** Endereço público (`/arquivos/<caminho>`), absoluto por padrão (e-mail, WhatsApp). */

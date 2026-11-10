@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'min' => '', 'max' => '', 'step' => 1, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null'])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'min' => '', 'max' => '', 'step' => 1, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null'])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -36,7 +36,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="number"
-            class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '', 'center') }}{{ $hasError ? ' mad-input-error' : '' }}"
             x-ref="input"
             @if($min !== '') min="{{ $min }}" @endif
             @if($max !== '') max="{{ $max }}" @endif

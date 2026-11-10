@@ -76,7 +76,7 @@
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
-               class="mad-input mad-dg-cell-input mad-dg-datepicker"
+               class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }} mad-dg-datepicker"
                placeholder="{{ \Mad\Support\DateMask::placeholder() }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
@@ -112,7 +112,7 @@
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
-               class="mad-input mad-dg-cell-input mad-dg-datetimepicker"
+               class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }} mad-dg-datetimepicker"
                placeholder="{{ \Mad\Support\DateMask::placeholder(\Mad\Support\DateMask::datetime()) }}"
                @keydown.enter="$event.target.blur()" @keydown.escape="cancelEdit()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
@@ -126,7 +126,7 @@
         $_dgNumMin = $col->editMin !== null ? (string) $col->editMin : 'null';
         $_dgNumMax = $col->editMax !== null ? (string) $col->editMax : 'null';
     @endphp
-    <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input"
+    <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}"
            data-edit-number
            data-edit-row-id="{{ $rowId ?? '' }}" data-edit-field="{{ $col->field }}"
            @focus="madSelectOnFocus($event)"
@@ -136,7 +136,7 @@
 @elseif($col->editType === 'numeric')
     <div style="display:flex;align-items:center;gap:4px;">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
-        <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input"
+        <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}"
                data-edit-money data-edit-decimals="{{ $col->editDecimals }}"
                data-edit-row-id="{{ $rowId ?? '' }}" data-edit-field="{{ $col->field }}"
                @focus="madSelectOnFocus($event)"
@@ -149,7 +149,7 @@
 @elseif($col->editType === 'money')
     <div style="display:flex;align-items:center;gap:4px;">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
-        <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input"
+        <input type="text" inputmode="decimal" class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}"
                data-edit-money data-edit-decimals="{{ $col->editDecimals }}"
                data-edit-row-id="{{ $rowId ?? '' }}" data-edit-field="{{ $col->field }}"
                @focus="madSelectOnFocus($event)"
@@ -161,7 +161,7 @@
 @elseif($col->editType === 'spinner')
     <div class="mad-input-group" x-data="madSpinnerField({ min: {{ $col->editMin !== null ? $col->editMin : 'null' }}, max: {{ $col->editMax !== null ? $col->editMax : 'null' }}, step: {{ $col->editStep ?? 1 }} })" style="display:inline-flex;align-items:center;">
         <button type="button" class="mad-spinner-btn" @click="decrement()" :disabled="isAtMin()"><i data-lucide="minus" style="width:12px;height:12px;"></i></button>
-        <input type="number" class="mad-input mad-dg-cell-input" x-ref="input" x-model="editValue"
+        <input type="number" class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}" x-ref="input" x-model="editValue"
                step="{{ $col->editStep ?? 1 }}"
                @if($col->editMin !== null) min="{{ $col->editMin }}" @endif
                @if($col->editMax !== null) max="{{ $col->editMax }}" @endif
@@ -182,10 +182,10 @@
                 @click.prevent="pickr && pickr.show()"></button>
     </div>
 @elseif($col->editType === 'textarea')
-    <textarea class="mad-input mad-dg-cell-input" x-model="editValue"
+    <textarea class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}" x-model="editValue"
               rows="{{ $col->editRows }}"
               @keydown.escape="cancelEdit()" @blur="commitEdit()"></textarea>
 @else
-    <input type="text" class="mad-input mad-dg-cell-input" x-model="editValue"
+    <input type="text" class="mad-input mad-dg-cell-input{{ $col?->editAlignClass() }}" x-model="editValue"
            @keydown.enter="commitEdit()" @keydown.escape="cancelEdit()" @blur="commitEdit()">
 @endif

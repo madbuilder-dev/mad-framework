@@ -14,7 +14,7 @@
     $hasPrefix = !empty($prefix);
     $hasSuffix = !empty($suffix);
     // `align` alinha o valor digitado (default: esquerda). Valor fora da lista é ignorado.
-    $alignCls  = in_array($align, ['center', 'right'], true) ? ' mad-text-' . $align : '';
+    $alignCls  = \Mad\Support\CssUnits::alignClass($align);
     \Mad\Form\MadFormRegistry::register($name, 'number', [
         'label'    => strip_tags($label),
         'required' => $required,

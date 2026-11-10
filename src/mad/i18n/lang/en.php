@@ -353,6 +353,10 @@ return [
             // Single-value field (combo, search, radio) holding the key of a record the user cannot see.
             'option_invalid'         => 'The selected option is not in your list or no longer exists.',
             'option_invalid_in'      => 'The option selected in :field is not in your list or no longer exists.',
+            // Upload com endereço público (fórum #274): imagem, PDF e JSON.
+            'upload_public_kind' => 'The file :file was not saved: only images (PNG, JPG, GIF, WebP), PDF and JSON can have a public address, for security reasons.',
+            'upload_public_json' => 'The file :file was not saved: its content is not valid JSON.',
+            'upload_public_json_max' => 'The file :file is :size; a JSON file with a public address can be up to :max.',
         ],
 
         // Save from a stale screen: rows (field list / detail form) and attachments

@@ -74,7 +74,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             :type="visible ? 'text' : 'password'"
-            class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             placeholder="{{ $placeholder }}"
             autocomplete="{{ $autocomplete }}"
             @if($maxlength) maxlength="{{ $maxlength }}" @endif

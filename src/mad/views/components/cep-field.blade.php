@@ -223,7 +223,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="text"
-            class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             placeholder="{{ $placeholder }}"
             inputmode="numeric"
             autocomplete="off"

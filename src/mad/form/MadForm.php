@@ -2149,9 +2149,10 @@ class MadForm
                 continue;
             }
             $cls = \Mad\Form\ModelOptionsLoader::resolveModelClass((string) $meta['m']);
+            $fileCols = is_array($meta['fc'] ?? null) ? $meta['fc'] : [];
             foreach (array_chunk($rowKeys, 200) as $chunk) {
                 foreach ($cls::query()->whereIn((string) $meta['f'], $chunk)->get() as $item) {
-                    $item->delete();
+                    $this->_deleteRowWithFiles($item, $fileCols);
                 }
             }
             foreach ($rowKeys as $rowKey) {
@@ -10659,7 +10660,7 @@ class MadForm
 
         // Antes de gravar: a linha que entra pode ocupar o lugar da que sai num
         // índice único (trocar o produto de uma linha, gerar as parcelas de novo).
-        $this->_deleteDetailRows($cls, $fk, $parentId, $detailPk, array_values($remove));
+        $this->_deleteDetailRows($cls, $fk, $parentId, $detailPk, array_values($remove), $fileColumns);
 
         // ── 3) Grava: atualiza as que já existem, insere as novas ───────────
         $saved   = [];   // chave => __id
@@ -10717,6 +10718,133 @@ class MadForm
     }
 
     /**
+     * Exclui a linha de um detalhe (ou de uma Lista de itens da linha) e, se
+     * ela saiu DE FATO do banco, os arquivos dela (fórum #274, decisão do dono:
+     * "só quando de fato excluir do banco de dados"). O arquivo e a pasta dele
+     * (#269) saem quando a transação confirmar — se ela for desfeita, a linha
+     * volta com o arquivo.
+     *
+     * Ficam com o arquivo: a linha cujo Model recusa a exclusão (`deleting`
+     * devolve false), a exclusão lógica (HasMadSoftDeletes com a coluna,
+     * SoftDeletes do Laravel: a linha continua no banco, marcada) e o caminho
+     * que outra linha da mesma tabela ainda usa (o "Duplicar" da listagem copia
+     * o caminho; `file-name="original"` repete o nome). Arquivo no banco (BLOB)
+     * não tem o que apagar no disco.
+     *
+     * @param array<string, mixed> $fileColumns coluna => meta do arquivo (`kind`/`storage`/`multi`) ou 'f'|'m'
+     */
+    private function _deleteRowWithFiles(object $row, array $fileColumns): void
+    {
+        $paths = $this->_rowFilePaths($row, $fileColumns);
+        $grand = $row instanceof \Illuminate\Database\Eloquent\Model ? $this->_grandchildFiles($row, $fileColumns) : [];
+
+        if ($row->delete() === false) {
+            return;
+        }
+        if (($paths === [] && $grand === []) || !$row instanceof \Illuminate\Database\Eloquent\Model) {
+            return;
+        }
+        // Exclusão lógica: a linha continua no banco (com ou sem escopo).
+        if ($row->newQueryWithoutScopes()->whereKey($row->getKey())->exists()) {
+            return;
+        }
+        foreach ($paths as [$column, $path]) {
+            if (!$this->_storedPathInUse($row, $column, $path)) {
+                $this->_discardFile($path, $row);
+            }
+        }
+        // Anexos da tabela neta (coluna Arquivos): só os que o banco levou junto
+        // (`on delete cascade`). O anexo que continua no banco fica com o arquivo.
+        foreach ($grand as [$child, $column, $path]) {
+            if (!$child->newQueryWithoutScopes()->whereKey($child->getKey())->exists()
+                && !$this->_storedPathInUse($child, $column, $path)) {
+                $this->_discardFile($path, $child);
+            }
+        }
+    }
+
+    /**
+     * Os anexos da linha na tabela neta (coluna Arquivos, `kind=grandchild`),
+     * no disco: [registro do anexo, coluna do caminho, caminho].
+     *
+     * @param  array<string, mixed> $fileColumns
+     * @return list<array{0:\Illuminate\Database\Eloquent\Model,1:string,2:string}>
+     */
+    private function _grandchildFiles(\Illuminate\Database\Eloquent\Model $row, array $fileColumns): array
+    {
+        $out = [];
+        foreach ($fileColumns as $meta) {
+            if (!is_array($meta) || ($meta['kind'] ?? '') !== 'grandchild' || (($meta['storage'] ?? 'disk') === 'db')) {
+                continue;
+            }
+            $model  = (string) ($meta['model'] ?? '');
+            $fk     = (string) ($meta['foreignKey'] ?? '');
+            $column = (string) ($meta['pathColumn'] ?? '');
+            if ($model === '' || $fk === '' || $column === '' || $row->getKey() === null) {
+                continue;
+            }
+            try {
+                $cls = \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
+                foreach ($cls::query()->where($fk, '=', $row->getKey())->get() as $child) {
+                    foreach (self::_cellPaths($child->$column ?? null) as $path) {
+                        if (!str_starts_with($path, 'data:')) {
+                            $out[] = [$child, $column, $path];
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                continue;   // tabela neta que não abre: o anexo fica como estava
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Os caminhos de arquivo gravados na linha, pelas colunas de arquivo do
+     * detalhe: arquivo único, vários (lista por vírgula) e `multifile`. Fora:
+     * arquivo no banco (BLOB), a tabela neta e o `data:` gravado na coluna.
+     *
+     * @param  array<string, mixed>        $fileColumns
+     * @return list<array{0:string,1:string}> [coluna, caminho]
+     */
+    private function _rowFilePaths(object $row, array $fileColumns): array
+    {
+        $out = [];
+        foreach ($fileColumns as $column => $meta) {
+            if (is_array($meta) && ((($meta['kind'] ?? '') === 'grandchild') || (($meta['storage'] ?? 'disk') === 'db'))) {
+                continue;
+            }
+            foreach (self::_cellPaths($row->$column ?? null) as $path) {
+                if (!str_starts_with($path, 'data:')) {
+                    $out[] = [(string) $column, $path];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Outra linha da mesma tabela ainda aponta para `$path` na coluna? Conta a
+     * linha na lixeira (exclusão lógica): restaurada, ela volta com o arquivo.
+     */
+    private function _storedPathInUse(\Illuminate\Database\Eloquent\Model $row, string $column, string $path): bool
+    {
+        $candidates = $row->newQueryWithoutScopes()
+            ->whereKeyNot($row->getKey())
+            ->where($column, 'like', '%' . basename($path) . '%')
+            ->pluck($column);
+        foreach ($candidates as $value) {
+            if (in_array($path, self::_cellPaths($value), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Apaga linhas filhas deste pai, uma a uma, pelo Model: é o `delete()` da
      * instância que conhece a exclusão lógica da tabela (HasMadSoftDeletes /
      * SoftDeletes) e dispara `deleting`/`deleted` — auditoria e observers. O
@@ -10726,7 +10854,7 @@ class MadForm
      *
      * @param list<int|string> $keys
      */
-    private function _deleteDetailRows(string $cls, string $fk, mixed $parentId, string $detailPk, array $keys): void
+    private function _deleteDetailRows(string $cls, string $fk, mixed $parentId, string $detailPk, array $keys, array $fileColumns = []): void
     {
         if (!$keys) {
             return;
@@ -10742,7 +10870,7 @@ class MadForm
         foreach (array_chunk($keys, 200) as $chunk) {
             $orphans = $cls::query()->where($fk, '=', $parentId)->whereIn($detailPk, $chunk)->get();
             foreach ($orphans as $orphan) {
-                $orphan->delete();
+                $this->_deleteRowWithFiles($orphan, $fileColumns);
             }
         }
     }

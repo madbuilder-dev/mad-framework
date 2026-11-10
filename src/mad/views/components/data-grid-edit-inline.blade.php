@@ -95,7 +95,7 @@
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
-               class="mad-input mad-dg-inline-input mad-dg-datepicker"
+               class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }} mad-dg-datepicker"
                placeholder="{{ \Mad\Support\DateMask::placeholder() }}"
                @keydown.enter="$event.target.blur()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
@@ -148,7 +148,7 @@
          @keydown.escape.window="close()"
          @click.outside="close()">
         <input id="{{ $eid }}" type="text" autocomplete="off" inputmode="numeric"
-               class="mad-input mad-dg-inline-input mad-dg-datetimepicker"
+               class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }} mad-dg-datetimepicker"
                placeholder="{{ \Mad\Support\DateMask::placeholder(\Mad\Support\DateMask::datetime()) }}"
                @keydown.enter="$event.target.blur()">
         <button type="button" class="mad-datepicker-btn" tabindex="-1" @click="toggle()">
@@ -163,7 +163,7 @@
         $_dgNumMin  = $col->editMin !== null ? (string) $col->editMin : 'null';
         $_dgNumMax  = $col->editMax !== null ? (string) $col->editMax : 'null';
     @endphp
-    <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $_dgNumShow }}"
+    <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" value="{{ $_dgNumShow }}"
            data-edit-number
            @focus="madSelectOnFocus($event)"
            @input="madDgNumberRaw($event.target)"
@@ -173,7 +173,7 @@
     @php [$_dgDec, $_dgTho] = \Mad\Support\ValueFormatter::separators(); $fmtVal = number_format((float)$cellVal, $col->editDecimals, $_dgDec, $_dgTho); @endphp
     <div style="display:flex;align-items:center;gap:4px;" x-data="{ rawV: {{ json_encode((float)$cellVal) }} }">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
-        <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $fmtVal }}"
+        <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" value="{{ $fmtVal }}"
                data-edit-money data-edit-decimals="{{ $col->editDecimals }}"
                @focus="madSelectOnFocus($event)"
                @input="rawV = madDgMoneyMask($event.target, {{ $col->editDecimals }})"
@@ -185,7 +185,7 @@
     @php [$_dgDec, $_dgTho] = \Mad\Support\ValueFormatter::separators(); $fmtVal = number_format((float)$cellVal, $col->editDecimals, $_dgDec, $_dgTho); @endphp
     <div style="display:flex;align-items:center;gap:4px;" x-data="{ rawV: {{ json_encode((float)$cellVal) }} }">
         @if($col->editPrefix)<span class="mad-dg-edit-prefix">{{ $col->editPrefix }}</span>@endif
-        <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input" value="{{ $fmtVal }}"
+        <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" value="{{ $fmtVal }}"
                data-edit-money data-edit-decimals="{{ $col->editDecimals }}"
                @focus="madSelectOnFocus($event)"
                @input="rawV = madDgMoneyMask($event.target, {{ $col->editDecimals }})"
@@ -195,7 +195,7 @@
 @elseif($col->editType === 'spinner')
     <div class="mad-input-group" x-data="madSpinnerField({ min: {{ $col->editMin !== null ? $col->editMin : 'null' }}, max: {{ $col->editMax !== null ? $col->editMax : 'null' }}, step: {{ $col->editStep ?? 1 }} })" style="display:inline-flex;align-items:center;">
         <button type="button" class="mad-spinner-btn" @click="decrement()" :disabled="isAtMin()"><i data-lucide="minus" style="width:12px;height:12px;"></i></button>
-        <input type="number" class="mad-input mad-dg-inline-input" x-ref="input" value="{{ $editInitVal }}"
+        <input type="number" class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" x-ref="input" value="{{ $editInitVal }}"
                step="{{ $col->editStep ?? 1 }}"
                @if($col->editMin !== null) min="{{ $col->editMin }}" @endif
                @if($col->editMax !== null) max="{{ $col->editMax }}" @endif
@@ -215,10 +215,10 @@
                 @click.prevent="pickr && pickr.show()"></button>
     </div>
 @elseif($col->editType === 'textarea')
-    <textarea class="mad-input mad-dg-inline-input" rows="{{ $col->editRows }}"
+    <textarea class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" rows="{{ $col->editRows }}"
               @blur="commitInline({{ $rowIdJs }},'{{ $col->field }}',$event.target.value)">{{ $cellVal }}</textarea>
 @else
-    <input type="text" class="mad-input mad-dg-inline-input" value="{{ $cellVal }}"
+    <input type="text" class="mad-input mad-dg-inline-input{{ $col?->editAlignClass() }}" value="{{ $cellVal }}"
            @blur="commitInline({{ $rowIdJs }},'{{ $col->field }}',$event.target.value)"
            @keydown.enter="$event.target.blur()">
 @endif

@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '', 'height' => '', 'label' => '', 'name' => '', 'value' => '', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'rows' => 3, 'style' => '', 'attrs' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'width' => '', 'maxWidth' => '', 'height' => '', 'label' => '', 'name' => '', 'value' => '', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'rows' => 3, 'style' => '', 'attrs' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -42,7 +42,7 @@
     <textarea
         id="{{ $id }}"
         name="{{ $name }}"
-        class="mad-textarea{{ $hasError ? ' mad-input-error' : '' }}"
+        class="mad-textarea{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
         rows="{{ $rows }}"
         placeholder="{{ $placeholder }}"
         @if($_taStyle) style="{{ $_taStyle }}" @endif

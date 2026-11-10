@@ -33,7 +33,7 @@
     $hasPrefix = !empty($prefix);
     $hasSuffix = !empty($suffix);
     // `align` alinha o valor digitado (default: esquerda). Valor fora da lista é ignorado.
-    $alignCls  = in_array($align, ['center', 'right'], true) ? ' mad-text-' . $align : '';
+    $alignCls  = \Mad\Support\CssUnits::alignClass($align);
     $ph        = $placeholder ?: '0' . ($decimals > 0 ? $decimalSep . str_repeat('0', $decimals) : '');
 
     $alpineCfg = json_encode(array_filter([

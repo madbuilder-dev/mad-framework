@@ -156,7 +156,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="text"
-            class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             placeholder="{{ $placeholder }}"
             {{-- SEM inputmode="numeric": o CNPJ da Receita (julho/2026) tem
                  LETRAS nas 12 primeiras posicoes, e o teclado numerico do mobile

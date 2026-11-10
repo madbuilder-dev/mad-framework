@@ -643,9 +643,22 @@ final class MadUploadRules
             return self::text('form.upload_ext_blocked', ['file' => $name, 'ext' => $extension], 'O arquivo :file não foi salvo: arquivos .:ext não são aceitos por segurança.');
         }
         // Campo com `public` (#244): o arquivo ganha endereço aberto no domínio
-        // do app — só imagem/PDF de verdade, pelo nome E pelo conteúdo.
-        if ($stored && $public && !\Mad\Service\MadPublicUpload::acceptsUpload((string) $file['name'], (string) $file['tmp_name'])) {
-            return self::text('form.upload_public_type', ['file' => $name], 'O arquivo :file não foi salvo: só imagens (PNG, JPG, GIF, WebP) e PDF podem ter endereço público, por segurança.');
+        // do app — só imagem/PDF/JSON de verdade, pelo nome E pelo conteúdo.
+        // (Chaves novas, fórum #274: o `lang/` dos apps antigos guarda o texto
+        // de antes em `upload_public_type`; estas caem no dicionário do pacote.)
+        if ($stored && $public) {
+            $isJson = $extension === 'json';
+            if ($isJson && $max <= 0) {
+                $size = is_file((string) $file['tmp_name']) ? (int) filesize((string) $file['tmp_name']) : (int) $file['size'];
+                if ($size > \Mad\Service\MadPublicUpload::JSON_MAX_BYTES) {
+                    return self::text('form.upload_public_json_max', ['file' => $name, 'size' => self::human($size, true), 'max' => self::human(\Mad\Service\MadPublicUpload::JSON_MAX_BYTES)], 'O arquivo :file tem :size; um JSON com endereço público pode ter até :max.');
+                }
+            }
+            if (!\Mad\Service\MadPublicUpload::acceptsUpload((string) $file['name'], (string) $file['tmp_name'])) {
+                return $isJson
+                    ? self::text('form.upload_public_json', ['file' => $name], 'O arquivo :file não foi salvo: o conteúdo não é um JSON válido.')
+                    : self::text('form.upload_public_kind', ['file' => $name], 'O arquivo :file não foi salvo: só imagens (PNG, JPG, GIF, WebP), PDF e JSON podem ter endereço público, por segurança.');
+            }
         }
         if ($accept !== '' && !self::accepts($accept, (string) $file['name'], (string) $file['tmp_name'], (string) $file['type'])) {
             return self::text('form.upload_type', ['file' => $name, 'accept' => self::acceptLabel($accept)], 'O arquivo :file não é de um tipo aceito neste campo (:accept).');
@@ -937,6 +950,16 @@ final class MadUploadRules
         }
         if ($text !== '' && $text !== $key) {
             return $text;
+        }
+        // O dicionário do pacote (`mad.form.*`) chega aos apps já criados junto
+        // com o framework; o `lang/` do app, não.
+        try {
+            $packaged = function_exists('mad_t') ? (string) mad_t('mad.' . $key, $replace) : '';
+        } catch (\Throwable) {
+            $packaged = '';
+        }
+        if ($packaged !== '' && $packaged !== 'mad.' . $key) {
+            return $packaged;
         }
         foreach ($replace as $k => $v) {
             $fallback = str_replace(':' . $k, (string) $v, $fallback);

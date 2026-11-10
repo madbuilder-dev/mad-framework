@@ -208,6 +208,21 @@ final class CssUnits
         return $out . self::textVars('input', $color, null, $weight, $italic);
     }
 
+    /**
+     * Alinhamento do valor digitado (`align="left|center|right"`, fórum #278):
+     * a classe utilitária `.mad-text-*` do input VISÍVEL — o valor e o
+     * placeholder seguem. Volta com o espaço na frente, ou `''` quando o valor
+     * é o padrão do campo ou está fora da lista: sem a prop, nada muda.
+     * `$default` é como o campo já se alinha sem a prop (o Spinner centraliza;
+     * `''` = sempre emitir).
+     */
+    public static function alignClass(mixed $align, string $default = 'left'): string
+    {
+        return is_string($align) && in_array($align, ['left', 'center', 'right'], true) && $align !== $default
+            ? ' mad-text-' . $align
+            : '';
+    }
+
     /** Tinta escura e clara do tema padrão (`--mad-text` do claro e do escuro). */
     private const INK_DARK  = '#18181b';
     private const INK_LIGHT = '#fafafa';

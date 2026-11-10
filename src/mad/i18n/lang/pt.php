@@ -346,6 +346,10 @@ return [
             // Campo de um valor (combo, busca, rádio) com a chave de um registro que quem salva não enxerga.
             'option_invalid'         => 'A opção escolhida não está na sua lista ou não existe mais.',
             'option_invalid_in'      => 'A opção escolhida em :field não está na sua lista ou não existe mais.',
+            // Upload com endereço público (fórum #274): imagem, PDF e JSON.
+            'upload_public_kind' => 'O arquivo :file não foi salvo: só imagens (PNG, JPG, GIF, WebP), PDF e JSON podem ter endereço público, por segurança.',
+            'upload_public_json' => 'O arquivo :file não foi salvo: o conteúdo não é um JSON válido.',
+            'upload_public_json_max' => 'O arquivo :file tem :size; um JSON com endereço público pode ter até :max.',
         ],
 
         // Salvar de uma tela desatualizada: linhas (Lista de itens / Detail Form)

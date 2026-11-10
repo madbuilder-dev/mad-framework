@@ -1000,6 +1000,17 @@ class GridColumn
      * --mad-dg-num-align: o tema ERP põe à direita; no default a var não
      * existe e fica o `left` de sempre.
      */
+    /**
+     * Classe do editor da célula na edição em linha (fórum #278): o valor
+     * digitado segue o "Alinhamento" da coluna — só quando a coluna o declara.
+     * Sem `align` na coluna, nada muda (a coluna numérica pode estar à direita
+     * pelo tema, `--mad-dg-num-align`, e o editor continua como sempre foi).
+     */
+    public function editAlignClass(): string
+    {
+        return $this->alignSet ? \Mad\Support\CssUnits::alignClass($this->align, '') : '';
+    }
+
     public function alignCss(): string
     {
         return $this->isNumeric() && !$this->alignSet

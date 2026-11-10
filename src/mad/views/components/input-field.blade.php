@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -116,7 +116,7 @@
         id="{{ $id }}"
         name="{{ $name }}"
         @if($togglePassword) :type="visible ? 'text' : 'password'" @else type="{{ $_effectiveType }}" @endif
-        class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+        class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
         placeholder="{{ $placeholder }}"
         @if($maxlength) maxlength="{{ $maxlength }}" @endif
         @if($min !== '') min="{{ $min }}" @endif

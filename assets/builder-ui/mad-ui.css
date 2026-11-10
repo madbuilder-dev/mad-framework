@@ -6898,6 +6898,10 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   flex: 1;
   text-align: center;
 }
+/* `align="left|right"` no Spinner (fórum #278): o centro é o padrão dele e a
+   regra acima é mais forte que o .mad-text-* sozinho. */
+.mad-input-group .mad-spinner-btn + .mad-input[type="number"].mad-text-left  { text-align: left; }
+.mad-input-group .mad-spinner-btn + .mad-input[type="number"].mad-text-right { text-align: right; }
 .mad-input-group .mad-input[type="number"]::-webkit-inner-spin-button,
 .mad-input-group .mad-input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;

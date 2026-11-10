@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -23,7 +23,7 @@
         id="{{ $id }}"
         name="{{ $name }}"
         type="time"
-        class="mad-input{{ $hasError ? ' mad-input-error' : '' }}"
+        class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
         @if($required) required @endif
         @if($disabled) disabled @endif
         @if($readonly) readonly @endif

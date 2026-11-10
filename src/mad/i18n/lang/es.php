@@ -346,6 +346,10 @@ return [
             // Campo de un valor (combo, búsqueda, radio) con la clave de un registro que quien guarda no ve.
             'option_invalid'         => 'La opción elegida no está en su lista o ya no existe.',
             'option_invalid_in'      => 'La opción elegida en :field no está en su lista o ya no existe.',
+            // Upload com endereço público (fórum #274): imagem, PDF e JSON.
+            'upload_public_kind' => 'El archivo :file no se guardó: solo imágenes (PNG, JPG, GIF, WebP), PDF y JSON pueden tener dirección pública, por seguridad.',
+            'upload_public_json' => 'El archivo :file no se guardó: el contenido no es un JSON válido.',
+            'upload_public_json_max' => 'El archivo :file tiene :size; un JSON con dirección pública puede tener hasta :max.',
         ],
 
         // Guardar desde una pantalla desactualizada: las líneas (lista de ítems /

@@ -19,7 +19,7 @@
     $hasPrefix = !empty($prefix);
     $hasSuffix = !empty($suffix);
     // `align` alinha o valor digitado (default: esquerda). Valor fora da lista é ignorado.
-    $alignCls  = in_array($align, ['center', 'right'], true) ? ' mad-text-' . $align : '';
+    $alignCls  = \Mad\Support\CssUnits::alignClass($align);
 
     // `fill-direction="right"`: máscara durante a digitação, como a edição
     // inline ("12345" = 123,45; fórum #255). Usa o madMoneyField, sem símbolo.
