@@ -2077,8 +2077,13 @@ const Mad = {
                             el.checked = want !== '' && String(onOf(el)) === want;
                         }
                         const markedAfter = group.find(r => r.checked) || null;
-                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                        // `madFromServer`: valor posto pelo servidor não dispara o
+                        // "preencher valor quando" (fill-when, mad-ui.js) — fórum #277.
+                        const ckIn = new Event('input', { bubbles: true });
+                        ckIn.madFromServer = true;
+                        target.dispatchEvent(ckIn);
                         const ckEv = new Event('change', { bubbles: true });
+                        ckEv.madFromServer = true;
                         if (markedAfter === markedBefore) ckEv.madSameValue = true;
                         target.dispatchEvent(ckEv);
                         // Rádio-botão: o realce segue a marca (o ouvinte do change
@@ -2100,10 +2105,16 @@ const Mad = {
                         if (el._madSelect) el._madSelect.setValue(op.content, true);
                         else el.value = op.content;
                         this._syncMaskedDisplay(el);
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        // `madFromServer`: um registro carregado no formulário
+                        // (form->set) não pode disparar o "preencher valor quando"
+                        // do fill-when — ele só reage a mudança feita na tela.
+                        const valIn = new Event('input', { bubbles: true });
+                        valIn.madFromServer = true;
+                        el.dispatchEvent(valIn);
                         // Mesmo valor: os ouvintes de `change` recebem o evento,
                         // o On Change do campo (`mad:change`) não — fw#139.
                         const valEv = new Event('change', { bubbles: true });
+                        valEv.madFromServer = true;
                         if (String(el.value) === String(valBefore)) valEv.madSameValue = true;
                         el.dispatchEvent(valEv);
                     }

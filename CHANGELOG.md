@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.288.0] — 2026-11-10
+
+### Novidades
+
+- **Campos:** `fill-when` e `fill-value` preenchem o campo no momento em que a regra passa a valer. Com `fill-when="{situacao} == 'B'" fill-value="today()"`, escolher Baixada põe a data de hoje no campo.
+- **Campos:** o `fill-value` aceita texto entre aspas, número, `{outro_campo}`, `today()`, `now()` e `time()`. Só campo vazio é preenchido; `fill-overwrite` troca o valor que já existe. Abrir um registro gravado não muda nada.
+
 ## [5.287.1] — 2026-11-10
 
 ### Correções

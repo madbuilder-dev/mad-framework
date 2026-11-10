@@ -4303,6 +4303,443 @@ document.addEventListener('alpine:initialized', function () { _madComputeMountOr
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   fill-when — preencher valor por condição
+   ═══════════════════════════════════════════════════════════════════
+
+   <mad-date-field name="data_chegada"
+       fill-when="{situacao_saida} == 'B'" fill-value="today()" />
+
+   O compilador MAD (MadBlade::parseParams) troca o par `fill-when` +
+   `fill-value` de um campo pela diretiva `x-mad-fill="regra"`, com o valor em
+   `data-mad-fill-value` (e `data-mad-fill-overwrite` quando a tag traz
+   `fill-overwrite`), no `attrs` do campo.
+
+   A REGRA é a mesma das outras condições do campo (`{campo}` = valor atual do
+   campo `name="campo"` do mesmo formulário; no sub-form do Detail Form, o
+   campo DELE antes do de mesmo nome do principal).
+
+   O VALOR é uma expressão com a mesma sintaxe: texto entre aspas ('Baixada'),
+   número, `{campo}` (o valor de outro campo) e as funções `today()` (data de
+   hoje), `now()` (data e hora de agora) e `time()` (hora de agora), que saem
+   no formato do campo de destino (máscara do campo de data; HH:MM no de hora).
+
+   QUANDO preenche: no instante em que a regra PASSA a valer por uma mudança
+   feita na tela. Fica de fora, de propósito:
+     - a abertura da tela — um registro que já atende à regra não muda (para
+       o valor inicial existe o "Valor padrão");
+     - valor posto pelo servidor (`$this->form->set()`: os eventos do op `val`
+       levam `madFromServer`) e a linha do detalhe carregada no editor
+       (`_madFill.rebase`): são registros sendo carregados, não o usuário.
+   Sem `fill-overwrite` só preenche campo vazio. Quando a regra deixa de
+   valer, o valor fica. O campo é escrito como o op `val` do servidor escreve
+   (MAD Select, campo com máscara, rádio/checkbox) e dispara input + change:
+   as outras condições, o `compute` e o On Change do campo reagem.
+   Regra ou valor inválido, ou que lança = sem efeito.
+*/
+// <madFill:core> — núcleo puro, fatiado por tests/js/mad-fill.test.mjs
+var _madFill = (function () {
+    var api = {};
+    var MAX_DEPTH = 10;
+    var CTL_SEL = 'input,select,textarea';
+    var _seq = 0;
+
+    function warn() {
+        if (window.console) window.console.warn.apply(window.console, arguments);
+    }
+
+    // ── Valor ────────────────────────────────────────────────────────────────
+
+    // Relógio do navegador (o mesmo do "Hoje"/"Agora" do campo de data). O
+    // teste troca por um instante fixo.
+    api.clock = function () { return new Date(); };
+
+    // Resultado de today() / now() / time(): um instante que só vira texto
+    // na hora de escrever, no formato do campo de destino.
+    function Stamp(kind, date) {
+        this.kind = kind;
+        this.date = date;
+    }
+    Stamp.prototype.toString = function () { return localText(this); };
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function isoDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    function hourMin(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+    // Data com a máscara do campo de data — mesmos tokens do _drpFormatWithMask:
+    // yyyy / yy / mm (mês) / dd / hh e HH (hora) / ii e MM (minuto) / ss e SS.
+    function maskDate(d, mask) {
+        var y4 = ('0000' + d.getFullYear()).slice(-4);
+        var map = {
+            yyyy: y4, yy: y4.slice(-2), mm: pad(d.getMonth() + 1), dd: pad(d.getDate()),
+            hh: pad(d.getHours()), HH: pad(d.getHours()),
+            ii: pad(d.getMinutes()), MM: pad(d.getMinutes()),
+            ss: pad(d.getSeconds()), SS: pad(d.getSeconds()),
+        };
+        var out = '', i = 0;
+        while (i < mask.length) {
+            var four = mask.substr(i, 4), two = mask.substr(i, 2);
+            if (four === 'yyyy') { out += map.yyyy; i += 4; }
+            else if (Object.prototype.hasOwnProperty.call(map, two)) { out += map[two]; i += 2; }
+            else { out += mask.charAt(i); i += 1; }
+        }
+        return out;
+    }
+
+    // Campo de texto (e o que não é campo de data): como o usuário escreveria,
+    // no idioma da página.
+    function localText(st) {
+        var d = st.date;
+        if (st.kind === 'time') return hourMin(d);
+        var lang = (document.documentElement && document.documentElement.lang) || undefined;
+        var day;
+        try { day = d.toLocaleDateString(lang, { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+        catch (e) { day = isoDate(d); }
+        return st.kind === 'date' ? day : day + ' ' + hourMin(d);
+    }
+
+    // today() / now() / time() → $v.today()… só FORA de aspas: 'now()' entre
+    // aspas é texto.
+    function translate(expr) {
+        var s = String(expr == null ? '' : expr);
+        var out = '', quote = '', chunk = '';
+        var flush = function () {
+            out += chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()');
+            chunk = '';
+        };
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charAt(i);
+            if (quote) {
+                out += c;
+                if (c === '\\' && i + 1 < s.length) { out += s.charAt(++i); continue; }
+                if (c === quote) quote = '';
+                continue;
+            }
+            if (c === "'" || c === '"') { flush(); quote = c; out += c; continue; }
+            chunk += c;
+        }
+        flush();
+        return out;
+    }
+
+    function compileValue(expr) {
+        var js = translate(expr);
+        return js.trim() === '' ? null : window._madWhen.compile(js);
+    }
+
+    // Resultado que não é instante → texto do campo.
+    function plain(v) {
+        if (v === null || v === undefined) return '';
+        if (v === true) return '1';
+        if (v === false) return '0';
+        if (typeof v === 'number') return isFinite(v) ? String(parseFloat(v.toPrecision(12))) : '';
+        return String(v);
+    }
+
+    // ── Campo de destino ─────────────────────────────────────────────────────
+
+    // Componente do campo com máscara (moeda/decimal: rawValue; data: selectedDate)
+    // — o mesmo contrato que o _madSyncMaskedField procura.
+    function fieldData(ctl) {
+        if (!window.Alpine || typeof window.Alpine.$data !== 'function' || !ctl.closest) return null;
+        var box = ctl.closest('[x-data]');
+        if (!box) return null;
+        try {
+            var ad = window.Alpine.$data(box);
+            if (ad && typeof ad.setValue === 'function' && ('rawValue' in ad || 'selectedDate' in ad)) return ad;
+        } catch (e) { /* nó sem escopo Alpine */ }
+        return null;
+    }
+
+    // O que o campo grava: os controles com o `name` dele. Rádio = um por
+    // opção; interruptor/checkbox = a caixa (+ o oculto do valor desligado);
+    // moeda/decimal = o oculto; o resto = o próprio controle.
+    function targetOf(root) {
+        var all = [];
+        if (root.matches && root.matches(CTL_SEL)) all.push(root);
+        var inner = root.querySelectorAll ? root.querySelectorAll(CTL_SEL) : [];
+        for (var i = 0; i < inner.length; i++) all.push(inner[i]);
+        var name = '';
+        for (var j = 0; j < all.length; j++) { if (all[j].name) { name = all[j].name; break; } }
+        if (!name) return null;
+        var group = [], boxes = [], ctl = null;
+        for (var k = 0; k < all.length; k++) {
+            if (all[k].name !== name) continue;
+            var t = String(all[k].type || '').toLowerCase();
+            if (t === 'file') return null;
+            group.push(all[k]);
+            if (t === 'radio' || t === 'checkbox') boxes.push(all[k]);
+            else if (!ctl) ctl = all[k];
+        }
+        if (boxes.length) return { name: name, boxes: boxes, ctl: null };
+        return ctl ? { name: name, boxes: null, ctl: ctl } : null;
+    }
+
+    function onValue(box) {
+        return (box.hasAttribute && box.hasAttribute('data-value-on')) ? box.getAttribute('data-value-on') : box.value;
+    }
+
+    function currentValue(t) {
+        if (t.boxes) {
+            for (var i = 0; i < t.boxes.length; i++) if (t.boxes[i].checked) return String(onValue(t.boxes[i]));
+            return '';
+        }
+        var ad = fieldData(t.ctl);
+        if (ad && 'rawValue' in ad) return ad.rawValue === null || ad.rawValue === undefined ? '' : String(ad.rawValue);
+        return t.ctl.value === null || t.ctl.value === undefined ? '' : String(t.ctl.value);
+    }
+
+    // Instante no formato do campo: a máscara do campo de data (o que ele
+    // mostra e sabe ler), o formato nativo do input, ou texto no idioma.
+    function stampText(st, t) {
+        if (!t.ctl) return localText(st);
+        var d = st.date;
+        var ad = fieldData(t.ctl);
+        if (ad && 'selectedDate' in ad) {
+            var mask = (typeof ad._displayMask === 'string' && ad._displayMask)
+                ? ad._displayMask : (ad._withTime ? 'dd/mm/yyyy hh:ii' : 'dd/mm/yyyy');
+            // "Data de hoje" num campo de data e hora: o dia, à meia-noite.
+            var when = st.kind === 'date' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : d;
+            return maskDate(when, mask);
+        }
+        var type = String(t.ctl.type || '').toLowerCase();
+        if (type === 'date') return isoDate(d);
+        if (type === 'datetime-local') return isoDate(d) + 'T' + hourMin(d);
+        if (type === 'time') return hourMin(d);
+        if (type === 'month') return isoDate(d).slice(0, 7);
+        return localText(st);
+    }
+
+    function fire(el, types, depth) {
+        for (var i = 0; i < types.length; i++) {
+            var ev = new window.Event(types[i], { bubbles: true });
+            ev.madFillDepth = depth + 1;
+            el.dispatchEvent(ev);
+        }
+    }
+
+    function syncMasked(ctl) {
+        var f = typeof window._madSyncMaskedField === 'function' ? window._madSyncMaskedField
+            : (typeof _madSyncMaskedField === 'function' ? _madSyncMaskedField : null);
+        if (f) { try { f(ctl); } catch (e) { /* campo sem componente */ } }
+    }
+
+    // Escreve como o op `val` do servidor: rádio/checkbox pela marca (o
+    // `value` da opção nunca muda), MAD Select pelo setValue do widget, campo
+    // com máscara avisado, e input + change para o resto da tela.
+    function write(t, val, depth) {
+        if (t.boxes) {
+            var marked = null;
+            for (var i = 0; i < t.boxes.length; i++) {
+                var b = t.boxes[i];
+                b.checked = val !== '' && String(onValue(b)) === val;
+                if (b.checked && !marked) marked = b;
+                var lbl = b.closest ? b.closest('.mad-radio-btn') : null;
+                if (lbl && lbl.classList) lbl.classList.toggle('is-active', !!b.checked);
+            }
+            fire(marked || t.boxes[0], ['input', 'change'], depth);
+            return;
+        }
+        var ctl = t.ctl;
+        if (ctl._madSelect && typeof ctl._madSelect.setValue === 'function') ctl._madSelect.setValue(val, true);
+        else ctl.value = val;
+        syncMasked(ctl);
+        fire(ctl, ['input', 'change'], depth);
+    }
+
+    // Uma regra montada num campo. Não liga listener nenhum: quem decide
+    // QUANDO olhar (e se a mudança veio da tela) é a diretiva — e o teste.
+    function mount(el, whenExpr, valueExpr, opts) {
+        opts = opts || {};
+        var when = window._madWhen.compile(whenExpr);
+        var value = compileValue(valueExpr);
+        if (!when) { warn('[mad-fill] regra inválida em fill-when:', whenExpr); return null; }
+        if (!value) { warn('[mad-fill] valor inválido em fill-value:', valueExpr); return null; }
+
+        var id = ++_seq;
+        var root = (el.closest && el.closest('.mad-field')) || el;
+        var scope = (el.closest && (el.closest('form') || el.closest('[mad-component]'))) || document;
+        var read = function (n) { return window._madWhen.readValue(scope, n, el); };
+        var g = function (n) { return read(n); };
+        g.today = function () { return new Stamp('date', api.clock()); };
+        g.now = function () { return new Stamp('datetime', api.clock()); };
+        g.time = function () { return new Stamp('time', api.clock()); };
+
+        var prev = null;        // estado da regra na última olhada (null = ainda sem base)
+        var warned = false;
+        function once() {
+            if (warned) return;
+            warned = true;
+            warn.apply(null, arguments);
+        }
+
+        function evaluate() {
+            try { return !!when(read); }
+            catch (e) { once('[mad-fill] erro ao avaliar fill-when:', whenExpr, e); return false; }
+        }
+
+        // Só registra o estado: abertura da tela, valor posto pelo servidor,
+        // linha do detalhe carregada no editor.
+        function baseline() {
+            prev = evaluate();
+        }
+
+        function fill(depth) {
+            var t = targetOf(root);
+            if (!t) { once('[mad-fill] campo sem controle para preencher:', whenExpr); return false; }
+            var v;
+            try { v = value(g); }
+            catch (e) { once('[mad-fill] erro ao calcular fill-value:', valueExpr, e); return false; }
+            var text = (v instanceof Stamp) ? stampText(v, t) : plain(v);
+            var cur = currentValue(t);
+            if (!opts.overwrite && cur.trim() !== '') return false;
+            if (cur === text) return false;
+            write(t, text, depth || 0);
+            return true;
+        }
+
+        // Mudança feita na tela: preenche se a regra PASSOU a valer agora.
+        function apply(depth) {
+            depth = depth || 0;
+            var was = prev;
+            var on = evaluate();
+            prev = on;
+            if (was === null || was || !on) return false;
+            if (depth >= MAX_DEPTH) {
+                once('[mad-fill] preenchimento encadeado sem fim (um campo preenche o outro?):', whenExpr);
+                return false;
+            }
+            return fill(depth);
+        }
+
+        return { id: id, root: root, scope: scope, baseline: baseline, apply: apply, fill: fill };
+    }
+
+    // Um lote de valores foi carregado no escopo por código (a linha do
+    // detalhe aberta no editor): a próxima olhada de cada regra dali só
+    // registra o estado — carregar um registro não é o usuário mudando o campo.
+    function rebase(scope) {
+        if (!scope || !scope.querySelectorAll) return;
+        var els = scope.querySelectorAll('[x-mad-fill]');
+        for (var i = 0; i < els.length; i++) {
+            var inst = els[i]._madFillInst;
+            if (inst && typeof inst.rebase === 'function') inst.rebase();
+        }
+    }
+
+    api.MAX_DEPTH = MAX_DEPTH;
+    api.translate = translate;
+    api.compileValue = compileValue;
+    api.maskDate = maskDate;
+    api.targetOf = targetOf;
+    api.mount = mount;
+    api.rebase = rebase;
+
+    return api;
+})();
+// </madFill:core>
+window._madFill = _madFill;
+
+// Liga a regra ao campo. `onCleanup` recebe o teardown (o `cleanup` do Alpine
+// na diretiva; no-op na montagem fora do Alpine, logo abaixo).
+function _madFillAttach(el, expression, onCleanup) {
+    // Re-init do mesmo elemento (MAD Select move o <select>; initTree duplo).
+    if (el._madFillOff) el._madFillOff();
+
+    // Rádio: o `attrs` do campo sai em cada opção. Uma regra por campo.
+    var owner = (el.closest && el.closest('.mad-field')) || el;
+    if (owner._madFillEl && owner._madFillEl !== el && owner._madFillEl._madFillOff
+        && owner._madFillEl.isConnected !== false) return;
+
+    var inst = _madFill.mount(el, expression, el.getAttribute('data-mad-fill-value'), {
+        overwrite: el.hasAttribute('data-mad-fill-overwrite'),
+    });
+    if (!inst) return;
+    owner._madFillEl = el;
+    el._madFillInst = inst;
+
+    var dead = false, pending = false;
+    var armed = false;      // o usuário já mexeu nesta tela?
+    var live = false;       // algum evento do lote veio da tela (não do servidor)?
+    var direct = false;     // algum evento do lote NÃO veio de outro preenchimento?
+    var base = true;        // a próxima olhada só registra o estado
+    var chain = 0;          // olhadas seguidas causadas só por outros preenchimentos
+
+    // Adiado um tick, como o *-when: o valor de campo com máscara só é
+    // atualizado depois do handler de input que disparou. Vários eventos no
+    // mesmo tick = uma olhada só.
+    var schedule = function (e) {
+        if (dead) return;
+        if (e) {
+            if (!e.madFromServer) live = true;
+            if (!e.madFillDepth) direct = true;
+        }
+        if (pending) return;
+        pending = true;
+        setTimeout(function () {
+            pending = false;
+            var fromScreen = live, own = direct, onlyBase = base;
+            live = false; direct = false; base = false;
+            if (dead) return;
+            // Antes do primeiro gesto do usuário tudo é a tela terminando de
+            // abrir (componentes montando, combos carregando): só a base.
+            if (onlyBase || !armed || !fromScreen) { inst.baseline(); return; }
+            // Corrente: esta regra olhando SÓ por causa de outros
+            // preenchimentos, vez após vez (um campo preenche o outro, que
+            // preenche o primeiro…). Vinte campos reagindo à mesma mudança do
+            // usuário não são corrente: o lote traz o evento dele.
+            chain = own ? 0 : chain + 1;
+            inst.apply(chain);
+        }, 0);
+    };
+    var arm = function () { armed = true; };
+    var GESTURES = ['pointerdown', 'mousedown', 'touchstart', 'keydown'];
+
+    inst.scope.addEventListener('change', schedule);
+    inst.scope.addEventListener('input', schedule);
+    for (var i = 0; i < GESTURES.length; i++) inst.scope.addEventListener(GESTURES[i], arm, true);
+
+    inst.rebase = function () { base = true; schedule(); };
+
+    var teardown = function () {
+        if (dead) return;
+        dead = true;
+        inst.scope.removeEventListener('change', schedule);
+        inst.scope.removeEventListener('input', schedule);
+        for (var j = 0; j < GESTURES.length; j++) inst.scope.removeEventListener(GESTURES[j], arm, true);
+        if (el._madFillOff === teardown) delete el._madFillOff;
+        if (el._madFillInst === inst) delete el._madFillInst;
+        if (owner._madFillEl === el) delete owner._madFillEl;
+    };
+    el._madFillOff = teardown;
+    onCleanup(teardown);
+
+    // Base da abertura: depois que os componentes dos campos montarem.
+    schedule();
+}
+
+function _madRegisterFill() {
+    if (!window.Alpine || window.Alpine.__madFillRegistered) return;
+    window.Alpine.__madFillRegistered = true;
+    window.Alpine.directive('mad-fill', function (el, dir, utils) {
+        _madFillAttach(el, dir.expression, utils.cleanup);
+    });
+}
+document.addEventListener('alpine:init', _madRegisterFill);
+if (window.Alpine) _madRegisterFill();
+
+// Mesmo motivo do _madWhenMountOrphans: campo sem x-data próprio, numa página
+// renderizada direto pelo servidor, fica fora do alcance do Alpine.
+function _madFillMountOrphans(root) {
+    var els = (root || document).querySelectorAll('[x-mad-fill]');
+    for (var i = 0; i < els.length; i++) {
+        if (els[i]._madFillOff) continue;
+        _madFillAttach(els[i], els[i].getAttribute('x-mad-fill'), function () {});
+    }
+}
+document.addEventListener('alpine:initialized', function () { _madFillMountOrphans(document); });
+
+
+/* ═══════════════════════════════════════════════════════════════════
    DBCOMBO depends-on — cascata automática entre combos
    ═══════════════════════════════════════════════════════════════════
 
@@ -12774,6 +13211,10 @@ document.addEventListener('alpine:init', () => {
                     }
                     inp.dispatchEvent(new Event('input', { bubbles: true }));
                 });
+                // Os campos acabaram de receber a LINHA (nova ou em edição): para
+                // o "preencher valor quando" (fill-when) isso é a base, não o
+                // usuário mudando o campo — a linha gravada não é reescrita.
+                if (window._madFill && typeof window._madFill.rebase === 'function') window._madFill.rebase(container);
             },
 
             _resetForm() {

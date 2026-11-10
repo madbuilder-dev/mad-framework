@@ -625,6 +625,24 @@ class MadBladeCompiler extends BladeCompiler
     private const COMPUTE_TAGS = ['money-field', 'numeric-field', 'number-field', 'display-field'];
 
     /**
+     * Campos que NÃO aceitam `fill-when` (preencher valor por condição): não há
+     * um valor de texto para escrever neles (arquivo, assinatura), eles só
+     * mostram (`display-field`) ou têm dois valores (`daterange-field`). Nos
+     * demais `<mad-*-field>` o trio `fill-when` / `fill-value` / `fill-overwrite`
+     * vira a diretiva `x-mad-fill`. Mesma lista da regra R091 do validador do
+     * Studio (`FILL_WHEN_NO_TAGS`).
+     */
+    private const NO_FILL_TAGS = [
+        'display-field', 'file-field', 'image-field', 'avatar-field',
+        'multi-file-field', 'signature-field', 'daterange-field',
+    ];
+
+    private static function isFillTag(string $tag): bool
+    {
+        return str_ends_with($tag, '-field') && ! in_array($tag, self::NO_FILL_TAGS, true);
+    }
+
+    /**
      * Campos em que o "Valor padrão" (`default` / `:default`) é o `value` da tag.
      *
      * O painel do Studio grava `default` em quase todo campo e o catálogo do
@@ -688,6 +706,8 @@ class MadBladeCompiler extends BladeCompiler
         $_anchor      = null;   // tabela do modelo de dados (âncora do gerador)
         $_screenOnly  = null;   // 'true' | 'false' | expressão PHP
         $_whenUses    = [];     // campos que as condições *-when da tag usam
+        // Preencher valor por condição (fill-when / fill-value / fill-overwrite).
+        $_fill        = self::isFillTag($tag) ? ['when' => null, 'value' => null, 'overwrite' => false] : null;
         // "Valor padrão" do Studio nos campos que leem `value` — ver DEFAULT_IS_VALUE_TAGS.
         $_defaultTo   = self::defaultTarget($tag, (string) $params);
         $pos        = 0;
@@ -772,6 +792,22 @@ class MadBladeCompiler extends BladeCompiler
                                 $_whenUses[$_used] = true;
                             }
                         }
+                    }
+                    continue;
+                }
+
+                // Preencher valor por condição (fórum #277):
+                //   fill-when="{situacao} == 'B'" fill-value="today()"
+                // → diretiva Alpine `x-mad-fill` no `attrs` do campo (mad-ui.js),
+                // montada no fim do método, quando os dois já foram lidos. Só a
+                // forma LITERAL: `:fill-when` / `:fill-value` seguem como prop PHP.
+                if ($_fill !== null && $m[1] === ''
+                    && in_array($key, ['fill-when', 'fill-value', 'fill-overwrite'], true)
+                    && !preg_match('/\{\{|\{!!/', $val)) {
+                    if ($key === 'fill-overwrite') {
+                        $_fill['overwrite'] = !in_array(strtolower(trim($val)), ['false', '0', 'no'], true);
+                    } elseif (trim($val) !== '') {
+                        $_fill[$key === 'fill-when' ? 'when' : 'value'] = $val;
                     }
                     continue;
                 }
@@ -1006,6 +1042,13 @@ class MadBladeCompiler extends BladeCompiler
                     continue;
                 }
 
+                // `fill-overwrite` nu: o preenchimento por condição troca o
+                // valor que o campo já tem.
+                if ($key === 'fill-overwrite' && $_fill !== null) {
+                    $_fill['overwrite'] = true;
+                    continue;
+                }
+
                 // Converte kebab-case → camelCase para PHP
                 $phpKey = self::kebabToCamel($key);
                 $compiled[] = '"' . $phpKey . '"=>true';
@@ -1024,6 +1067,22 @@ class MadBladeCompiler extends BladeCompiler
         if ($_fieldName !== null && $_screenOnly !== null && $_screenOnly !== 'false') {
             $call = '\\Mad\\Form\\MadFormRegistry::screenOnly(' . self::phpString($_fieldName) . ')';
             $compiled[] = '"madScreenOnly"=>' . ($_screenOnly === 'true' ? $call : '((' . $_screenOnly . ') ? ' . $call . ' : false)');
+        }
+        // Preencher valor por condição: só com a regra E o valor (sem valor não
+        // há o que escrever; sem regra, o valor inicial é o "Valor padrão").
+        if ($_fill !== null && $_fill['when'] !== null && $_fill['value'] !== null) {
+            $esc = static fn (string $v): string => htmlspecialchars($v, ENT_COMPAT | ENT_HTML5, 'UTF-8', false);
+            $extraAttrs[] = 'x-mad-fill="' . $esc($_fill['when']) . '"';
+            $extraAttrs[] = 'data-mad-fill-value="' . $esc($_fill['value']) . '"';
+            if ($_fill['overwrite']) {
+                $extraAttrs[] = 'data-mad-fill-overwrite="1"';
+            }
+            // Os campos que a regra e o valor leem são usados pela TELA, como os do *-when.
+            if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $_fill['when'] . ' ' . $_fill['value'], $_ft)) {
+                foreach ($_ft[1] as $_used) {
+                    $_whenUses[$_used] = true;
+                }
+            }
         }
         if ($_whenUses) {
             $compiled[] = '"madWhenUses"=>\\Mad\\Form\\MadFormRegistry::screenOnly(['
