@@ -109,6 +109,10 @@ class MadServiceProvider extends ServiceProvider
             WebhookTickCommand::class,
             \Mad\Console\RoutineInstallCommand::class,
         ]);
+
+        // Bibliotecas da plataforma com provider (app/config/platform-libs.json,
+        // entregue pela concessão do projeto). Sem o arquivo, nada.
+        \Mad\Extension\PlatformLibProviders::register($this->app);
     }
 
     /**

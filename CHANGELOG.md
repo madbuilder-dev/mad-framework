@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.294.0] — 2026-11-11
+
+### Novidades
+
+- **Integrações:** a biblioteca da plataforma ligada em Integrações, como o Google Agenda, sobe junto com o app. Desligada, ela para de rodar a partir da publicação seguinte, mesmo num servidor onde os arquivos antigos ficaram.
+
 ## [5.293.0] — 2026-11-11
 
 ### Novidades
