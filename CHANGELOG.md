@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.293.0] — 2026-11-11
+
+### Novidades
+
+- **Integrações:** pacote opcional ligado no MadBuilder (Propriedades do projeto › Integrações) ganha a própria aba em Preferências e em Configurações da conta. É por ela que o Google Agenda é configurado pelo administrador e conectado por cada usuário.
+- **Central de Comando:** o card Vendor tira do app o pacote opcional que foi desligado em Integrações. As tabelas que o pacote criou ficam no banco.
+
+### Melhorias
+
+- **Configurações da conta:** o endereço aceita `?tab=` para abrir direto numa aba, como `?tab=account` para a Segurança.
+
 ## [5.292.0] — 2026-11-10
 
 ### Novidades

@@ -1172,6 +1172,13 @@ class MadBlade
     private static array $customDirectives = [];
     private static string $viewsPath   = '';
     private static string $cachePath   = '';
+    /**
+     * Namespaces de view de pacote (`pacote::tela`), registrados por
+     * addNamespace() e reaplicados em toda factory nova (configure() a zera).
+     *
+     * @var array<string, list<string>>
+     */
+    private static array $namespaces = [];
 
     // ─── Configuration ────────────────────────────────────────────────────────
 
@@ -1190,6 +1197,26 @@ class MadBlade
         if (isset($options['cache'])) {
             self::$cachePath = $options['cache'];
             self::$factory   = null;
+        }
+    }
+
+    /**
+     * Views de um pacote: `MadBlade::render('pacote::tela')` procura em $paths,
+     * com o mesmo compilador das telas do app (os `<mad-*>` funcionam). É o
+     * equivalente do `loadViewsFrom` do Laravel, que registra na factory do
+     * Laravel e não nesta.
+     *
+     * @param string|list<string> $paths
+     */
+    public static function addNamespace(string $namespace, string|array $paths): void
+    {
+        $paths = array_values(array_filter((array) $paths, 'is_string'));
+        if ($namespace === '' || $paths === []) {
+            return;
+        }
+        self::$namespaces[$namespace] = array_values(array_unique(array_merge(self::$namespaces[$namespace] ?? [], $paths)));
+        if (self::$factory !== null) {
+            self::$factory->getFinder()->replaceNamespace($namespace, self::$namespaces[$namespace]);
         }
     }
 
@@ -1709,6 +1736,9 @@ HTML;
 
         self::$factory = new \Illuminate\View\Factory($resolver, $finder, $dispatcher);
         self::$factory->addExtension('blade.php', 'blade');
+        foreach (self::$namespaces as $namespace => $paths) {
+            $finder->replaceNamespace($namespace, $paths);
+        }
 
         foreach (self::$shared as $key => $value) {
             self::$factory->share($key, $value);
