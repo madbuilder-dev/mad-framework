@@ -98,6 +98,32 @@ class GridAction
     }
 
     /**
+     * Model da listagem (carimbado pelo MadDataGrid): com ele, a pergunta do
+     * Excluir diz "e os arquivos dele" na linha que tem arquivo nas colunas
+     * que o Model declara em `$madFiles` (fórum #274).
+     */
+    public ?string $filesModel = null;
+
+    /** As ações que excluem o registro da linha: o Excluir embutido e o da listagem gerada. */
+    private const DELETE_METHODS = ['onMadGridDelete', 'onDelete'];
+
+    /**
+     * A pergunta de confirmação desta ação para a linha: a de sempre, e no
+     * Excluir de um registro com arquivo, com "e os arquivos dele".
+     */
+    public function confirmText(array $row): string
+    {
+        $message = $this->confirmPopover ?: $this->confirm;
+        if ($message === '' || $this->filesModel === null || !in_array($this->method, self::DELETE_METHODS, true)) {
+            return $message;
+        }
+
+        return \Mad\Database\MadRecordFiles::rowHasFiles($this->filesModel, $row)
+            ? \Mad\Database\MadRecordFiles::withFilesNote($message)
+            : $message;
+    }
+
+    /**
      * `success`, `warning`, `info` ou `ghost` — as variantes do painel da Ação
      * Grid além de `danger()`/`primary()`. Outro valor deixa o botão neutro.
      */

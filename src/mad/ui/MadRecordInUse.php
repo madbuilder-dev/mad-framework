@@ -174,6 +174,37 @@ final class MadRecordInUse
         return self::humanize(Str::snake(class_basename($class)));
     }
 
+    /**
+     * @internal As relações filhas de `$model` (hasMany/hasOne declaradas com o
+     * tipo de retorno), como a pergunta "vai junto" as lê. Usado por
+     * {@see \Mad\Database\MadRecordFiles} para achar as filhas que o banco
+     * apaga junto.
+     *
+     * @return list<HasOneOrMany>
+     */
+    public static function childRelations(Model $model, bool $constrained = true): array
+    {
+        return self::relations($model, $constrained);
+    }
+
+    /** @internal A regra `on delete` da FK da relação no banco (`cascade`, `set null`…) ou null. */
+    public static function deleteRule(HasOneOrMany $relation, Model $parent): ?string
+    {
+        return self::onDelete($relation, $parent);
+    }
+
+    /** @internal Esquece as FKs lidas (o próximo {@see deleteRule()} lê de novo do banco). */
+    public static function forgetForeignKeys(): void
+    {
+        self::$foreignKeys = [];
+    }
+
+    /** @internal A exclusão de `$record` só o marca (lixeira)? */
+    public static function isTrashDelete(Model $record): bool
+    {
+        return self::goesToTrash($record);
+    }
+
     // ── Internos ────────────────────────────────────────────────────────
 
     /** A exclusão de `$record` só o marca (lixeira), sem tirar a linha do banco? */

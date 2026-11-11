@@ -2515,8 +2515,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected function _bulkConfirm(array $b): string
     {
         $confirm = (string) ($b['confirm'] ?? '');
-        if ($confirm === '' && ($b['preset'] ?? '') === 'delete') {
-            return __('grid.bulk_delete_confirm');
+        if (($b['preset'] ?? '') === 'delete') {
+            $confirm = $confirm === '' ? (string) __('grid.bulk_delete_confirm') : $confirm;
+            // Model que declara colunas de arquivo (fórum #274): os arquivos vão junto.
+            return \Mad\Database\MadRecordFiles::classHasColumns($this->_recordModel())
+                ? \Mad\Database\MadRecordFiles::withFilesNote($confirm, true)
+                : $confirm;
         }
         // Desfazer a rotina apaga o que ela gerou: confirma por padrão.
         if ($confirm === '' && ($b['preset'] ?? '') === 'routine' && ($b['mode'] ?? '') === 'reverse') {
@@ -6992,20 +6996,43 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $hosts = $this->_actionHosts();
 
         if ($this->_inlineConfig !== null) {
-            return array_values(array_filter(array_map(
+            return $this->_filesStamp(array_values(array_filter(array_map(
                 fn($a) => static::_actFromConfig($a, $dono)?->resolveIn(...$hosts),
                 $this->_inlineConfig['actConfigs'] ?? []
-            )));
+            ))));
         }
 
         // actions() escrito à mão (listagem gerada) ou montado pelo <mad-grid>
         // declarativo: as ações chegam sem dono. Carimbar AQUI, no único ponto
         // por onde todas passam, é o que faz a permissão valer nos dois casos —
         // senão só o caminho inline (<mad-grid self>) seria checado.
-        return array_map(
+        return $this->_filesStamp(array_map(
             fn($act) => static::_hostStamp(static::_permStamp($act, $dono), $hosts),
             $this->actions()
-        );
+        ));
+    }
+
+    /**
+     * O Model da listagem vai nas ações: a pergunta do Excluir diz "e os
+     * arquivos dele" quando a linha tem arquivo nas colunas que o Model
+     * declara em `$madFiles` (fórum #274). Sem a declaração, nada muda.
+     *
+     * @param list<GridAction> $actions
+     * @return list<GridAction>
+     */
+    protected function _filesStamp(array $actions): array
+    {
+        $model = $this->_recordModel();
+        if ($model === '' || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
+            return $actions;
+        }
+        foreach ($actions as $act) {
+            if ($act instanceof GridAction) {
+                $act->filesModel = $model;
+            }
+        }
+
+        return $actions;
     }
 
     /**
@@ -7111,6 +7138,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     $act = static::_actFromConfig($a, $dono);
                     if ($act) $grp->add($act->resolveIn(...$hosts));
                 }
+                $this->_filesStamp($grp->actions);
                 return $grp;
             }, $this->_inlineConfig['actGroupConfigs'] ?? []);
         }
@@ -7119,6 +7147,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $grupos = $this->actionGroups();
         foreach ($grupos as $grp) {
             if (!$grp instanceof GridActionGroup) continue;
+            $this->_filesStamp($grp->actions);
             foreach ($grp->actions as $act) {
                 static::_hostStamp(static::_permStamp($act, $dono), $hosts);
             }
@@ -11193,7 +11222,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $html .= '<button type="button" class="' . $cls . '"' . $dis
                         . ' ' . $act->getNavAttr($aId, $row) . '>' . $ico . $lbl . '</button>';
             } elseif ($act->confirm || $act->confirmPopover) {
-                $cMsg  = $act->confirmPopover ?: $act->confirm;
+                $cMsg  = $act->confirmText($row);
                 $cType = $act->confirmPopover ? "'popover'" : 'null';
                 $click = 'confirmAction(' . json_encode($cMsg)
                        . ", () => \$dispatch('mad-dg-call',{method:" . json_encode($act->method)
@@ -11233,7 +11262,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                             . ' @click="open=false" ' . $act->getNavAttr($aId, $row) . '>'
                             . $ico . htmlspecialchars($act->label, ENT_QUOTES) . '</button>';
                 } elseif ($act->confirm || $act->confirmPopover) {
-                    $cMsg  = $act->confirmPopover ?: $act->confirm;
+                    $cMsg  = $act->confirmText($row);
                     $cType = $act->confirmPopover ? "'popover'" : 'null';
                     $click = "open=false; confirmAction(" . json_encode($cMsg)
                            . ", () => \$dispatch('mad-dg-call',{method:" . json_encode($act->method)
@@ -11711,7 +11740,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $html .= '<button type="button" class="' . $act->btnClass() . '"' . $dis . $ttl
                         . ' ' . $act->getNavAttr($aId, $row) . '>' . $ico . $lbl . '</button>';
             } elseif ($act->confirm || $act->confirmPopover) {
-                $cMsg  = $act->confirmPopover ?: $act->confirm;
+                $cMsg  = $act->confirmText($row);
                 $cType = $act->confirmPopover ? "'popover'" : 'null';
                 $click = 'confirmAction(' . json_encode($cMsg)
                        . ", () => \$dispatch('mad-dg-call',{method:" . json_encode($act->method)
@@ -11756,7 +11785,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                             . ' @click="open=false" ' . $act->getNavAttr($aId, $row) . '>'
                             . $ico . htmlspecialchars($act->label, ENT_QUOTES) . '</button>';
                 } elseif ($act->confirm || $act->confirmPopover) {
-                    $cMsg  = $act->confirmPopover ?: $act->confirm;
+                    $cMsg  = $act->confirmText($row);
                     $cType = $act->confirmPopover ? "'popover'" : 'null';
                     $click = "open=false; confirmAction(" . json_encode($cMsg)
                            . ", () => \$dispatch('mad-dg-call',{method:" . json_encode($act->method)

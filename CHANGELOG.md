@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.292.0] — 2026-11-10
+
+### Novidades
+
+- **App gerado:** o Model pode declarar as colunas que guardam arquivo enviado, com `protected array $madFiles = ['foto', 'anexos'];`. Quando o registro é excluído de verdade (pela listagem, em lote, pela API ou pelo código), os arquivos dele saem do disco, e os das filhas que o banco apaga junto também. Na lixeira nada sai, e sem a declaração nada muda.
+- **Listagem (grid):** no Excluir de um registro com arquivo, a pergunta passa a dizer "Excluir este registro e os arquivos dele?". Na exclusão em lote, "e os arquivos deles".
+
+### Melhorias
+
+- **App gerado:** a exclusão por filtro do serviço de registro (`deleteAll`) passa a excluir um registro por vez quando o Model declara colunas de arquivo, para os arquivos saírem junto. Sem a declaração, continua igual.
+
 ## [5.291.0] — 2026-11-10
 
 ### Novidades

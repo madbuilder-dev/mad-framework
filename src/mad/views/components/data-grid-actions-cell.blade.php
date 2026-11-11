@@ -45,7 +45,7 @@
             @if($act->label&&!$act->icon){{ $act->label }}@elseif($act->label&&$act->showLabel)<span class="mad-dg-action-btn-label">{{ $act->label }}</span>@endif
         </button>
         @elseif($act->confirm || $act->confirmPopover)
-        @php $_cMsg = $act->confirmPopover ?: $act->confirm; $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
+        @php $_cMsg = $act->confirmText($row); $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
         <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
                 @click="confirmAction({{ json_encode($_cMsg) }}, () => $dispatch('mad-dg-call',{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]}), $event, {{ $_cType }})">
             @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
@@ -80,7 +80,7 @@
                     {{ $act->label }}
                 </button>
                 @elseif($act->confirm || $act->confirmPopover)
-                @php $_cMsg = $act->confirmPopover ?: $act->confirm; $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
+                @php $_cMsg = $act->confirmText($row); $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
                 <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
                         @click="open=false; confirmAction({{ json_encode($_cMsg) }}, () => $root.dispatchEvent(new CustomEvent('mad-dg-call',{detail:{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]},bubbles:true})), $event, {{ $_cType }})">
                     @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:13px;height:13px;"></i>@endif

@@ -959,6 +959,9 @@ return [
             'delete'                    => 'Delete',
             'no_records'                => 'No records',
             'confirm_delete_record'     => 'Delete this record?',
+            // Fórum #274: a pergunta do Excluir quando o registro tem arquivo (colunas em `$madFiles`).
+            'confirm_delete_files'      => ' and its files',
+            'confirm_delete_files_many' => ' and their files',
             'deleted_ok'                => 'Record deleted.',
             'delete_error'              => 'Could not delete: ',
             'tab_load_failed' => 'Could not load this tab.',

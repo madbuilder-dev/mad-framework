@@ -218,6 +218,8 @@ class MadServiceProvider extends ServiceProvider
         $this->bootWorkflowExternal();
         $this->bootApiAuth();
         $this->bootRoutines();
+        // Arquivos das colunas `$madFiles` saem com o registro excluído de verdade (fórum #274).
+        \Mad\Database\MadRecordFiles::listen($this->app['events']);
         $this->bootVibePreview();
         self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));
     }

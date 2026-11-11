@@ -1608,7 +1608,7 @@
                         </button>
                         @elseif($act->confirm || $act->confirmPopover)
                         @php
-                            $_cMsg  = $act->confirmPopover ?: $act->confirm;
+                            $_cMsg  = $act->confirmText($row);
                             $_cType = $act->confirmPopover ? "'popover'" : 'null';
                             $_click = 'confirmAction(' . json_encode($_cMsg) . ", () => \$dispatch('mad-dg-call',{method:" . json_encode($act->method) . ',params:[' . $aIdJs . $ep . "]}), \$event, " . $_cType . ')';
                         @endphp
@@ -1654,7 +1654,7 @@
                                 </button>
                                 @elseif($gAct->confirm || $gAct->confirmPopover)
                                 @php
-                                    $_gcMsg  = $gAct->confirmPopover ?: $gAct->confirm;
+                                    $_gcMsg = $gAct->confirmText($row);
                                     $_gcType = $gAct->confirmPopover ? "'popover'" : 'null';
                                     $_gclick = "open=false; confirmAction(" . json_encode($_gcMsg) . ", () => \$root.dispatchEvent(new CustomEvent('mad-dg-call',{detail:{method:" . json_encode($gAct->method) . ',params:[' . $gaIdJs . $gep . "]},bubbles:true})), \$event, " . $_gcType . ')';
                                 @endphp

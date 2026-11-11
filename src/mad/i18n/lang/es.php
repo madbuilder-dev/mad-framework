@@ -947,6 +947,9 @@ return [
             'delete'                    => 'Eliminar',
             'no_records'                => 'Sin registros',
             'confirm_delete_record'     => '¿Eliminar este registro?',
+            // Fórum #274: a pergunta do Excluir quando o registro tem arquivo (colunas em `$madFiles`).
+            'confirm_delete_files'      => ' y sus archivos',
+            'confirm_delete_files_many' => ' y sus archivos',
             'deleted_ok'                => 'Registro eliminado.',
             'delete_error'              => 'Error al eliminar: ',
             'tab_load_failed' => 'No se pudo cargar esta pestaña.',

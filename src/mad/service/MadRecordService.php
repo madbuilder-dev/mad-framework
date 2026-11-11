@@ -87,10 +87,28 @@ class MadRecordService
 
     /**
      * Apaga registros casando os filtros. Devolve o total apagado.
+     *
+     * Model que declara colunas de arquivo (`$madFiles`, fórum #274): um por um
+     * pelo Model, numa transação, para os arquivos saírem com cada registro (e
+     * o `deleting` do Model valer). Sem a declaração, em massa, como sempre.
      */
     public function deleteAll($param)
     {
-        return (int) $this->queryFromParam($param)->delete();
+        $query = $this->queryFromParam($param);
+        if (!\Mad\Database\MadRecordFiles::declares($query->getModel())) {
+            return (int) $query->delete();
+        }
+
+        return (int) $query->getModel()->getConnection()->transaction(function () use ($query): int {
+            $deleted = 0;
+            foreach ($query->get() as $record) {
+                if ($record->delete() !== false) {
+                    $deleted++;
+                }
+            }
+
+            return $deleted;
+        });
     }
 
     /**
