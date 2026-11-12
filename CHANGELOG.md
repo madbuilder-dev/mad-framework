@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.297.0] — 2026-11-12
+
+### Novidades
+
+- **Lista de itens:** a fórmula de uma coluna calculada lê um campo do formulário principal com `{@campo}` (ex.: `{qtd} * {@percentual}`). Quando o campo do mestre muda, todas as linhas recalculam.
+
 ## [5.296.0] — 2026-11-12
 
 ### Correções

@@ -569,7 +569,7 @@
 
                     {{-- Computed columns (x-effect auto-calc) --------------- --}}
                     @foreach($computedCols as $cc)
-                        @php $_computeJs = \Mad\Form\FieldListColumn::compileFormula($cc->compute); @endphp
+                        @php $_computeJs = \Mad\Form\FieldListColumn::compileFormula($cc->compute, true); @endphp
                         <span x-effect="row['{{ $cc->field }}'] = {{ $_computeJs }}" style="display:none"></span>
                     @endforeach
 

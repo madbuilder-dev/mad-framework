@@ -11060,6 +11060,9 @@ document.addEventListener('alpine:init', () => {
 
         return {
             rows:      _rows,
+            // Campos do formulário principal (fórum #291): `{@campo}` na fórmula lê daqui.
+            master:    {},
+            _masterOff: null,
             maxRows:   cfg.maxRows   || 0,
             removable: cfg.removable !== false,
             sortable:  cfg.sortable  || false,
@@ -11076,7 +11079,34 @@ document.addEventListener('alpine:init', () => {
             _totalizeTimer: null,
 
             // ── Ciclo de vida ───────────────────────────────────────────────
+            // ── Formulário principal (fórum #291) ───────────────────────────
+            // Lê os campos do form que contém a lista (fora dela) e acompanha
+            // input/change: cada mudança atualiza `master`, e as fórmulas com
+            // {@campo} recalculam todas as linhas.
+            _bindMaster() {
+                const form = this.$el.closest('form');
+                if (!form) return;
+                const valOf = (el) => (el.type === 'checkbox' ? (el.checked ? '1' : '0') : (el.value ?? ''));
+                const sync = (el) => {
+                    if (!el || !el.name || el.name.endsWith('[]') || this.$el.contains(el)) return;
+                    this.master[el.name] = valOf(el);
+                };
+                form.querySelectorAll('input[name], select[name], textarea[name]').forEach(sync);
+                const onChange = (e) => sync(e.target);
+                form.addEventListener('input', onChange);
+                form.addEventListener('change', onChange);
+                this._masterOff = () => {
+                    form.removeEventListener('input', onChange);
+                    form.removeEventListener('change', onChange);
+                };
+            },
+
+            destroy() {
+                if (this._masterOff) this._masterOff();
+            },
+
             init() {
+                this._bindMaster();
                 if (this.sortable && typeof Sortable !== 'undefined') {
                     const body = this.$el.querySelector('.mad-fl-body');
                     if (body) {

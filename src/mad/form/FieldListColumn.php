@@ -411,14 +411,24 @@ class FieldListColumn
      * @param string $expr Expressão compute
      * @return string      JS para x-effect
      */
-    public static function compileFormula(string $expr): string
+    public static function compileFormula(string $expr, bool $mestre = false): string
     {
         // Se não contém {campo}, é JS raw — retorna direto
-        if (!preg_match('/\{[a-zA-Z_]\w*\}/', $expr)) {
+        $token = $mestre ? '/\{@?[a-zA-Z_]\w*\}/' : '/\{[a-zA-Z_]\w*\}/';
+        if (!preg_match($token, $expr)) {
             return $expr;
         }
 
         $js = $expr;
+
+        // ── {@campo} → campo do formulário principal (fórum #291) ─────────
+        // Só no Detail Form ($mestre): a linha lê o valor do mestre no estado
+        // reativo `master` do madFieldList, que o recálculo observa.
+        if ($mestre) {
+            $js = preg_replace_callback('/\{@([a-zA-Z_]\w*)\}/', function ($m) {
+                return "parseFloat(master['" . $m[1] . "']||0)";
+            }, $js);
+        }
 
         // ── discount(subtotal_expr, {valor_desc}, {tipo_desc}) ──────────
         // O 3o arg é campo string (%, R$) — NÃO pode virar parseFloat.
