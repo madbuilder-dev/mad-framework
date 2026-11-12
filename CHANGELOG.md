@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.303.0] — 2026-11-12
+
+### Novidades
+
+- **Rotinas:** "Repetir pelo intervalo": uma volta por horário entre um início e um fim, de N em N minutos ou horas. De 08:00 a 12:00, de 30 em 30 minutos, são 8 voltas (08:00 … 11:30), e o horário de cada volta pode ir para o registro criado. Serve para gerar horários de atendimento.
+- **Rotinas:** o **Período** soma também minutos e horas, além de dias, meses e anos. Funciona em hora (08:00 + 30 minutos = 08:30) e em data e hora.
+
+### Correções
+
+- **Formulário com detalhe:** a coluna de data da lista de itens do formulário segue o **Formato de data** escolhido, igual à listagem. Hora mostrava "Invalid Date", qualquer formato saía como a data do navegador, e a data podia aparecer um dia antes.
+
 ## [5.302.0] — 2026-11-12
 
 ### Novidades

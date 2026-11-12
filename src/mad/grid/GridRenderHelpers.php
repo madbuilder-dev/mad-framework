@@ -548,11 +548,7 @@ class GridRenderHelpers
         $str = "const s=(v===null||v===undefined||typeof v==='object')?'':String(v);";
         $dig = $str . "const d=s.replace(/\\D+/g,'');";
 
-        $date = $str . "if(s==='')return '';"
-              . "const _m=/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?)?/.exec(s);"
-              . "const _t=_m?new Date(+_m[1],+_m[2]-1,+_m[3],+(_m[4]||0),+(_m[5]||0),+(_m[6]||0))"
-              . ":(/^\\d+$/.test(s)?new Date(Number(s)*1000):new Date(s));"
-              . "if(isNaN(_t))return s;const p=(x)=>String(x).padStart(2,'0');";
+        $date = $str . self::jsDateParse();
 
         // Meses e dias da semana no idioma do app (os mesmos do ValueFormatter).
         $jsList      = static fn (array $l): string => "['" . implode("','", array_map(
@@ -625,12 +621,75 @@ class GridRenderHelpers
         return '(()=>{const v=' . $valueExpr . ';' . $body . '})()';
     }
 
-    /** Literal JS entre aspas simples, seguro dentro de atributo HTML. */
+    /**
+     * Gêmeo CLIENTE da célula de data com formato (`<mad-col date="H:i">`,
+     * `GridColumn::renderValue` → `ValueFormatter::formatDate`): expressão JS
+     * autocontida que formata `$valueExpr` no formato PHP `date()` da coluna.
+     * Usada pelo `<mad-detail-form>`, que desenha as linhas no navegador.
+     *
+     * Hora pura ("08:30:00", "08:30" — coluna `time` do banco) vale como hora de
+     * hoje, igual ao `new \DateTime('08:30')` do PHP (fórum #294: a listagem
+     * dos horários gerados mostrava "Invalid Date"). D, l, M e F saem no idioma
+     * do app, com a maiúscula do nome que abre o texto; `\x` é o x literal.
+     * Valor que não é data sai cru.
+     */
+    public static function dateFormatJs(string $phpFormat, string $valueExpr): string
+    {
+        $names = '';
+        if (strpbrk($phpFormat, 'DlMF') !== false) {
+            $list  = static fn (array $l): string => '[' . implode(',', array_map(
+                static fn (string $x): string => self::jsString($x),
+                array_values($l)
+            )) . ']';
+            $names = 'const WS=' . $list(array_map(
+                    static fn (int $w): string => \Mad\Support\ValueFormatter::weekdayShort($w),
+                    range(0, 6)
+                )) . ';'
+                . 'const WL=' . $list(\Mad\Support\ValueFormatter::weekdayNames()) . ';'
+                . 'const MS=' . $list(array_map(
+                    static fn (int $m): string => \Mad\Support\ValueFormatter::monthShort($m),
+                    range(1, 12)
+                )) . ';'
+                . 'const ML=' . $list(\Mad\Support\ValueFormatter::monthNames()) . ';'
+                . 'const _c=(x)=>x.charAt(0).toUpperCase()+x.slice(1);';
+        }
+
+        return '(()=>{const v=' . $valueExpr . ';'
+            . "const s=(v===null||v===undefined||typeof v==='object')?'':String(v);"
+            . self::jsDateParse(true) . $names
+            . 'return ' . self::jsDateExpr($phpFormat, true) . ';})()';
+    }
+
+    /**
+     * Leitura do valor `s` (string) como data em `_t`, com o `p()` de dois
+     * dígitos. ISO por COMPONENTES (no fuso de quem olha, sem virar UTC); hora
+     * pura vira a hora de hoje; só dígitos = epoch; o resto, `new Date(s)`.
+     * Vazio devolve ''; o que não é data devolve `s` cru.
+     *
+     * `$zone`: ISO com fuso ("…T23:15:00.000000Z", "+03:00", o `toArray()` do
+     * Eloquent) vai para o fuso de quem olha, como o `GridColumn` faz no
+     * servidor. Sem ele (tokens do ValueFormatter) vale o texto, como no PHP.
+     */
+    private static function jsDateParse(bool $zone = false): string
+    {
+        return "if(s==='')return '';"
+            . ($zone ? "const _z=/(?:[zZ]|[+-]\\d{2}:?\\d{2})$/.test(s.trim())&&!isNaN(new Date(s));" : 'const _z=false;')
+            . "const _m=_z?null:/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?)?/.exec(s);"
+            . "const _h=(_m||_z)?null:/^(\\d{1,2}):(\\d{2})(?::(\\d{2}))?$/.exec(s.trim());"
+            . "const _n=new Date();"
+            . "const _t=_z?new Date(s):_m?new Date(+_m[1],+_m[2]-1,+_m[3],+(_m[4]||0),+(_m[5]||0),+(_m[6]||0))"
+            . ":(_h?new Date(_n.getFullYear(),_n.getMonth(),_n.getDate(),+_h[1],+_h[2],+(_h[3]||0))"
+            . ":(/^\\d+$/.test(s)?new Date(Number(s)*1000):new Date(s)));"
+            . "if(isNaN(_t))return s;const p=(x)=>String(x).padStart(2,'0');";
+    }
+
     /**
      * Expressão JS que formata `_t` (Date) num formato PHP de data (`d/m/Y H:i`).
-     * Letras conhecidas: d j m n Y y H G i s; o resto sai como texto.
+     * Letras conhecidas: d j m n Y y H G i s; o resto sai como texto. Com
+     * `$names`, também D l M F (listas WS/WL/MS/ML e o `_c` de maiúscula do
+     * `dateFormatJs`) e o escape `\x`.
      */
-    private static function jsDateExpr(string $phpFormat): string
+    private static function jsDateExpr(string $phpFormat, bool $names = false): string
     {
         $map = [
             'd' => 'p(_t.getDate())',     'j' => '_t.getDate()',
@@ -639,18 +698,30 @@ class GridRenderHelpers
             'H' => 'p(_t.getHours())',    'G' => '_t.getHours()',
             'i' => 'p(_t.getMinutes())',  's' => 'p(_t.getSeconds())',
         ];
+        $nameMap = $names ? [
+            'D' => 'WS[_t.getDay()]', 'l' => 'WL[_t.getDay()]',
+            'M' => 'MS[_t.getMonth()]', 'F' => 'ML[_t.getMonth()]',
+        ] : [];
         $parts = [];
         $lit   = '';
-        foreach (preg_split('//u', $phpFormat, -1, PREG_SPLIT_NO_EMPTY) as $ch) {
-            if (isset($map[$ch])) {
-                if ($lit !== '') {
-                    $parts[] = self::jsString($lit);
-                    $lit = '';
-                }
-                $parts[] = $map[$ch];
-            } else {
-                $lit .= $ch;
+        $chars = preg_split('//u', $phpFormat, -1, PREG_SPLIT_NO_EMPTY);
+        for ($i = 0, $n = count($chars); $i < $n; $i++) {
+            $ch = $chars[$i];
+            if ($names && $ch === '\\') {
+                $lit .= $chars[++$i] ?? '';
+                continue;
             }
+            $expr = $map[$ch] ?? $nameMap[$ch] ?? null;
+            if ($expr === null) {
+                $lit .= $ch;
+                continue;
+            }
+            if ($lit !== '') {
+                $parts[] = self::jsString($lit);
+                $lit = '';
+            }
+            // Nome que abre o texto sai com maiúscula (ValueFormatter::formatDate).
+            $parts[] = ($parts === [] && isset($nameMap[$ch])) ? '_c(' . $expr . ')' : $expr;
         }
         if ($lit !== '') {
             $parts[] = self::jsString($lit);
@@ -671,6 +742,7 @@ class GridRenderHelpers
         return $parts === [] ? "''" : implode('+', $parts);
     }
 
+    /** Literal JS entre aspas simples, seguro dentro de atributo HTML. */
     private static function jsString(string $v): string
     {
         $v = str_replace(['\\', "'"], ['\\\\', "\\'"], $v);

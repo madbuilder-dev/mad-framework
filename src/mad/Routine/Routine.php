@@ -333,21 +333,93 @@ abstract class Routine
     }
 
     /** Soma dias/meses/anos. Mês sem estouro: 31/01 + 1 mês = 28/02 (ou 29). */
-    protected function dateAdd(mixed $base, int|string|null $amount, string $unit): ?CarbonImmutable
+    protected function dateAdd(mixed $base, int|string|float|null $amount, string $unit): CarbonImmutable|string|null
     {
         if ($base === null || $base === '') {
             return null;
         }
-        $date = $base instanceof CarbonInterface ? $base->toImmutable()
-            : ($base instanceof \DateTimeInterface ? CarbonImmutable::instance($base) : CarbonImmutable::parse((string) $base));
         $n = (int) RoutineNumber::norm($amount);
 
+        // Hora pura ("08:00", coluna TIME): soma no relógio e devolve "H:i:s",
+        // sem inventar o dia (fórum #294 — horários de atendimento).
+        $clock = self::clockMinutes($base);
+        if ($clock !== null) {
+            $minutes = match ($unit) {
+                'minute', 'minutes' => $n,
+                'hour', 'hours'     => $n * 60,
+                default             => throw new \InvalidArgumentException('Hora pura só soma minutos ou horas: ' . $unit),
+            };
+
+            return self::clockText($clock + $minutes);
+        }
+
+        $date = $base instanceof CarbonInterface ? $base->toImmutable()
+            : ($base instanceof \DateTimeInterface ? CarbonImmutable::instance($base) : CarbonImmutable::parse((string) $base));
+
         return match ($unit) {
-            'day', 'days'     => $date->addDays($n),
-            'month', 'months' => $date->addMonthsNoOverflow($n),
-            'year', 'years'   => $date->addYearsNoOverflow($n),
-            default           => throw new \InvalidArgumentException('Unidade de data desconhecida: ' . $unit),
+            'minute', 'minutes' => $date->addMinutes($n),
+            'hour', 'hours'     => $date->addHours($n),
+            'day', 'days'       => $date->addDays($n),
+            'month', 'months'   => $date->addMonthsNoOverflow($n),
+            'year', 'years'     => $date->addYearsNoOverflow($n),
+            default             => throw new \InvalidArgumentException('Unidade de data desconhecida: ' . $unit),
         };
+    }
+
+    /**
+     * "Repetir pelo intervalo" (fórum #294): os horários de `$start` até antes
+     * de `$end`, de `$every` em `$every` minutos/horas — 08:00 a 12:00 de 30 em
+     * 30 dá 08:00, 08:30 … 11:30 (8 voltas: (fim − início) / passo). Hora pura
+     * volta "H:i:s"; data e hora volta CarbonImmutable. Passo zero, fim antes do
+     * início ou valor vazio: nenhuma volta.
+     *
+     * @return list<CarbonImmutable|string>
+     */
+    protected function interval(mixed $start, mixed $end, int|string|float|null $every, string $unit): array
+    {
+        $step = (int) RoutineNumber::norm($every) * match ($unit) {
+            'minute', 'minutes' => 1,
+            'hour', 'hours'     => 60,
+            default             => throw new \InvalidArgumentException('Intervalo só em minutos ou horas: ' . $unit),
+        };
+        if ($step <= 0 || $start === null || $start === '' || $end === null || $end === '') {
+            return [];
+        }
+
+        $from = self::clockMinutes($start);
+        $to   = self::clockMinutes($end);
+        if ($from !== null && $to !== null) {
+            $n = intdiv(max(0, $to - $from), $step);
+            $this->guardLoop($n);
+
+            return array_map(fn (int $k) => self::clockText($from + $k * $step), $n > 0 ? range(0, $n - 1) : []);
+        }
+
+        $a = $start instanceof \DateTimeInterface ? CarbonImmutable::instance($start) : CarbonImmutable::parse((string) $start);
+        $b = $end instanceof \DateTimeInterface ? CarbonImmutable::instance($end) : CarbonImmutable::parse((string) $end);
+        $diff = (int) floor(($b->getTimestamp() - $a->getTimestamp()) / 60);
+        $n = intdiv(max(0, $diff), $step);
+        $this->guardLoop($n);
+
+        return array_map(fn (int $k) => $a->addMinutes($k * $step), $n > 0 ? range(0, $n - 1) : []);
+    }
+
+    /** Minutos do dia de uma hora pura ("8:00", "08:00:00"); `null` se não for hora pura. */
+    private static function clockMinutes(mixed $v): ?int
+    {
+        if (! is_string($v) || ! preg_match('/^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/', $v, $m)) {
+            return null;
+        }
+
+        return (int) $m[1] * 60 + (int) $m[2];
+    }
+
+    /** Minutos do dia → "H:i:s", dando a volta na meia-noite. */
+    private static function clockText(int $minutes): string
+    {
+        $minutes = (($minutes % 1440) + 1440) % 1440;
+
+        return sprintf('%02d:%02d:00', intdiv($minutes, 60), $minutes % 60);
     }
 
     /** Valor da sessão de quem disparou: user_id | unit_id | tenant_id. */

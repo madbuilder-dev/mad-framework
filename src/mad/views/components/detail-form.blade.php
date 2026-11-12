@@ -536,7 +536,10 @@
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $col->numberDecimals }})"></span>
                                 @elseif($col->isDate && $col->dateFormat)
-                                <span x-text="(() => { let v = {!! $_cv !!}; if (!v) return ''; try { let d = new Date(v); return d.toLocaleDateString('{{ \Mad\I18n\MadLang::t('mad.fmt.js_locale') }}'); } catch(e) { return v; } })()"></span>
+                                {{-- Formato da coluna (H:i, l, d/m/Y…), igual à listagem; hora
+                                     pura vale (fórum #294). Antes: sempre a data do navegador,
+                                     "Invalid Date" na hora e o dia anterior a oeste de Greenwich. --}}
+                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($col->dateFormat, $_cv) !!}"></span>
                                 @elseif($_cFmtJs !== '')
                                 {{-- Token built-in do formatter-select (money/cpf/date-long/…):
                                      gêmeo JS do ValueFormatter, emitido inline. FALLBACK de
