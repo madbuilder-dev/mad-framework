@@ -7868,19 +7868,142 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // onde procurar no banco: sai do OR. Se TODOS os campos eram assim, a
         // busca procura nas colunas de texto da tabela — a mesma reserva do
         // campo de busca (dbunique-search) —, em vez de não filtrar nada.
+        // Coluna com opções fixas (dia_da_semana 1 = "Segunda"): o termo casa
+        // também com o RÓTULO e vira o código gravado (fórum #292).
+        $optionCodes = $this->_searchOptionCodes($fields, $this->search, $q);
+
         $real = array_values(array_filter($fields, fn ($f) => ! $this->_isVirtualField((string) $f, $q)));
         if ($real === [] && ($model = static::_gridModel($q)) !== null) {
             $real = \Mad\Database\ModelAccessors::textColumns($model);
         }
-        if ($real === []) return;
+        if ($real === [] && $optionCodes === []) return;
         $fields = $real;
 
         $term = $this->search;
-        $q->where(function ($w) use ($q, $fields, $term) {
+        $q->where(function ($w) use ($q, $fields, $term, $optionCodes) {
             foreach ($fields as $f) {
                 $this->_applySearchField($w, $q, (string) $f, $term);
             }
+            foreach ($optionCodes as $column => $codes) {
+                $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $column), $codes);
+            }
         });
+    }
+
+    /**
+     * Busca geral × opções fixas (fórum #292). Para cada campo da busca que
+     * uma coluna da listagem mostra com opções fixas — `filter-opts` do filtro
+     * da coluna, opções do `edit-type="select"`, rótulos do `badge` —, devolve
+     * os códigos cujo RÓTULO contém o termo, sem acento e sem diferenciar
+     * maiúsculas: "terca" acha "Terça" e vira `dia_da_semana = 2`.
+     *
+     * A coluna vale para o campo da busca quando o mostra (`field`) ou quando o
+     * filtro dela o filtra (`filter-field`) — é o caso da coluna que exibe um
+     * accessor (`{vdiasemana}`) e filtra a coluna gravada (`dia_da_semana`).
+     * Rótulo calculado em código (accessor, `transform`) não é lido: não há
+     * como voltar do texto ao código. Listagem sem opções fixas não muda.
+     *
+     * @return array<string, list<string>> coluna da tabela => códigos
+     */
+    protected function _searchOptionCodes(array $fields, string $term, $q): array
+    {
+        $needle = static::_foldSearchText($term);
+        if ($needle === '') {
+            return [];
+        }
+
+        $wanted = [];
+        foreach ($fields as $f) {
+            $name = static::_unbrace((string) $f);
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+                $wanted[$name] = true;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $cols = $this->_effectiveColumns();
+        if (empty($cols) && !empty($this->exportColConfigs)) {
+            $cols = array_map(fn ($c) => static::_colFromConfig($c), $this->exportColConfigs);
+        }
+
+        $out = [];
+        foreach ($cols as $col) {
+            if (! $col instanceof GridColumn) {
+                continue;
+            }
+            $shown  = static::_unbrace($col->field);
+            $target = $col->filterField !== '' ? static::_unbrace($col->filterField) : $shown;
+            if (! isset($wanted[$target]) && ! isset($wanted[$shown])) {
+                continue;
+            }
+            if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $target) || $this->_isVirtualField($target, $q)) {
+                continue;
+            }
+            foreach (static::_columnOptionLabels($col) as $code => $labels) {
+                foreach ($labels as $label) {
+                    if (str_contains(static::_foldSearchText($label), $needle)) {
+                        $out[$target][(string) $code] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return array_map(fn (array $codes) => array_map('strval', array_keys($codes)), $out);
+    }
+
+    /**
+     * Código gravado => rótulos que a coluna mostra para ele (o texto escrito
+     * e a tradução do app). Só mapas FIXOS: filtro de seleção, edição em
+     * seleção e selo com rótulo.
+     *
+     * @return array<string, list<string>>
+     */
+    protected static function _columnOptionLabels(GridColumn $col): array
+    {
+        $map = [];
+        $add = static function ($code, $label) use (&$map): void {
+            if (! is_scalar($code) || ! is_scalar($label)) {
+                return;
+            }
+            $label = trim((string) $label);
+            if ($label === '') {
+                return;
+            }
+            $map[(string) $code][] = $label;
+            $translated = \Mad\I18n\AppText::translate($label);
+            if ($translated !== $label) {
+                $map[(string) $code][] = $translated;
+            }
+        };
+
+        foreach ($col->filterOpts as $code => $label) {
+            $add($code, $label);
+        }
+        if ($col->editType === 'select') {
+            foreach ($col->editOpts as $code => $label) {
+                $add($code, $label);
+            }
+        }
+        if ($col->isBadge) {
+            foreach ($col->badgeMap as $code => $entry) {
+                if (is_array($entry)) {
+                    $add($code, $entry['label'] ?? '');
+                } elseif (is_string($entry) && str_contains($entry, ':')) {
+                    $add($code, explode(':', $entry, 2)[1]);
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /** Texto para comparar na busca: minúsculo e sem acento ("Terça" → "terca"). */
+    protected static function _foldSearchText(string $text): string
+    {
+        return \Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii(trim($text)));
     }
 
     /**

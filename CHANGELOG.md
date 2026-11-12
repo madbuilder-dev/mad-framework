@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.300.0] — 2026-11-12
+
+### Melhorias
+
+- **Listagem (busca):** a busca geral também acha pelo texto das opções fixas da coluna. Digitar "segunda" encontra os registros gravados com `1` quando a coluna lista `1:Segunda` no filtro de seleção (`filter-opts`), na edição em seleção ou no selo. Vale sem acento e sem diferenciar maiúsculas.
+
 ## [5.299.0] — 2026-11-12
 
 ### Novidades
