@@ -573,13 +573,14 @@ class MadComponentHandler
                 ];
             }
 
-            // `<mad-pdv>`/`<mad-agenda>` embutidos numa tela comum: as ações
-            // deles chegam à tela, que não as tem — o componente atende (a
-            // config vem da tela, redesenhada a seco).
+            // `<mad-pdv>`/`<mad-agenda>`/`<mad-reconcile>` embutidos numa tela
+            // comum: as ações deles chegam à tela, que não as tem — o
+            // componente atende (a config vem da tela, redesenhada a seco).
             $target = $component;
             if (!self::isInvokableAction($class, $action)) {
                 $target = \Mad\Pdv\MadPdvComponent::_embeddedFor($component, $action)
-                    ?? \Mad\Agenda\MadAgenda::_embeddedFor($component, $action);
+                    ?? \Mad\Agenda\MadAgenda::_embeddedFor($component, $action)
+                    ?? \Mad\Reconcile\MadReconcile::_embeddedFor($component, $action);
                 if ($target === null) {
                     return ['error' => "Método não permitido: {$action}"];
                 }

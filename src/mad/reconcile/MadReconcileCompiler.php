@@ -107,6 +107,13 @@ class MadReconcileCompiler
             return $host->_renderInlineReconcile($config);
         }
 
+        // Desenho a seco de uma tela comum para uma ação da conciliação
+        // embutida: só entrega a config, não consulta nem desenha.
+        if (MadReconcile::_hostProbeActive()) {
+            MadReconcile::_offerHostConfig($config);
+            return '';
+        }
+
         return (new MadReconcileStandalone())->_renderInlineReconcile($config);
     }
 

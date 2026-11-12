@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.298.0] — 2026-11-12
+
+### Correções
+
+- **Conciliação:** o `<mad-reconcile>` numa tela comum (formulário Livre) agora concilia. Conciliar automático, confirmar, rejeitar, casar à mão e desfazer funcionam sem trocar a classe da tela para `MadReconcile`.
+- **Conciliação:** com `database` apontando para uma conexão sem as tabelas da conciliação, os grupos conciliados passam a ficar na conexão principal do app, onde elas são criadas. Antes cada clique dava erro de tabela inexistente.
+
 ## [5.297.0] — 2026-11-12
 
 ### Novidades

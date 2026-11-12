@@ -83,6 +83,25 @@ class MadReconcile extends MadComponent
     /** Chave do cache de sessão da config inline (padrão kbCfgKey). */
     public string $rcCfgKey = '';
 
+    /**
+     * Ações do navegador. Com o `<mad-reconcile>` embutido numa tela comum
+     * (formulário Livre, qualquer MadComponent) elas chegam à TELA, que não as
+     * tem — a conciliação as atende a partir dela ({@see _embeddedFor()}).
+     */
+    public const WIRE_ACTIONS = ['onAutoMatch', 'onManualMatch', 'onConfirmGroup', 'onConfirmAll', 'onRejectGroup', 'onUnmatch'];
+
+    /** Conciliação embutida esperando a tela dona entregar a config ({@see _embeddedFor()}). */
+    private static ?self $_hostProbe = null;
+
+    /** A tela dona entregou a config a esta conciliação (desenho "a seco"). */
+    private bool $_hostProbed = false;
+
+    /** Conexões já avisadas no log (uma vez por processo). */
+    private static array $_warnedConn = [];
+
+    /** Tela comum que embute esta conciliação (null quando a tela É a conciliação). */
+    protected ?MadComponent $_externalHost = null;
+
     // ── Dados de render (não serializados) ────────────────────────────────
 
     protected array $_leftRows   = [];
@@ -131,6 +150,62 @@ class MadReconcile extends MadComponent
     }
 
     // ── Render inline (MadReconcileCompiler) ──────────────────────────────
+
+    /**
+     * A tela `$host` recebeu uma ação da conciliação que não tem: devolve a
+     * conciliação que a atende, com a config entregue pela própria tela num
+     * desenho a seco (nada da config vem do navegador). Uma conciliação por
+     * tela: com mais de uma, atende a primeira — para várias, use a página
+     * do tipo Conciliação bancária (classe filha de MadReconcile).
+     */
+    public static function _embeddedFor(object $host, string $action): ?self
+    {
+        if ($host instanceof self || !$host instanceof MadComponent
+            || !in_array($action, self::WIRE_ACTIONS, true) || method_exists($host, $action)) {
+            return null;
+        }
+
+        $probe = new MadReconcileStandalone();
+        $probe->_externalHost = $host;
+
+        $prev = self::$_hostProbe;
+        self::$_hostProbe = $probe;
+        try {
+            $host->render();
+        } catch (\Throwable $e) {
+            error_log('[MadReconcile] a tela ' . get_class($host) . ' não pôde ser redesenhada para atender ' . $action . ': ' . $e->getMessage());
+        } finally {
+            self::$_hostProbe = $prev;
+        }
+
+        return $probe->_hostProbed ? $probe : null;
+    }
+
+    /** @internal MadReconcileCompiler: há uma conciliação embutida esperando a config da tela dona. */
+    public static function _hostProbeActive(): bool
+    {
+        return self::$_hostProbe !== null;
+    }
+
+    /** @internal MadReconcileCompiler: entrega a config da tag à conciliação embutida (1ª tag da tela). */
+    public static function _offerHostConfig(array $config): void
+    {
+        $probe = self::$_hostProbe;
+        if ($probe !== null && !$probe->_hostProbed) {
+            $probe->_applyInlineConfig($config);
+            $probe->_hostProbed = true;
+        }
+    }
+
+    /**
+     * Embutida numa tela comum, quem redesenha é a TELA: a ação pede o desenho
+     * completo dela (a conciliação volta com os dados novos).
+     */
+    public function forceFullRender(): void
+    {
+        parent::forceFullRender();
+        $this->_externalHost?->forceFullRender();
+    }
 
     public function _renderInlineReconcile(array $config): string
     {
@@ -735,12 +810,42 @@ class MadReconcile extends MadComponent
         return $field;
     }
 
+    /**
+     * Conexão dos grupos (mad_reconcile_group/_item). As migrations do app só
+     * criam essas tabelas na conexão principal (`business`); o `database` da
+     * tag costuma ser lido como "a base dos models" e apontar para outra. Sem
+     * as tabelas lá, os grupos vão para a principal — em vez de cada clique
+     * dar "tabela não existe".
+     */
     protected function _db(): string
     {
-        if (!empty($this->database)) {
-            return $this->database;
+        $main = defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business';
+        $wanted = !empty($this->database) ? $this->database : $main;
+        if ($wanted === $main) {
+            return $wanted;
         }
-        return defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business';
+
+        return DataScope::memo('reconcile.groups-conn', $wanted, static function () use ($wanted, $main): string {
+            $hasGroups = static function (string $conn): bool {
+                if (empty(config('database.connections.' . $conn))) {
+                    return false;
+                }
+                try {
+                    return \Illuminate\Support\Facades\Schema::connection($conn)->hasTable('mad_reconcile_group');
+                } catch (\Throwable) {
+                    return false;
+                }
+            };
+            if ($hasGroups($wanted) || !$hasGroups($main)) {
+                return $wanted;
+            }
+            if (!isset(self::$_warnedConn[$wanted])) {
+                self::$_warnedConn[$wanted] = true;
+                error_log("[MadReconcile] database=\"{$wanted}\" não tem mad_reconcile_group: os grupos da conciliação ficam na conexão \"{$main}\".");
+            }
+
+            return $main;
+        });
     }
 
     protected function _resolveModelFqcn(string $model): string
