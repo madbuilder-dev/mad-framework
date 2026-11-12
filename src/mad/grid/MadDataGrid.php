@@ -7900,7 +7900,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $meta = $this->_relMeta($rel, $q);
             if ($meta !== null && ! $meta['same']) {
                 $ids = $this->_relMatchingIds($meta, $col, 'like', $term);
-                if (! empty($ids)) {
+                // Sem nenhum id casando, o termo não acha linha nenhuma por esse
+                // campo: `1 = 0` no OR. Sair sem condição deixava a busca mostrar
+                // a listagem inteira quando esse era o único campo (fórum #289).
+                if (empty($ids)) {
+                    $w->orWhereRaw('1 = 0');
+                } else {
                     $w->orWhereIn(\Mad\Database\QuerySource::qualify($q, $meta['fk']), $ids);
                 }
                 return;

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.296.0] — 2026-11-12
+
+### Correções
+
+- **Listagem (busca):** a busca por campo de relação (`:search-columns="['ambiente->descambiente']"`) em tabela de outra conexão de banco mostrava a listagem inteira quando nenhuma linha casava. Agora, sem resultado, a listagem fica vazia.
+
 ## [5.295.0] — 2026-11-11
 
 ### Novidades
