@@ -13,6 +13,10 @@
     'display_mask' => '',
     'database_mask' => 'yyyy-mm-dd',
     'opens' => 'left',
+    // Dia da semana junto da data quando o campo não está em edição (fórum
+    // #293): `short` → "Ter, 24/03/2026", `long` → "Terça-feira, 24/03/2026".
+    // Vazio = como sempre. A digitação e o valor gravado não mudam.
+    'weekday' => '',
 ])
 @php
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
@@ -68,6 +72,16 @@
     }
 
     $id = 'mad_' . $name . '_' . mt_rand(1000, 9999);
+
+    $weekdayLabels = \Mad\Support\ValueFormatter::weekdayLabels(match (strtolower(trim((string) $weekday))) {
+        'short', 'abbr', 'abreviado' => 'short',
+        'long', 'full', 'extenso'    => 'long',
+        default                      => '',
+    });
+    // Texto da leitura (formulário em modo leitura): "Ter, 24/03/2026".
+    $displayText = ($weekdayLabels && $value !== '' && !empty($dt))
+        ? $weekdayLabels[(int) $dt->format('w')] . ', ' . $value
+        : $value;
     $hasError = !empty($error);
     // `hint-icon`: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
     [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
@@ -83,7 +97,7 @@
         'initialValue' => $rawDbValue,
         'min'          => $min ?: '',
         'max'          => $max ?: '',
-    ], JSON_UNESCAPED_UNICODE);
+    ] + ($weekdayLabels ? ['weekdays' => $weekdayLabels] : []), JSON_UNESCAPED_UNICODE);
 
     \Mad\Form\MadFormRegistry::register($name, 'date', [
         'label'         => strip_tags($label),
@@ -98,7 +112,7 @@
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
 @if($__rm !== '')
-{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $value, 'text' => $value, 'style' => $_dimStyle]) !!}
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => $value, 'text' => $displayText, 'style' => $_dimStyle]) !!}
 @else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
@@ -113,6 +127,7 @@
             name="{{ $name }}"
             type="text"
             class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
+            @if($weekdayLabels) :class="{ 'mad-date-input--weekday': weekdayText }" @endif
             value="{{ $value }}"
             placeholder="{{ $placeholder }}"
             autocomplete="off"
@@ -127,6 +142,13 @@
                 @click="toggle()">
             <i data-lucide="calendar" style="width:14px;height:14px;"></i>
         </button>
+
+        @if($weekdayLabels)
+            {{-- Fora da edição a data aparece com o dia da semana por cima do
+                 campo; com o foco volta o texto digitável de sempre. --}}
+            <span class="mad-date-weekday" x-ref="weekday" x-show="weekdayText" x-cloak aria-hidden="true"
+                  x-effect="weekdayText && $nextTick(() => syncWeekdayBox())"><span x-text="weekdayText"></span></span>
+        @endif
 
         @include('components.partials.date-popup', ['withTime' => false, 'opens' => $opens])
     </div>

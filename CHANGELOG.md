@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.301.0] — 2026-11-12
+
+### Novidades
+
+- **Campo de data:** `<mad-date-field>` e `<mad-datetime-field>` ganharam `weekday="short"` ou `weekday="long"`: fora da edição o campo mostra o dia da semana junto da data ("Ter, 24/03/2026" ou "Terça-feira, 24/03/2026"), no idioma do app. Ao clicar para digitar volta a data pura; a digitação e o valor gravado não mudam. No formulário em leitura o dia também aparece. Campo sem `weekday` fica como antes.
+
+### Melhorias
+
+- **Listagem:** no formato de data da coluna, o nome do dia ou do mês que abre o texto sai com inicial maiúscula: `date="l, d/m/Y"` mostra "Terça-feira, 24/03/2026". No meio do texto continua como o idioma escreve ("24 de março de 2026").
+
 ## [5.300.0] — 2026-11-12
 
 ### Melhorias

@@ -4475,6 +4475,32 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 }
 
 /* Botão calendário do date-field */
+/* Dia da semana no campo de data (fórum #293, `weekday="short|long"`): fora
+   da edição a data aparece como "Ter, 24/03/2026" numa camada por cima do
+   input — que esconde o próprio texto sem perder valor, cursor nem a cor que
+   a camada copia. Com o foco a camada sai e volta o texto digitável. */
+.mad-date-weekday {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: transparent;
+  background: transparent;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+  /* Antes do JS copiar a do input: a mesma tinta do .mad-input. */
+  color: var(--mad-input-color, var(--mad-text));
+  font-weight: var(--mad-input-weight, normal);
+  font-style: var(--mad-input-style, normal);
+}
+.mad-date-weekday > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mad-input.mad-date-input--weekday { -webkit-text-fill-color: transparent; }
 .mad-datepicker-btn {
   display: inline-flex;
   align-items: center;

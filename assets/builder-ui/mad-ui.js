@@ -16057,6 +16057,11 @@ document.addEventListener('alpine:init', () => {
             // campo no último `change` — o mesmo valor não chama o On Change.
             _changePending: false,
             _lastNotified: '',
+            // Dia da semana fora da edição (fórum #293): 7 nomes (0 = domingo)
+            // vindos do servidor no idioma do app; null = recurso desligado.
+            _weekdays: Array.isArray(cfg.weekdays) && cfg.weekdays.length === 7 ? cfg.weekdays : null,
+            focused: false,
+            _shown: '',
 
             init: function() {
                 var inp = this._getInput();
@@ -16090,7 +16095,61 @@ document.addEventListener('alpine:init', () => {
                     // já notificado.
                     self._lastNotified = inp.value;
                     inp.addEventListener('change', function() { self._lastNotified = inp.value; });
+                    if (this._weekdays) {
+                        // Texto da tela depois de cada escrita (a máscara do
+                        // `_onInput` já rodou: este ouvinte vem depois dele).
+                        self._shown = inp.value;
+                        self.focused = document.activeElement === inp;
+                        inp.addEventListener('input',  function() { self._shown = inp.value; });
+                        inp.addEventListener('change', function() { self._shown = inp.value; });
+                        inp.addEventListener('focus',  function() { self.focused = true; });
+                        inp.addEventListener('blur',   function() { self._shown = inp.value; self.focused = false; });
+                        // Tema claro/escuro trocado com a tela aberta: a camada
+                        // copia de novo a cor do input.
+                        if (window.MutationObserver && document.documentElement) {
+                            self._themeObs = new MutationObserver(function() { if (self.weekdayText) self.syncWeekdayBox(); });
+                            self._themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+                        }
+                    }
                 }
+            },
+
+            // "Ter, 24/03/2026" por cima do campo quando ele NÃO está em edição.
+            // Só quando o texto da tela é a data escolhida, inteira: digitação
+            // pela metade, data inválida ou valor trocado por fora sem evento
+            // deixam o campo como sempre.
+            get weekdayText() {
+                if (!this._weekdays || this.focused || !this.selectedDate) return '';
+                var shown = _drpFormatWithMask(this.selectedDate, this._displayMask);
+                if (this._shown !== shown) return '';
+                return this._weekdays[this.selectedDate.getDay()] + ', ' + shown;
+            },
+
+            destroy: function() {
+                if (this._themeObs) this._themeObs.disconnect();
+            },
+
+            // A camada do dia da semana fica sobre a caixa do input (borda e
+            // recuo iguais) e com a mesma letra e cor, para o texto cair no
+            // mesmo lugar. Ancorada nas quatro bordas do grupo: acompanha a
+            // largura quando a tela muda. A cor é copiada de novo quando o
+            // tema troca (observador no init).
+            syncWeekdayBox: function() {
+                var inp = this._getInput();
+                var el = this.$refs && this.$refs.weekday;
+                var box = inp && inp.offsetParent;
+                if (!inp || !el || !box) return;
+                var cs = window.getComputedStyle(inp);
+                var st = el.style;
+                st.left = inp.offsetLeft + 'px';
+                st.top = inp.offsetTop + 'px';
+                st.right = Math.max(0, box.clientWidth - inp.offsetLeft - inp.offsetWidth) + 'px';
+                st.bottom = Math.max(0, box.clientHeight - inp.offsetTop - inp.offsetHeight) + 'px';
+                ['paddingLeft', 'paddingRight', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth',
+                 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+                 'color', 'opacity'].forEach(function(k) { st[k] = cs[k]; });
+                st.justifyContent = cs.textAlign === 'right' || cs.textAlign === 'end'
+                    ? 'flex-end' : (cs.textAlign === 'center' ? 'center' : 'flex-start');
             },
 
             _getInput: function() {
@@ -16194,6 +16253,7 @@ document.addEventListener('alpine:init', () => {
                     // depois — senão ele remascara o texto que acabamos de pôr.
                     this._maskingInput = true;
                     inp.value = d ? _drpFormatWithMask(d, this._displayMask) : '';
+                    this._shown = inp.value;
                     var self = this;
                     this.$nextTick(function() { self._maskingInput = false; });
                 }

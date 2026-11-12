@@ -176,6 +176,25 @@ final class ValueFormatter
     }
 
     /**
+     * Os 7 nomes do dia da semana (0 = domingo) para o campo de data mostrar
+     * ao lado do valor (fórum #293): `short` → "Ter", `long` → "Terça-feira",
+     * no idioma do app. Outro estilo → lista vazia (o campo não mostra nada).
+     *
+     * @return list<string>
+     */
+    public static function weekdayLabels(string $style): array
+    {
+        return match ($style) {
+            'short' => array_map(self::weekdayShort(...), range(0, 6)),
+            'long'  => array_map(
+                fn (string $n) => mb_strtoupper(mb_substr($n, 0, 1)) . mb_substr($n, 1),
+                array_values(self::weekdayNames()),
+            ),
+            default => [],
+        };
+    }
+
+    /**
      * `DateTimeInterface::format()` com os NOMES no idioma do app. O `date()`
      * do PHP só fala inglês: `D, d/m/Y` dava "Wed, 04/11/2026" num app em
      * português. Aqui `D` (dia abreviado), `l` (dia por extenso), `M` (mês
@@ -184,6 +203,10 @@ final class ValueFormatter
      * mesmo do PHP em inglês. O resto do formato (e o `\x` escapado) é do PHP.
      * Formato com o sufixo ordinal inglês `S` ("23rd") já é inglês de
      * propósito: fica todo com o PHP.
+     *
+     * Nome que ABRE o texto sai com inicial maiúscula (fórum #293): `l, d/m/Y`
+     * dá "Terça-feira, 24/03/2026", não "terça-feira, …". No meio do texto
+     * continua como o idioma escreve ("4 de novembro").
      */
     public static function formatDate(\DateTimeInterface $dt, string $format): string
     {
@@ -213,6 +236,9 @@ final class ValueFormatter
             if ($name === null) {
                 $php .= $c;
                 continue;
+            }
+            if ($out === '' && $php === '') {
+                $name = mb_strtoupper(mb_substr($name, 0, 1)) . mb_substr($name, 1);
             }
             $out .= ($php === '' ? '' : $dt->format($php)) . $name;
             $php  = '';
