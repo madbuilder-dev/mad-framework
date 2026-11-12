@@ -12,6 +12,14 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.295.0] — 2026-11-11
+
+### Novidades
+
+- **IA do app:** sem chave própria em **Preferências › IA**, a Central de Comando e as telas que usam IA passam a responder pelo Mad Coding Plan de quem mantém o sistema, quando o projeto foi publicado com ele ligado. Sem plano ativo, com a franquia da semana esgotada ou sem nada configurado, a IA diz o motivo em vez de um erro genérico.
+- **Preferências › IA:** a aba mostra de onde vem a IA do sistema (chave própria ou Mad Coding Plan, com o uso da franquia da semana) e ganhou o botão **Verificar agora**.
+- **IA do app:** com chave própria, o modelo padrão passou a ser o Haiku atual: `claude-haiku-5-5` na Anthropic e `anthropic/claude-haiku-5.5` no OpenRouter.
+
 ## [5.294.0] — 2026-11-11
 
 ### Novidades

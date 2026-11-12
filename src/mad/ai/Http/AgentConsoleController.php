@@ -204,6 +204,14 @@ final class AgentConsoleController
 
                 $sink->messageEnd();
                 $sink->done();
+            } catch (\Mad\Ai\MadAiException $e) {
+                // Sem IA (sem Mad Coding Plan, franquia acabou, nada configurado):
+                // a mensagem já é para o usuário — nunca o "erro genérico".
+                error_log('[agent-console] ' . $e->codigo() . ': ' . $e->getMessage());
+                if (! $sink->aborted()) {
+                    $sink->error($e->getMessage(), $e->chatCode(), $e->resetAt());
+                }
+                $sink->done();
             } catch (\Throwable $e) {
                 error_log('[agent-console] ' . $e->getMessage());
                 if (! $sink->aborted()) {

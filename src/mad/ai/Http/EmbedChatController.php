@@ -300,6 +300,14 @@ final class EmbedChatController
 
                 $sink->messageEnd();
                 $sink->done();
+            } catch (\Mad\Ai\MadAiException $e) {
+                // Sem IA (sem Mad Coding Plan, franquia acabou, nada configurado):
+                // a mensagem já é para o usuário — nunca o "erro genérico".
+                error_log('[embed-chat] ' . $e->codigo() . ': ' . $e->getMessage());
+                if (! $sink->aborted()) {
+                    $sink->error($e->getMessage(), $e->chatCode(), $e->resetAt());
+                }
+                $sink->done();
             } catch (\Throwable $e) {
                 $detail = '';
                 if ($e instanceof \Illuminate\Http\Client\RequestException) {
