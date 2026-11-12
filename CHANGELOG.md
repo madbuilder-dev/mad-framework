@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.302.0] — 2026-11-12
+
+### Novidades
+
+- **Rotinas:** parâmetro do tipo **Seleção**, com a lista de opções (valor e rótulo) definida na rotina. Um valor fora da lista é recusado com uma mensagem que mostra o valor recebido e as opções válidas, e nada é gravado.
+
+### Correções
+
+- **Rotinas:** o **Obrigatório** do parâmetro não era conferido: a rotina rodava com o valor vazio. Agora, executada pelo botão ou pela ação de linha **Executar rotina**, ela recusa o parâmetro obrigatório vazio com uma mensagem que diz qual parâmetro falta. Ao salvar e ao excluir a rotina continua rodando sem parâmetros, como antes.
+
 ## [5.301.0] — 2026-11-12
 
 ### Novidades

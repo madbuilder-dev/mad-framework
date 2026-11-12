@@ -64,6 +64,11 @@ trait RunsRoutines
         }
 
         try {
+            // Obrigatório vazio e Seleção fora da lista: recusados com a
+            // mensagem da rotina, antes de qualquer gravação (fórum #294).
+            if ($mode !== 'reverse') {
+                $class::checkParams(is_array($params) ? $params : [], true);
+            }
             $result = match (true) {
                 ! $hasSource && $mode === 'reverse' => throw new RoutineStopped(RoutineText::get('no_source')),
                 ! $hasSource                        => $class::launch(null, $params),

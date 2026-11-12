@@ -848,6 +848,8 @@ return [
             'unknown'                 => 'The routine ":slug" does not exist or cannot be run from a button.',
             'unknown_mode'            => 'Unknown run mode: ":mode".',
             'save_first'              => 'Save the record before running the routine.',
+            'param_required'          => 'Fill in ":label" to run the routine.',
+            'param_not_option'        => '":value" is not an option of ":label". Choose from: :options.',
             'failed_title'            => 'The routine was not run',
             'failed'                  => 'The routine could not be run. Try again or contact the administrator.',
             'nothing'                 => 'Nothing to do.',

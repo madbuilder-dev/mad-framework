@@ -54,6 +54,30 @@ abstract class Routine
 
     // ── Entrada ────────────────────────────────────────────────────────────
 
+    /**
+     * Parâmetros declarados no Studio (Rotinas › Parâmetros), escritos pelo
+     * gerador: `key`, `label`, `type`, `required` e, na Seleção, `options`
+     * (valor => rótulo). Ver {@see RoutineParams}.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function params(): array
+    {
+        return [];
+    }
+
+    /**
+     * Confere os parâmetros antes de rodar: valor fora da lista de uma Seleção
+     * e, com `$requireAll`, obrigatório vazio. Para quem chama com parâmetros
+     * informados pelo usuário (o botão "Executar rotina" usa com `true`).
+     *
+     * @throws RoutineStopped
+     */
+    public static function checkParams(array $params, bool $requireAll = true): void
+    {
+        RoutineParams::check(static::params(), $params, $requireAll);
+    }
+
     /** Lança sem desfazer nada. Rotina sem origem: `launch(null, $params)`. */
     public static function launch(Model|int|string|null $origin = null, array $params = []): RoutineResult
     {
@@ -100,6 +124,13 @@ abstract class Routine
         $source = static::$source;
         if ($source === null && $mode !== 'launch') {
             throw new RoutineStopped(RoutineText::get('no_source'));
+        }
+
+        // Seleção com valor fora da lista nunca roda (fórum #294). O obrigatório
+        // vazio é conferido por quem chama com parâmetros (onRunRoutine): ao
+        // salvar e ao excluir a rotina roda sem eles, como sempre.
+        if ($mode !== 'reverse') {
+            static::checkParams($params, false);
         }
 
         $this->conn   = $source !== null ? (new $source())->getConnectionName() : $this->routineConnection();

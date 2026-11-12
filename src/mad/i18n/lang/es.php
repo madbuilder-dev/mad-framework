@@ -836,6 +836,8 @@ return [
             'unknown'                 => 'La rutina ":slug" no existe o no se puede ejecutar desde un botón.',
             'unknown_mode'            => 'Modo de ejecución desconocido: ":mode".',
             'save_first'              => 'Guarde el registro antes de ejecutar la rutina.',
+            'param_required'          => 'Complete ":label" para ejecutar la rutina.',
+            'param_not_option'        => '":value" no es una opción de ":label". Elija entre: :options.',
             'failed_title'            => 'La rutina no se ejecutó',
             'failed'                  => 'No fue posible ejecutar la rutina. Inténtelo de nuevo o avise al administrador.',
             'nothing'                 => 'Nada que hacer.',
