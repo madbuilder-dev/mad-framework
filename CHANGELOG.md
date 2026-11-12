@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.304.0] — 2026-11-12
+
+### Novidades
+
+- **Listagem:** a edição na célula ganhou o tipo **switch**: a coluna mostra uma chave liga/desliga, e o clique alterna e grava a linha na hora, sem abrir o formulário. Os valores gravados são configuráveis (`edit-on`/`edit-off`): 1/0 por padrão, `true`/`false` para coluna booleana ou `S`/`N`. Vazio ou nulo aparece desligado. No modo **Sempre visível** um clique alterna; no **Duplo clique**, só o duplo clique. Quem não pode editar a tela vê a chave desabilitada. Se a gravação falhar, a chave volta e o motivo aparece na célula.
+
 ## [5.303.0] — 2026-11-12
 
 ### Novidades

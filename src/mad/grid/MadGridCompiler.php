@@ -176,6 +176,7 @@ use Mad\View\MadBlade;
  * │  edit                     Edição inline                                     │
  * │  edit-type="money"        Tipo de edição (text, money, select, date...)     │
  * │  edit-mode="click"        Modo de edição (dblclick, click, inline)          │
+ * │  edit-type="switch" edit-on="S" edit-off="N"  Chave liga/desliga (#297)   │
  * │  transform="Cls::metodo"  Transforma valor exibido (recebe $value, $row)    │
  * │  display-condition="Cls::metodo"  Mostra/esconde coluna (retorna bool)      │
  * │                                                                              │
@@ -2681,6 +2682,13 @@ class MadGridCompiler
         if (isset($a['edit-colors'])) {
             $c[] = static::kv('editColors', static::emit($a['edit-colors']));
         }
+        // switch (fórum #297): valores gravados ligado/desligado
+        if (isset($a['edit-on'])) {
+            $c[] = static::kv('editOn', static::qs(static::str($a, 'edit-on', '1')));
+        }
+        if (isset($a['edit-off'])) {
+            $c[] = static::kv('editOff', static::qs(static::str($a, 'edit-off', '0')));
+        }
 
         // Total / Group
         if (isset($a['total'])) $c[] = static::kv('totalFunc', static::qs(static::str($a, 'total')));
@@ -4104,6 +4112,8 @@ class MadGridCompiler
             $p   = $ea['colors']['type'] === 'php' ? ':' : '';
             $out .= " {$p}edit-colors=\"{$ea['colors']['value']}\"";
         }
+        if (isset($ea['on']))  $out .= ' edit-on="'  . htmlspecialchars($ea['on']['value'],  ENT_QUOTES) . '"';
+        if (isset($ea['off'])) $out .= ' edit-off="' . htmlspecialchars($ea['off']['value'], ENT_QUOTES) . '"';
         if (isset($ea['mode'])) $out .= ' edit-mode="' . htmlspecialchars($ea['mode']['value'], ENT_QUOTES) . '"';
 
         return $out;
@@ -4124,6 +4134,7 @@ class MadGridCompiler
      *   <money decimals="2" prefix="R$" />                       → money mask
      *   <spinner min="0" max="10" step="1" />                    → mad-spinner-field
      *   <color :colors="['#f00','#0f0']" />                      → mad-color-field
+     *   <switch on="S" off="N" />                                → chave liga/desliga
      *   <textarea rows="3" />                                    → textarea
      *   <text />                                                 → text (default)
      */
@@ -4239,6 +4250,15 @@ class MadGridCompiler
                 $p   = $da['step']['type'] === 'php' ? ':' : '';
                 $out .= " {$p}edit-step=\"{$da['step']['value']}\"";
             }
+            return $out;
+        }
+
+        // <switch on="S" off="N" />  (fórum #297)
+        if (preg_match('/<switch\b([\s\S]*?)\s*\/>/s', $body, $m)) {
+            $da  = static::parseAttrs($m[1]);
+            $out = ' edit edit-type="switch"';
+            if (isset($da['on']))  $out .= ' edit-on="'  . htmlspecialchars($da['on']['value'],  ENT_QUOTES) . '"';
+            if (isset($da['off'])) $out .= ' edit-off="' . htmlspecialchars($da['off']['value'], ENT_QUOTES) . '"';
             return $out;
         }
 

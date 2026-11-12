@@ -1272,7 +1272,10 @@
                                 }
                                 $eMode = $col->editMode;
                             @endphp
-                            @if($eMode === 'inline')
+                            @if($col->editType === 'switch')
+                            {{-- Chave liga/desliga (fórum #297): mesma em todos os modos --}}
+                            @include('components.data-grid-edit-switch')
+                            @elseif($eMode === 'inline')
                             {{-- Modo inline: campo sempre visível --}}
                             <div class="mad-dg-edit-inline">
                                 @include('components.data-grid-edit-inline', [
@@ -1381,7 +1384,10 @@
                                 }
                                 $eMode = $col->editMode;
                             @endphp
-                            @if($eMode === 'inline')
+                            @if($col->editType === 'switch')
+                            {{-- Chave liga/desliga (fórum #297): mesma em todos os modos --}}
+                            @include('components.data-grid-edit-switch')
+                            @elseif($eMode === 'inline')
                             {{-- Modo inline: campo sempre visível --}}
                             <div class="mad-dg-edit-inline">
                                 @include('components.data-grid-edit-inline', [

@@ -9469,6 +9469,26 @@ document.addEventListener('alpine:init', () => {
             else run();
         },
 
+        // Chave liga/desliga na célula (edit-type="switch", fórum #297).
+        // `vals` = [ligado, desligado]; `flip` = o duplo clique (ou Enter)
+        // alterna aqui — no clique simples o navegador já alternou. Grava pelo
+        // mesmo onInlineSave; se a gravação não acontecer, a chave volta.
+        toggleSwitch(rowId, field, vals, flip) {
+            const host = (this.$el && this.$el !== _root) ? this.$el : null;
+            if (!host || typeof host.querySelector !== 'function') return;
+            const input = (typeof host.matches === 'function' && host.matches('input[data-mad-dg-switch]'))
+                ? host : host.querySelector('input[data-mad-dg-switch]');
+            if (!input || input.disabled) return;
+            if (flip) input.checked = !input.checked;
+            const on = !!input.checked;
+            const tr = typeof input.closest === 'function' ? input.closest('tr[data-row-id]') : null;
+            const rowKey = (tr && _root && tr.closest('.mad-dg-wrap') === _root) ? tr.getAttribute('data-row-id') : null;
+            const v = Array.isArray(vals) ? vals : ['1', '0'];
+            this._saveCell(rowId, field, on ? String(v[0]) : String(v[1]), rowKey, () => {
+                if (input.isConnected !== false) input.checked = !on;
+            });
+        },
+
         // Modo inline: salva direto sem estado editingCell (campo sempre visível)
         commitInline(rowId, field, value) {
             // Chamado do próprio campo (`@blur`/`@change`): `$el` é ele.
@@ -9742,7 +9762,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         // Grava UMA célula. `rowKey` = data-row-id da linha (pode faltar).
-        _saveCell(rowId, field, value, rowKey) {
+        _saveCell(rowId, field, value, rowKey, onFail) {
             const w = this._wrapper || (_root && typeof _root.closest === 'function' ? _root.closest('[mad-component]') : null);
             // `MadWire` é const global do mad-livewire.js (não vira window.MadWire).
             if (!w || typeof MadWire === 'undefined') return;
@@ -9765,6 +9785,10 @@ document.addEventListener('alpine:init', () => {
                 if (s.n <= 0) mark(false);
                 // Sem resposta do servidor nada foi gravado — e nada avisava.
                 if (res && res.ok === false && res.reason === 'network') this._cellNotice(field, 'lost', 'danger');
+                // Chave liga/desliga (fórum #297): a gravação não aconteceu
+                // (rede, 403, erro) e a linha não voltou do banco — a chave
+                // volta ao que era. Recusa do servidor já devolve a linha.
+                if (res && res.ok === false && res.reason !== 'superseded' && typeof onFail === 'function') onFail();
                 this._releaseIdle();
             };
             let call;

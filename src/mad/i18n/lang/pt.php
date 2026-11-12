@@ -420,6 +420,7 @@ return [
             // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
             'drag_row'        => 'Arraste para mudar a ordem',
             'reorder_failed'  => 'A nova ordem não foi gravada. Atualize a tela e tente de novo.',
+            'switch_dblclick' => 'Duplo clique para ligar ou desligar.',
         ],
 
         'kanban' => [

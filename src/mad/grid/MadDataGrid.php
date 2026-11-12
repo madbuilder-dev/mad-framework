@@ -4902,6 +4902,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $error = $this->_inlineValueError($col, $column, $value, $record);
         if ($error === null) {
             try {
+                // Chave liga/desliga: grava o valor configurado da coluna
+                // ('true'/'false' como booleano), não o texto que veio.
+                if ($col->editType === 'switch') {
+                    $value = $col->switchStoredValue(strtolower(trim((string) $value)) === strtolower($col->editOn));
+                }
                 $saved = \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(
                     function () use ($record, $column, $value) {
                         $record->$column = ($value === '' || $value === null) ? null : $value;
@@ -5138,6 +5143,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                     return mad_t('mad.error.cell_date');
                 }
                 break;
+
+            case 'switch':
+                // Só o valor de ligado ou o de desligado da coluna (fórum #297).
+                if (!in_array(strtolower(trim((string) $value)), [strtolower($col->editOn), strtolower($col->editOff)], true)) {
+                    return mad_t('mad.error.cell_option');
+                }
+                $sw = $col->switchStoredValue(strtolower(trim((string) $value)) === strtolower($col->editOn));
+
+                return $this->_inlineRuleError($col, $column, $sw, $record);
         }
 
         return $this->_inlineRuleError($col, $column, $empty ? null : $value, $record);
@@ -6871,7 +6885,56 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             )
             : $this->columns();
 
-        return static::assignColKeys($this->_normalizeFilterTokens($this->_normalizeSortable($cols)));
+        return $this->_lockSwitchColumns(
+            static::assignColKeys($this->_normalizeFilterTokens($this->_normalizeSortable($cols)))
+        );
+    }
+
+    /** Motivo de o perfil não poder editar na célula ('' = pode); null = ainda não perguntado. */
+    private ?string $_inlineDeniedTitle = null;
+
+    /**
+     * Chave liga/desliga na célula (fórum #297): quem não pode editar (perfil
+     * sem Editar nesta tela) vê a chave desabilitada, com o motivo na dica — a
+     * mesma pergunta que o servidor faz ao receber o clique no onInlineSave.
+     * Só as colunas `switch`: os outros editores continuam como eram.
+     *
+     * @param GridColumn[] $cols
+     * @return GridColumn[]
+     */
+    private function _lockSwitchColumns(array $cols): array
+    {
+        $has = false;
+        foreach ($cols as $c) {
+            if ($c instanceof GridColumn && $c->editable && $c->editType === 'switch') {
+                $has = true;
+                break;
+            }
+        }
+        if (!$has) {
+            return $cols;
+        }
+        if ($this->_inlineDeniedTitle === null) {
+            $this->_inlineDeniedTitle = '';
+            try {
+                $key = \Mad\Security\PermissionGate::deniedActionKey($this, 'onInlineSave');
+                if ($key !== null) {
+                    $this->_inlineDeniedTitle = \Mad\Security\ActionVocab::denyTitle(
+                        $key,
+                        \Mad\Security\PermissionGate::actionOwners($this)
+                    );
+                }
+            } catch (\Throwable $e) {
+                // sem sessão de permissões: liberado, como as ações de linha
+            }
+        }
+        foreach ($cols as $c) {
+            if ($c instanceof GridColumn && $c->editable && $c->editType === 'switch') {
+                $c->editLockedTitle = $this->_inlineDeniedTitle;
+            }
+        }
+
+        return $cols;
     }
 
     /**
@@ -7208,6 +7271,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                                         $c['editMinLength'] ?? 2
                                      ),
                 'color'           => $col->editColor($c['editColors'] ?? []),
+                'switch'          => $col->editSwitch((string) ($c['editOn'] ?? '1'), (string) ($c['editOff'] ?? '0')),
                 'spinner'         => $col->editSpinner(
                                         $c['editMin']  ?? null,
                                         $c['editMax']  ?? null,

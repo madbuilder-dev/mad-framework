@@ -101,7 +101,7 @@ class GridColumn
     public int     $hideBelow  = 0;
     public bool    $editable      = false;
     // text | select | date | number | textarea | money
-    // | numeric | dbcombo | dbunique-search | datetime | color | spinner
+    // | numeric | dbcombo | dbunique-search | datetime | color | spinner | switch
     public string  $editType      = 'text';
     public array   $editOpts      = [];       // select: ['value' => 'label']
     public string  $editDateFmt   = 'Y-m-d';  // formato interno p/ input[type=date]
@@ -127,6 +127,16 @@ class GridColumn
 
     // ── Props para color ──────────────────────────────────────────────────
     public array   $editColors    = [];       // paleta opcional ['#000', '#fff', ...]
+
+    // ── Props para switch (fórum #297) ────────────────────────────────────
+    public string  $editOn        = '1';      // valor gravado ligado ('1', 'true', 'S')
+    public string  $editOff       = '0';      // valor gravado desligado ('0', 'false', 'N')
+    /**
+     * Motivo de a chave aparecer desabilitada (perfil sem Editar), posto pela
+     * listagem no render — a mesma pergunta que o servidor faz ao receber o
+     * clique (PermissionGate::deniedActionKey). '' = pode alternar.
+     */
+    public string  $editLockedTitle = '';
     public bool    $isHtml        = false;
     public         $displayConditionFn = null;  // callable () => bool
     public string  $evaluate   = '';          // expression: '{valor} * {quantidade}'
@@ -830,6 +840,60 @@ class GridColumn
         $this->editMax  = $max;
         $this->editStep = $step;
         return $this;
+    }
+
+    /**
+     * Edição na célula como chave liga/desliga (fórum #297): um clique (ou
+     * duplo clique, com `editMode('dblclick')`) alterna e grava a linha na
+     * hora. `$on`/`$off` são os valores gravados: '1'/'0' (padrão),
+     * 'true'/'false' (coluna booleana) ou 'S'/'N'.
+     */
+    public function editSwitch(string $on = '1', string $off = '0'): self
+    {
+        $this->editable = true;
+        $this->editType = 'switch';
+        $this->editOn   = $on !== '' ? $on : '1';
+        $this->editOff  = $off !== '' ? $off : '0';
+        return $this;
+    }
+
+    /**
+     * O valor da célula liga a chave? Igual ao valor de ligado (sem diferença
+     * de maiúsculas) liga, igual ao de desligado desliga; fora dos dois vale o
+     * sentido comum (1, true, t, on, sim, s, yes, y). Nulo e vazio: desligada.
+     */
+    public function switchIsOn(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (!is_scalar($value)) {
+            return false;
+        }
+        $v = strtolower(trim((string) $value));
+        if ($v === strtolower($this->editOn)) {
+            return true;
+        }
+        if ($v === strtolower($this->editOff)) {
+            return false;
+        }
+
+        return in_array($v, ['1', 'true', 't', 'on', 'sim', 's', 'yes', 'y'], true);
+    }
+
+    /**
+     * O que a chave grava: o valor configurado, com 'true'/'false' indo como
+     * booleano (o PDO converte para a coluna boolean/tinyint de cada banco).
+     */
+    public function switchStoredValue(bool $on): string|bool
+    {
+        $v = $on ? $this->editOn : $this->editOff;
+        $l = strtolower($v);
+
+        return $l === 'true' ? true : ($l === 'false' ? false : $v);
     }
 
     /** Filtros para dbcombo/dbunique-search: [['campo','op','val'], ...]. */

@@ -489,7 +489,22 @@
                                 $_cHasFmt = "(row.__fmt && row.__fmt[{$_cFmtKey}] != null)";
                             @endphp
                             <td class="mad-dg-cell" style="text-align:{{ $col->align }};">
-                                @if($col->editable && $col->editMode === 'inline')
+                                @if($col->editable && $col->editType === 'switch')
+                                {{-- Chave liga/desliga (fórum #297): alterna o valor da linha;
+                                     grava com o formulário. 'true'/'false' vão como booleano. --}}
+                                @php
+                                    $_swOnJs  = json_encode(strtolower($col->editOn) === 'true' ? true : (strtolower($col->editOn) === 'false' ? false : $col->editOn));
+                                    $_swOffJs = json_encode(strtolower($col->editOff) === 'false' ? false : (strtolower($col->editOff) === 'true' ? true : $col->editOff));
+                                    $_swOnLc  = json_encode(strtolower($col->editOn));
+                                    $_swOffLc = json_encode(strtolower($col->editOff));
+                                @endphp
+                                <label class="mad-toggle mad-toggle--sm mad-dg-switch" data-mad-no-row-click>
+                                    <input type="checkbox" data-mad-df-switch aria-label="{{ trim(strip_tags((string) $col->label)) }}"
+                                           :checked="(v => { if (v === true) return true; if (v === false || v === null || v === undefined || v === '') return false; const s = String(v).trim().toLowerCase(); if (s === {{ $_swOnLc }}) return true; if (s === {{ $_swOffLc }}) return false; return ['1','true','t','on','sim','s','yes','y'].includes(s); })({!! $_cv !!})"
+                                           @change="row['{{ $_ck }}'] = $event.target.checked ? {{ $_swOnJs }} : {{ $_swOffJs }}">
+                                    <span class="mad-toggle-track"></span>
+                                </label>
+                                @elseif($col->editable && $col->editMode === 'inline')
                                 {{-- Inline edit: campo sempre visível --}}
                                 @if($col->editType === 'money')
                                 <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input"

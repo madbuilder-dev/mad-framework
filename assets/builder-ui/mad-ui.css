@@ -16119,6 +16119,13 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     to   { opacity: .45; }
 }
 
+/* Chave liga/desliga na célula (edit-type="switch", fórum #297). Segue o
+   alinhamento da coluna (o text-align da <td>) e as cores do tema (a trilha
+   desligada é --mad-border-strong, a ligada --mad-success). */
+.mad-dg-edit-switch { display: inline-flex; align-items: center; vertical-align: middle; line-height: 0; }
+.mad-dg-edit-switch .mad-dg-switch { margin: 0; }
+.mad-dg-edit-switch .mad-dg-switch--dbl .mad-toggle-track { cursor: default; }
+
 /* ── Anel de foco de teclado para o que não tem anel próprio (fw#335) ──────
    Botões da grade (ordenar, filtro, Tabela/Cards, ações da linha), abas,
    botões do casco e links ficavam sem anel nenhum: o tema zera o contorno de
