@@ -132,6 +132,11 @@ class MadDetailFormRef
         foreach ($this->columns as $col) {
             $expr = $col['evaluate'] ?? '';
             if (!$expr) continue;
+            // Fórum #291: `{@campo}` lê o formulário PRINCIPAL, que o servidor não
+            // recebe nesta chamada. A tela já calculou esse valor (e recalcula ao
+            // mudar o mestre); o que vai pro banco é o valor da tela. Sem o mestre,
+            // zerar aqui gravaria 0 no lugar do total certo.
+            if (str_contains($expr, '{@')) continue;
 
             $field = $col['field'] ?? '';
             if (!$field) continue;

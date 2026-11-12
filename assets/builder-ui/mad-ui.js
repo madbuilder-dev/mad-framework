@@ -4013,6 +4013,8 @@ var _madCompute = (function () {
     function translate(expr) {
         var js = String(expr == null ? '' : expr);
         if (js.trim() === '') return '';
+        // {@campo}: campo do formulário PRINCIPAL, mesmo dentro do sub-form (fórum #291).
+        js = js.replace(/\{@(\w+)\}/g, function (_, n) { return '$v.master(' + JSON.stringify(n) + ')'; });
         js = js.replace(/\bdiscount\s*\((.+),\s*\{(\w+)\}\s*,\s*\{(\w+)\}\s*\)/i, function (_, sub, d, t) {
             return '$v.discount(' + sub + ', {' + d + '}, $v.text(' + JSON.stringify(t) + '))';
         });
@@ -4050,6 +4052,28 @@ var _madCompute = (function () {
         return String(act.value == null ? '' : act.value).replace(/[^\d,.\-]/g, '');
     }
 
+    // Valor do campo do formulário principal (fora de qualquer sub-form/linha).
+    var MESTRE_ROW = '[data-df-fields],.mad-fl-row';
+    function mestreValue(scope, n) {
+        var els = window._madWhen.named(scope, n, null), outer = [];
+        for (var i = 0; i < els.length; i++) {
+            if (!(els[i].closest && els[i].closest(MESTRE_ROW))) outer.push(els[i]);
+        }
+        var hidden = null, checkable = false;
+        for (var j = 0; j < outer.length; j++) {
+            var t = String(outer[j].type || '').toLowerCase();
+            if (t === 'checkbox' || t === 'radio') {
+                checkable = true;
+                if (outer[j].checked) return outer[j].value;
+            } else if (t === 'hidden' && hidden === null) {
+                hidden = outer[j];
+            }
+        }
+        if (checkable) return hidden ? hidden.value : '';
+        if (hidden) return hidden.value == null ? '' : hidden.value;
+        return outer.length && outer[0].value != null ? outer[0].value : '';
+    }
+
     function reader(scope, from) {
         var read = function (n) {
             var t = typed(scope, n, from);
@@ -4057,6 +4081,7 @@ var _madCompute = (function () {
         };
         var g = function (n) { return toNum(read(n)); };
         g.text = function (n) { var s = read(n); return s === '' ? '%' : s; };
+        g.master = function (n) { return toNum(mestreValue(scope, n)); };
         g.round = round;
         g.discount = discount;
         return g;
@@ -4229,6 +4254,11 @@ var _madCompute = (function () {
     api.compile = compile;
     api.toNum = toNum;
     api.mount = mount;
+    // Para o recálculo das linhas do Detail Form (fórum #291): mesma fórmula e
+    // mesmo leitor do campo, sem ligar listener.
+    api.result = result;
+    api.round = round;
+    api.discount = discount;
 
     return api;
 })();
@@ -12980,8 +13010,19 @@ document.addEventListener('alpine:init', () => {
             ...r,
         }));
 
+        // Campos do sub-form com `compute` que lê o formulário principal (`{@campo}`,
+        // fórum #291): as linhas que já existem recalculam esses campos quando o
+        // mestre muda e na carga. Compilados uma vez; expressão inválida fica de fora.
+        const _mestreComputes = (cfg.mestreComputes || [])
+            .map(c => ({ field: c.field, fn: (window._madCompute && _madCompute.compile(c.expr)) || null }))
+            .filter(c => c.field && c.fn);
+
         return {
             rows:      _rows,
+            // Campos do formulário principal (fórum #291): `{@campo}` na fórmula
+            // da coluna calculada lê daqui; a tela e o servidor usam o mesmo valor.
+            master:    {},
+            _masterOff: null,
             editIndex: -1,             // -1 = novo, >= 0 = editando row[index]
             formData:  {},             // valores atuais do sub-form
             columns:   cfg.columns || [],
@@ -13011,6 +13052,9 @@ document.addEventListener('alpine:init', () => {
                 this._resetForm();
                 // Bind pode precisar aguardar modal/drawer renderizar
                 this.$nextTick(() => this._bindFormInputs());
+                // Fórum #291: as linhas carregadas (e as novas) seguem o formulário principal.
+                this._bindMaster();
+                this.$nextTick(() => this._recalcAll());
             },
 
             // [mad-component] dono de `el`. O detail-form pode morar num painel
@@ -13526,14 +13570,76 @@ document.addEventListener('alpine:init', () => {
                 this._nestedCollect(this.formData);
             },
 
+            // ── Formulário principal (fórum #291) ───────────────────────────
+            // Lê os campos do form que contém o detalhe (fora dele) e acompanha
+            // input/change: cada mudança atualiza `master` e recalcula TODAS as
+            // linhas (as coluna com evaluate que usam {@campo}).
+            _bindMaster() {
+                const form = this.$el.closest('form');
+                if (!form) return;
+                const valOf = (el) => (el.type === 'checkbox' ? (el.checked ? '1' : '0') : (el.value ?? ''));
+                const sync = (el) => {
+                    if (!el || !el.name || el.name.endsWith('[]') || this.$el.contains(el)) return;
+                    this.master[el.name] = valOf(el);
+                    this._recalcAll();
+                };
+                form.querySelectorAll('input[name], select[name], textarea[name]').forEach((el) => {
+                    if (!el.name || el.name.endsWith('[]') || this.$el.contains(el)) return;
+                    this.master[el.name] = valOf(el);
+                });
+                const onChange = (e) => sync(e.target);
+                form.addEventListener('input', onChange);
+                form.addEventListener('change', onChange);
+                this._masterOff = () => {
+                    form.removeEventListener('input', onChange);
+                    form.removeEventListener('change', onChange);
+                };
+            },
+
+            // Recalcula as colunas calculadas de todas as linhas (carga e mudança do mestre).
+            // Só as colunas que leem o mestre ({@campo}): as demais seguem como antes
+            // (recalculadas ao adicionar/editar a linha), e a carga não as sobrescreve.
+            _recalcAll() {
+                (this.rows || []).forEach((row) => {
+                    this._applyEvaluates(row, true);
+                    this._applyMestreComputes(row);
+                });
+            },
+
+            // Campo do sub-form com `compute` que lê `{@campo}`: recalcula na linha
+            // com o mesmo cálculo da tela (`{campo}` da própria linha, `{@campo}` do
+            // formulário principal). Sem resultado ou erro, o valor da linha fica como está.
+            _applyMestreComputes(row) {
+                if (!_mestreComputes.length || !window._madCompute) return;
+                const MC = window._madCompute;
+                const g = (n) => MC.toNum(row[n]);
+                g.master = (n) => MC.toNum(this.master[n]);
+                g.round = MC.round;
+                g.discount = MC.discount;
+                g.text = (n) => { const s = row[n] == null ? '' : String(row[n]); return s === '' ? '%' : s; };
+                _mestreComputes.forEach((c) => {
+                    let v;
+                    try { v = MC.result(c.fn, g); } catch (e) { return; }
+                    row[c.field] = v === '' ? 0 : parseFloat(v.toPrecision(12));
+                });
+            },
+
+            destroy() {
+                if (this._masterOff) this._masterOff();
+            },
+
             // ── Evaluate: computa campos calculados client-side ────
 
-            _applyEvaluates(row) {
+            _applyEvaluates(row, soMestre = false) {
                 this.columns.forEach(col => {
                     if (!col.evaluate) return;
+                    if (soMestre && col.evaluate.indexOf('{@') === -1) return;
                     let expr = col.evaluate.replace(/\{([^}]+)\}/g, (whole, key) => {
                         key = key.trim();
-                        const raw = (key in row) ? row[key] : row[whole];
+                        // {@campo}: campo do formulário principal (#291).
+                        const raw = key.charAt(0) === '@'
+                            ? this.master[key.slice(1).trim()]
+                            : ((key in row) ? row[key] : row[whole]);
                         const v = parseFloat(raw);
                         return isNaN(v) ? 0 : v;
                     });

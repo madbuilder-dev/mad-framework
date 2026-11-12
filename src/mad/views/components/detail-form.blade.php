@@ -201,6 +201,25 @@
     }
     unset($_dfLabels);
 
+    // ── Campos do sub-form com `compute` que lê o formulário principal (`{@campo}`,
+    // fórum #291): as linhas que já existem recalculam esse campo quando o mestre
+    // muda e na carga, como a tela. Só as tags com `{@` entram; as demais ficam como estão.
+    $_dfMestreComputes = [];
+    if (preg_match_all('/<mad-[\w-]+\b[^>]*>/', (string) $fieldSlot, $_dfTags)) {
+        foreach ($_dfTags[0] as $_dfTag) {
+            if (!preg_match('/\scompute\s*=\s*"([^"]*\{@[^"]*)"/', $_dfTag, $_dfC)) continue;
+            if (!preg_match('/\sname\s*=\s*"([^"{}$]+)"/', $_dfTag, $_dfN)) continue;
+            $_dfMestreComputes[] = [
+                'field' => $_dfN[1],
+                'expr'  => html_entity_decode($_dfC[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            ];
+        }
+    }
+    if ($_dfMestreComputes) {
+        $alpineCfg['mestreComputes'] = $_dfMestreComputes;
+    }
+    unset($_dfTags, $_dfTag, $_dfC, $_dfN, $_dfMestreComputes);
+
     // ── Ações da linha que só valem em algumas linhas (fw#363) ──────────────
     // `when-*`/`disabled-*` o navegador avalia na linha como ela está (também a
     // adicionada ali); `display-condition` e `disabled` por método são PHP:

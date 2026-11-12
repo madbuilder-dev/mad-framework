@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.299.0] — 2026-11-12
+
+### Novidades
+
+- **Detail Form:** `{@campo}` lê um campo do formulário principal na coluna calculada (`evaluate`, por exemplo `{qtd} * {@percentual}`) e no campo calculado do sub-form (`compute`). As linhas recalculam quando esse campo muda, inclusive as já carregadas, e o valor gravado é o que a tela mostra. Fórmulas sem `{@` não mudam.
+
 ## [5.298.0] — 2026-11-12
 
 ### Correções
