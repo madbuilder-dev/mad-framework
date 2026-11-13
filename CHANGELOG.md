@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.308.0] — 2026-11-13
+
+### Correções
+
+- **Detalhe:** o campo calculado de uma linha que lê o formulário principal ligado por relação (ex.: **Saldo** = **Estoque atual** da Peça menos a **Quantidade**) recalcula as linhas que já estavam na grade quando o campo do mestre muda, como as linhas novas. Antes só a linha nova recalculava. Precisa do Mad Framework 5.308.0 ou mais novo.
+
 ## [5.307.0] — 2026-11-13
 
 ### Correções

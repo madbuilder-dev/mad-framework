@@ -205,7 +205,9 @@
     // fórum #291): as linhas que já existem recalculam esse campo quando o mestre
     // muda e na carga, como a tela. Só as tags com `{@` entram; as demais ficam como estão.
     $_dfMestreComputes = [];
-    if (preg_match_all('/<mad-[\w-]+\b[^>]*>/', (string) $fieldSlot, $_dfTags)) {
+    // `>` dentro de aspas (`{@peca->estoque_atual}`) não fecha a tag: o padrão anda por atributos
+    // entre aspas (fórum #291 r5).
+    if (preg_match_all('/<mad-[\w-]+\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/', (string) $fieldSlot, $_dfTags)) {
         foreach ($_dfTags[0] as $_dfTag) {
             if (!preg_match('/\scompute\s*=\s*"([^"]*\{@[^"]*)"/', $_dfTag, $_dfC)) continue;
             if (!preg_match('/\sname\s*=\s*"([^"{}$]+)"/', $_dfTag, $_dfN)) continue;
