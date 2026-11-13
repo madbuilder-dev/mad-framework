@@ -201,6 +201,18 @@
     }
     unset($_dfLabels);
 
+    // ── Casas dos campos numéricos do detalhe (fórum #291 r5): a coluna sem formato
+    // explícito mostra o mesmo formato do campo (madNumFmt), na linha carregada e na recalculada.
+    $_dfNumDecimals = [];
+    if (preg_match_all('/<mad-(?:numeric|number)-field\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/', (string) $fieldSlot, $_dfNumTags)) {
+        foreach ($_dfNumTags[0] as $_dfNumTag) {
+            if (!preg_match('/\sname\s*=\s*"([^"{}$]+)"/', $_dfNumTag, $_dfNumN)) continue;
+            $_dfNumDecimals[$_dfNumN[1]] = preg_match('/\s:?decimals\s*=\s*"(\d+)"/', $_dfNumTag, $_dfNumD)
+                ? (int) $_dfNumD[1] : 2;
+        }
+    }
+    unset($_dfNumTags, $_dfNumTag, $_dfNumN, $_dfNumD);
+
     // ── Campos do sub-form com `compute` que lê o formulário principal (`{@campo}`,
     // fórum #291): as linhas que já existem recalculam esse campo quando o mestre
     // muda e na carga, como a tela. Só as tags com `{@` entram; as demais ficam como estão.
@@ -489,6 +501,17 @@
                                 // no navegador não tem — cai no ramo cru, escapado
                                 // pelo x-text, nunca no x-html).
                                 $_cHasFmt = "(row.__fmt && row.__fmt[{$_cFmtKey}] != null)";
+                                // Coluna sem formato explícito cujo campo do detalhe é numérico: mesma
+                                // casa do campo (fórum #291 r5). Coluna com formato próprio não muda.
+                                $_cNumDec = null;
+                                if ($col->builtinFormat === '' && !$col->hasTransform && $col->mediaFormat === ''
+                                    && $col->iconFormat === '' && !$col->isNumber && !$col->isMoney && !$col->isDate
+                                    && !$col->isBadge && !$col->isHtml) {
+                                    $_cNumKey = \Mad\Grid\GridRenderHelpers::rowDataKey($col->field);
+                                    if (array_key_exists($_cNumKey, $_dfNumDecimals)) {
+                                        $_cNumDec = $_dfNumDecimals[$_cNumKey];
+                                    }
+                                }
                             @endphp
                             <td class="mad-dg-cell" style="text-align:{{ $col->align }};">
                                 @if($col->editable && $col->editType === 'switch')
@@ -552,6 +575,9 @@
                                 @elseif($col->isNumber)
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $col->numberDecimals }})"></span>
+                                @elseif($_cNumDec !== null)
+                                {{-- Campo numérico do detalhe sem formato na coluna: mesma casa do campo (fórum #291 r5). --}}
+                                <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $_cNumDec }})"></span>
                                 @elseif($col->isDate && $col->dateFormat)
                                 {{-- Formato da coluna (H:i, l, d/m/Y…), igual à listagem; hora
                                      pura vale (fórum #294). Antes: sempre a data do navegador,

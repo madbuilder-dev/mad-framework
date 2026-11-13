@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.308.1] — 2026-11-13
+
+### Correções
+
+- **Detalhe:** o valor de um campo numérico do detalhe aparece na grade com as mesmas casas do campo, na linha carregada e na recalculada (ex.: 479,94 em vez de 479.94). Precisa do Mad Framework 5.308.1 ou mais novo.
+
 ## [5.308.0] — 2026-11-13
 
 ### Correções
