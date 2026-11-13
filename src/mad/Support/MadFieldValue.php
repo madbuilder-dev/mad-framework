@@ -4,6 +4,7 @@ namespace Mad\Support;
 
 use Mad\Component\MadRenderContext;
 use Mad\Form\MadForm;
+use Mad\Form\MadRecordPath;
 
 /**
  * MadFieldValue — ponto ÚNICO de resolução do valor inicial de um campo.
@@ -59,6 +60,18 @@ final class MadFieldValue
                 $v = $ctx[$name];
                 if ($v !== null && $v !== '' && !is_array($v) && !is_object($v)) {
                     return (string) $v;
+                }
+            }
+            // Campo do formulário ligado pela relação (`peca->estoque_atual`): o contexto
+            // não tem essa chave; o valor vem do registro carregado (só exibição; o
+            // Salvar não grava, ver MadForm::_isRelationPathField). Fórum #291 r5.
+            if (str_contains($name, '->')) {
+                $record = MadRenderContext::getForm()?->getSourceRecord();
+                if ($record !== null) {
+                    $rel = MadRecordPath::resolve($record, $name);
+                    if ($rel !== '') {
+                        return $rel;
+                    }
                 }
             }
         }

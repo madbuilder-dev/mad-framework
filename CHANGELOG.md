@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.307.0] — 2026-11-13
+
+### Correções
+
+- **Formulário:** o campo do formulário ligado pela relação do combo (ex.: **Estoque atual** da Peça) mostra o valor ao abrir um registro existente, em campos numéricos, de texto e de moeda. Antes ficava vazio até trocar o combo. Precisa do Mad Framework 5.307.0 ou mais novo.
+
 ## [5.306.0] — 2026-11-13
 
 ### Correções
