@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.309.0] — 2026-11-13
+
+### Melhorias
+
+- **App gerado:** a aba **Código Fonte** da Central de Comando avisa quando uma rota de Studio › Rotas da API não veio do MadBuilder e diz o motivo (o `routes/api.php` do app é código próprio do projeto, um API Controller com erro) em vez de a rota simplesmente não aparecer.
+
+### Correções
+
+- **Agendador:** na Central de Comando, **Aprovar** na aba Agendamentos voltou a gravar o `routes/console.php` vindo do MadBuilder, com backup e desfazer. Antes parava em "Destino bloqueado (routes)".
+
 ## [5.308.4] — 2026-11-13
 
 ### Correções
