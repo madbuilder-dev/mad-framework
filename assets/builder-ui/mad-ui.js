@@ -4924,6 +4924,17 @@ document.addEventListener('change', function (e) {
         .map(function (s) { return s.trim(); }).filter(Boolean);
     var value   = src.value;
     var srcName = src.name || src.id || '';
+    // Chave de relação (`peca_id` → `peca`): os campos do formulário ligados por ela
+    // (`peca->estoque_atual`) entram no preenchimento, sem <fill> na tela (fórum #291 r4).
+    var relName = src.dataset.madAutofillRel || '';
+    var relFields = [];
+    if (relName) {
+        (src.closest('form') || document).querySelectorAll('[name^="' + relName + '->"]').forEach(function (el) {
+            if (el.name && relFields.indexOf(el.name) === -1) relFields.push(el.name);
+        });
+        relFields.forEach(function (n) { if (fields.indexOf(n) === -1) fields.push(n); });
+    }
+    if (!fields.length) return;
 
     // Valor atual do campo-alvo, comparável entre a escrita e o "desfazer".
     // Campo mascarado (numeric/money): o HIDDEN com `name` é reescrito pelo
@@ -4990,7 +5001,7 @@ document.addEventListener('change', function (e) {
     }
     if (!token) return;
 
-    fetch(_madServiceUrl('auto-fill', 'resolve', { token: token, value: value }))
+    fetch(_madServiceUrl('auto-fill', 'resolve', { token: token, value: value, fields: relFields.join(',') }))
         .then(function (r) { return r.text(); })
         .then(function (text) { return _madExtractJson(text) || { values: {}, onlyEmpty: [] }; })
         .then(function (data) {

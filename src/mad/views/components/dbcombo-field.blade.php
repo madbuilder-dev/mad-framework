@@ -358,7 +358,15 @@
     // combo + mapa de fills) num token assinado. O cliente só manda {token,value};
     // o MadAutoFillService re-carrega o registro DENTRO do filtro e resolve.
     $autoFillToken = '';
-    if (!empty($autoFill)) {
+    // Combo que é a chave de uma relação (`peca_id` → `peca`): o navegador pede, ao
+    // trocar a escolha, os campos do formulário ligados por ela (`peca->estoque_atual`),
+    // sem <fill> na tela. O servidor só aceita o prefixo da própria relação (fórum #291 r4).
+    // Só dentro de um formulário: o <mad-form> decide ao fim do render (ver
+    // MadFormRegistry::resolveRelCombos) se há campo `rel->campo` no próprio formulário.
+    // Sem ele, o HTML sai byte a byte igual ao de antes.
+    $__relFill = (preg_match('/^([a-zA-Z_]\w*)_id$/', (string) $name, $__rfm) === 1) ? $__rfm[1] : '';
+    $__relMarker = '';
+    if (!empty($autoFill) || ($__relFill !== '' && \Mad\Component\MadRenderContext::getForm() !== null)) {
         $__afSql = '';
         $__afBindings = [];
         if (\Mad\Database\QuerySource::isQuery($query)) {
@@ -374,14 +382,23 @@
                 [$__afSql, $__afBindings] = \Mad\Database\QuerySource::compileSql($__afqb);
             } catch (\Throwable $e) { $__afSql = ''; $__afBindings = []; }
         }
-        $autoFillToken = \Mad\Http\MadStateCrypt::encryptFor('auto-fill', [
+        $__afToken = \Mad\Http\MadStateCrypt::encryptFor('auto-fill', [
             'database'       => $database,
             'model'          => $model,
             'key'            => $keyField,
             'query_sql'      => $__afSql,
             'query_bindings' => $__afBindings,
             'fills'          => $autoFill,
+            'rel_fill'       => $__relFill,
         ]);
+        if (!empty($autoFill)) {
+            $autoFillToken = $__afToken;
+            if ($__relFill !== '') {
+                $__relMarker = \Mad\Form\MadFormRegistry::pendRelCombo($__relFill, ' data-mad-autofill-rel="' . e($__relFill) . '"');
+            }
+        } else {
+            $__relMarker = \Mad\Form\MadFormRegistry::pendRelCombo($__relFill, ' data-mad-autofill-token="' . e($__afToken) . '" data-mad-autofill-fields="" data-mad-autofill-rel="' . e($__relFill) . '"');
+        }
     }
 
     // No-results: create button + quick register (ver MadNoResultsHelper)
@@ -443,7 +460,7 @@
             data-mad-autofill-token="{{ $autoFillToken }}"
             data-mad-autofill-fields="{{ implode(',', array_column($autoFill, 'field')) }}"
         @endif
-        {!! $noResultsAttrs !!}
+        {!! $noResultsAttrs !!}{!! $__relMarker !!}
         {!! $attrs !!}
     >
         @if(!$noEmpty)

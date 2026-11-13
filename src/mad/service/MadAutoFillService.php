@@ -51,6 +51,16 @@ class MadAutoFillService extends MadComponent
                 $querySql = (string) ($config['query_sql'] ?? '');
                 $bindings = (array)  ($config['query_bindings'] ?? []);
 
+                // Campos do formulário ligados pela relação da própria chave (`peca->…`
+                // quando o combo é `peca_id`): pedidos pelo navegador e aceitos só com o
+                // prefixo do token (fórum #291 r4).
+                $relName = (string) ($config['rel_fill'] ?? '');
+                foreach (self::relFillFields($relName, (string) ($param['fields'] ?? '')) as $relField) {
+                    // O registro carregado é o escolhido no combo (a relação): o campo
+                    // dele é o que vem depois de `rel->` (`peca->estoque_atual` → `estoque_atual`).
+                    $fills[] = ['field' => $relField, 'from' => substr($relField, strlen($relName) + 2)];
+                }
+
                 $record = self::loadRecord($database, $model, $key, $value, $querySql, $bindings);
 
                 if ($record !== null) {
@@ -79,6 +89,31 @@ class MadAutoFillService extends MadComponent
 
         header('Content-Type: application/json');
         echo json_encode(['values' => (object) $values, 'onlyEmpty' => $onlyEmpty, 'warnings' => $warnings], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Campos `rel->campo` pedidos pelo navegador que a relação `$rel` permite:
+     * só um elo (o campo ligado pela chave), nome simples, no máximo 50.
+     *
+     * @return list<string>
+     */
+    public static function relFillFields(string $rel, string $raw): array
+    {
+        if ($rel === '' || $raw === '' || !preg_match('/^[a-zA-Z_]\w*$/', $rel)) {
+            return [];
+        }
+        $out = [];
+        foreach (explode(',', $raw) as $name) {
+            $name = trim($name);
+            if (preg_match('/^' . preg_quote($rel, '/') . '->[a-zA-Z_]\w*$/', $name) === 1 && !in_array($name, $out, true)) {
+                $out[] = $name;
+            }
+            if (count($out) >= 50) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     /**

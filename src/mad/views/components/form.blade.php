@@ -29,6 +29,8 @@
     }
     // token() é chamado APÓS o slot renderizar → todos os fields já foram registrados
     $token  = \Mad\Form\MadFormRegistry::token();
+    // Combos de chave de relação (fórum #291 r4): troca o marcador só se houver campo `rel->campo` aqui.
+    $__slotHtml = \Mad\Form\MadFormRegistry::resolveRelCombos((string) $slot);
 @endphp
 <form novalidate enctype="multipart/form-data"
     @if($id)     id="{{ $id }}"                       @endif
@@ -38,7 +40,7 @@
     {{-- $_gapStyle DEPOIS de $attrs: atributo duplicado → o HTML fica com o primeiro, então um style cru em attrs continua mandando --}}
     {!! $attrs !!}{!! $_gapStyle !!}
 >
-    {!! $slot !!}
+    {!! $__slotHtml !!}
     @if($token)
         <input type="hidden" name="__mad_form" value="{{ $token }}">
     @endif

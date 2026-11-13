@@ -8150,6 +8150,16 @@ class MadForm
     {
         $this->_usedNow[$field] = true;
         $this->_verifyBrowserChoices($field);
+        // Campo do mestre ligado por relação (`peca->estoque_atual`) num registro
+        // que já existe: o valor vem da relação (só exibição; o Salvar não grava,
+        // ver _isRelationPathField). Fórum #291 r4.
+        if (!isset($this->fields[$field]) && str_contains($field, '->')
+            && $this->_sourceRecord instanceof \Illuminate\Database\Eloquent\Model) {
+            $relValue = MadRecordPath::resolve($this->_sourceRecord, $field);
+            if ($relValue !== '') {
+                return $relValue;
+            }
+        }
         $value = $this->fields[$field] ?? $default;
         if (is_string($value) && isset($this->fields[$field]) && MadFormRegistry::isDisplayDate($value)
             && ($props = $this->_dateProps($field)) !== null) {

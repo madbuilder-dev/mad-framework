@@ -730,6 +730,49 @@ class MadFormRegistry
         }
     }
 
+    /** Marcadores de combo de chave de relação (uid => [relação, atributos]) — fórum #291 r4. */
+    private static array $pendingRelCombos = [];
+
+    /**
+     * Um combo `x_id` dentro de um formulário deixa um marcador no HTML; ao fim do
+     * formulário, resolveRelCombos() troca o marcador pelos atributos de auto-fill
+     * da relação só se o próprio formulário tiver um campo `x->campo`.
+     */
+    public static function pendRelCombo(string $relation, string $attrs): string
+    {
+        $uid = bin2hex(random_bytes(6));
+        self::$pendingRelCombos[$uid] = ['relation' => $relation, 'attrs' => $attrs];
+
+        return ' data-madrel="' . $uid . '"';
+    }
+
+    /**
+     * Resolve os marcadores do HTML de um formulário: com campo `rel->campo` nele,
+     * vira os atributos do combo; sem, some (o HTML fica como era).
+     */
+    public static function resolveRelCombos(string $html): string
+    {
+        if (self::$pendingRelCombos === [] || !str_contains($html, 'data-madrel="')) {
+            return $html;
+        }
+
+        return (string) preg_replace_callback(
+            '/ data-madrel="([a-f0-9]{12})"/',
+            static function (array $m) use ($html): string {
+                $entry = self::$pendingRelCombos[$m[1]] ?? null;
+                unset(self::$pendingRelCombos[$m[1]]);
+                if ($entry === null) {
+                    return '';
+                }
+                $rel = preg_quote($entry['relation'], '/');
+                $has = preg_match('/\sname="' . $rel . '(?:->|-&gt;)[a-zA-Z_]\w*"/', $html) === 1;
+
+                return $has ? $entry['attrs'] : '';
+            },
+            $html,
+        );
+    }
+
     /**
      * Retorna todos os campos registrados no render atual (para debug).
      */
