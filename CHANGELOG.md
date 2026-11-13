@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.308.2] — 2026-11-13
+
+### Correções
+
+- **Listagem:** num app instalado numa subpasta da hospedagem (ex.: `public_html/app/`, com o endereço terminando em `/app/public/`), o **Baixar** do export em CSV, Excel e PDF dava "arquivo não encontrado" (o navegador mostrava "Falha - Nenhum arquivo"). Agora o arquivo baixa. O mesmo valia para os links de download de arquivos enviados e de imagens guardadas no banco. Não precisa trocar o `.htaccess`: basta atualizar o framework.
+
 ## [5.308.1] — 2026-11-13
 
 ### Correções

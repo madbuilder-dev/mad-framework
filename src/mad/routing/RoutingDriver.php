@@ -131,6 +131,34 @@ class RoutingDriver
         return rtrim($dir, '/');
     }
 
+    /**
+     * Link relativo do Laravel (`route(..., false)`, assinado ou não) com a base
+     * da requisição de volta (fórum #299).
+     *
+     * O gerador de URL do Laravel tira a base (`/app/public` num app em
+     * subpasta) do link relativo: o Baixar do export, o download de arquivo e o
+     * blob saíam `/app/_mad-...` e o navegador os buscava na raiz do domínio
+     * (404). A assinatura relativa é feita e conferida SEM a base
+     * (`'/'.$request->path()`), então só o link que vai para o navegador ganha
+     * a base — a assinatura continua batendo. App na raiz: como veio.
+     */
+    public static function withRequestBase(string $relative): string
+    {
+        if ($relative === '' || $relative[0] !== '/' || str_starts_with($relative, '//')) {
+            return $relative;
+        }
+        try {
+            $base = (function_exists('app') && app()->bound('url'))
+                ? (string) app('url')->getRequest()->getBaseUrl()
+                : self::basePath();
+        } catch (\Throwable) {
+            $base = self::basePath();
+        }
+        $base = rtrim($base, '/');
+
+        return $base === '' ? $relative : $base . $relative;
+    }
+
     /** Base absoluta das rotas web: <basePath><prefix> (ex: '/app' ou '/erp/app'). */
     public static function appBase(): string
     {

@@ -191,13 +191,16 @@ final class MadPublicUpload
     {
         try {
             if (function_exists('app') && app()->bound('url')) {
-                return route('mad.public-file', ['path' => $path], $absolute);
+                $url = route('mad.public-file', ['path' => $path], $absolute);
+
+                // Relativo: com a base da requisição (app em subpasta, fórum #299).
+                return $absolute ? $url : \Mad\Routing\RoutingDriver::withRequestBase($url);
             }
         } catch (\Throwable) {
             // sem rota (render avulso) — cai no literal
         }
 
-        return '/arquivos/' . implode('/', array_map('rawurlencode', explode('/', $path)));
+        return \Mad\Routing\RoutingDriver::basePath() . '/arquivos/' . implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     private static function mac(string $path): string

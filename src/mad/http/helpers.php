@@ -57,18 +57,20 @@ if (!function_exists('mad_download_url')) {
                 // página que ele pode ver renderizou (fecha o IDOR cross-tenant).
                 // Assinatura RELATIVA (4º arg false) = host-agnóstica (funciona
                 // atrás de proxy / com APP_URL divergente do host servido).
-                return \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                // Com a base da requisição (app em subpasta, fórum #299): o
+                // Laravel a tira do link relativo; a assinatura é sem ela.
+                return \Mad\Routing\RoutingDriver::withRequestBase(\Illuminate\Support\Facades\URL::temporarySignedRoute(
                     'mad.download',
                     now()->addHours(6),
                     $params,
                     false
-                );
+                ));
             }
         } catch (\Throwable) {
             // sem container (render standalone) — cai no literal abaixo
         }
 
-        return '/app/_mad-download?' . http_build_query($params);
+        return \Mad\Routing\RoutingDriver::basePath() . '/app/_mad-download?' . http_build_query($params);
     }
 }
 
@@ -164,12 +166,12 @@ if (!function_exists('mad_blob_url')) {
 
         try {
             if (function_exists('app') && app()->bound('url')) {
-                return route('mad.blob', $params, false);
+                return \Mad\Routing\RoutingDriver::withRequestBase(route('mad.blob', $params, false));
             }
         } catch (\Throwable) {
             // sem container (render standalone) — cai no literal abaixo
         }
 
-        return '/app/_mad-blob?' . http_build_query($params);
+        return \Mad\Routing\RoutingDriver::basePath() . '/app/_mad-blob?' . http_build_query($params);
     }
 }

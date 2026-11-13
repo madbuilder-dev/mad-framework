@@ -61,17 +61,21 @@ final class GridExportAccess
         ], JSON_UNESCAPED_SLASHES));
     }
 
-    /** Link relativo, assinado e com validade curta para baixar o export. */
+    /**
+     * Link relativo, assinado e com validade curta para baixar o export. Com a
+     * base da requisição na frente: num app em subpasta o link sem ela dava
+     * 404 (fórum #299) — ver RoutingDriver::withRequestBase().
+     */
     public static function url(string $file, string $basename): string
     {
         $minutes = (int) (function_exists('config') ? config('mad.grid_export_link_minutes', self::DEFAULT_MINUTES) : self::DEFAULT_MINUTES);
 
-        return URL::temporarySignedRoute(
+        return \Mad\Routing\RoutingDriver::withRequestBase(URL::temporarySignedRoute(
             'mad.grid.export',
             now()->addMinutes(max(1, $minutes)),
             ['file' => basename($file), 'basename' => $basename],
             false
-        );
+        ));
     }
 
     /** O link foi emitido por este app para este arquivo (assinatura confere)? */
