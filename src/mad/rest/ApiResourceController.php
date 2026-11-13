@@ -5,9 +5,11 @@ namespace Mad\Rest;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -115,14 +117,22 @@ abstract class ApiResourceController
 
         $query   = $this->newQuery();
         $filters = $this->requestFilters($request);
+        $this->validateFilterValues($filters);
         $this->applyFilters($query, $filters);
         $this->applyOrder($query, $request);
 
-        $total   = (clone $query)->toBase()->getCountForPagination();
         $perPage = $this->resolvePerPage($request);
         $page    = max(1, (int) $request->input('page', 1));
 
-        $items = $query->forPage($page, $perPage)->get();
+        try {
+            $total = (clone $query)->toBase()->getCountForPagination();
+            $items = $query->forPage($page, $perPage)->get();
+        } catch (QueryException $e) {
+            // Valor de filtro que o banco recusa pelo tipo da coluna e que o
+            // validateFilterValues() não pegou (ex.: "abc" numa data no
+            // PostgreSQL): 422 em vez de 500. Qualquer outro erro sobe igual.
+            throw $this->filterValueRejected($e, $filters) ?? $e;
+        }
 
         $data = [];
         foreach ($items as $object) {
@@ -514,6 +524,249 @@ abstract class ApiResourceController
                 $this->applyFilter($query, $field, (string) $operator, $value);
             }
         }
+    }
+
+    /** Operadores que comparam o valor com a coluna — aí o tipo do valor importa. */
+    protected const VALUE_OPERATORS = [
+        '=', 'eq', '!=', 'ne', 'not', '>', 'gt', '>=', 'gte', '<', 'lt', '<=', 'lte',
+        'in', 'not in', 'not_in', 'between',
+    ];
+
+    /**
+     * SQLSTATE de valor que não converte para o tipo da coluna (fórum #308):
+     * data/hora inválida (22007, 22008), texto em coluna numérica (22P02,
+     * 22018), número fora da faixa (22003), byte que não é UTF-8 (22021).
+     */
+    protected const FILTER_VALUE_SQLSTATES = ['22007', '22008', '22P02', '22018', '22003', '22021'];
+
+    /**
+     * Recusa (422, com o nome do filtro) o valor que não serve para o tipo da
+     * coluna: data que não existe (`2026-09-31`), texto em coluna inteira ou
+     * numérica, booleano que não é verdadeiro/falso. Antes o valor ia cru ao
+     * banco; o PostgreSQL recusava e a API devolvia 500 "Server Error".
+     *
+     * O tipo vem dos `$casts` do model e, para o resto, das colunas da tabela
+     * (uma consulta ao catálogo, só quando há filtro de comparação). Data em
+     * outro formato que não `AAAA-MM-DD[ hh:mm[:ss]]` segue para o banco, que
+     * decide: o que ele recusar vira 422 no index() (filterValueRejected()).
+     */
+    protected function validateFilterValues(array $filters): void
+    {
+        $values = [];
+        foreach ($filters as $field => $conditions) {
+            if (!in_array($field, $this->searchable, true) || !is_array($conditions)) {
+                continue;
+            }
+            foreach ($conditions as $operator => $value) {
+                if (!in_array((string) $operator, static::VALUE_OPERATORS, true)) {
+                    continue;
+                }
+                foreach ((is_array($value) ? $value : [$value]) as $v) {
+                    if ($v !== null && $v !== '' && !is_array($v)) {
+                        $values[(string) $field][] = $v;
+                    }
+                }
+            }
+        }
+        if ($values === []) {
+            return;
+        }
+
+        $kinds  = $this->filterColumnKinds(array_keys($values));
+        $errors = [];
+        foreach ($values as $field => $list) {
+            $kind = $kinds[strtolower($field)] ?? null;
+            if ($kind === null) {
+                continue;
+            }
+            foreach ($list as $v) {
+                if (!self::filterValueFits($kind, $v)) {
+                    $errors['filters.' . $field] = self::filterMessage('filter_invalid_' . $kind, $field, $v);
+                    break;
+                }
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
+     * Tipo de cada coluna filtrada: date | integer | number | boolean (chave em
+     * minúsculas). Coluna de texto ou desconhecida fica de fora (sem conferência).
+     *
+     * @param  list<string> $fields
+     * @return array<string, string>
+     */
+    protected function filterColumnKinds(array $fields): array
+    {
+        $model  = $this->newModel();
+        $wanted = array_map('strtolower', $fields);
+        $kinds  = [];
+
+        foreach ($model->getCasts() as $column => $cast) {
+            $key = strtolower((string) $column);
+            if (in_array($key, $wanted, true) && ($kind = self::kindOfCast((string) $cast)) !== null) {
+                $kinds[$key] = $kind;
+            }
+        }
+        if (count($kinds) === count(array_unique($wanted))) {
+            return $kinds;
+        }
+
+        try {
+            $columns = Schema::connection($model->getConnectionName())->getColumns($model->getTable());
+        } catch (\Throwable) {
+            return $kinds; // sem catálogo: o banco decide, e o index() trata a recusa
+        }
+        foreach ($columns as $column) {
+            $key = strtolower((string) ($column['name'] ?? ''));
+            if (!isset($kinds[$key]) && in_array($key, $wanted, true)
+                && ($kind = self::kindOfDbType((string) ($column['type_name'] ?? ''))) !== null) {
+                $kinds[$key] = $kind;
+            }
+        }
+
+        return $kinds;
+    }
+
+    private static function kindOfCast(string $cast): ?string
+    {
+        $c = strtolower(explode(':', $cast, 2)[0]);
+
+        return match (true) {
+            // 'timestamp' de cast é inteiro (Unix), não data
+            in_array($c, ['date', 'datetime', 'immutable_date', 'immutable_datetime'], true) => 'date',
+            in_array($c, ['int', 'integer'], true)                                         => 'integer',
+            in_array($c, ['real', 'float', 'double', 'decimal'], true)                     => 'number',
+            in_array($c, ['bool', 'boolean'], true)                                        => 'boolean',
+            default                                                                         => null,
+        };
+    }
+
+    private static function kindOfDbType(string $type): ?string
+    {
+        $t = strtolower(trim($type));
+
+        return match (true) {
+            in_array($t, ['date', 'datetime', 'datetime2', 'smalldatetime', 'datetimeoffset', 'timestamp',
+                'timestamptz', 'timestamp without time zone', 'timestamp with time zone'], true) => 'date',
+            // tinyint fica de fora: no MySQL costuma ser booleano
+            in_array($t, ['int', 'integer', 'int2', 'int4', 'int8', 'smallint', 'bigint', 'mediumint',
+                'serial', 'bigserial', 'smallserial'], true)                                        => 'integer',
+            in_array($t, ['numeric', 'decimal', 'float', 'float4', 'float8', 'double', 'double precision',
+                'real', 'money', 'smallmoney'], true)                                               => 'number',
+            in_array($t, ['bool', 'boolean'], true)                                                 => 'boolean',
+            default                                                                                  => null,
+        };
+    }
+
+    private static function filterValueFits(string $kind, mixed $v): bool
+    {
+        if (is_bool($v)) {
+            return $kind !== 'date';
+        }
+        if (!is_scalar($v)) {
+            return true;
+        }
+        $s = trim((string) $v);
+
+        return match ($kind) {
+            'integer' => is_int($v) || (is_float($v) && floor($v) == $v) || preg_match('/^[+-]?\d+$/', $s) === 1,
+            'number'  => is_int($v) || is_float($v) || is_numeric($s),
+            'boolean' => in_array(strtolower($s), ['1', '0', 't', 'f', 'true', 'false', 'y', 'n', 'yes', 'no', 'on', 'off'], true),
+            'date'    => !self::isImpossibleDate($s),
+            default   => true,
+        };
+    }
+
+    /**
+     * Data no formato AAAA-MM-DD (com hora opcional) que não existe no
+     * calendário: 2026-09-31, 2026-02-30, mês 13, 25:00. Outros formatos não
+     * são julgados aqui.
+     */
+    private static function isImpossibleDate(string $s): bool
+    {
+        $re = '/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:[.,]\d+)?)?\s*(?:Z|[+-]\d{1,2}(?::?\d{2})?)?)?$/i';
+        if (preg_match($re, $s, $m) !== 1) {
+            return false;
+        }
+        if (!checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+            return true;
+        }
+        if (($m[4] ?? '') !== '') {
+            $h = (int) $m[4];
+            $i = (int) $m[5];
+            $sec = ($m[6] ?? '') !== '' ? (int) $m[6] : 0;
+            if ($h > 24 || $i > 59 || $sec > 60 || ($h === 24 && ($i > 0 || $sec > 0))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * QueryException do index() causada por um valor de filtro (SQLSTATE em
+     * FILTER_VALUE_SQLSTATES) → ValidationException (422). O filtro sai do
+     * texto do erro, que traz o valor recusado entre aspas no PostgreSQL;
+     * sem achar, o erro vai em `filters`. Outro SQLSTATE → null (sobe o 500).
+     */
+    protected function filterValueRejected(QueryException $e, array $filters): ?ValidationException
+    {
+        $state = strtoupper((string) ($e->errorInfo[0] ?? $e->getCode()));
+        if (!in_array($state, static::FILTER_VALUE_SQLSTATES, true)) {
+            return null;
+        }
+
+        $dbMessage = (string) ($e->errorInfo[2] ?? $e->getPrevious()?->getMessage() ?? $e->getMessage());
+        $errors = [];
+        foreach ($filters as $field => $conditions) {
+            if (!in_array($field, $this->searchable, true) || !is_array($conditions)) {
+                continue;
+            }
+            foreach ($conditions as $value) {
+                foreach ((is_array($value) ? $value : [$value]) as $v) {
+                    if (is_scalar($v) && !is_bool($v) && (string) $v !== ''
+                        && str_contains($dbMessage, '"' . $v . '"')) {
+                        $errors['filters.' . $field] = self::filterMessage('filter_invalid_value', (string) $field, $v);
+                        continue 3;
+                    }
+                }
+            }
+        }
+
+        return ValidationException::withMessages(
+            $errors !== [] ? $errors : ['filters' => self::filterMessage('filters_invalid_value', '', '')]
+        );
+    }
+
+    /**
+     * Mensagem do `lang/<idioma>/rest.php`; app que só atualizou o vendor não
+     * tem a chave nova — aí vale o texto em português daqui.
+     */
+    private static function filterMessage(string $key, string $field, mixed $value): string
+    {
+        $text = is_scalar($value) ? (string) $value : (string) json_encode($value);
+        if (mb_strlen($text) > 60) {
+            $text = mb_substr($text, 0, 60) . '…';
+        }
+        $replace = ['field' => $field, 'value' => $text];
+
+        if (trans()->has('rest.' . $key)) {
+            return (string) __('rest.' . $key, $replace);
+        }
+
+        $fallback = [
+            'filter_invalid_date'    => 'O filtro :field recebeu ":value", que não é uma data válida.',
+            'filter_invalid_integer' => 'O filtro :field recebeu ":value", que não é um número inteiro.',
+            'filter_invalid_number'  => 'O filtro :field recebeu ":value", que não é um número.',
+            'filter_invalid_boolean' => 'O filtro :field recebeu ":value", que não é verdadeiro ou falso (use true, false, 1 ou 0).',
+            'filter_invalid_value'   => 'O filtro :field recebeu ":value", que não serve para o tipo da coluna.',
+            'filters_invalid_value'  => 'Um dos filtros recebeu um valor que não serve para o tipo da coluna.',
+        ][$key] ?? 'Um dos filtros recebeu um valor que não serve para o tipo da coluna.';
+
+        return strtr($fallback, [':field' => $field, ':value' => $text]);
     }
 
     /** Aplica um único operador de filtro. */

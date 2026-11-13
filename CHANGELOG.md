@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.310.1] — 2026-11-13
+
+### Correções
+
+- **API REST:** um filtro com valor que não serve para o tipo da coluna, como a data `2026-09-31` (setembro tem 30 dias) ou um texto num campo numérico, fazia a API responder `500 Server Error` no PostgreSQL. Agora a resposta é `422`, com o nome do filtro e o motivo, por exemplo: `O filtro data_fim recebeu "2026-09-31", que não é uma data válida.` Os filtros com valores válidos funcionam como antes.
+
 ## [5.310.0] — 2026-11-13
 
 ### Novidades
