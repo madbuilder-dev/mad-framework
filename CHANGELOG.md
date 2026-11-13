@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.308.3] — 2026-11-13
+
+### Correções
+
+- **Central de Comando:** a aba **Agendamentos** mostrava só `mad:webhook:tick` e `mad:request-log:purge` e escondia as tarefas agendadas do projeto (as do Agendador do MadBuilder, como "Exportar clientes pendentes") e as do framework. Agora lista todas, com **Executar agora** e pausar/retomar em cada uma. As tarefas rodavam normalmente pelo cron: só não apareciam na lista. A frequência também aparece em texto para qualquer intervalo (ex.: "A cada 10 min").
+
 ## [5.308.2] — 2026-11-13
 
 ### Correções
