@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.308.4] — 2026-11-13
+
+### Correções
+
+- **Campos:** o campo de data com **Mostrar dia da semana** escondia o dia quando a tela abria com o cursor nele, como no formulário em janela com a data como primeiro campo: o dia só aparecia depois do Tab. Agora o dia fica à vista até você clicar ou digitar no campo.
+
 ## [5.308.3] — 2026-11-13
 
 ### Correções

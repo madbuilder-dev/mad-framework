@@ -16076,6 +16076,12 @@ document.addEventListener('alpine:init', () => {
                 || _drpParseWithMask(s, _db)
                 || _drpParseISO(s);
         };
+        // Tecla que não edita o campo: atravessar (Tab), modificador sozinho,
+        // Esc e Enter deixam o dia da semana à vista. Qualquer outra (dígito,
+        // apagar, setas, Home/End, Ctrl+V…) é o usuário mexendo na data.
+        var _drpKeepsWeekday = function(e) {
+            return ['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'NumLock', 'Escape', 'Enter'].indexOf(e && e.key) !== -1;
+        };
         return {
             isOpen: false,
             selectedDate: null,
@@ -16096,7 +16102,10 @@ document.addEventListener('alpine:init', () => {
             // Dia da semana fora da edição (fórum #293): 7 nomes (0 = domingo)
             // vindos do servidor no idioma do app; null = recurso desligado.
             _weekdays: Array.isArray(cfg.weekdays) && cfg.weekdays.length === 7 ? cfg.weekdays : null,
-            focused: false,
+            // Usuário mexendo no campo (clique, tecla de edição, colar): só aí
+            // o dia some. Foco sozinho não conta (fórum #293 r2): a janela que
+            // abre com o cursor na data escondia o dia até o Tab.
+            editing: false,
             _shown: '',
 
             init: function() {
@@ -16135,11 +16144,22 @@ document.addEventListener('alpine:init', () => {
                         // Texto da tela depois de cada escrita (a máscara do
                         // `_onInput` já rodou: este ouvinte vem depois dele).
                         self._shown = inp.value;
-                        self.focused = document.activeElement === inp;
                         inp.addEventListener('input',  function() { self._shown = inp.value; });
                         inp.addEventListener('change', function() { self._shown = inp.value; });
-                        inp.addEventListener('focus',  function() { self.focused = true; });
-                        inp.addEventListener('blur',   function() { self._shown = inp.value; self.focused = false; });
+                        // O dia some quando o USUÁRIO mexe no campo: clique ou
+                        // toque, tecla de edição ou de cursor, colar/soltar texto
+                        // (`beforeinput` só vem de quem digita, nunca de quem
+                        // escreve o valor de fora). O foco da abertura da tela
+                        // (`autofocus`, `focus()`) e o Tab que só passa pelo
+                        // campo deixam o dia à vista.
+                        var startEdit = function() { self.editing = true; };
+                        inp.addEventListener('pointerdown', startEdit);
+                        inp.addEventListener('mousedown',   startEdit);
+                        inp.addEventListener('beforeinput', startEdit);
+                        inp.addEventListener('keydown', function(e) {
+                            if (!_drpKeepsWeekday(e)) self.editing = true;
+                        });
+                        inp.addEventListener('blur',   function() { self._shown = inp.value; self.editing = false; });
                         // Tema claro/escuro trocado com a tela aberta: a camada
                         // copia de novo a cor do input.
                         if (window.MutationObserver && document.documentElement) {
@@ -16155,7 +16175,7 @@ document.addEventListener('alpine:init', () => {
             // pela metade, data inválida ou valor trocado por fora sem evento
             // deixam o campo como sempre.
             get weekdayText() {
-                if (!this._weekdays || this.focused || !this.selectedDate) return '';
+                if (!this._weekdays || this.editing || !this.selectedDate) return '';
                 var shown = _drpFormatWithMask(this.selectedDate, this._displayMask);
                 if (this._shown !== shown) return '';
                 return this._weekdays[this.selectedDate.getDay()] + ', ' + shown;
