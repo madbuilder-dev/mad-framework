@@ -9305,6 +9305,13 @@ html.mad-dg-cf-lock body { overflow: hidden; }
    - short (nome, setor): logo abaixo;
    - o resto do texto cede, sem partir abaixo de 5em. */
 .mad-dg-wrap[data-truncate="on"] .mad-table th.mad-dg-col-grow { width: var(--mad-dg-grow-w, 40%); }
+/* Sem coluna de largura automática na tela (`th.mad-dg-col-flex`): só a do
+   título, ou as outras com `width`, ou as outras escondidas pelo seletor de
+   colunas. Com o teto de 40% a tabela, que ocupa 100%, dava a sobra à coluna
+   de largura fixa — a de ações ficava com metade da tela (fórum #310). Aí a
+   do título fica com a sobra toda. Vale também para o tema ERP (notch-erp.css
+   usa o mesmo teto); a especificidade passa a das duas regras do teto. */
+.mad-dg-wrap .mad-table:not(:has(> thead > tr > th.mad-dg-col-flex:not(.mad-dg-col-hidden))) > thead > tr > th.mad-dg-col-grow { width: auto; }
 .mad-dg-wrap[data-truncate="on"] td.mad-dg-cell-token .mad-dg-text:not([data-lines]) {
   display: block;
   white-space: nowrap;

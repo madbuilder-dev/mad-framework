@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.310.2] — 2026-11-13
+
+### Correções
+
+- **Listagem:** no layout ERP, numa listagem com uma coluna só ao lado das ações (as outras ocultas), a coluna de ações ocupava metade da tabela e a de dados começava no meio da tela. Agora as ações ficam estreitas e a coluna de dados usa o resto da largura. O mesmo valia quando o seletor de colunas escondia as outras.
+
 ## [5.310.1] — 2026-11-13
 
 ### Correções

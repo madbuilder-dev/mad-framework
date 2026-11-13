@@ -723,7 +723,11 @@
                             default        => 'left',
                         };
                     @endphp
-                    <th class="mad-dg-th mad-dg-th-align-{{ $thAlign }}{{ $col->isNumeric() && !$col->alignSet ? ' mad-dg-th-num' : '' }}{{ $col->shape === 'grow' ? ' mad-dg-col-grow' : '' }}{{ $isActive ? ' mad-dg-th-filtered' : '' }}{{ $isSorted ? ' mad-dg-th-sorted' : '' }}"
+                    {{-- mad-dg-col-flex: coluna de largura automática (sem width e não
+                         é a do título), a que fica com a sobra da tabela. Sem
+                         nenhuma na tela, a do título perde o teto de 40% no CSS
+                         — senão a sobra ia para a coluna de ações (fórum #310). --}}
+                    <th class="mad-dg-th mad-dg-th-align-{{ $thAlign }}{{ $col->isNumeric() && !$col->alignSet ? ' mad-dg-th-num' : '' }}{{ $col->shape === 'grow' ? ' mad-dg-col-grow' : ($_thW === '' ? ' mad-dg-col-flex' : '') }}{{ $isActive ? ' mad-dg-th-filtered' : '' }}{{ $isSorted ? ' mad-dg-th-sorted' : '' }}"
                         :class="{ 'mad-dg-col-hidden': isColHidden('{{ $col->colKey() }}') }"
                         style="{{ $thStyle }}text-align:{{ $col->alignCss() }};{{ $_growN > 1 && $col->shape === 'grow' ? '--mad-dg-grow-w:' . round(40 / $_growN, 2) . '%;' : '' }}">
                         <div class="mad-dg-th-content">
