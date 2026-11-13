@@ -414,7 +414,9 @@ class FieldListColumn
     public static function compileFormula(string $expr, bool $mestre = false): string
     {
         // Se não contém {campo}, é JS raw — retorna direto
-        $token = $mestre ? '/\{@?[a-zA-Z_]\w*\}/' : '/\{[a-zA-Z_]\w*\}/';
+        // `{@produto->estoque}`: campo do mestre ligado por relacionamento (o nome dele no
+        // form é a cadeia com `->`, como no runtime de um campo com id-ref) — fórum #291 r3.
+        $token = $mestre ? '/\{@?[a-zA-Z_]\w*(?:->\w+)*\}/' : '/\{[a-zA-Z_]\w*\}/';
         if (!preg_match($token, $expr)) {
             return $expr;
         }
@@ -425,7 +427,7 @@ class FieldListColumn
         // Só no Detail Form ($mestre): a linha lê o valor do mestre no estado
         // reativo `master` do madFieldList, que o recálculo observa.
         if ($mestre) {
-            $js = preg_replace_callback('/\{@([a-zA-Z_]\w*)\}/', function ($m) {
+            $js = preg_replace_callback('/\{@([a-zA-Z_]\w*(?:->\w+)*)\}/', function ($m) {
                 return "parseFloat(master['" . $m[1] . "']||0)";
             }, $js);
         }

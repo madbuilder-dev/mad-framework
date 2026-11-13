@@ -4014,7 +4014,8 @@ var _madCompute = (function () {
         var js = String(expr == null ? '' : expr);
         if (js.trim() === '') return '';
         // {@campo}: campo do formulário PRINCIPAL, mesmo dentro do sub-form (fórum #291).
-        js = js.replace(/\{@(\w+)\}/g, function (_, n) { return '$v.master(' + JSON.stringify(n) + ')'; });
+        // `{@produto->estoque}`: campo do mestre ligado por relacionamento (fórum #291 r3).
+        js = js.replace(/\{@(\w+(?:->\w+)*)\}/g, function (_, n) { return '$v.master(' + JSON.stringify(n) + ')'; });
         js = js.replace(/\bdiscount\s*\((.+),\s*\{(\w+)\}\s*,\s*\{(\w+)\}\s*\)/i, function (_, sub, d, t) {
             return '$v.discount(' + sub + ', {' + d + '}, $v.text(' + JSON.stringify(t) + '))';
         });

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.305.0] — 2026-11-12
+
+### Correções
+
+- **Formulário com detalhe:** a fórmula do sub-form e da coluna calculada lê também os campos do formulário principal ligados por relacionamento, como `{@produto->estoque}`. Antes esses campos não apareciam no editor e a fórmula não calculava. Precisa do Mad Framework 5.305.0 ou mais novo.
+
 ## [5.304.0] — 2026-11-12
 
 ### Novidades
