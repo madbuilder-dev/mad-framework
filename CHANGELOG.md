@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.311.0] — 2026-11-13
+
+### Novidades
+
+- **Tema:** o tema pode mudar a fonte (`--mad-input-font`) e o peso (`--mad-input-weight`) do texto digitado nos campos: texto, número, moeda, data, hora, combo, seleção múltipla, período e textarea. Sem essas opções no tema, os campos ficam exatamente como antes.
+
 ## [5.310.2] — 2026-11-13
 
 ### Correções

@@ -1385,9 +1385,12 @@ a.mad-btn.mad-when-disabled {
   border-radius: var(--mad-radius);
   padding: 8px 12px;
   font-size: var(--mad-text-sm);
-  font-family: var(--mad-font);
+  /* Fonte do texto digitado (fórum #309): o tema pode trocar só a dos campos
+     (--mad-input-font). Sem ela, a fonte do app, como sempre. */
+  font-family: var(--mad-input-font, var(--mad-font));
   /* --mad-input-*: destaque do campo (input-bg / input-color / input-weight /
      input-italic), emitido no wrapper .mad-field por CssUnits::inputStyle().
+     O tema também pode declarar --mad-input-weight para todos os campos.
      Sem a prop, vale o fallback — o visual de sempre. */
   font-weight: var(--mad-input-weight, normal);
   font-style: var(--mad-input-style, normal);
@@ -1490,7 +1493,7 @@ textarea.mad-textarea:read-only:focus {
      a declaração vira `unset` e o controle HERDA como sempre herdou (é div). */
   font-weight: var(--mad-input-weight);
   font-style: var(--mad-input-style);
-  font-family: var(--mad-font);
+  font-family: var(--mad-input-font, var(--mad-font));
   font-size: var(--mad-text-sm);
   line-height: 1.5;
   box-sizing: border-box;
@@ -4990,10 +4993,11 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border: 1px solid var(--mad-border-strong);
   border-radius: var(--mad-radius);
   background: var(--mad-input-bg, var(--mad-bg));
-  /* Sem fallback: sem input-color/-weight/-italic vira `unset` e herda, como antes. */
+  /* Sem fallback: sem input-color/-weight/-italic/-font vira `unset` e herda, como antes. */
   color: var(--mad-input-color);
   font-weight: var(--mad-input-weight);
   font-style: var(--mad-input-style);
+  font-family: var(--mad-input-font);
   cursor: pointer;
   transition: border-color var(--mad-t), box-shadow var(--mad-t);
   position: relative;
