@@ -217,6 +217,7 @@ class MadServiceProvider extends ServiceProvider
         $this->bootTrace();
         $this->bootSqlLog();
         $this->bootSchedulePause();
+        $this->bootScheduleRunLog();
         $this->bootWebhooks();
         $this->bootRequestLogRetention();
         $this->bootWorkflowExternal();
@@ -594,6 +595,27 @@ class MadServiceProvider extends ServiceProvider
         }
 
         return true;
+    }
+
+    /**
+     * Última e Status das tarefas do projeto na aba Agendamentos (fórum #300):
+     * cada execução vai para `mad_sys_schedule_log`. Mesmo gancho do pause —
+     * no CommandStarting dos comandos que rodam tarefa o Schedule já está
+     * completo — e vale para o cron, o "Executar agendador" e o "Executar
+     * agora". Detalhes em {@see \Mad\Service\ScheduleRunLog}.
+     */
+    private function bootScheduleRunLog(): void
+    {
+        Event::listen(CommandStarting::class, function ($event) {
+            if (! in_array($event->command, \Mad\Service\ScheduleRunLog::COMMANDS, true)) {
+                return;
+            }
+            try {
+                \Mad\Service\ScheduleRunLog::decorate($this->app->make(Schedule::class));
+            } catch (\Throwable $e) {
+                // sem Schedule → nada a registrar
+            }
+        });
     }
 
     /**
@@ -997,8 +1019,8 @@ class MadServiceProvider extends ServiceProvider
         Event::listen(JobProcessed::class, fn () => \MadTrace::endJob('ok'));
         Event::listen(JobExceptionOccurred::class, fn (JobExceptionOccurred $e) => \MadTrace::endJob('failed', $e->exception));
 
-        // Scheduler — trace por task (tipo job, queue=scheduler). Sem tabela
-        // mad_sys_schedule_log: decisão de escopo, paridade fica pro Command Center.
+        // Scheduler — trace por task (tipo job, queue=scheduler). O registro em
+        // mad_sys_schedule_log (Última/Status da Central) é do ScheduleRunLog.
         Event::listen(ScheduledTaskStarting::class, function (ScheduledTaskStarting $e) {
             if (! \MadTrace::performanceEnabled()) {
                 return;

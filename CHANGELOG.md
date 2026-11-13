@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.309.1] — 2026-11-13
+
+### Correções
+
+- **Central de Comando:** na aba **Agendamentos**, as colunas **Última** e **Status** das tarefas agendadas do projeto ficavam sempre em "Nunca". Agora cada execução fica registrada, pelo cron, pelo **Executar agora** e pelo **Executar agendador**: a aba mostra quando a tarefa rodou, quanto tempo levou e se deu OK ou falhou, com a mensagem do erro. Tarefa pausada continua sem rodar, e as tarefas do próprio framework não mudam. O registro guarda os últimos 30 dias.
+
 ## [5.309.0] — 2026-11-13
 
 ### Melhorias
