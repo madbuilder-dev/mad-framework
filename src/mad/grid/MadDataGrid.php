@@ -1304,6 +1304,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($preset === 'export') {
             return $this->_bulkExport($ids, (string) ($cfg['format'] ?? 'xlsx'), $hiddenColumns);
         }
+        if ($preset === 'duplicate' && !empty($cfg['openForm'])) {
+            return $this->_bulkCopyToForm($cfg, $ids, $model);
+        }
 
         $plan = $this->_bulkPlan($cfg, $model);
         if (is_string($plan)) {
@@ -1686,19 +1689,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
             try {
                 $saved = $record->getConnection()->transaction(function () use ($record, $plan, $suffix): bool {
-                    $copy     = $record->replicate();
-                    $defaults = (new ($record::class)())->getAttributes();
-                    foreach ($plan['reset'] as $col) {
-                        if (array_key_exists($col, $defaults)) {
-                            $copy->setAttribute($col, $defaults[$col]);
-                        } else {
-                            $copy->offsetUnset($col);
-                        }
-                    }
-                    $mark = (string) $plan['mark'];
-                    if ($mark !== '' && $copy->getAttribute($mark) !== null && (string) $copy->getAttribute($mark) !== '') {
-                        $copy->setAttribute($mark, static::_bulkWithSuffix((string) $copy->getAttribute($mark), $suffix, $plan['markMax']));
-                    }
+                    $copy = static::_bulkCopyOf($record, $plan, $suffix);
                     if ($copy->save() === false) {
                         return false;   // `saving`/`creating` do Model recusou
                     }
@@ -1727,6 +1718,119 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return ['done' => $done, 'fail' => $fail, 'along' => []];
+    }
+
+    /**
+     * A cópia de `$record`, sem gravar: `replicate()` (sai a chave), `reset`
+     * de volta ao padrão do Model (`$attributes`) ou, sem ele, fora do
+     * INSERT, e `mark` com o sufixo " (cópia)" cabendo na coluna. A mesma
+     * regra para o lote (que grava) e para o formulário (que só mostra).
+     *
+     * @param array{mark:string, markMax:?int, reset:list<string>, with:list<string>} $plan
+     */
+    protected static function _bulkCopyOf(\Illuminate\Database\Eloquent\Model $record, array $plan, string $suffix): \Illuminate\Database\Eloquent\Model
+    {
+        $copy     = $record->replicate();
+        $defaults = (new ($record::class)())->getAttributes();
+        foreach ($plan['reset'] as $col) {
+            if (array_key_exists($col, $defaults)) {
+                $copy->setAttribute($col, $defaults[$col]);
+            } else {
+                $copy->offsetUnset($col);
+            }
+        }
+        $mark = (string) $plan['mark'];
+        if ($mark !== '' && $copy->getAttribute($mark) !== null && (string) $copy->getAttribute($mark) !== '') {
+            $copy->setAttribute($mark, static::_bulkWithSuffix((string) $copy->getAttribute($mark), $suffix, $plan['markMax']));
+        }
+
+        return $copy;
+    }
+
+    /**
+     * preset="duplicate" com `open-form` (fórum #303): em vez de gravar, abre
+     * o formulário de cadastro com a cópia preenchida — `mark`/`reset` valem,
+     * a chave não vai, e nada grava até o Salvar (Cancelar descarta).
+     *
+     * Um registro por vez: com mais de um marcado, avisa e não abre nada (o
+     * formulário mostra um registro). A permissão já foi conferida em
+     * {@see onBulkRun()} — a de Incluir —, e abrir o formulário pede a dele.
+     * O registro passa pela consulta da listagem (escopos, unidade/tenant),
+     * como no lote; a seleção não muda.
+     *
+     * @param list<string>|array<int|string, string> $ids
+     */
+    protected function _bulkCopyToForm(array $cfg, array $ids, string $model): \Mad\Http\MadResponse
+    {
+        $resp = new \Mad\Http\MadResponse();
+        $this->skipFullRender();
+
+        $ids = array_values(array_map('strval', $ids));
+        if (count($ids) !== 1) {
+            return $resp->toast(mad_t('mad.grid.copy_form_one'), 'warning');
+        }
+
+        $form = $this->_bulkCopyFormClass($cfg);
+        if ($form === '') {
+            \Illuminate\Support\Facades\Log::warning(
+                'MadDataGrid: duplicar com open-form sem formulário — use form="XForm" ou um <mad-nav navigate="XForm::onEdit({id})"> na linha (' . static::class . ').'
+            );
+
+            return $resp->toast(mad_t('mad.grid.copy_form_missing'), 'warning');
+        }
+        try {
+            $nav = \Mad\Security\ActionGuard::decideNav($form, 'show');
+            if (($nav['mode'] ?? 'allow') !== 'allow') {
+                return $resp->toast((string) ($nav['title'] ?? '') !== '' ? (string) $nav['title'] : __('grid.bulk_unavailable'), 'warning');
+            }
+        } catch (\Throwable $e) {
+            // sem sessão de permissões: liberado, como as ações de linha
+        }
+
+        $plan = $this->_bulkPlan($cfg, $model);
+        if (is_string($plan)) {
+            return $resp->toast($plan, 'warning');
+        }
+
+        $record = $this->_bulkRecords($ids)[$ids[0]] ?? null;
+        if ($record === null) {
+            return $resp->toast(mad_t('mad.grid.copy_form_gone'), 'warning');
+        }
+
+        $copy  = static::_bulkCopyOf($record, $plan, __('grid.bulk_copy_suffix'));
+        $token = \Mad\Form\MadFormCopy::stash($form, $copy);
+        $open  = \Mad\Http\MadResponse::open($form, [\Mad\Form\MadFormCopy::PARAM => $token], 'show');
+        $resp->ops = array_merge($resp->ops, $open->ops);
+
+        return $resp;
+    }
+
+    /**
+     * O formulário que recebe a cópia: o `form=` da ação ou, sem ele, o do
+     * Editar da linha (`<mad-nav navigate="XForm::onEdit({id})">`) — o mesmo
+     * que a listagem gerada usa. '' quando não há (ou a classe não é tela).
+     */
+    protected function _bulkCopyFormClass(array $cfg): string
+    {
+        $class = ltrim((string) ($cfg['form'] ?? ''), '\\');
+        if ($class === '') {
+            $config = $this->_bladeGridConfig();
+            if ($config === []) {
+                $cached = session(static::class . '_dg_cfg');
+                $config = is_array($cached) ? $cached : [];
+            }
+            foreach (static::_gridActConfigs($config) as $a) {
+                if (!empty($a['isNav']) && ($a['navMethod'] ?? '') === 'onEdit' && (string) ($a['navClass'] ?? '') !== '') {
+                    $class = ltrim((string) $a['navClass'], '\\');
+                    break;
+                }
+            }
+        }
+        if ($class === '' || !class_exists($class) || !is_subclass_of($class, \Mad\Component\MadComponent::class)) {
+            return '';
+        }
+
+        return $class;
     }
 
     /**
@@ -3130,7 +3234,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             default     => '',
         };
 
-        return [
+        $out = [
             'label'        => (string) ($b['label'] ?? ''),
             'icon'         => (string) ($b['icon'] ?? $icon),
             'variant'      => (string) ($b['variant'] ?? ($preset === 'delete' ? 'danger' : 'primary')),
@@ -3151,6 +3255,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'routine'      => $preset === 'routine' ? $slug : '',
             'mode'         => $preset === 'routine' ? $mode : '',
         ];
+        // `open-form` (fórum #303): só o duplicate, e só quando ligado — sem
+        // ele a config fica como sempre foi, chave por chave.
+        if ($preset === 'duplicate' && !empty($b['openForm'])) {
+            $form = ltrim(trim((string) ($b['form'] ?? '')), '\\');
+            $out['openForm'] = true;
+            $out['form']     = preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $form) === 1 ? $form : '';
+        }
+
+        return $out;
     }
 
     /** Campo do diálogo do `ask` (vocabulário do `<mad-custom-filter>`). */

@@ -421,6 +421,12 @@ return [
             'drag_row'        => 'Arrastre para cambiar el orden',
             'reorder_failed'  => 'El nuevo orden no fue guardado. Actualice la pantalla e inténtelo de nuevo.',
             'switch_dblclick' => 'Doble clic para activar o desactivar.',
+            // Duplicar selecionados com open-form (fórum #303).
+            'copy_form_one' => 'Marque un solo registro: la copia se abre en el formulario para que la revise antes de guardar.',
+            'copy_form_missing' => 'Este listado no tiene formulario de registro para abrir la copia.',
+            'copy_form_gone' => 'No se encontró el registro marcado.',
+            'copy_form_expired' => 'La copia ya no está disponible. Marque el registro y duplíquelo de nuevo.',
+            'copy_form_busy' => 'Esta pantalla ya abrió un registro, por eso la copia no se aplicó.',
         ],
 
         'kanban' => [

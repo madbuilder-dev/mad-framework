@@ -12,6 +12,11 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.310.0] — 2026-11-13
+
+### Novidades
+
+- **Ações em lote:** `<mad-bulk-action preset="duplicate" open-form>` abre a cópia no formulário de cadastro, já preenchida (campos do `reset` vazios, " (cópia)" no campo do `mark`), e só grava quando você clica em Salvar; Cancelar descarta. Vale com um registro marcado e usa o formulário do Editar da linha, ou o de `form="PedidoForm"`.
 ## [5.309.1] — 2026-11-13
 
 ### Correções

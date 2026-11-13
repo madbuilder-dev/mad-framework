@@ -90,6 +90,11 @@ use Mad\View\MadBlade;
  * │                           itens passam a apontar para a cópia)              │
  * │                           Coluna única fora do `reset` que repete = aquele  │
  * │                           registro falha ("valor que não pode repetir").    │
+ * │    open-form              Abre a cópia no formulário de cadastro, já        │
+ * │                           preenchida (mark/reset valem, sem a chave); nada  │
+ * │                           grava até o Salvar. Exige 1 marcado. Os itens do  │
+ * │                           with= não vão. Formulário = o do Editar da linha  │
+ * │    form="PedidoForm"      (`::onEdit`) ou este.                             │
  * │  preset="routine"         Roda a rotina do projeto (routines.json, com      │
  * │    routine="slug"         botão) em CADA marcado. A origem da rotina tem de │
  * │    mode="redo"            ser o model da listagem. redo (padrão) | launch | │
@@ -2237,6 +2242,27 @@ class MadGridCompiler
             if ($list !== []) {
                 $c[] = static::kv($attr, '[' . implode(', ', array_map(fn ($v) => static::qs($v), $list)) . ']');
             }
+        }
+
+        // `open-form` (fórum #303): a cópia abre no formulário de cadastro,
+        // preenchida, e só grava no Salvar. `form=` escolhe o formulário; sem
+        // ele vale o do Editar da linha (`<mad-nav navigate="XForm::onEdit">`).
+        // Sem o atributo, a config sai como antes (nenhuma chave nova).
+        if (static::has($a, 'open-form') && !in_array(strtolower(static::str($a, 'open-form')), ['false', '0'], true)) {
+            $c[] = static::kv('openForm', 'true');
+            $form = trim(static::str($a, 'form'));
+            if ($form !== '') {
+                if (preg_match('/^\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $form) === 1) {
+                    $c[] = static::kv('form', static::qs(ltrim($form, '\\')));
+                } else {
+                    static::$_actionNotes[] = '<mad-bulk-action preset="duplicate"> form="' . $form . '" não é nome de tela — vale o formulário do Editar da linha.';
+                }
+            }
+            if (static::bulkIdentList($a, 'with', 'relação') !== []) {
+                static::$_actionNotes[] = '<mad-bulk-action preset="duplicate" open-form> abre só o registro no formulário: os itens de with= não vão na cópia.';
+            }
+        } elseif (static::has($a, 'form')) {
+            static::$_actionNotes[] = '<mad-bulk-action preset="duplicate"> form= só vale com open-form — ignorado.';
         }
 
         return $c;

@@ -301,6 +301,12 @@ return [
             // <mad-grid reorder>: alça de arrastar e falha ao gravar a ordem (onReorder).
             'drag_row'        => 'Arraste para mudar a ordem',
             'reorder_failed'  => 'A nova ordem não foi guardada. Atualize o ecrã e tente de novo.',
+            // Duplicar selecionados com open-form (fórum #303).
+            'copy_form_one' => 'Marque só um registo: a cópia abre no formulário para conferir antes de gravar.',
+            'copy_form_missing' => 'Esta listagem não tem formulário de registo para abrir a cópia.',
+            'copy_form_gone' => 'O registo marcado não foi encontrado.',
+            'copy_form_expired' => 'A cópia já não está disponível. Marque o registo e duplique de novo.',
+            'copy_form_busy' => 'Este ecrã já abriu um registo, por isso a cópia não foi aplicada.',
         ],
 
         'heatmap' => [

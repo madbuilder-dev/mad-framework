@@ -428,6 +428,12 @@ return [
             'drag_row'        => 'Drag to change the order',
             'reorder_failed'  => 'The new order was not saved. Refresh the screen and try again.',
             'switch_dblclick' => 'Double-click to switch on or off.',
+            // Duplicar selecionados com open-form (fórum #303).
+            'copy_form_one' => 'Select a single record: the copy opens in the form for you to review before saving.',
+            'copy_form_missing' => 'This list has no form to open the copy in.',
+            'copy_form_gone' => 'The selected record was not found.',
+            'copy_form_expired' => 'The copy is no longer available. Select the record and duplicate it again.',
+            'copy_form_busy' => 'This screen already opened a record, so the copy was not applied.',
         ],
 
         'kanban' => [

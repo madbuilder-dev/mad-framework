@@ -435,6 +435,11 @@ abstract class MadComponent
                 $this->boot();
                 $this->_resolveAndCall('mount', $cleanParams);
                 $this->_mounted = true;
+                // "Duplicar selecionados" com open-form (fórum #303): a cópia
+                // chega pronta e a tela abre como cadastro novo, preenchido.
+                if (is_string($cleanParams[\Mad\Form\MadFormCopy::PARAM] ?? null)) {
+                    $this->_applyFormCopy($cleanParams[\Mad\Form\MadFormCopy::PARAM]);
+                }
             }
 
             $method = $cleanParams['method'] ?? null;
@@ -660,6 +665,33 @@ abstract class MadComponent
      *
      * @param array<string, mixed> $params
      */
+    /**
+     * Preenche o formulário da tela com a cópia guardada pela listagem
+     * ({@see \Mad\Form\MadFormCopy}): o registro novo, sem chave, com os
+     * campos que zeram vazios e o marcado com " (cópia)". Nada é gravado
+     * aqui — quem grava é o Salvar, como num cadastro novo.
+     *
+     * Não aplica (e avisa) quando a cópia venceu, quando a tela não tem
+     * formulário (`$form`) ou quando o `mount()` já abriu um registro
+     * (`$recordId`): o Salvar gravaria por cima dele.
+     */
+    private function _applyFormCopy(string $token): void
+    {
+        $copy = \Mad\Form\MadFormCopy::pull($token, static::class);
+        $form = isset($this->form) && $this->form instanceof MadForm ? $this->form : null;
+        if ($copy === null || $form === null) {
+            (new MadResponse())->alert(mad_t('mad.grid.copy_form_expired'), 'warning')->emit();
+
+            return;
+        }
+        if (isset($this->recordId) && $this->recordId !== '') {
+            (new MadResponse())->alert(mad_t('mad.grid.copy_form_busy'), 'warning')->emit();
+
+            return;
+        }
+        $form->fill($copy);
+    }
+
     private function _captureComboOrigin(array $params): void
     {
         if (empty($params['_mad_origin'])) {

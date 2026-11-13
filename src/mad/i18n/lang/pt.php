@@ -421,6 +421,12 @@ return [
             'drag_row'        => 'Arraste para mudar a ordem',
             'reorder_failed'  => 'A nova ordem não foi gravada. Atualize a tela e tente de novo.',
             'switch_dblclick' => 'Duplo clique para ligar ou desligar.',
+            // Duplicar selecionados com open-form (fórum #303).
+            'copy_form_one' => 'Marque um registro só: a cópia abre no formulário para você conferir antes de gravar.',
+            'copy_form_missing' => 'Esta listagem não tem formulário de cadastro para abrir a cópia.',
+            'copy_form_gone' => 'O registro marcado não foi encontrado.',
+            'copy_form_expired' => 'A cópia não está mais disponível. Marque o registro e duplique de novo.',
+            'copy_form_busy' => 'Esta tela já abriu um registro, então a cópia não foi aplicada.',
         ],
 
         'kanban' => [
