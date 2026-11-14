@@ -124,6 +124,51 @@ final class McpSchemaBuilder
     }
 
     /**
+     * Schema de uma acao custom a partir dos params NORMALIZADOS
+     * ({@see McpCustomTool::normalizeParams()}, sem os injetados): tipo e
+     * descricao de cada um, para o agente saber o que mandar.
+     *
+     * @param list<array{name:string,type:string,canonical:?string,required:bool,description:string}> $params
+     * @return array<string,mixed>
+     */
+    public function customParamsSchema(JsonSchema $schema, array $params): array
+    {
+        $out = [];
+        foreach ($params as $p) {
+            $name = (string) $p['name'];
+            $desc = trim((string) ($p['description'] ?? '')) ?: "Parametro {$name}.";
+
+            $type = match ($p['canonical'] ?? null) {
+                'integer' => $schema->integer(),
+                'number'  => $schema->number(),
+                'boolean' => $schema->boolean(),
+                'json'    => $this->jsonType($schema),
+                default   => $schema->string(),
+            };
+            if (($p['canonical'] ?? null) === 'json') {
+                $desc .= ' (lista ou objeto JSON)';
+            }
+            $type = $type->description($desc);
+            if (! empty($p['required'])) {
+                $type = $type->required();
+            }
+            $out[$name] = $type;
+        }
+
+        return $out;
+    }
+
+    /** Lista OU objeto (union quando o builder suporta; senao lista). */
+    private function jsonType(JsonSchema $schema)
+    {
+        if (method_exists($schema, 'union')) {
+            return $schema->union(['array', 'object']);
+        }
+
+        return $schema->array();
+    }
+
+    /**
      * Type Illuminate de um campo (sem required).
      *
      * @param array<string,mixed> $field

@@ -14,11 +14,12 @@ use Mad\Mcp\McpManifestTool;
 /**
  * McpDataTool — adapta uma tool do manifest MCP para o loop do laravel/ai.
  *
- * Leitura (list/read/query/custom não-confirm): executa in-process via
+ * Leitura (list/read/query/custom `read_only`): executa in-process via
  * McpToolCaller e emite tool_use_start/end; devolve o JSON do resultado ao
  * modelo. Permissão/PII/auditoria acontecem DENTRO da tool do manifest.
  *
- * Escrita (create/update/del ou confirm): NUNCA executa pelo loop. Self-gate:
+ * Escrita (create/update/del, custom que não é `read_only`, ou confirm):
+ * NUNCA executa pelo loop. Self-gate:
  * registra a pendência {tool, args} e emite o bloco `confirm` no SSE — a
  * execução real é determinística, no turno seguinte (confirm:{approved}),
  * no EmbedChatController, com RE-VALIDAÇÃO de permissão. O loop do agente
@@ -87,6 +88,8 @@ final class McpDataTool implements Tool
      */
     private function gateWrite(array $args): string
     {
+        // `confirm` do modelo nao vale nada: so o clique no cartao confirma.
+        unset($args['confirm']);
         $id = $this->confirms->newId();
 
         $fields   = [];

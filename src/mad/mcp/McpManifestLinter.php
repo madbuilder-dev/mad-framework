@@ -53,10 +53,8 @@ final class McpManifestLinter
     /** @param array<string,mixed> $spec */
     private static function hasInjectParam(array $spec): bool
     {
-        foreach ((array) ($spec['params'] ?? []) as $p) {
-            $p    = rtrim((string) $p, '?');
-            $type = strtolower(trim((string) (explode(':', $p, 2)[1] ?? '')));
-            if ($type === 'scope' || $type === 'actor') {
+        foreach (McpCustomTool::normalizeParams((array) ($spec['params'] ?? [])) as $p) {
+            if ($p['inject']) {
                 return true;
             }
         }

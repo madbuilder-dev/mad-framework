@@ -12,6 +12,20 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.312.0] — 2026-11-14
+
+### Novidades
+
+- **Chat IA:** as ações personalizadas do MCP (criar uma venda, baixar um título…) recebem lista e objeto (tipo `json`), número, inteiro e sim/não já convertidos, e o assistente vê o tipo e a descrição de cada parâmetro. Quando a ação recusa por regra de negócio (`throw new \DomainException('Produto inativo.')`), o assistente mostra essa mensagem à pessoa em vez de um erro genérico.
+
+### Correções
+
+- **Chat IA:** uma ação personalizada que grava podia rodar direto, sem o cartão de confirmação. Agora toda ação que não é só de leitura abre o cartão e só grava depois que a pessoa aprova.
+
+### Atenção
+
+- **Chat IA:** uma ação personalizada só roda se estiver na lista liberada do app, que o MadBuilder escreve ao publicar o MCP (`MAD_MCP_CUSTOM_TOOLS`). Em `mcp.config.json` escrito à mão, ponha `Classe::metodo` nessa variável do `.env`.
+
 ## [5.311.3] — 2026-11-14
 
 ### Correções

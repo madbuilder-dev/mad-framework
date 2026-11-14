@@ -335,8 +335,7 @@ PROMPT;
 
             // Marca de escrita pelo spec do manifest (nome público ns__x ↔ canônico ns.x)
             $spec = $manifest?->tool(str_replace('__', '.', (string) $name)) ?? $manifest?->tool((string) $name);
-            $verb = (string) ($spec['verb'] ?? '');
-            if (in_array($verb, ['create', 'update', 'del'], true) || ! empty($spec['confirm'])) {
+            if (is_array($spec) && McpToolCaller::specIsWrite($spec)) {
                 $desc .= ' [ESCRITA — exige confirmacao do usuario]';
             }
 

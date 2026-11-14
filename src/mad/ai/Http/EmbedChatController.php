@@ -511,7 +511,8 @@ final class EmbedChatController
             return;
         }
 
-        $r = $caller->invoke($tool, $args, $sink);
+        // Execucao APROVADA no cartao: unico caminho em que uma escrita roda.
+        $r = $caller->invoke($tool, $args, $sink, confirmed: true);
 
         if ($r['ok']) {
             $sink->confirmResult($id, true);

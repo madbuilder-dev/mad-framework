@@ -4,6 +4,7 @@ namespace Mad\Ai;
 
 use Laravel\Mcp\Request as McpRequest;
 use Laravel\Mcp\Response as McpResponse;
+use Mad\Mcp\McpCustomTool;
 use Mad\Mcp\McpManifest;
 use Mad\Mcp\McpManifestLoader;
 use Mad\Mcp\McpManifestTool;
@@ -90,15 +91,28 @@ final class McpToolCaller
         return $this->specs[$this->key($name)] ?? null;
     }
 
-    /** Tool de escrita? (create/update/del ou custom marcada confirm). */
+    /** Tool de escrita? (create/update/del, acao custom que nao so le, ou confirm). */
     public function isWrite(string $name): bool
     {
         $spec = $this->spec($name);
-        if ($spec === null) {
-            return false;
-        }
+
+        return $spec !== null && self::specIsWrite($spec);
+    }
+
+    /**
+     * Criterio unico de escrita sobre o spec do manifest: CRUD create/update/del;
+     * acao `custom` sem `read_only` (mesmo sem `confirm` — a acao roda codigo do
+     * app, que pode gravar); qualquer tool marcada `confirm`.
+     *
+     * @param array<string, mixed> $spec
+     */
+    public static function specIsWrite(array $spec): bool
+    {
         $verb = (string) ($spec['verb'] ?? '');
         if (in_array($verb, ['create', 'update', 'del'], true)) {
+            return true;
+        }
+        if (strtolower((string) ($spec['kind'] ?? '')) === 'custom' && ! McpCustomTool::specReadOnly($spec)) {
             return true;
         }
 
@@ -114,13 +128,18 @@ final class McpToolCaller
 
     /**
      * Executa a tool in-process e emite tool_use_end (sink null = execucao
-     * silenciosa, fora de stream — ex.: compile/replay de favorito). Para
-     * del_*, injeta confirm=true (o McpCrudTool reexige confirm no request).
+     * silenciosa, fora de stream — ex.: compile/replay de favorito).
+     *
+     * `confirm` NUNCA vem de quem chama: o argumento e descartado sempre (o
+     * modelo podia mandar confirm=true e gravar sem cartao). Escrita so roda com
+     * $confirmed=true — a execucao do turno de aprovacao (resolveConfirm), que
+     * entao injeta confirm=true (McpCrudTool/McpCustomTool reexigem no request).
+     * Escrita sem $confirmed = erro, banco intacto (fail-closed).
      *
      * @param array<string, mixed> $args
      * @return array{result: mixed, ok: bool, ms: int}
      */
-    public function invoke(string $name, array $args, ?SseSink $sink = null): array
+    public function invoke(string $name, array $args, ?SseSink $sink = null, bool $confirmed = false): array
     {
         $t0 = microtime(true);
 
@@ -134,7 +153,15 @@ final class McpToolCaller
             return ['result' => $res, 'ok' => false, 'ms' => $ms];
         }
 
-        if ($this->isDestructive($name)) {
+        unset($args['confirm']);
+        if ($this->isWrite($name)) {
+            if (! $confirmed) {
+                $ms  = (int) round((microtime(true) - $t0) * 1000);
+                $res = ['error' => 'Esta acao grava dados e so roda depois que o usuario confirmar no cartao.'];
+                $sink?->toolUseEnd($name, $args, $ms, $res, false);
+
+                return ['result' => $res, 'ok' => false, 'ms' => $ms];
+            }
             $args['confirm'] = true;
         }
 
