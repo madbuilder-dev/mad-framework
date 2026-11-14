@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.313.3] — 2026-11-14
+
+### Correções
+
+- **Listagens:** às vezes, depois de salvar um registro no formulário aberto pela listagem, a linha dele sumia da lista (ficava em branco) até recarregar a tela. Visto na tela Empresas: salvar uma empresa deixava só a outra na lista. O registro nunca foi apagado; agora a linha volta atualizada.
+
 ## [5.313.2] — 2026-11-14
 
 ### Correções

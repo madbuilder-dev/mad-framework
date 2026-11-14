@@ -11193,6 +11193,38 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return (new \ReflectionClass($gridClass))->getName();
     }
 
+    /**
+     * Config de `<mad-grid self>` quando a sessão não a tem: desenha a listagem
+     * numa instância à parte só para o `_renderInlineGrid()` rodar (ele mesmo
+     * regrava `<grid>_dg_cfg` para o próximo save). Falhou, devolve null e o
+     * chamador segue sem colunas. Só em grid de config inline: a standalone
+     * (`gridConfig`) e a de colunas em PHP não dependem da sessão.
+     */
+    protected static function _recoverInlineConfig(string $gridClass): ?array
+    {
+        try {
+            /** @var MadDataGrid $probe */
+            $probe = new $gridClass();
+            $probe->boot();
+            $probe->mount();
+            ob_start();
+            try {
+                $probe->render();
+            } finally {
+                ob_end_clean();
+            }
+            $cfg = $probe->_inlineConfig;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::info('manageRow: config da listagem fora da sessão e o redesenho falhou', [
+                'grid' => $gridClass, 'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        return is_array($cfg) && $cfg !== [] ? $cfg : null;
+    }
+
     public static function renderSingleRow(string $gridClass, int|string $id): string
     {
         // Classe inexistente aqui = fatal seco no meio de um save que JÁ gravou
@@ -11219,6 +11251,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         // Restaura config inline da sessão (grids com <mad-grid self>)
         $cfg = session($gridClass . '_dg_cfg');
+        if (! $cfg) {
+            // A chave some quando outra requisição da mesma sessão (o
+            // `/broadcasting/auth` do Echo, aberto junto com a tela) lê a sessão
+            // antes do render da listagem e grava depois. Sem ela a <tr> saía
+            // sem células e a linha salva SUMIA da lista (1731, 14/11/2026).
+            $cfg = static::_recoverInlineConfig($gridClass);
+        }
         if ($cfg) {
             $grid->_inlineConfig = $cfg;
             if (!empty($cfg['model']))      $grid->model      = $cfg['model'];
@@ -11234,11 +11273,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (empty($columns)) {
             // Sem colunas a <tr> sai só com a célula de ações: "linha em branco".
             // Acontece quando o cache inline da sessão (<grid>_dg_cfg) não existe
-            // para ESTA classe — ex.: manageRow(id, Outra::class) de um grid que
-            // nunca renderizou nesta sessão, ou sessão trocada/expirada.
-            \Illuminate\Support\Facades\Log::warning('manageRow: grid sem colunas — a linha sairia em branco', [
+            // e nem redesenhar a listagem o recupera — ex.: manageRow(id,
+            // Outra::class) de um grid cujo Blade não abre fora da tela. '' faz
+            // o mad.js MANTER a linha que já está na tela (dado velho até
+            // recarregar), em vez de trocá-la por uma vazia.
+            \Illuminate\Support\Facades\Log::warning('manageRow: grid sem colunas — a linha fica como estava', [
                 'grid' => $gridClass, 'id' => $id, 'inlineCfgInSession' => $cfg !== null && $cfg !== [],
             ]);
+
+            return '';
         }
 
         // Carrega o registro
