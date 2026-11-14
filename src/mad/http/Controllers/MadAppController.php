@@ -191,7 +191,7 @@ class MadAppController
             // Método estático pela rota JSON: a recusa em JSON (fw#413).
             if ($method !== null && (string) $request->input('static') === '1'
                 && method_exists($class, $method) && (new \ReflectionMethod($class, $method))->isStatic()) {
-                return MadForbidden::json();
+                return MadForbidden::json($class);
             }
 
             return MadForbidden::response($request, $class);

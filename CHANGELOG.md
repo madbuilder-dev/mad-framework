@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.313.0] — 2026-11-14
+
+### Novidades
+
+- **Permissões:** novo comando `php artisan mad:explain-access <tela> --user=<login> --unit=<id>` explica, sem gravar nada, por que um usuário abre ou não uma tela: se falta grupo ou perfil, se o módulo está fora da licença da empresa, se o usuário não tem o módulo na unidade, se a licença está inativa ou vencida. Diz também o caminho para resolver. A tela vai pelo nome (`FmMovimentosRpaList`) ou pelo endereço (`/app/FmMovimentosRpaList`).
+- **Teste Online:** quando uma tela dá "Você não tem acesso a esta tela" no Teste Online do MadBuilder, o agente de IA agora sabe o motivo exato e não tenta mais "destravar" mexendo nas permissões ou na licença. No app publicado a recusa continua igual.
+
 ## [5.312.0] — 2026-11-14
 
 ### Novidades

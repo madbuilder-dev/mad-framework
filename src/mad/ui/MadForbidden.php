@@ -40,6 +40,69 @@ class MadForbidden
     private static $explainer = null;
 
     /**
+     * Quem dá o CÓDIGO do motivo da recusa para a ferramenta de diagnóstico —
+     * ver {@see diagnoseUsing()}.
+     *
+     * @var (callable(?string): ?string)|null
+     */
+    private static $diagnoser = null;
+
+    /** Cabeçalho com o código do motivo, para quem diagnostica (nunca para a pessoa). */
+    public const DENY_REASON_HEADER = 'X-Mad-Deny-Reason';
+
+    /**
+     * Registra quem diz o CÓDIGO do motivo da recusa (`module_not_contracted:financ`,
+     * `no_grant`…), que sai no cabeçalho {@see DENY_REASON_HEADER} do 403.
+     *
+     * É para a ferramenta que testa o app (o Teste Online do MadBuilder): o
+     * agente que abre a tela e leva 403 precisa saber se falta o grupo no
+     * perfil ou se o módulo está fora da licença, sem adivinhar e sem gravar no
+     * banco para "destravar". QUEM registra decide quando o código pode sair —
+     * a aplicação só devolve algo no ambiente de teste e com alguém logado; em
+     * produção o diagnosticador devolve `null` e o 403 fica igual.
+     *
+     * O valor é saneado (`[a-z_]+` e, opcional, `:` + código do módulo); o que
+     * não casa é descartado. Estourar ou devolver outra coisa = sem cabeçalho.
+     *
+     * @param  (callable(?string): ?string)|null  $diagnoser  recebe a tela negada (classe)
+     */
+    public static function diagnoseUsing(?callable $diagnoser): void
+    {
+        self::$diagnoser = $diagnoser;
+    }
+
+    /** O código do motivo, saneado, ou `null` (sem diagnosticador, sem tela ou fora do ambiente de teste). */
+    public static function diagnosis(?string $screen = null): ?string
+    {
+        if (self::$diagnoser === null) {
+            return null;
+        }
+        $screen = $screen !== null && trim($screen) !== '' ? trim($screen) : null;
+        try {
+            $raw = (self::$diagnoser)($screen);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (! is_string($raw)) {
+            return null;
+        }
+        $raw = trim($raw);
+
+        return preg_match('/^[a-z_]{2,40}(:[A-Za-z0-9_.-]{1,60})?$/', $raw) === 1 ? $raw : null;
+    }
+
+    /** Põe o código do motivo na resposta 403, quando há. */
+    private static function withDiagnosis(\Symfony\Component\HttpFoundation\Response $response, ?string $screen): \Symfony\Component\HttpFoundation\Response
+    {
+        $code = self::diagnosis($screen);
+        if ($code !== null) {
+            $response->headers->set(self::DENY_REASON_HEADER, $code);
+        }
+
+        return $response;
+    }
+
+    /**
      * Registra quem explica a recusa (uma vez, no boot da aplicação).
      *
      * O pacote só sabe que o acesso foi negado. A APLICAÇÃO pode saber POR QUÊ:
@@ -139,20 +202,20 @@ class MadForbidden
         // Chamada que espera JSON (fetch com Accept: application/json) e não é
         // a navegação da tela (X-Mad-Partial): a recusa em JSON (fw#413).
         if ($request instanceof Request && $request->expectsJson() && !$request->headers->has('X-Mad-Partial')) {
-            return self::json();
+            return self::json($screen);
         }
 
         if (self::wantsShell($request)) {
             $shell = self::shell();
             if ($shell instanceof Response) {
                 // Mesmo corpo do casco, status de recusa.
-                return $shell->setStatusCode(403);
+                return self::withDiagnosis($shell->setStatusCode(403), $screen);
             }
         }
 
-        return new Response(MadErrorPage::forbidden(self::reason($screen)), 403, [
+        return self::withDiagnosis(new Response(MadErrorPage::forbidden(self::reason($screen)), 403, [
             'Content-Type' => 'text/html; charset=utf-8',
-        ]);
+        ]), $screen);
     }
 
     /**
@@ -160,14 +223,17 @@ class MadForbidden
      * pede JSON: `{"ok": false, "erro": "<motivo>"}` — o JavaScript da tela
      * mostra o motivo em vez de "Não foi possível concluir" (fw#413).
      */
-    public static function json(): \Illuminate\Http\JsonResponse
+    public static function json(?string $screen = null): \Illuminate\Http\JsonResponse
     {
-        return new \Illuminate\Http\JsonResponse(
+        $response = new \Illuminate\Http\JsonResponse(
             ['ok' => false, 'erro' => self::message()],
             403,
             ['Cache-Control' => 'no-store, private'],
             JSON_UNESCAPED_UNICODE
         );
+        self::withDiagnosis($response, $screen);
+
+        return $response;
     }
 
     /** Mensagem curta e traduzida para o canal JSON (wire). */
