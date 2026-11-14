@@ -226,7 +226,22 @@ class MadServiceProvider extends ServiceProvider
         // Arquivos das colunas `$madFiles` saem com o registro excluído de verdade (fórum #274).
         \Mad\Database\MadRecordFiles::listen($this->app['events']);
         $this->bootVibePreview();
+        $this->bootApiRequestLog();
         self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));
+    }
+
+    /**
+     * Log de requisições da API REST (tipo `rest`, fórum #313): o grupo `api`
+     * ganha o LogApiRequest. Aqui e não no `bootstrap/app.php`: vale para o
+     * app que só atualizou o framework. O gate (MAD_REQUEST_LOG e o tipo) é
+     * conferido a cada requisição, no terminate.
+     */
+    private function bootApiRequestLog(): void
+    {
+        $router = $this->app->make(\Illuminate\Routing\Router::class);
+        if (! in_array(\Mad\Http\Middleware\LogApiRequest::class, $router->getMiddlewareGroups()['api'] ?? [], true)) {
+            $router->pushMiddlewareToGroup('api', \Mad\Http\Middleware\LogApiRequest::class);
+        }
     }
 
     /**

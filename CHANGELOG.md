@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.311.1] — 2026-11-14
+
+### Correções
+
+- **Log de requisições:** com `rest` em `MAD_REQUEST_LOG_TYPES`, as chamadas à API REST do app (rotas de `routes/api.php`, com token) não apareciam em **Logs › Requisições**. Agora cada chamada gera uma linha, com `REST` e o controller na coluna **Programa** e o login do token. Token, `Authorization`, senha e outros segredos do corpo saem mascarados, como nas telas. Sem `rest` na lista, nada muda.
+
 ## [5.311.0] — 2026-11-13
 
 ### Novidades
