@@ -138,7 +138,58 @@ final class EmbedChatController
                 // Aprovação/cancelamento de escrita pendente: determinístico,
                 // SEM chamar o modelo.
                 if ($confirm !== null) {
-                    self::resolveConfirm($confirm, $confirms, $caller, $sink, $store, $conversationId, $userId, $messages, $transcript, $state['error']);
+                    // Depois da escrita aprovada, o modelo escreve o resumo a
+                    // partir do retorno da acao (numero, total, link...) numa
+                    // chamada SEM tools: nao reexecuta nem relê a tabela.
+                    $summarize = static function (string $prompt, array $history) use (
+                        $manifest, $caller, $sink, $db, $sessionKey,
+                        $usageUserId, $usageTokenId, $usageTokenPrefix, $usageSystemSlug
+                    ): ?string {
+                        try {
+                            (new \Mad\Usage\QuotaService())->assertWithinQuota(
+                                $usageUserId,
+                                array_map('intval', McpCurrentUser::groupIds()),
+                                null,
+                                $usageTokenId,
+                                'embed_chat'
+                            );
+                        } catch (\Mad\Usage\QuotaExceededException) {
+                            return null; // escrita ja feita: resumo deterministico
+                        } catch (\Throwable $e) {
+                            error_log('[mad-usage] quota check failed (fail-open): ' . $e->getMessage());
+                        }
+
+                        $system = SystemPromptAssembler::assemble(
+                            $manifest,
+                            $caller?->allowedTools() ?? [],
+                            (bool) config('mad.ai.widgets_enabled', true),
+                            array_keys($manifest?->forms() ?? []),
+                            self::helpAvailable(),
+                        );
+                        $runner = match (true) {
+                            (bool) config('mad.ai.coding_plan') => new CodingPlanAgentRunner($sink),
+                            self::proxyEnabled()                => CodingPlanAgentRunner::viaProxy($sink),
+                            default                             => new AgentRunner($sink),
+                        };
+                        $result = $runner->run($system, self::toMessages($history), [], $prompt, SystemPromptAssembler::runtimeContext());
+
+                        UsageLog::record($result->usage, [
+                            'userId'      => $usageUserId,
+                            'tokenId'     => $usageTokenId,
+                            'tokenPrefix' => $usageTokenPrefix,
+                            'systemSlug'  => $usageSystemSlug,
+                            'context'     => 'embed_chat',
+                            'provider'    => MadAi::provider(),
+                            'model'       => MadAi::model(),
+                            'requestId'   => $sessionKey,
+                            'status'      => $result->aborted ? 'aborted' : ($result->usage ? 'ok' : 'no_usage'),
+                            'metadata'    => ['aborted' => $result->aborted, 'confirm_summary' => true],
+                        ], $db);
+
+                        return $result->aborted ? null : $result->text;
+                    };
+
+                    self::resolveConfirm($confirm, $confirms, $caller, $sink, $store, $conversationId, $userId, $messages, $transcript, $state['error'], $summarize);
 
                     return;
                 }
@@ -458,6 +509,7 @@ final class EmbedChatController
         array $messages,
         array $transcript,
         bool $storageFailed = false,
+        ?\Closure $summarize = null,
     ): void {
         $saveAll = static function () use (&$messages, &$transcript, $store, $confirms, $conversationId, $userId, $sink): void {
             $items = $sink->transcript();
@@ -497,8 +549,23 @@ final class EmbedChatController
 
         $tool = $pending['tool'];
         // So os campos que o cartao declarou editaveis, no tipo declarado: o
-        // cliente nao injeta argumento novo nem troca o registro alvo.
-        $args = ConfirmCoordinator::applyValues($pending['args'], $pending['editable'] ?? [], $values);
+        // cliente nao injeta argumento novo nem troca o registro alvo. Edicao
+        // que nao entra na escrita (valor invalido, campo que nao e argumento
+        // de topo) RECUSA a escrita: nunca grava o valor velho calado.
+        [$args, $rejected] = ConfirmCoordinator::applyEdits($pending['args'], $pending['editable'] ?? [], $values);
+        if ($rejected !== []) {
+            $text = 'Nao consegui aplicar o que voce mudou em: ' . implode(', ', $rejected)
+                . '. Nada foi gravado. Peca a acao de novo com o valor certo.';
+            error_log('[mad-ai] confirm ' . $tool . ': edicao recusada em ' . implode(', ', $rejected) . ' — escrita nao executada');
+            $sink->confirmResult($id, false, $text);
+            $sink->textDelta($text);
+            $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' NAO executada: edicao do cartao invalida em ' . implode(', ', $rejected) . '.'];
+            $saveAll();
+            $sink->messageEnd();
+            $sink->done();
+
+            return;
+        }
 
         // Re-gate: revalida no piso/matriz sob o McpCurrentUser DESTE request.
         $spec = $caller->spec($tool);
@@ -516,8 +583,30 @@ final class EmbedChatController
 
         if ($r['ok']) {
             $sink->confirmResult($id, true);
-            $sink->textDelta('Acao "' . $tool . '" executada com sucesso.');
-            $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' executada com sucesso.'];
+
+            // O retorno da acao entra no historico (o modelo do proximo turno
+            // sabe numero/total sem reler a tabela) e vira o resumo ao usuario.
+            // Acao custom devolve {ok, result: <retorno do metodo>}: o que
+            // interessa ao usuario e o retorno do metodo.
+            $payload = is_array($r['result']) && array_key_exists('result', $r['result']) && ($r['result']['ok'] ?? null) === true
+                ? $r['result']['result']
+                : $r['result'];
+            $json   = self::resultJson($payload);
+            $record = '[resultado da acao ' . $tool . '] ' . $json;
+            $text   = null;
+            if ($summarize !== null) {
+                try {
+                    $text = $summarize(self::summaryPrompt($tool, $json, (string) ($spec['description'] ?? '')), $messages);
+                } catch (\Throwable $e) {
+                    error_log('[embed-chat] resumo da acao ' . $tool . ' falhou: ' . $e->getMessage());
+                    $text = null;
+                }
+            }
+            if ($text === null || trim($text) === '') {
+                $text = self::fallbackSummary($tool, $payload);
+                $sink->textDelta($text);
+            }
+            $messages[] = ['role' => 'assistant', 'content' => $record . "\n\n" . trim($text)];
         } else {
             $msg = is_array($r['result'])
                 ? (string) ($r['result']['message'] ?? $r['result']['error'] ?? 'Falha desconhecida.')
@@ -530,6 +619,49 @@ final class EmbedChatController
         $saveAll();
         $sink->messageEnd();
         $sink->done();
+    }
+
+    /** Teto do retorno da acao guardado no historico / mandado ao modelo. */
+    private const RESULT_MAX = 4000;
+
+    /** Retorno da acao como JSON compacto (cortado no teto). */
+    private static function resultJson(mixed $result): string
+    {
+        $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        $json = is_string($json) ? $json : 'null';
+
+        return mb_strlen($json) > self::RESULT_MAX ? mb_substr($json, 0, self::RESULT_MAX) . '…' : $json;
+    }
+
+    /** Pedido ao modelo do resumo depois da escrita aprovada. */
+    private static function summaryPrompt(string $tool, string $json, string $description): string
+    {
+        return 'O usuario APROVOU no cartao a acao "' . $tool . '" e ela foi executada com sucesso.'
+            . ($description !== '' ? "\nDescricao da acao: " . $description : '')
+            . "\nRetorno da acao (JSON): " . $json
+            . "\n\nEscreva agora ao usuario, em poucas linhas, o resumo do que foi feito usando SO esse retorno"
+            . ' (numero, total, parcelas, link, o que a descricao da acao pedir). Nao chame ferramentas,'
+            . ' nao consulte os dados de novo e nao peca nova confirmacao.';
+    }
+
+    /** Resumo sem modelo (cota, sem IA, falha): sucesso + campos simples do retorno. */
+    private static function fallbackSummary(string $tool, mixed $result): string
+    {
+        $text = 'Acao "' . $tool . '" executada com sucesso.';
+        if (is_scalar($result) && ! is_bool($result) && (string) $result !== '') {
+            return $text . ' Retorno: ' . mb_substr((string) $result, 0, 300);
+        }
+        if (! is_array($result)) {
+            return $text;
+        }
+        $parts = [];
+        foreach ($result as $k => $v) {
+            if (is_string($k) && (is_scalar($v) || $v === null) && count($parts) < 8) {
+                $parts[] = $k . ': ' . (is_bool($v) ? ($v ? 'sim' : 'nao') : mb_substr((string) $v, 0, 120));
+            }
+        }
+
+        return $parts !== [] ? $text . ' ' . implode(' · ', $parts) : $text;
     }
 
     /** Mensagem amigável de limite atingido a partir do resultado do check(). */

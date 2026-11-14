@@ -586,7 +586,7 @@ final class RenderToolRegistry
 
             'confirm_action' => [
                 'blockType'   => 'confirm',
-                'description' => 'Render a confirmation card for a WRITE/destructive MCP tool. Call this INSTEAD of executing the write; only run the write after the user confirms. Put the real write payload as a JSON string in "args". To let the user correct a value before confirming (quantity, date, note, status), give that field "name" (its key in args) and "input" (text|number|date|select|textarea; select needs "options"). Never make the target record id editable.',
+                'description' => 'Render a confirmation card for a WRITE/destructive MCP tool. Call this INSTEAD of executing the write; only run the write after the user confirms. Put the real write payload as a JSON string in "args". To let the user correct a value before confirming (quantity, date, note, status), give that field "name" (its TOP-LEVEL key in args, holding a single value) and "input" (text|number|date|select|textarea; select needs "options"). A value nested inside a list/object arg (e.g. the quantity of one item inside "itens") can NOT be edited on the card: show it as a read-only field; if the user wants to change it, call confirm_action again with the new payload. Never make the target record id editable.',
                 'schema'      => [
                     'type'       => 'object',
                     'properties' => [

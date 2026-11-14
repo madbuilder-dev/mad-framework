@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.313.2] — 2026-11-14
+
+### Correções
+
+- **Chat IA:** no cartão de confirmação, mudar um valor que fica dentro de uma lista (a quantidade de um item da venda, por exemplo) não mudava nada: a pessoa aprovava e a ação gravava o valor antigo. Agora o cartão só deixa editar o que a ação realmente recebe; o resto aparece só para leitura. E se uma edição não puder ser aplicada, nada é gravado e o chat avisa.
+- **Chat IA:** depois de aprovar uma ação no cartão, a resposta era só "Ação executada com sucesso". Agora o assistente conta o que foi feito com o retorno da ação (número do pedido, total, parcelas, link) e lembra desse resultado nas perguntas seguintes, sem consultar de novo.
+
 ## [5.313.1] — 2026-11-14
 
 ### Correções

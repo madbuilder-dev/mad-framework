@@ -285,8 +285,12 @@ final class CodingPlanAgentRunner
 
             if ($uses === []) {
                 // Turno sem ação — decide entre fim legítimo e falha nudgeável.
+                // Sem tools (resumo depois da escrita aprovada) não há o que
+                // cobrar: o texto é a resposta.
                 $nudge = null;
-                if ($leaked && ! $leakNudged) {
+                if ($defs === []) {
+                    // fim legítimo
+                } elseif ($leaked && ! $leakNudged) {
                     $leakNudged = true;
                     $nudge = self::NUDGE_LEAK;
                 } elseif ($dropped > 0 && $droppedRetries < self::MAX_DROPPED_RETRIES) {

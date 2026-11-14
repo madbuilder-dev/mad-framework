@@ -85,16 +85,29 @@ final class ConfirmCoordinator
      * Allowlist a partir dos campos de um bloco confirm ja validado
      * (BlockValidator): so os que tem `name` + `input`.
      *
+     * Com `$args` (o payload real da escrita), so vale o campo que e argumento
+     * de TOPO com valor escalar: o cartao so edita o que a escrita le. Um nome
+     * que nao existe nos args (ex.: `quantidade` dentro de `itens[]`) virava
+     * uma chave nova que a escrita ignorava — o usuario mudava o valor, aprovava
+     * e gravava o valor VELHO. Esse campo sai da allowlist (e do cartao, via
+     * stripNonEditable) e fica no log.
+     *
      * @param  list<array<string, mixed>> $fields
+     * @param  array<string, mixed>|null  $args
      * @return array<string, array{input: string, options?: list<string>}>
      */
-    public static function editableFromFields(array $fields): array
+    public static function editableFromFields(array $fields, ?array $args = null): array
     {
         $out = [];
         foreach ($fields as $f) {
             $name  = $f['name'] ?? null;
             $input = $f['input'] ?? null;
             if (! is_string($name) || $name === '' || ! in_array($input, self::INPUTS, true)) {
+                continue;
+            }
+            if ($args !== null && ! self::isTopLevelScalar($args, $name)) {
+                \error_log("[mad-ai] confirm: campo editavel '{$name}' descartado — nao e argumento de topo escalar da escrita");
+
                 continue;
             }
             $spec = ['input' => $input];
@@ -122,17 +135,68 @@ final class ConfirmCoordinator
      */
     public static function applyValues(array $args, array $editable, array $values): array
     {
+        return self::applyEdits($args, $editable, $values)[0];
+    }
+
+    /**
+     * Como applyValues, mas diz o que NAO pode ser aplicado: valor que nao
+     * converte para o tipo do campo, ou campo editavel que nao e argumento de
+     * topo da escrita (cartao gravado antes desta regra). Quem executa recusa a
+     * escrita nesse caso — nunca grava o valor velho calado.
+     *
+     * @param  array<string, mixed>                                                          $args
+     * @param  array<string, array{input: string, options?: list<string>, cast?: string}> $editable
+     * @param  array<mixed>                                                                  $values
+     * @return array{0: array<string, mixed>, 1: list<string>} [args, campos recusados]
+     */
+    public static function applyEdits(array $args, array $editable, array $values): array
+    {
+        $rejected = [];
         foreach ($values as $name => $raw) {
             if (! is_string($name) || ! isset($editable[$name])) {
                 continue;
             }
+            if (! self::isTopLevelScalar($args, $name)) {
+                $rejected[] = $name;
+
+                continue;
+            }
             [$ok, $value] = self::cast($raw, $editable[$name]);
-            if ($ok) {
-                $args[$name] = $value;
+            if (! $ok) {
+                $rejected[] = $name;
+
+                continue;
+            }
+            $args[$name] = $value;
+        }
+
+        return [$args, $rejected];
+    }
+
+    /**
+     * Tira `name`/`input`/`options` dos campos do cartao que nao estao na
+     * allowlist: o campo continua visivel, mas so leitura.
+     *
+     * @param  list<array<string, mixed>>                $fields
+     * @param  array<string, array<string, mixed>>       $editable
+     * @return list<array<string, mixed>>
+     */
+    public static function stripNonEditable(array $fields, array $editable): array
+    {
+        foreach ($fields as $i => $f) {
+            $name = $f['name'] ?? null;
+            if (is_array($f) && is_string($name) && $name !== '' && ! isset($editable[$name])) {
+                unset($fields[$i]['name'], $fields[$i]['input'], $fields[$i]['options']);
             }
         }
 
-        return $args;
+        return array_values($fields);
+    }
+
+    /** @param array<string, mixed> $args */
+    private static function isTopLevelScalar(array $args, string $name): bool
+    {
+        return array_key_exists($name, $args) && ($args[$name] === null || is_scalar($args[$name]));
     }
 
     /**

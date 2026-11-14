@@ -367,14 +367,14 @@ final class RenderTool implements Tool
             $args = $raw;
         }
 
+        // allowlist: so os campos marcados editaveis no cartao (name + input) que
+        // sao argumento de topo da escrita. O resto vira so leitura ANTES de
+        // renderizar: o cartao nunca oferece editar o que a escrita nao le.
+        $editable        = ConfirmCoordinator::editableFromFields($block['fields'], $args);
+        $block['fields'] = ConfirmCoordinator::stripNonEditable($block['fields'], $editable);
+
         if ($this->confirms !== null) {
-            // allowlist: so os campos marcados editaveis no cartao (name + input)
-            $this->confirms->stash(
-                (string) $block['id'],
-                (string) $block['tool'],
-                $args,
-                ConfirmCoordinator::editableFromFields($block['fields']),
-            );
+            $this->confirms->stash((string) $block['id'], (string) $block['tool'], $args, $editable);
         }
 
         $this->sink->block($block);
