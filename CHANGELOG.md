@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.313.1] — 2026-11-14
+
+### Correções
+
+- **Permissões:** o `php artisan mad:explain-access` dizia "A tela é do módulo  (pdv)", sem o nome do módulo, quando o motivo era o módulo fora da licença. Agora diz o nome, como "módulo PDV (pdv)".
+
 ## [5.313.0] — 2026-11-14
 
 ### Novidades
