@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.311.3] — 2026-11-14
+
+### Correções
+
+- **App gerado:** a atualização do framework parava na 5.311.0. Esta versão entrega as correções da 5.311.1 (log de requisições da API REST) e da 5.311.2 (licença vazia), sem nada novo.
+
 ## [5.311.2] — 2026-11-14
 
 ### Correções
