@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.311.2] — 2026-11-14
+
+### Correções
+
+- **Licenças:** salvar a Empresa ou a Unidade com a seção Licença em branco criava um contrato vazio. A partir daí todo mundo da empresa, o administrador inclusive, levava "Você não tem acesso a esta tela" nas telas dos módulos licenciáveis. Agora a seção em branco não grava contrato, e o contrato vazio que já existe deixa de valer: as telas voltam sem mexer em nada. O próximo Salvar da Empresa ou da Unidade remove esse contrato vazio.
+
+### Atenção
+
+- **Licenças:** um contrato sem plano, cota, validade, dados do contratante, módulos avulsos nem assinatura agora vale como "sem contrato" e libera os módulos. Para bloquear uma empresa ou unidade, desligue o "Ativo" da licença.
+
 ## [5.311.1] — 2026-11-14
 
 ### Correções
