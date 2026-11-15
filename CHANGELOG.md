@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.315.2] — 2026-11-14
+
+### Correções
+
+- **Formulário:** a ação pronta Fechar (`close`) ligada no botão Salvar do formulário fechava a janela e também enviava o formulário, gravando os dados. Agora o botão com Fechar só fecha.
+
 ## [5.315.1] — 2026-11-14
 
 ### Melhorias

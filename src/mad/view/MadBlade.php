@@ -721,6 +721,7 @@ class MadBladeCompiler extends BladeCompiler
         $compiled     = [];
         $extraAttrs   = [];  // atributos HTML passthrough (mad:click etc.) — strings literais
         $rawPhpAttrs  = [];  // atributos com expressões Blade {{ }} — PHP runtime
+        $_closeActive = false; // <mad-btn close>: botão só fecha (fórum #317)
         $hasAttrs     = false;
         $attrsIndex   = -1;
         $_hasNav      = false; // true se navigate/target foi processado
@@ -848,6 +849,7 @@ class MadBladeCompiler extends BladeCompiler
                 if ($tag === 'btn' && $key === 'close' && $m[1] === '') {
                     if (($_closeExpr = self::closeActionExpr($val)) !== null) {
                         $rawPhpAttrs[] = $_closeExpr;
+                        $_closeActive  = true;
                     }
                     continue;
                 }
@@ -1058,6 +1060,7 @@ class MadBladeCompiler extends BladeCompiler
                 // `close` nu no <mad-btn> (fórum #317): ação pronta Fechar.
                 if ($tag === 'btn' && $key === 'close') {
                     $rawPhpAttrs[] = self::closeActionExpr('');
+                    $_closeActive  = true;
                     continue;
                 }
 
@@ -1127,6 +1130,13 @@ class MadBladeCompiler extends BladeCompiler
         if ($_whenUses) {
             $compiled[] = '"madWhenUses"=>\\Mad\\Form\\MadFormRegistry::screenOnly(['
                 . implode(',', array_map([self::class, 'phpString'], array_keys($_whenUses))) . '])';
+        }
+
+        // Fechar só fecha: num botão de envio (type="submit", o Salvar do
+        // formulário) o clique também enviaria o formulário e gravaria. A última
+        // chave do array vence, então `type` fica "button" com ou sem o atributo.
+        if ($_closeActive) {
+            $compiled[] = '"type"=>"button"';
         }
 
         // Merge atributos HTML passthrough no prop 'attrs'
