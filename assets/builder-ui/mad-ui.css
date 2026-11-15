@@ -1382,8 +1382,22 @@ a.mad-btn.mad-when-disabled {
   display: block;
   width: 100%;
   border: 1px solid var(--mad-border-strong);
+  /* Borda do campo (fórum #315): `input-border-color/-width/-sides` vira
+     --mad-input-bw-t (espessura) e --mad-input-bc-t (cor), uma de cada por
+     lado (t, r, b, l), no wrapper (CssUnits::inputBorder). Sem a prop, a borda de sempre. */
+  border-top-width: var(--mad-input-bw-t, 1px);
+  border-right-width: var(--mad-input-bw-r, 1px);
+  border-bottom-width: var(--mad-input-bw-b, 1px);
+  border-left-width: var(--mad-input-bw-l, 1px);
+  border-top-color: var(--mad-input-bc-t, var(--mad-border-strong));
+  border-right-color: var(--mad-input-bc-r, var(--mad-border-strong));
+  border-bottom-color: var(--mad-input-bc-b, var(--mad-border-strong));
+  border-left-color: var(--mad-input-bc-l, var(--mad-border-strong));
   border-radius: var(--mad-radius);
   padding: 8px 12px;
+  /* Borda mais grossa em cima/embaixo sai do padding: a altura não muda. */
+  padding-top: calc(8px - var(--mad-input-bx-t, 0px));
+  padding-bottom: calc(8px - var(--mad-input-bx-b, 0px));
   font-size: var(--mad-text-sm);
   /* Fonte do texto digitado (fórum #309): o tema pode trocar só a dos campos
      (--mad-input-font). Sem ela, a fonte do app, como sempre. */
@@ -1437,13 +1451,42 @@ textarea.mad-input:read-only,
 textarea.mad-textarea:read-only {
   background: var(--mad-input-bg, var(--mad-bg-subtle));
   cursor: default;
-  border-color: var(--mad-border);
+  border-top-color: var(--mad-input-bc-t, var(--mad-border));
+  border-right-color: var(--mad-input-bc-r, var(--mad-border));
+  border-bottom-color: var(--mad-input-bc-b, var(--mad-border));
+  border-left-color: var(--mad-input-bc-l, var(--mad-border));
 }
 input.mad-input:read-only:focus,
 textarea.mad-input:read-only:focus,
 textarea.mad-textarea:read-only:focus {
   box-shadow: none;
   border-color: var(--mad-border);
+}
+
+/* Borda escolhida no campo (fórum #315) vence a cor que o tema impõe — o
+   notch-dark fixa a borda do campo com !important no modo escuro. Só vale no
+   campo que tem a cor daquele lado (o atributo style do .mad-field traz a var):
+   sem a prop, nada muda. O foco e o vermelho de erro ficam de fora e continuam
+   vencendo. */
+.mad-field[style*="--mad-input-bc-t:"] :is(.mad-input, .mad-textarea):not(:focus):not(.mad-input-error),
+.mad-field[style*="--mad-input-bc-t:"] .mad-sel:not(.is-open):not(.mad-sel-error):not(:has(> select.mad-input-error)) > .mad-sel-control:not(:focus-within),
+.mad-field[style*="--mad-input-bc-t:"] .mad-drp-trigger {
+  border-top-color: var(--mad-input-bc-t) !important;
+}
+.mad-field[style*="--mad-input-bc-r:"] :is(.mad-input, .mad-textarea):not(:focus):not(.mad-input-error),
+.mad-field[style*="--mad-input-bc-r:"] .mad-sel:not(.is-open):not(.mad-sel-error):not(:has(> select.mad-input-error)) > .mad-sel-control:not(:focus-within),
+.mad-field[style*="--mad-input-bc-r:"] .mad-drp-trigger {
+  border-right-color: var(--mad-input-bc-r) !important;
+}
+.mad-field[style*="--mad-input-bc-b:"] :is(.mad-input, .mad-textarea):not(:focus):not(.mad-input-error),
+.mad-field[style*="--mad-input-bc-b:"] .mad-sel:not(.is-open):not(.mad-sel-error):not(:has(> select.mad-input-error)) > .mad-sel-control:not(:focus-within),
+.mad-field[style*="--mad-input-bc-b:"] .mad-drp-trigger {
+  border-bottom-color: var(--mad-input-bc-b) !important;
+}
+.mad-field[style*="--mad-input-bc-l:"] :is(.mad-input, .mad-textarea):not(:focus):not(.mad-input-error),
+.mad-field[style*="--mad-input-bc-l:"] .mad-sel:not(.is-open):not(.mad-sel-error):not(:has(> select.mad-input-error)) > .mad-sel-control:not(:focus-within),
+.mad-field[style*="--mad-input-bc-l:"] .mad-drp-trigger {
+  border-left-color: var(--mad-input-bc-l) !important;
 }
 
 .mad-input-error,
@@ -1485,7 +1528,20 @@ textarea.mad-textarea:read-only:focus {
      --button-height; sem tema, os 38px de sempre. */
   min-height: var(--button-height, 38px);
   padding: 5px 30px 5px 12px;
+  padding-top: calc(5px - var(--mad-input-bx-t, 0px));
+  padding-bottom: calc(5px - var(--mad-input-bx-b, 0px));
   border: 1px solid var(--mad-border-strong);
+  /* Borda do campo (fórum #315): `input-border-color/-width/-sides` vira
+     --mad-input-bw-t (espessura) e --mad-input-bc-t (cor), uma de cada por
+     lado (t, r, b, l), no wrapper (CssUnits::inputBorder). Sem a prop, a borda de sempre. */
+  border-top-width: var(--mad-input-bw-t, 1px);
+  border-right-width: var(--mad-input-bw-r, 1px);
+  border-bottom-width: var(--mad-input-bw-b, 1px);
+  border-left-width: var(--mad-input-bw-l, 1px);
+  border-top-color: var(--mad-input-bc-t, var(--mad-border-strong));
+  border-right-color: var(--mad-input-bc-r, var(--mad-border-strong));
+  border-bottom-color: var(--mad-input-bc-b, var(--mad-border-strong));
+  border-left-color: var(--mad-input-bc-l, var(--mad-border-strong));
   border-radius: var(--mad-radius);
   background: var(--mad-input-bg, var(--mad-bg));
   color: var(--mad-input-color, var(--mad-text));
@@ -2467,6 +2523,23 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-sep-labeled > .mad-sep-text { font-size: 11px; color: var(--mad-text-subtle); white-space: nowrap; }
 .mad-sep-labeled--left  > .mad-sep-line:first-child,
 .mad-sep-labeled--right > .mad-sep-line:last-child { flex: 0 0 12px; }
+
+/* <mad-text> (fórum #318): texto solto da tela. Sem cor fixa (`color`), a cor
+   e os tons vêm das variáveis do tema e acompanham o claro/escuro. A quebra de
+   linha escrita no texto aparece na tela. */
+.mad-text { margin: 0; color: var(--mad-text); font-size: var(--mad-text-base); line-height: 1.5;
+            white-space: pre-line; overflow-wrap: anywhere; }
+.mad-text--xs  { font-size: var(--mad-text-xs); }
+.mad-text--sm  { font-size: var(--mad-text-sm); }
+.mad-text--md  { font-size: var(--mad-text-base); }
+.mad-text--lg  { font-size: var(--mad-text-lg); }
+.mad-text--xl  { font-size: var(--mad-text-xl); line-height: 1.35; }
+.mad-text--2xl { font-size: var(--mad-text-2xl); line-height: 1.3; }
+.mad-text--muted   { color: var(--mad-text-muted); }
+.mad-text--primary { color: var(--mad-primary-ink, var(--mad-primary)); }
+.mad-text--success { color: var(--mad-success); }
+.mad-text--warning { color: var(--mad-warning-text, var(--mad-warning)); }
+.mad-text--danger  { color: var(--mad-danger-text, var(--mad-danger)); }
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -4991,6 +5064,17 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   height: var(--mad-input-height, 38px);
   padding: 0 10px;
   border: 1px solid var(--mad-border-strong);
+  /* Borda do campo (fórum #315): `input-border-color/-width/-sides` vira
+     --mad-input-bw-t (espessura) e --mad-input-bc-t (cor), uma de cada por
+     lado (t, r, b, l), no wrapper (CssUnits::inputBorder). Sem a prop, a borda de sempre. */
+  border-top-width: var(--mad-input-bw-t, 1px);
+  border-right-width: var(--mad-input-bw-r, 1px);
+  border-bottom-width: var(--mad-input-bw-b, 1px);
+  border-left-width: var(--mad-input-bw-l, 1px);
+  border-top-color: var(--mad-input-bc-t, var(--mad-border-strong));
+  border-right-color: var(--mad-input-bc-r, var(--mad-border-strong));
+  border-bottom-color: var(--mad-input-bc-b, var(--mad-border-strong));
+  border-left-color: var(--mad-input-bc-l, var(--mad-border-strong));
   border-radius: var(--mad-radius);
   background: var(--mad-input-bg, var(--mad-bg));
   /* Sem fallback: sem input-color/-weight/-italic/-font vira `unset` e herda, como antes. */
@@ -6871,6 +6955,23 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   overflow-y: auto;
   padding: 20px 24px;
 }
+/* Janela sem título (fórum #319): sem faixa de cabeçalho; o X (e o ? da Ajuda)
+   flutuam no canto, por cima do conteúdo. Com uma Seção abrindo a janela, o
+   MadOverlayFloat (mad.js) desce o grupo até a linha do título dela. O
+   position:relative só entra quando o grupo existe: janela com título não muda. */
+.mad-drawer:has(> .mad-overlay-float),
+.mad-modal:has(> .mad-overlay-float) { position: relative; }
+.mad-overlay-float {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.mad-overlay-float > .mad-btn { background: var(--mad-bg); }
+.mad-overlay-float > .mad-btn:hover { background: var(--mad-bg-muted); }
 /* Ações do formulário aberto na cortina: uma linha separa os botões dos campos. */
 .mad-drawer .mad-form-actions {
   border-top: 1px solid var(--mad-border);

@@ -330,8 +330,11 @@ window.madTabBar = function (opts) {
             const cur = window.location.pathname + window.location.search;
             if (cur === target) return;
             try {
-                if (push) history.pushState({ url: target }, '', target);
-                else history.replaceState({ url: target }, '', target);
+                // madDepth: profundidade no app, lida pelo Fechar (Mad.closeForm,
+                // fórum #317). A troca de aba mantém a da entrada atual.
+                const depth = (history.state && history.state.madDepth) || 0;
+                if (push) history.pushState({ url: target, madDepth: depth + 1 }, '', target);
+                else history.replaceState({ url: target, madDepth: depth }, '', target);
             } catch (e) {}
         },
 

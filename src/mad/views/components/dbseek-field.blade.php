@@ -39,7 +39,7 @@
         'emptyAs'  => $emptyAs,
     ]);
 @endphp
-@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
+@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
 <div class="mad-field mad-dbseek-field{{ $create ? ' mad-dbseek-has-create' : '' }}"
      x-data="madDbSeek({ name: '{{ $name }}', value: '{{ $safeValue }}', text: '{{ $safeText }}', auxiliaries: {!! $auxJson !!}, create: {!! $createJson !!} })" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
