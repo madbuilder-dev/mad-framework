@@ -981,6 +981,8 @@ return [
             'click_to_upload'           => 'Clique para enviar',
             'close'                     => 'Fechar',
             'close_tab'                 => 'Fechar aba',
+            'tab_limit_title'           => 'Limite de abas',
+            'tab_limit_reached'         => 'Você atingiu o limite de :max abas abertas. Feche uma aba para abrir outra.',
             'comment_placeholder'       => 'Escreva um comentário...',
             'comments_empty'            => 'Sem comentários. Escreva o primeiro abaixo.',
             'copy'                      => 'Copiar',

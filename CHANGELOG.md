@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.317.1] — 2026-11-15
+
+### Correções
+
+- **Abas:** no modo "Uma página por vez em abas", ao chegar no limite de 20 abas a tela nova não abria, e o único sinal era um aviso pequeno no canto da tela, que sumia em 4 segundos e saía sempre em português. Agora abre uma caixa de aviso no centro, no idioma do app: "Você atingiu o limite de 20 abas abertas. Feche uma aba para abrir outra." A aba inicial conta nas 20.
+
 ## [5.317.0] — 2026-11-15
 
 ### Novidades

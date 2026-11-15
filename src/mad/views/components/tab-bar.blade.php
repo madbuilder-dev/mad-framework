@@ -19,12 +19,16 @@
     $store    = (string)($store ?? '1') !== '0';
     $maxTabs  = (int)($maxTabs ?? 20);
     $contentId = $contentId ?? 'mad_main';
+    // Aviso de limite (fórum #322): no idioma do app. O `:max` fica no texto e
+    // o script troca pelo MESMO maxTabs que conta as abas da barra.
+    $tabLimitTitle   = mad_t('mad.ui.tab_limit_title');
+    $tabLimitMessage = mad_t('mad.ui.tab_limit_reached');
 @endphp
 
 <div class="mad-tab-bar"
      data-app="{{ $appName }}"
      data-enabled="{{ $enabled ? '1' : '0' }}"
-     x-data="madTabBar({ app: '{{ $appName }}', enabled: {{ $enabled ? 'true' : 'false' }}, store: {{ $store ? 'true' : 'false' }}, maxTabs: {{ $maxTabs }} })"
+     x-data="madTabBar({ app: '{{ $appName }}', enabled: {{ $enabled ? 'true' : 'false' }}, store: {{ $store ? 'true' : 'false' }}, maxTabs: {{ $maxTabs }}, limitTitle: {{ json_encode($tabLimitTitle, JSON_UNESCAPED_UNICODE) }}, limitMessage: {{ json_encode($tabLimitMessage, JSON_UNESCAPED_UNICODE) }} })"
      x-init="init()">
 
     {{-- Tab strip (visivel quando ha tabs e enabled) --}}
@@ -93,6 +97,8 @@ window.madTabBar = function (opts) {
         enabled: !!opts.enabled,
         store: opts.store !== false,
         maxTabs: opts.maxTabs || 20,
+        limitTitle: opts.limitTitle || 'Limite de abas',
+        limitMessage: opts.limitMessage || 'Você atingiu o limite de :max abas abertas. Feche uma aba para abrir outra.',
         tabs: [],
         activeId: null,
 
@@ -214,12 +220,10 @@ window.madTabBar = function (opts) {
             this._opening[key] = true;
 
             try {
+                // A aba inicial conta: a barra mostra exatamente maxTabs abas
+                // quando o aviso aparece, e o aviso diz esse mesmo número.
                 if (this.tabs.length >= this.maxTabs) {
-                    if (typeof madToast === 'function') {
-                        madToast('Limite de ' + this.maxTabs + ' abas atingido.', 'warning');
-                    } else {
-                        console.warn('[MadTabs] tab limit reached');
-                    }
+                    this._warnTabLimit();
                     return;
                 }
 
@@ -255,6 +259,28 @@ window.madTabBar = function (opts) {
             } finally {
                 delete this._opening[key];
             }
+        },
+
+        // ─── Limite de abas (fórum #322) ─────────────────────────────────
+        // Antes era um toast de 4 s no canto inferior direito, só em português
+        // e sem dizer o que fazer: quem clicava no menu (do outro lado da tela)
+        // via a aba simplesmente não abrir. Agora é uma caixa de aviso no
+        // centro, no idioma do app, que pede para fechar uma aba. Clicar de
+        // novo com a caixa aberta não empilha outra.
+        _warnTabLimit() {
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const msg = String(this.limitMessage).replace(/:max\b/g, String(this.maxTabs));
+            if (this._limitDialog && this._limitDialog.isConnected) return;
+            const D = (typeof MadDialog !== 'undefined' && MadDialog) ? MadDialog : (window.MadDialog || null);
+            if (D && typeof D.show === 'function') {
+                this._limitDialog = D.show({ type: 'warning', title: this.limitTitle, message: esc(msg) });
+                return;
+            }
+            if (typeof madToast === 'function') {
+                madToast({ message: msg, title: this.limitTitle, type: 'warning', duration: 8000 });
+                return;
+            }
+            console.warn('[MadTabs] ' + msg);
         },
 
         // ─── Navegacao DENTRO da aba ativa (Novo/Editar/voltar) ─────────

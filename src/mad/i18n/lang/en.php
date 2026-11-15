@@ -990,6 +990,8 @@ return [
             'click_to_upload'           => 'Click to upload',
             'close'                     => 'Close',
             'close_tab'                 => 'Close tab',
+            'tab_limit_title'           => 'Tab limit reached',
+            'tab_limit_reached'         => 'You have reached the limit of :max open tabs. Close a tab to open another one.',
             'comment_placeholder'       => 'Write a comment...',
             'comments_empty'            => 'No comments yet. Write the first one below.',
             'copy'                      => 'Copy',

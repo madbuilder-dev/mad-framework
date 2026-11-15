@@ -978,6 +978,8 @@ return [
             'click_to_upload'           => 'Haga clic para enviar',
             'close'                     => 'Cerrar',
             'close_tab'                 => 'Cerrar pestaña',
+            'tab_limit_title'           => 'Límite de pestañas',
+            'tab_limit_reached'         => 'Alcanzaste el límite de :max pestañas abiertas. Cierra una pestaña para abrir otra.',
             'comment_placeholder'       => 'Escriba un comentario...',
             'comments_empty'            => 'Sin comentarios. Escriba el primero abajo.',
             'copy'                      => 'Copiar',
