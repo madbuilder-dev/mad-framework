@@ -912,6 +912,9 @@ class MadServiceProvider extends ServiceProvider
         $router = $this->app['router'];
         $router->aliasMiddleware('mad.auth', MadAuthenticate::class);
         $router->aliasMiddleware('mad.permission', MadProgramPermission::class);
+        // Sessão só de leitura: rota que lê a sessão mas não pode gravá-la por
+        // cima de uma requisição paralela (pontes do /broadcasting/auth*).
+        $router->aliasMiddleware('mad.session.readonly', \Mad\Http\Middleware\MadReadOnlySession::class);
         // API pública stateless: auth por token Bearer + escopo tenant/unit num
         // passo só (classe app-level, como os models IAM que BelongsToTenant referencia).
         $router->aliasMiddleware('mad.api', MadApiTenantMiddleware::class);

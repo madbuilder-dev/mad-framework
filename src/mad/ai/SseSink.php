@@ -138,6 +138,15 @@ final class SseSink
      */
     public function error(string $message, ?string $code = null, ?string $resetAt = null): void
     {
+        if ($this->swallowErrors) {
+            // Chamada acessória (resumo depois de uma escrita JÁ feita): um
+            // `error` aqui fazia o usuário achar que a escrita falhou e pedir
+            // de novo — duplicava a venda. Vai para o log; quem chamou decide.
+            $this->swallowed[] = $message;
+            \error_log('[mad-ai] erro suprimido (chamada acessoria): ' . ($code !== null ? "[{$code}] " : '') . mb_substr($message, 0, 300));
+
+            return;
+        }
         $this->emit('error', ['message' => $message]
             + ($code !== null && $code !== '' ? ['code' => $code] : [])
             + ($resetAt !== null && $resetAt !== '' ? ['reset_at' => $resetAt] : []));
@@ -148,6 +157,35 @@ final class SseSink
      * rodou; `message` diz ao usuário o motivo da falha. Sai antes do
      * message_end/error do turno, para o cartão mostrar o resultado real.
      */
+    /** Errors engolidos por withoutErrors() em vez de virar frame `error`. */
+    private bool $swallowErrors = false;
+
+    /** @var list<string> */
+    private array $swallowed = [];
+
+    /**
+     * Roda $fn sem deixar sair frame `error` (os demais quadros seguem). Para
+     * chamada acessória depois de uma escrita confirmada: a falha dela não
+     * pode parecer falha da escrita.
+     *
+     * @template T
+     * @param  callable(): T $fn
+     * @return array{0: T, 1: list<string>} [retorno, erros engolidos]
+     */
+    public function withoutErrors(callable $fn): array
+    {
+        $prev                = $this->swallowErrors;
+        $mark                = count($this->swallowed);
+        $this->swallowErrors = true;
+        try {
+            $ret = $fn();
+        } finally {
+            $this->swallowErrors = $prev;
+        }
+
+        return [$ret, array_slice($this->swallowed, $mark)];
+    }
+
     public function confirmResult(string $id, bool $ok, ?string $message = null): void
     {
         $this->emit('confirm_result', ['id' => $id, 'ok' => $ok]

@@ -12,7 +12,7 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
-## [5.314.0] — 2026-11-14
+## [5.314.1] — 2026-11-14
 
 ### Novidades
 
@@ -25,11 +25,19 @@ congelado em `docs/changelog-tecnico.md`.
 
 ### Correções
 
+- **Telas:** com notificações, correio ou chat em tempo real ligados, abrir uma tela às vezes perdia o que ela guardou ao carregar (colunas da listagem, filtros lembrados, estado do calendário, do kanban e da agenda), e a ação seguinte saía errada, como a linha da listagem em branco depois de salvar. Agora a conexão do tempo real não apaga mais esse estado.
 - **App gerado:** o card **Vendor** falhava com "fixed to … by a partial update" quando o Laravel novo pedia uma dependência mais nova. Agora ele atualiza as dependências junto.
 
 ### Atenção
 
 - **App gerado:** num app já publicado, o detalhe do log e o card Vendor novo chegam por **Código Fonte › Atualizar código**; o mascaramento novo, por **Atualizar framework**. Sem git no servidor, o card não mexe no `composer.json` e avisa.
+
+## [5.313.4] — 2026-11-14
+
+### Correções
+
+- **Chat IA:** depois de aprovar uma ação no cartão, se o assistente não conseguisse comentar o resultado (IA fora do ar, sem crédito, demora), o chat mostrava um erro mesmo com a ação já gravada. A pessoa achava que tinha falhado, pedia de novo e a venda saía em dobro. Agora o chat mostra o resumo do que foi gravado e nunca um erro nesse caso.
+- **Chat IA:** um valor enviado na aprovação para um campo que o cartão não deixa editar (por exemplo, a quantidade de um item) era ignorado e a ação gravava o valor antigo. Agora a aprovação é recusada, nada é gravado e o chat avisa.
 
 ## [5.313.3] — 2026-11-14
 
