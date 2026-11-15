@@ -583,14 +583,83 @@ class MadResponse
             \Mad\Ui\MadUserError::report(new \RuntimeException($message), 'MadResponse::toast');
             $message = \Mad\Ui\MadUserError::friendly();
         }
-        $this->ops[] = [
+        // Nome do usuário logado na frente da mensagem (fórum #235): opção do
+        // projeto, desligada por padrão. Desligada — ou sem usuário logado —
+        // o op sai exatamente como antes.
+        $who   = self::toastUserName();
+        $plain = $message;
+        if ($who !== '') {
+            $message = self::withUserName($who, $message);
+        }
+        $op = [
             'op'       => 'toast',
             'message'  => $message,
             'type'     => $type,
             'title'    => $title,
             'position' => $position,
         ];
+        if ($who !== '' && $message !== $plain) {
+            // O JS troca o aviso genérico de validação pelo resumo com os
+            // campos comparando o texto original — e põe o nome no resumo.
+            $op['plain'] = $plain;
+            $op['who']   = $who;
+        }
+        $this->ops[] = $op;
         return $this;
+    }
+
+    /**
+     * Primeiro nome do usuário logado para o toast, ou '' quando a opção
+     * "Nome do usuário nas mensagens" (MAD_TOAST_USER_NAME) está desligada ou
+     * não há usuário logado (tela pública, rotina, CLI). Só o nome: sem tags,
+     * sem caracteres de controle, e nada que pareça e-mail.
+     */
+    public static function toastUserName(): string
+    {
+        if (! filter_var(config('mad.toast_user_name.enabled', false), FILTER_VALIDATE_BOOL)) {
+            return '';
+        }
+        try {
+            if (! function_exists('session') || ! app()->bound('session')) {
+                return '';
+            }
+            $uid  = session('userid');
+            $name = session('username');
+        } catch (\Throwable) {
+            return '';
+        }
+        if ($uid === null || $uid === '' || ! is_string($name)) {
+            return '';
+        }
+        $name = (string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', strip_tags($name));
+        $name = trim((string) preg_replace('/\s+/u', ' ', $name));
+        $first = $name === '' ? '' : explode(' ', $name)[0];
+        if ($first === '' || str_contains($first, '@')) {
+            return '';
+        }
+
+        return mb_substr($first, 0, 40);
+    }
+
+    /**
+     * "Luciano, registro salvo." — o nome na frente e a 1ª letra da mensagem
+     * em minúscula (a não ser em sigla: "Luciano, CPF inválido."). Mensagem
+     * vazia ou que já começa pelo nome fica como está.
+     */
+    public static function withUserName(string $who, string $message): string
+    {
+        $msg = trim($message);
+        if ($who === '' || $msg === '' || mb_stripos($msg, $who) === 0) {
+            return $message;
+        }
+        $first  = mb_substr($msg, 0, 1);
+        $second = mb_substr($msg, 1, 1);
+        if ($first !== mb_strtolower($first) && ($second === '' || $second !== mb_strtoupper($second))) {
+            $msg = mb_strtolower($first) . mb_substr($msg, 1);
+        }
+        $out = mad_t('mad.ui.toast_user', ['name' => $who, 'message' => $msg]);
+
+        return ($out === '' || $out === 'mad.ui.toast_user') ? $who . ', ' . $msg : $out;
     }
 
     /**

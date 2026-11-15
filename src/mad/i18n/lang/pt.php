@@ -1008,6 +1008,7 @@ return [
             'existing'                  => 'existente',
             'files'                     => 'Arquivos',
             'fix_errors'                => 'Corrija os erros antes de continuar.',
+            'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fullscreen'                => 'Tela cheia',
             'history'                   => 'Histórico',
             'image_no_source'           => '[Imagem sem origem válida]',
@@ -1131,6 +1132,7 @@ return [
             'files_over_many'           => ':n arquivos não foram incluídos',
             'files_over_one'            => '1 arquivo não foi incluído',
             'fix_errors'                => 'Corrija os erros antes de continuar.',
+            'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fix_fields'                => 'Corrija :fields.',
             'fix_n_fields'              => 'Corrija os :n campos marcados em vermelho, a começar por :first.',
             'image_too_big'             => 'A imagem editada passa do limite deste campo (:max) e não foi alterada.',

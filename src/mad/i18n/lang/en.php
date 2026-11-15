@@ -1017,6 +1017,7 @@ return [
             'existing'                  => 'existing',
             'files'                     => 'Files',
             'fix_errors'                => 'Fix the errors before continuing.',
+            'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fullscreen'                => 'Full screen',
             'history'                   => 'History',
             'image_no_source'           => '[Image without a valid source]',
@@ -1140,6 +1141,7 @@ return [
             'files_over_many'           => ':n files were not added',
             'files_over_one'            => '1 file was not added',
             'fix_errors'                => 'Fix the errors before continuing.',
+            'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fix_fields'                => 'Fix :fields.',
             'fix_n_fields'              => 'Fix the :n fields marked in red, starting with :first.',
             'image_too_big'             => 'The edited image exceeds the limit for this field (:max) and was not changed.',

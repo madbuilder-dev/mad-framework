@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.316.0] — 2026-11-15
+
+### Novidades
+
+- **App gerado:** nova opção "Nome do usuário nas mensagens", em Propriedades do projeto › Layout no Studio. Ligada, os avisos do sistema saem com o primeiro nome de quem está logado, como "Luciano, registro salvo com sucesso!". Vem desligada; sem usuário logado, a mensagem sai como antes.
+
 ## [5.315.2] — 2026-11-14
 
 ### Correções

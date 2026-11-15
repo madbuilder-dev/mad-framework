@@ -2174,7 +2174,10 @@ const Mad = {
                     if (window.madToast) {
                         // "Corrija os erros antes de continuar." sozinho não dizia QUAIS: com os campos já
                         // marcados por esta resposta, o aviso nomeia os campos (ver _madErrorSummary).
-                        const msg = op.message === this.VALIDATION_TOAST && marked ? (this._madErrorSummary(scope) || op.message) : op.message;
+                        // Com o nome do usuário na frente (fórum #235) o op traz o texto original em `plain`.
+                        const isValidation = (op.plain ?? op.message) === this.VALIDATION_TOAST && marked;
+                        const summary = isValidation ? this._madErrorSummary(scope) : '';
+                        const msg = summary ? (op.who ? this._madToastWho(op.who, summary) : summary) : op.message;
                         madToast({ message: msg, type: op.type || 'info', title: op.title || '', position: op.position || 'top-right' });
                     }
                     break;
@@ -2973,6 +2976,20 @@ const Mad = {
 
     /** Texto do aviso padrão de validação (MadValidationException::DEFAULT_TOAST). */
     VALIDATION_TOAST: madT('fix_errors', 'Corrija os erros antes de continuar.'),
+
+    /**
+     * "Luciano, corrija os campos…" — a mesma regra do MadResponse::withUserName
+     * (fórum #235): 1ª letra em minúscula, a não ser em sigla ("CPF inválido").
+     */
+    _madToastWho(who, text) {
+        const t = String(text || '').trim();
+        if (!who || !t || t.toLowerCase().startsWith(String(who).toLowerCase())) return text;
+        const first = t.charAt(0);
+        const second = t.charAt(1);
+        const msg = (first !== first.toLowerCase() && (second === '' || second !== second.toUpperCase()))
+            ? first.toLowerCase() + t.slice(1) : t;
+        return madT('toast_user', ':name, :message', { name: who, message: msg });
+    },
 
     /** Campos com erro marcado agora (slot `[data-field-error]` com `.mad-error` e texto), na ordem da tela. */
     _madErrorFields(scope = null) {
