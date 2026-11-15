@@ -318,7 +318,7 @@
     // nele — ver \Mad\Form\OutsideOption.
     $__outside = \Mad\Form\OutsideOption::applies($selected, $preloadOptions);
 @endphp
-@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
+@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle.
      A busca continuava com seta e lista, parecendo editável (fw#539). --}}
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp

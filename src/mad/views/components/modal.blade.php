@@ -60,6 +60,31 @@
                         </button>
                     @endif
                 </div>
+            @elseif($dismissible || $help !== '')
+                {{-- Sem título (fórum #319): mesmo X flutuante do <mad-drawer>. --}}
+                <div class="mad-overlay-float" data-mad-overlay-float>
+                    @if($help !== '')
+                        <button type="button"
+                                class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon mad-overlay-help-btn"
+                                data-mad-help-screen="{{ $help }}"
+                                title="{{ mad_t('mad.help.screen_help') }}"
+                                aria-label="{{ mad_t('mad.help.screen_help') }}">
+                            <i data-lucide="circle-help" style="width:16px;height:16px;"></i>
+                        </button>
+                    @endif
+                    @if($dismissible)
+                        <button type="button"
+                                class="mad-btn mad-btn-ghost mad-btn-sm mad-btn-icon mad-overlay-float-close"
+                                aria-label="{{ mad_t('mad.ui.close') }}"
+                                @if($confirmClose)
+                                @click="MadOverlayEsc.dismiss($el.closest('[data-mad-overlay]'))"
+                                @else
+                                @click="open = false; $dispatch('madmodal', { name: '{{ $name }}', action: 'close' })"
+                                @endif>
+                            <i data-lucide="x" style="width:16px;height:16px;"></i>
+                        </button>
+                    @endif
+                </div>
             @endif
             <div class="mad-modal-body">
                 {!! $slot !!}

@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
 @php
     $placeholder = $placeholder ?? mad_t('mad.ui.search_long_dots');
     $required = !empty($required);
@@ -19,7 +19,7 @@
         $attrs = 'mad:model="' . $name . '" ' . $attrs;
     }
 @endphp
-@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
+@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
 <div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>

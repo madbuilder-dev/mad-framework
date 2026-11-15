@@ -514,6 +514,31 @@ class MadBladeCompiler extends BladeCompiler
     }
 
     /**
+     * `close` no `<mad-btn>` (fórum #317) — ação pronta Fechar: fecha a cortina
+     * ou o modal em que o botão está, sem gravar; em página inteira volta para
+     * a tela anterior do app (Mad.closeForm, mad.js). `close="TelaList"` (ou
+     * `Classe::metodo`) diz para onde ir quando não há tela anterior.
+     *
+     * Devolve a expressão PHP do atributo `onclick`, ou null para
+     * `close="false"`/`"0"` (o botão segue sem ação, como antes).
+     */
+    private static function closeActionExpr(string $val): ?string
+    {
+        $v   = trim($val);
+        $low = strtolower($v);
+        if (in_array($low, ['false', '0', 'no'], true)) {
+            return null;
+        }
+        if (in_array($low, ['', 'true', '1', 'yes'], true)
+            || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)?$/', $v)) {
+            return "'onclick=\"Mad.closeForm(this)\"'";
+        }
+
+        return '\\Mad\\View\\MadBlade::closeFormAttr(' . self::phpString($v) . ')';
+    }
+
+
+    /**
      * `<mad-input-field name="nome" autofocus />` — o cursor começa neste campo
      * quando a tela abre.
      *
@@ -818,6 +843,15 @@ class MadBladeCompiler extends BladeCompiler
                     $_anchor = (int) trim($val);
                 }
 
+                // close="…" no <mad-btn> (fórum #317): ação pronta Fechar — ver
+                // closeActionExpr(). Só a forma literal; `:close` segue como prop.
+                if ($tag === 'btn' && $key === 'close' && $m[1] === '') {
+                    if (($_closeExpr = self::closeActionExpr($val)) !== null) {
+                        $rawPhpAttrs[] = $_closeExpr;
+                    }
+                    continue;
+                }
+
                 // screen-only="…" / :screen-only="$expr": campo só de tela.
                 if ($key === 'screen-only' && $_fieldName !== null) {
                     $_screenOnly = $m[1] === ':' ? $val
@@ -1018,6 +1052,12 @@ class MadBladeCompiler extends BladeCompiler
                 // Diretiva booleana mad:loading → atributo HTML passthrough
                 if (isset(self::$madDirectives[$key])) {
                     $extraAttrs[] = self::$madDirectives[$key];
+                    continue;
+                }
+
+                // `close` nu no <mad-btn> (fórum #317): ação pronta Fechar.
+                if ($tag === 'btn' && $key === 'close') {
+                    $rawPhpAttrs[] = self::closeActionExpr('');
                     continue;
                 }
 
@@ -1893,6 +1933,28 @@ HTML;
         $blade->directive('endCanAccess', function (string $exp): string {
             return "<?php endif; ?>";
         });
+    }
+
+    /**
+     * Runtime do `close="Tela"`: `onclick` do Fechar com a tela de saída e a
+     * URL amigável dela assada no servidor (mesma URL do `navigate`). Tela que
+     * não resolve fica só com a classe: o Mad.go monta a rota genérica.
+     */
+    public static function closeFormAttr(string $target): string
+    {
+        [$class, $method] = array_pad(explode('::', $target, 2), 2, 'show');
+        $url = '';
+        try {
+            $url = \Mad\Ui\MadAction::to($class, $method ?: 'show')->url();
+        } catch (\Throwable) {
+            $url = '';
+        }
+        $js = 'Mad.closeForm(this, ' . json_encode(
+            ['class' => $class, 'method' => $method ?: 'show', 'url' => $url],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        ) . ')';
+
+        return 'onclick="' . htmlspecialchars($js, ENT_QUOTES, 'UTF-8') . '"';
     }
 
     /**

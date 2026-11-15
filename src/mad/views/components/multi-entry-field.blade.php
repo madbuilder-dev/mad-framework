@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
 @php
     $placeholder = $placeholder ?? mad_t('mad.ui.type_enter');
     // alias: o editor visual grava :items — aceitar os dois nomes
@@ -34,7 +34,7 @@
         'label'    => strip_tags($label),
         'required' => $required,
     ]);
-    $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
+    $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? '');
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
