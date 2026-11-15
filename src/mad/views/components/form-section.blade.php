@@ -15,11 +15,22 @@
     $hasHeader = !$noHeader && (trim((string) $title) !== '' || filled($subtitle) || filled($icon));
     // Título escondido continua sendo o nome da seção para leitor de tela.
     $ariaLabel = $noHeader && trim((string) $title) !== '' ? trim((string) $title) : '';
+    // Aparência (fórum #321): cor, tamanho, peso, itálico e fonte do título e
+    // do subtítulo viram --mad-section-* no HEADER — uma seção dentro desta não
+    // herda — e o fundo vira --mad-section-bg na própria seção. Sem nenhuma
+    // delas, o HTML sai igual ao de antes.
+    $_secHeadStyle = \Mad\Support\CssUnits::sectionTextVars('title', $titleColor ?? null, $titleSize ?? null, $titleWeight ?? null, $titleItalic ?? null, $titleFont ?? null)
+        . \Mad\Support\CssUnits::sectionTextVars('subtitle', $subtitleColor ?? null, $subtitleSize ?? null, $subtitleWeight ?? null, $subtitleItalic ?? null, $subtitleFont ?? null);
+    $_secBg = \Mad\Support\CssUnits::color($bg ?? null);
+    if ($_secBg !== '') {
+        $style = trim((string) $style);
+        $style = ($style === '' ? '' : rtrim($style, '; ') . ';') . '--mad-section-bg:' . $_secBg . ';';
+    }
 @endphp
 
 <section class="mad-form-section {{ $class }}" @if($style) style="{{ $style }}" @endif @if($ariaLabel !== '') aria-label="{{ $ariaLabel }}" @endif {!! $attrs !!}>
     @if($hasHeader)
-    <div class="mad-form-section-header">
+    <div class="mad-form-section-header"@if($_secHeadStyle !== '') style="{{ $_secHeadStyle }}"@endif>
         <div class="mad-form-section-meta">
             @if($icon)
             <div class="mad-form-section-icon">

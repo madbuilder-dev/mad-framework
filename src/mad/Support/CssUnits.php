@@ -382,6 +382,78 @@ final class CssUnits
     }
 
     /**
+     * Famílias de fonte que a tela pode escolher por nome (fórum #321): a mesma
+     * lista do editor de temas (Fonte do texto, `--mad-input-font`). Só a chave
+     * entra no Blade; a pilha de fontes sai daqui — nada de `font-family` livre,
+     * que abriria injeção de CSS.
+     */
+    public const FONT_FAMILIES = [
+        'inter'   => "'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        'apple'   => "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
+        'roboto'  => "'Roboto', system-ui, sans-serif",
+        'geist'   => "'Geist', system-ui, sans-serif",
+        'manrope' => "'Manrope', system-ui, sans-serif",
+        'poppins' => "'Poppins', system-ui, sans-serif",
+        'mono'    => "'JetBrains Mono', 'Fira Code', monospace",
+        'system'  => 'system-ui, sans-serif',
+    ];
+
+    /** Peso do texto por nome — o mesmo vocabulário do `<mad-text weight>`. */
+    private const FONT_WEIGHTS = ['normal' => '400', 'medium' => '500', 'semibold' => '600', 'bold' => '700'];
+
+    /** Pilha de fontes da chave (`roboto`), ou `''` quando a chave não está na lista. */
+    public static function fontFamily(mixed $key): string
+    {
+        $k = is_scalar($key) ? strtolower(trim((string) $key)) : '';
+
+        return self::FONT_FAMILIES[$k] ?? '';
+    }
+
+    /**
+     * Aparência do título ou do subtítulo da `<mad-form-section>` (fórum #321):
+     * `{prefix}-color`, `-size`, `-weight`, `-italic` e `-font` viram
+     * `--mad-section-{prefix}-*`, lidas pelo mad-ui.css com o valor padrão como
+     * fallback. Valor fora da regra fica de fora; nada válido → `''`.
+     */
+    public static function sectionTextVars(
+        string $prefix,
+        mixed $color,
+        mixed $size = null,
+        mixed $weight = null,
+        mixed $italic = null,
+        mixed $font = null
+    ): string {
+        $p   = '--mad-section-' . $prefix;
+        $out = '';
+
+        $c = self::color($color);
+        if ($c !== '') {
+            $out .= $p . '-color:' . $c . ';';
+        }
+
+        $s = is_scalar($size) ? self::length((string) $size) : '';
+        if ($s !== '') {
+            $out .= $p . '-size:' . $s . ';';
+        }
+
+        $w = is_scalar($weight) ? strtolower(trim((string) $weight)) : '';
+        if (isset(self::FONT_WEIGHTS[$w])) {
+            $out .= $p . '-weight:' . self::FONT_WEIGHTS[$w] . ';';
+        }
+
+        if (self::flag($italic)) {
+            $out .= $p . '-style:italic;';
+        }
+
+        $f = self::fontFamily($font);
+        if ($f !== '') {
+            $out .= $p . '-font:' . $f . ';';
+        }
+
+        return $out;
+    }
+
+    /**
      * `letter-spacing`: número = px, aceita negativo (`-0.5`) e `normal`. Só
      * medida simples — `calc()`/`var()` ficam de fora, porque aqui não há caso.
      */

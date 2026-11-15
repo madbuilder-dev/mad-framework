@@ -2676,8 +2676,17 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-form-section-icon i,
 .mad-form-section-icon svg     { width: 20px; height: 20px; color: var(--mad-primary-ink, var(--mad-primary)); }
 .mad-form-section-text         { display: flex; flex-direction: column; gap: 2px; }
-.mad-form-section-title        { font-size: .875rem; font-weight: 600; color: var(--mad-text); }
-.mad-form-section-subtitle     { font-size: .75rem; color: var(--mad-text-muted); }
+/* Aparência do título e do subtítulo (fórum #321): --mad-section-* vêm do
+   style do header; sem elas, os valores de sempre (inherit = como antes). */
+.mad-form-section-title        { font-size: var(--mad-section-title-size, .875rem); font-weight: var(--mad-section-title-weight, 600); color: var(--mad-section-title-color, var(--mad-text)); font-style: var(--mad-section-title-style, inherit); font-family: var(--mad-section-title-font, inherit); }
+.mad-form-section-subtitle     { font-size: var(--mad-section-subtitle-size, .75rem); font-weight: var(--mad-section-subtitle-weight, inherit); color: var(--mad-text-muted); font-style: var(--mad-section-subtitle-style, inherit); font-family: var(--mad-section-subtitle-font, inherit); }
+/* Cor escolhida vence a do tema: o escuro do Notch fixa o título com
+   !important. Só vale no header que declara a cor — o padrão não muda. */
+.mad-form-section-header[style*="--mad-section-title-color"] .mad-form-section-title { color: var(--mad-section-title-color) !important; }
+.mad-form-section-header[style*="--mad-section-subtitle-color"] .mad-form-section-subtitle { color: var(--mad-section-subtitle-color) !important; }
+/* Fundo da seção (fórum #321): só na seção que o declara no próprio style —
+   uma seção dentro dela não repete o fundo nem o espaçamento. */
+.mad-form-section[style*="--mad-section-bg"] { background: var(--mad-section-bg); padding: 12px 16px; border-radius: var(--mad-radius, 8px); }
 .mad-form-section-divider      { height: 1px; background: var(--mad-border); margin-top: 10px; }
 
 /* Form actions — footer de botões */

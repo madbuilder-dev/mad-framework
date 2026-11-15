@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.317.0] — 2026-11-15
+
+### Novidades
+
+- **Formulário:** a Seção ganhou aparência para o título e o subtítulo — cor, tamanho, peso, itálico e fonte (`title-color`, `title-size`, `title-weight`, `title-italic`, `title-font` e os mesmos com `subtitle-`) — e cor de fundo (`bg`). A fonte vem da lista do editor de temas. Seção sem essas opções fica igual.
+
 ## [5.316.1] — 2026-11-15
 
 ### Correções
