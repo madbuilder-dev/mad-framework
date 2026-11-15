@@ -1060,6 +1060,20 @@ class GridColumn
     }
 
     /**
+     * Conteúdo curto por natureza (fórum #310, reaberto em 15/11/2026): código
+     * ou tipo de uma palavra (forma `token`), número, valor, data, ícone e selo.
+     * Coluna automática assim não precisa da sobra da tabela: sem nenhuma
+     * coluna automática de texto na tela, o CSS dá a sobra ao título e encolhe
+     * estas ao conteúdo (`th.mad-dg-col-fit`). Sem isto, numa listagem
+     * "ações + Cod. + título" o código ficava com mais da metade da tabela.
+     * A forma (assignShapes) precisa vir antes.
+     */
+    public function isFitWidth(): bool
+    {
+        return $this->shape === 'token' || $this->isBadge || $this->nowrapClass() !== '';
+    }
+
+    /**
      * text-align da <th>/<td>. Coluna numérica sem alinhamento declarado segue
      * --mad-dg-num-align: o tema ERP põe à direita; no default a var não
      * existe e fica o `left` de sempre.

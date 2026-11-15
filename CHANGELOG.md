@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.316.1] — 2026-11-15
+
+### Correções
+
+- **Listagem:** no layout ERP, numa listagem com as ações, uma coluna curta (código, sigla, data, valor) e o título, a coluna curta ficava larga e deixava um espaço grande antes do título. Agora as ações e as colunas curtas ficam do tamanho do conteúdo e o título usa o resto da largura. Vale também com duas ou três colunas curtas. Listagem com outra coluna de texto além do título não muda.
+
 ## [5.316.0] — 2026-11-15
 
 ### Novidades
