@@ -7859,11 +7859,17 @@ class MadForm
         }
     }
 
+    /** Campos cujo `:min`/`:max` da tela vale ao salvar ({@see _declaredRangeErrors}). */
+    private const DECLARED_RANGE_TYPES = ['number', 'numeric', 'money', 'spinner', 'range'];
+
     /**
      * Valor fora do `:min`/`:max` que o campo numérico (number, numeric,
-     * money) declarou na tela. Regra de faixa escrita pelo código (`min:`,
-     * `max:`, `between:`, `gt:`, `lt:`…) vence: o campo fica com ela. Vazio
-     * passa (quem exige é o `required`).
+     * money, spinner, range) declarou na tela. Regra de faixa escrita pelo
+     * código (`min:`, `max:`, `between:`, `gt:`, `lt:`…) vence: o campo fica
+     * com ela. Vazio passa (quem exige é o `required`).
+     *
+     * Spinner e range (fórum #325): os botões − e + param no limite, mas o
+     * número digitado na caixa era gravado (máximo 10, digitar 50).
      *
      * @param  array<string, mixed>  $data
      * @param  array<string, mixed>  $rules
@@ -7876,7 +7882,7 @@ class MadForm
         $out = [];
         foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
             $name = (string) $name;
-            if (!is_array($props) || !in_array($props['type'] ?? '', ['number', 'numeric', 'money'], true)
+            if (!is_array($props) || !in_array($props['type'] ?? '', self::DECLARED_RANGE_TYPES, true)
                 || isset($errors[$name]) || !array_key_exists($name, $data)) {
                 continue;
             }

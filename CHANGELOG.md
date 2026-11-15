@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.317.2] — 2026-11-15
+
+### Correções
+
+- **Campos:** no **Spinner Numérico**, um número digitado fora do **Mínimo** e do **Máximo** era gravado: com máximo 10, digitar 50 e salvar gravava 50. Os botões − e + já paravam no limite, mas o valor digitado passava. Agora o Salvar recusa e mostra a mesma mensagem de mínimo e máximo dos campos de número e dinheiro. O mesmo vale para o campo de faixa (**Range**).
+
 ## [5.317.1] — 2026-11-15
 
 ### Correções
