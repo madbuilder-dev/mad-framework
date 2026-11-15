@@ -29,6 +29,12 @@ namespace Mad\Security;
  * Fica de fora de propósito: `code` (código de plano/perfil/módulo nos
  * cadastros), `codigo`, `login`, `email` e `cpf` — dado de negócio que o log
  * de auditoria precisa mostrar.
+ *
+ * Corpo de requisição ({@see maskBody()}, fórum #313, 14/11/2026): o log de
+ * requisições mostra o corpo inteiro na tela de detalhe, então ali também saem
+ * CPF, CNPJ e cartão — pelo nome do campo (`cpf`, `cliente_cnpj`, `numero_cartao`,
+ * `card_number`…) e pelo valor quando é um número de cartão válido (Luhn, 13 a 19
+ * dígitos), em qualquer nível do JSON e no form-data.
  */
 final class SecretMasker
 {
@@ -58,6 +64,9 @@ final class SecretMasker
 
     /** Ação do MadWire cujos argumentos POSICIONAIS carregam segredo (token do cartão, senha). */
     private const SECRET_ACTION_RE = '/pass|senha|secret|token|card|cartao|cvv|pin|two_?factor|otp|2fa/i';
+
+    /** Corpo de requisição: dado pessoal/financeiro que também sai ({@see maskBody()}). */
+    private const PERSONAL_SUBSTRINGS = ['cpf', 'cnpj', 'cartao', 'cartão', 'cardnumber', 'card_number', 'creditcard', 'credit_card'];
 
     /** Profundidade máxima de estrutura aninhada percorrida. */
     private const MAX_DEPTH = 12;
@@ -101,16 +110,74 @@ final class SecretMasker
         return false;
     }
 
+    /** CPF, CNPJ ou cartão no nome do campo (só no modo corpo de requisição). */
+    public static function isPersonalKey(string|int $key): bool
+    {
+        if (is_int($key)) {
+            return false;
+        }
+        $norm = str_replace('-', '_', mb_strtolower(trim($key)));
+        foreach (self::PERSONAL_SUBSTRINGS as $s) {
+            if (str_contains($norm, $s)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Número de cartão (13 a 19 dígitos, espaço/hífen/ponto aceitos) que passa no Luhn. */
+    public static function looksLikeCardNumber(mixed $value): bool
+    {
+        if (! is_string($value) && ! is_int($value)) {
+            return false;
+        }
+        $raw = trim((string) $value);
+        if (! preg_match('/^\d(?:[ .-]?\d){12,18}$/', $raw)) {
+            return false;
+        }
+        $digits = (string) preg_replace('/\D/', '', $raw);
+        $sum = 0;
+        $alt = false;
+        for ($i = strlen($digits) - 1; $i >= 0; $i--) {
+            $n = (int) $digits[$i];
+            if ($alt) {
+                $n *= 2;
+                if ($n > 9) {
+                    $n -= 9;
+                }
+            }
+            $sum += $n;
+            $alt = ! $alt;
+        }
+
+        return $sum % 10 === 0;
+    }
+
+    /**
+     * Corpo de requisição para o log e a tela de detalhe: o {@see maskArray()} de
+     * sempre mais CPF, CNPJ e cartão (nome do campo ou número de cartão válido).
+     *
+     * @param  array<mixed>  $data
+     * @return array<mixed>
+     */
+    public static function maskBody(array $data): array
+    {
+        return self::maskArray($data, 0, true);
+    }
+
     /**
      * Mascara recursivamente: chave de segredo → MASK; estrutura
      * `{name|field|prop|key: <segredo>, value: …}` → value mascarado; string com
      * JSON dentro (o `mad_params` do MadWire) é aberta, mascarada e fechada; ação
      * do MadWire com segredo posicional (`onPayWithCard`) → argumentos mascarados.
      *
+     * `$personal`: modo corpo de requisição ({@see maskBody()}).
+     *
      * @param  array<mixed>  $data
      * @return array<mixed>
      */
-    public static function maskArray(array $data, int $depth = 0): array
+    public static function maskArray(array $data, int $depth = 0, bool $personal = false): array
     {
         if ($depth > self::MAX_DEPTH) {
             return $data;
@@ -132,7 +199,9 @@ final class SecretMasker
         }
 
         foreach ($data as $k => $v) {
-            if (self::isSecretKey($k) || ($k === 'value' && $pairName !== null && self::isSecretKey($pairName))) {
+            $pairSecret = $k === 'value' && $pairName !== null
+                && (self::isSecretKey($pairName) || ($personal && self::isPersonalKey($pairName)));
+            if (self::isSecretKey($k) || ($personal && self::isPersonalKey($k)) || $pairSecret) {
                 $data[$k] = self::MASK;
                 continue;
             }
@@ -140,12 +209,16 @@ final class SecretMasker
                 $data[$k] = self::maskAllScalars($v, $depth + 1);
                 continue;
             }
+            if ($personal && self::looksLikeCardNumber($v)) {
+                $data[$k] = self::MASK;
+                continue;
+            }
             if (is_array($v)) {
-                $data[$k] = self::maskArray($v, $depth + 1);
+                $data[$k] = self::maskArray($v, $depth + 1, $personal);
             } elseif (is_object($v)) {
-                $data[$k] = self::maskArray((array) json_decode((string) json_encode($v), true), $depth + 1);
+                $data[$k] = self::maskArray((array) json_decode((string) json_encode($v), true), $depth + 1, $personal);
             } elseif (is_string($v)) {
-                $data[$k] = self::maskJsonString($v, $depth + 1);
+                $data[$k] = self::maskJsonString($v, $depth + 1, $personal);
             }
         }
 
@@ -182,8 +255,9 @@ final class SecretMasker
     /**
      * Query string: `token=abc&page=2` → `token=••••&page=2`. Mantém o texto
      * original do que não é segredo (sem reordenar nem recodificar).
+     * `$personal`: modo do log de requisições — CPF, CNPJ e cartão também saem.
      */
-    public static function maskQueryString(string $query): string
+    public static function maskQueryString(string $query, bool $personal = false): string
     {
         if ($query === '' || ! str_contains($query, '=')) {
             return $query;
@@ -198,7 +272,12 @@ final class SecretMasker
             $key = urldecode(substr($pair, 0, $eq));
             // `mad_model[password]` → olha o último nome entre colchetes também
             $leaf = preg_match('/\[([^\[\]]*)\]$/', $key, $m) ? $m[1] : $key;
-            if (self::isSecretKey($key) || self::isSecretKey($leaf)) {
+            $hit = self::isSecretKey($key) || self::isSecretKey($leaf);
+            if (! $hit && $personal) {
+                $hit = self::isPersonalKey($key) || self::isPersonalKey($leaf)
+                    || self::looksLikeCardNumber(urldecode(substr($pair, $eq + 1)));
+            }
+            if ($hit) {
                 $parts[$i] = substr($pair, 0, $eq) . '=' . self::MASK;
             }
         }
@@ -212,8 +291,9 @@ final class SecretMasker
      * endpoint da unidade e, na verificação por token na URL, É a credencial,
      * e os parâmetros do caminho de uma página `site` (`link/{slug}`), que
      * carregam o token do link de convite/avaliação (mad-framework#349).
+     * `$personal`: modo do log de requisições (CPF, CNPJ e cartão na query).
      */
-    public static function maskUri(string $uri): string
+    public static function maskUri(string $uri, bool $personal = false): string
     {
         $uri = self::maskSitePath($uri);
 
@@ -241,7 +321,7 @@ final class SecretMasker
             $rest = substr($rest, 0, $h);
         }
 
-        return substr($uri, 0, $q + 1) . self::maskQueryString($rest) . $frag;
+        return substr($uri, 0, $q + 1) . self::maskQueryString($rest, $personal) . $frag;
     }
 
     /**
@@ -334,7 +414,7 @@ final class SecretMasker
     }
 
     /** String com JSON (objeto/lista) dentro: mascara por dentro; senão, devolve igual. */
-    private static function maskJsonString(string $value, int $depth): string
+    private static function maskJsonString(string $value, int $depth, bool $personal = false): string
     {
         $t = ltrim($value);
         if ($t === '' || ($t[0] !== '{' && $t[0] !== '[') || strlen($value) > self::MAX_JSON_BYTES) {
@@ -344,7 +424,7 @@ final class SecretMasker
         if (! is_array($decoded)) {
             return $value;
         }
-        $masked = self::maskArray($decoded, $depth);
+        $masked = self::maskArray($decoded, $depth, $personal);
         if ($masked === $decoded) {
             return $value;
         }

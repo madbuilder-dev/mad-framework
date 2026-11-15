@@ -69,7 +69,7 @@ class LogApiRequest
     public static function row(Request $request): array
     {
         $now = date('Y-m-d H:i:s');
-        $body = json_encode(SecretMasker::maskArray($request->input()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $body = json_encode(SecretMasker::maskBody($request->input()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (! is_string($body)) {
             $body = '{}';
         } elseif (strlen($body) > self::MAX_BODY_BYTES) {
@@ -87,7 +87,7 @@ class LogApiRequest
         $start = defined('LARAVEL_START') ? (float) LARAVEL_START : (float) $request->server('REQUEST_TIME_FLOAT', microtime(true));
 
         return [
-            'endpoint'         => SecretMasker::maskUri('/' . ltrim($request->path(), '/')),
+            'endpoint'         => SecretMasker::maskUri('/' . ltrim($request->path(), '/'), true),
             'logdate'          => $now,
             'log_year'         => date('Y'),
             'log_month'        => date('m'),
@@ -99,9 +99,9 @@ class LogApiRequest
             'class_name'       => self::programName($request),
             'http_host'        => $request->getHost(),
             'server_port'      => (string) $request->getPort(),
-            'request_uri'      => SecretMasker::maskUri($request->getRequestUri()),
+            'request_uri'      => SecretMasker::maskUri($request->getRequestUri(), true),
             'request_method'   => $request->method(),
-            'query_string'     => SecretMasker::maskQueryString((string) $request->getQueryString()),
+            'query_string'     => SecretMasker::maskQueryString((string) $request->getQueryString(), true),
             'request_headers'  => json_encode(SecretMasker::maskHeaders($headers), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'request_body'     => $body,
             'request_duration' => max(0, (int) round((microtime(true) - $start) * 1000)),

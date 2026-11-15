@@ -139,13 +139,10 @@ final class ConfirmCoordinator
     }
 
     /**
-     * Como applyValues, mas diz o que NAO pode ser aplicado: QUALQUER chave de
-     * `values` fora da allowlist do cartao (chave desconhecida, aninhada como
-     * `itens.0.quantidade`, ou cartao sem campo editavel), valor que nao
+     * Como applyValues, mas diz o que NAO pode ser aplicado: valor que nao
      * converte para o tipo do campo, ou campo editavel que nao e argumento de
      * topo da escrita (cartao gravado antes desta regra). Quem executa recusa a
-     * escrita nesse caso — nunca grava o valor velho calado. O cartao so manda
-     * em `values` os campos com `name` + `input`.
+     * escrita nesse caso — nunca grava o valor velho calado.
      *
      * @param  array<string, mixed>                                                          $args
      * @param  array<string, array{input: string, options?: list<string>, cast?: string}> $editable
@@ -157,8 +154,6 @@ final class ConfirmCoordinator
         $rejected = [];
         foreach ($values as $name => $raw) {
             if (! is_string($name) || ! isset($editable[$name])) {
-                $rejected[] = (string) $name;
-
                 continue;
             }
             if (! self::isTopLevelScalar($args, $name)) {

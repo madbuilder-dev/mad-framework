@@ -171,12 +171,7 @@ final class EmbedChatController
                             self::proxyEnabled()                => CodingPlanAgentRunner::viaProxy($sink),
                             default                             => new AgentRunner($sink),
                         };
-                        // Falha do resumo (402, timeout, quadro de erro) NUNCA vira
-                        // `error` no chat: a escrita já foi feita e o usuário
-                        // pedia de novo, duplicando. Cai no resumo determinístico.
-                        [$result, $swallowed] = $sink->withoutErrors(
-                            static fn () => $runner->run($system, self::toMessages($history), [], $prompt, SystemPromptAssembler::runtimeContext())
-                        );
+                        $result = $runner->run($system, self::toMessages($history), [], $prompt, SystemPromptAssembler::runtimeContext());
 
                         UsageLog::record($result->usage, [
                             'userId'      => $usageUserId,
@@ -190,10 +185,6 @@ final class EmbedChatController
                             'status'      => $result->aborted ? 'aborted' : ($result->usage ? 'ok' : 'no_usage'),
                             'metadata'    => ['aborted' => $result->aborted, 'confirm_summary' => true],
                         ], $db);
-
-                        if ($swallowed !== []) {
-                            throw new \RuntimeException('resumo sem modelo: ' . $swallowed[0]);
-                        }
 
                         return $result->aborted ? null : $result->text;
                     };
@@ -603,23 +594,17 @@ final class EmbedChatController
             $json   = self::resultJson($payload);
             $record = '[resultado da acao ' . $tool . '] ' . $json;
             $text   = null;
-            $tried  = false;
             if ($summarize !== null) {
-                $tried = true;
                 try {
-                    // Exceção do modelo também não vira `error`: a escrita valeu.
-                    [$text] = $sink->withoutErrors(
-                        static fn () => $summarize(self::summaryPrompt($tool, $json, (string) ($spec['description'] ?? '')), $messages)
-                    );
+                    $text = $summarize(self::summaryPrompt($tool, $json, (string) ($spec['description'] ?? '')), $messages);
                 } catch (\Throwable $e) {
-                    error_log('[embed-chat] resumo da acao ' . $tool . ' falhou (vai o deterministico): ' . $e->getMessage());
+                    error_log('[embed-chat] resumo da acao ' . $tool . ' falhou: ' . $e->getMessage());
                     $text = null;
                 }
             }
             if ($text === null || trim($text) === '') {
                 $text = self::fallbackSummary($tool, $payload);
-                // separa de um texto parcial que o modelo tenha soltado antes de falhar
-                $sink->textDelta(($tried ? "\n\n" : '') . $text);
+                $sink->textDelta($text);
             }
             $messages[] = ['role' => 'assistant', 'content' => $record . "\n\n" . trim($text)];
         } else {

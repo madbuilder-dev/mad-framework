@@ -12,12 +12,24 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
-## [5.313.4] — 2026-11-14
+## [5.314.0] — 2026-11-14
+
+### Novidades
+
+- **Log de requisições:** em **Logs › Requisições**, a ação **Detalhe** abre a requisição com método, URI, programa, login, duração, IP, query, cabeçalhos e corpo (payload), com o JSON indentado. Só abre para quem já vê a tela.
+
+### Melhorias
+
+- **Log de requisições:** corpo, query e URI também escondem CPF, CNPJ e número de cartão, em qualquer nível do JSON e no form-data, além de senhas e tokens. Linhas antigas aparecem mascaradas na lista, na exportação e no detalhe.
+- **App gerado:** o card **Vendor** da Central de Comando acrescenta ao `composer.json` o repositório do Mad Framework no GitHub (só para `madbuilder/framework`) quando o servidor tem git. Assim o framework é encontrado pela tag mesmo com o Packagist atrasado.
 
 ### Correções
 
-- **Chat IA:** depois de aprovar uma ação no cartão, se o assistente não conseguisse comentar o resultado (IA fora do ar, sem crédito, demora), o chat mostrava um erro mesmo com a ação já gravada. A pessoa achava que tinha falhado, pedia de novo e a venda saía em dobro. Agora o chat mostra o resumo do que foi gravado e nunca um erro nesse caso.
-- **Chat IA:** um valor enviado na aprovação para um campo que o cartão não deixa editar (por exemplo, a quantidade de um item) era ignorado e a ação gravava o valor antigo. Agora a aprovação é recusada, nada é gravado e o chat avisa.
+- **App gerado:** o card **Vendor** falhava com "fixed to … by a partial update" quando o Laravel novo pedia uma dependência mais nova. Agora ele atualiza as dependências junto.
+
+### Atenção
+
+- **App gerado:** num app já publicado, o detalhe do log e o card Vendor novo chegam por **Código Fonte › Atualizar código**; o mascaramento novo, por **Atualizar framework**. Sem git no servidor, o card não mexe no `composer.json` e avisa.
 
 ## [5.313.3] — 2026-11-14
 
