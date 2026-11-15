@@ -148,7 +148,7 @@ final class McpScopedGateway extends McpTableGateway
             return; // nivel 'all' / exempt e sem tenancy: sem restricao por linha
         }
         if ($this->find($table, $pk, $id, [$pk]) === null) {
-            throw new McpScopeException('Registro fora do escopo do usuario.');
+            throw new McpScopeException('Registro fora do escopo do usuário.');
         }
     }
 }

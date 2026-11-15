@@ -26,13 +26,13 @@ final class McpWriteGuard
             $admin = (string) (($ini['mcp']['admin_program'] ?? '') ?: 'ProgramForm');
             if (! PermissionGate::canAccess($admin)) {
                 McpScopeAudit::denied((string) ($spec['id'] ?? '?'), 'write-not-admin');
-                throw new McpScopeException('Escrita exige permissao administrativa.');
+                throw new McpScopeException('Escrita exige permissão administrativa.');
             }
         }
 
         if ((bool) ($ini['mcp']['write_requires_approval'] ?? false) && ! $confirmed) {
             McpScopeAudit::denied((string) ($spec['id'] ?? '?'), 'write-unconfirmed');
-            throw new McpScopeException('Operacao de escrita pendente de aprovacao humana (confirm=true).');
+            throw new McpScopeException('Operação de escrita pendente de aprovação humana (confirm=true).');
         }
     }
 }

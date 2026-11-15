@@ -51,7 +51,7 @@ final class McpDataTool implements Tool
     {
         $desc = (string) $this->mcpTool->description();
         if ($this->isWrite) {
-            $desc .= ' [ESCRITA] A execucao NUNCA e imediata: ao chamar, um cartao de confirmacao e exibido e a acao so roda apos o usuario aprovar.';
+            $desc .= ' [ESCRITA] A execução NUNCA é imediata: ao chamar, um cartão de confirmação é exibido e a ação só roda após o usuário aprovar.';
         }
 
         return $desc;
@@ -130,7 +130,7 @@ final class McpDataTool implements Tool
             'fields' => $fields,
         ], static fn ($v) => $v !== null));
 
-        return 'Esta acao de escrita requer confirmacao do usuario. Um cartao de confirmacao foi exibido; aguarde a resposta antes de prosseguir.';
+        return 'Esta ação de escrita requer confirmação do usuário. Um cartão de confirmação foi exibido; aguarde a resposta antes de prosseguir.';
     }
 
     /**

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.314.2] — 2026-11-14
+
+### Melhorias
+
+- **Chat IA:** as mensagens do cartão de confirmação saem em português com acento: "Ação cancelada. Nada foi alterado.", "Não consegui aplicar o que você mudou…", "Esta confirmação expirou…" e os avisos de erro de uma ação. Antes vinham sem acento ("Acao", "Peca a acao de novo").
+- **Chat IA:** quando o assistente não consegue comentar o resultado de uma ação aprovada, o resumo mostra os dados com nome legível ("Pedido 12 · Total 40") em vez do nome técnico do campo ("pedido_id: 12").
+
 ## [5.314.1] — 2026-11-14
 
 ### Novidades

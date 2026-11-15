@@ -215,7 +215,7 @@ final class McpCrudTool extends McpManifestTool
             return Response::error("Parametro {$pk} obrigatorio.");
         }
         if (! (bool) $request->get('confirm', false)) {
-            return Response::error('Operacao destrutiva nao confirmada. Reenvie com confirm=true.');
+            return Response::error('Operação destrutiva não confirmada. Reenvie com confirm=true.');
         }
 
         try {

@@ -375,7 +375,7 @@ final class EmbedChatController
                 }
                 error_log('[embed-chat] ' . $e->getMessage() . $detail);
                 if (! $sink->aborted()) {
-                    $sink->error('Desculpe, ocorreu um erro ao processar sua solicitacao.');
+                    $sink->error('Desculpe, ocorreu um erro ao processar sua solicitação.');
                 }
                 $sink->done();
             }
@@ -535,8 +535,8 @@ final class EmbedChatController
         $pending = $id !== '' ? $confirms->resolve($id) : null;
 
         if (! $approved) {
-            $sink->textDelta('Acao cancelada. Nada foi alterado.');
-            $messages[] = ['role' => 'assistant', 'content' => 'Acao cancelada pelo usuario.'];
+            $sink->textDelta('Ação cancelada. Nada foi alterado.');
+            $messages[] = ['role' => 'assistant', 'content' => 'Ação cancelada pelo usuário.'];
             $saveAll();
             $sink->messageEnd();
             $sink->done();
@@ -547,7 +547,7 @@ final class EmbedChatController
         if ($pending === null || $caller === null) {
             [$text, $code] = $pending === null && $storageFailed
                 ? [self::STORAGE_READ_FAILED, 'CHAT_STORAGE_UNAVAILABLE']
-                : ['Confirmacao expirada ou invalida. Refaca a solicitacao.', 'CONFIRM_EXPIRED'];
+                : ['Esta confirmação expirou ou não vale mais. Peça a ação de novo.', 'CONFIRM_EXPIRED'];
             $sink->confirmResult($id, false, $text);
             $sink->error($text, $code);
             $saveAll();
@@ -563,12 +563,12 @@ final class EmbedChatController
         // de topo) RECUSA a escrita: nunca grava o valor velho calado.
         [$args, $rejected] = ConfirmCoordinator::applyEdits($pending['args'], $pending['editable'] ?? [], $values);
         if ($rejected !== []) {
-            $text = 'Nao consegui aplicar o que voce mudou em: ' . implode(', ', $rejected)
-                . '. Nada foi gravado. Peca a acao de novo com o valor certo.';
+            $text = 'Não consegui aplicar o que você mudou em: ' . implode(', ', $rejected)
+                . '. Nada foi gravado. Peça a ação de novo com o valor certo.';
             error_log('[mad-ai] confirm ' . $tool . ': edicao recusada em ' . implode(', ', $rejected) . ' — escrita nao executada');
             $sink->confirmResult($id, false, $text);
             $sink->textDelta($text);
-            $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' NAO executada: edicao do cartao invalida em ' . implode(', ', $rejected) . '.'];
+            $messages[] = ['role' => 'assistant', 'content' => 'Ação ' . $tool . ' NÃO executada: edição do cartão inválida em ' . implode(', ', $rejected) . '.'];
             $saveAll();
             $sink->messageEnd();
             $sink->done();
@@ -579,8 +579,8 @@ final class EmbedChatController
         // Re-gate: revalida no piso/matriz sob o McpCurrentUser DESTE request.
         $spec = $caller->spec($tool);
         if ($spec === null || ! (new McpPermissionResolver())->canUseTool($caller->manifest(), $spec)) {
-            $sink->confirmResult($id, false, 'Voce nao tem permissao para executar esta acao.');
-            $sink->error('Voce nao tem permissao para executar esta acao.');
+            $sink->confirmResult($id, false, 'Você não tem permissão para executar esta ação.');
+            $sink->error('Você não tem permissão para executar esta ação.');
             $saveAll();
             $sink->done();
 
@@ -626,8 +626,8 @@ final class EmbedChatController
             $msg = is_array($r['result'])
                 ? (string) ($r['result']['message'] ?? $r['result']['error'] ?? 'Falha desconhecida.')
                 : 'Falha desconhecida.';
-            $sink->confirmResult($id, false, 'Nao foi possivel executar a acao: ' . $msg);
-            $sink->textDelta('Nao foi possivel executar a acao: ' . $msg);
+            $sink->confirmResult($id, false, 'Não foi possível executar a ação: ' . $msg);
+            $sink->textDelta('Não foi possível executar a ação: ' . $msg);
             $messages[] = ['role' => 'assistant', 'content' => 'Falha ao executar ' . $tool . ': ' . $msg];
         }
 
@@ -651,18 +651,22 @@ final class EmbedChatController
     /** Pedido ao modelo do resumo depois da escrita aprovada. */
     private static function summaryPrompt(string $tool, string $json, string $description): string
     {
-        return 'O usuario APROVOU no cartao a acao "' . $tool . '" e ela foi executada com sucesso.'
-            . ($description !== '' ? "\nDescricao da acao: " . $description : '')
-            . "\nRetorno da acao (JSON): " . $json
+        return 'O usuário APROVOU no cartão a ação "' . $tool . '" e ela foi executada com sucesso.'
+            . ($description !== '' ? "\nDescrição da ação: " . $description : '')
+            . "\nRetorno da ação (JSON): " . $json
             . "\n\nEscreva agora ao usuario, em poucas linhas, o resumo do que foi feito usando SO esse retorno"
-            . ' (numero, total, parcelas, link, o que a descricao da acao pedir). Nao chame ferramentas,'
-            . ' nao consulte os dados de novo e nao peca nova confirmacao.';
+            . ' (número, total, parcelas, link, o que a descrição da ação pedir). Não chame ferramentas,'
+            . ' não consulte os dados de novo e não peça nova confirmação.';
     }
 
-    /** Resumo sem modelo (cota, sem IA, falha): sucesso + campos simples do retorno. */
+    /**
+     * Resumo sem modelo (cota, sem IA, falha): sucesso + campos simples do
+     * retorno com rótulo legível (`pedido_id` → "Pedido 12", `valor_total` →
+     * "Valor total 40"). Sem formato por tabela: só o nome da chave.
+     */
     private static function fallbackSummary(string $tool, mixed $result): string
     {
-        $text = 'Acao "' . $tool . '" executada com sucesso.';
+        $text = 'Ação executada com sucesso.';
         if (is_scalar($result) && ! is_bool($result) && (string) $result !== '') {
             return $text . ' Retorno: ' . mb_substr((string) $result, 0, 300);
         }
@@ -671,12 +675,26 @@ final class EmbedChatController
         }
         $parts = [];
         foreach ($result as $k => $v) {
-            if (is_string($k) && (is_scalar($v) || $v === null) && count($parts) < 8) {
-                $parts[] = $k . ': ' . (is_bool($v) ? ($v ? 'sim' : 'nao') : mb_substr((string) $v, 0, 120));
+            if (is_string($k) && $k !== '' && (is_scalar($v) || $v === null) && count($parts) < 8) {
+                $value   = is_bool($v) ? ($v ? 'sim' : 'não') : ($v === null ? '—' : mb_substr((string) $v, 0, 120));
+                $parts[] = self::fieldLabel($k) . ' ' . $value;
             }
         }
 
-        return $parts !== [] ? $text . ' ' . implode(' · ', $parts) : $text;
+        return $parts !== [] ? $text . ' ' . implode(' · ', $parts) . '.' : $text;
+    }
+
+    /** `pedido_id` → "Pedido", `valor_total` → "Valor total", `numeroNota` → "Numero nota". */
+    private static function fieldLabel(string $key): string
+    {
+        $k = preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', '_', $key) ?? $key;
+        $k = preg_replace('/^id_|_id$/i', '', strtolower($k)) ?? $k;
+        $k = trim(str_replace(['_', '-'], ' ', $k));
+        if ($k === '') {
+            $k = $key;
+        }
+
+        return mb_strtoupper(mb_substr($k, 0, 1)) . mb_substr($k, 1);
     }
 
     /** Mensagem amigável de limite atingido a partir do resultado do check(). */

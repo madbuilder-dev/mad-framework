@@ -157,7 +157,7 @@ final class McpToolCaller
         if ($this->isWrite($name)) {
             if (! $confirmed) {
                 $ms  = (int) round((microtime(true) - $t0) * 1000);
-                $res = ['error' => 'Esta acao grava dados e so roda depois que o usuario confirmar no cartao.'];
+                $res = ['error' => 'Esta ação grava dados e só roda depois que o usuário confirmar no cartão.'];
                 $sink?->toolUseEnd($name, $args, $ms, $res, false);
 
                 return ['result' => $res, 'ok' => false, 'ms' => $ms];

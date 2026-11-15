@@ -165,7 +165,7 @@ final class McpCustomTool extends McpManifestTool
         // H3 (1): allowlist explicito de Classe::metodo. Fail-closed.
         if (! self::isAllowed($class, $method)) {
             \error_log("[mcp:custom] bloqueado fora do allowlist: {$class}::{$method}");
-            return Response::error('Operacao custom nao autorizada.');
+            return Response::error('Esta ação não está liberada neste sistema.');
         }
 
         // FURO #4: ADMIN-ONLY por default. O metodo roda SQL opaco fora do escopo,
@@ -179,7 +179,7 @@ final class McpCustomTool extends McpManifestTool
         // H3 (3): confirm obrigatorio, salvo tool explicitamente read_only.
         $needsConfirm = ! self::specReadOnly($this->spec) || ! empty($this->spec['confirm']);
         if ($needsConfirm && $request->get('confirm', false) !== true) {
-            return Response::error('Operacao custom requer confirm=true.');
+            return Response::error('Esta ação grava dados e precisa de confirmação (confirm=true).');
         }
 
         if (! class_exists($class) || ! method_exists($class, $method)) {
@@ -226,11 +226,11 @@ final class McpCustomTool extends McpManifestTool
             // usuario final (o agente a repassa). Transacao ja desfeita.
             $msg = trim($e->getMessage());
 
-            return Response::error($msg !== '' ? $msg : 'A operacao foi recusada.');
+            return Response::error($msg !== '' ? $msg : 'A operação foi recusada.');
         } catch (\Throwable $e) {
             \error_log("[mcp:custom] {$class}::{$method}: " . $e->getMessage());
 
-            return Response::error('Erro ao executar a operacao custom.');
+            return Response::error('Não foi possível concluir a operação. Nada foi gravado.');
         }
 
         McpChangeAudit::record($this->entity() ?: $class, '-', $method, 'custom', [], ['args' => json_encode($args)]);
@@ -322,7 +322,7 @@ final class McpCustomTool extends McpManifestTool
                     return [true, (int) trim($val)];
                 }
 
-                return [false, 'deve ser um numero inteiro.'];
+                return [false, 'deve ser um número inteiro.'];
 
             case 'number':
                 if (is_int($val) || is_float($val)) {
@@ -339,7 +339,7 @@ final class McpCustomTool extends McpManifestTool
                     }
                 }
 
-                return [false, 'deve ser um numero.'];
+                return [false, 'deve ser um número.'];
 
             case 'boolean':
                 if (is_bool($val)) {
