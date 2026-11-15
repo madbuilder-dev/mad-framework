@@ -1609,36 +1609,6 @@ const Mad = {
     },
 
     /**
-     * Ação pronta Fechar do `<mad-btn close>` (fórum #317): só fecha, sem
-     * gravar. Na cortina, no modal ou na linha anexada da grid, fecha a camada
-     * que contém o botão (o mesmo caminho do Cancelar). Em página inteira,
-     * volta para a tela anterior do app; sem tela anterior (aberta pelo
-     * endereço ou F5), abre `fallback` ({class, url}, o `close="Tela"`) ou a
-     * tela inicial do app.
-     */
-    closeForm(el, fallback) {
-        if (this.closeOverlayOf(el)) return true;
-        if (this._canGoBack()) { history.back(); return true; }
-        if (fallback && fallback.class) {
-            this.go(fallback.class, fallback.method || 'show', {}, fallback.url || undefined);
-            return true;
-        }
-        window.location.assign(this._appBase() || '/app');
-        return true;
-    },
-
-    /**
-     * Há tela anterior DO APP no histórico? Cada navegação interna grava
-     * `madDepth` (profundidade) no state; a entrada aberta pelo endereço fica
-     * com 0. Sem isso, o voltar levaria para fora do app (outro site, login).
-     */
-    _canGoBack() {
-        const s = window.history && window.history.state;
-        return !!(s && s.madDepth > 0);
-    },
-
-
-    /**
      * Camada (gaveta/modal) que contém o elemento cujo CLIQUE está sendo
      * despachado agora, ou null. Os chamadores do go() (onclick do MadAction,
      * ações da grid, Alpine) não passam o elemento; window.event, sim.
@@ -3082,9 +3052,7 @@ const Mad = {
             // crua mesmo com a rota declarada.
             const webRoute = (typeof window.MadWebRoute === 'function') ? window.MadWebRoute : null;
             const browserUrl = webRoute ? webRoute(url) : url;
-            // madDepth: profundidade no app, lida pelo Fechar (_canGoBack, fórum #317).
-            const madDepth = ((history.state && history.state.madDepth) || 0) + 1;
-            history.pushState({ url, madDepth }, '', browserUrl);
+            history.pushState({ url }, '', browserUrl);
         }
     },
 
@@ -4646,62 +4614,6 @@ const MadOverlayBackdrop = {
 };
 MadOverlayBackdrop.bind();
 // ── fim clique fora ──
-
-// ── X flutuante da janela sem título (fórum #319) ───────────────────────────
-// `<mad-drawer>`/`<mad-modal>` sem título não têm faixa de cabeçalho: o X (e o
-// ? da Ajuda) ficam num grupo absoluto no canto da janela (.mad-overlay-float).
-// Quando a primeira coisa da janela é uma Seção com título, o grupo desce até
-// a linha do título dela. A conta usa offsetTop (layout), não getBoundingClientRect:
-// a transição de abertura escala a janela e o retângulo mediria errado.
-const MadOverlayFloat = {
-    /** Distância vertical de `el` até o topo de `panel`, ou null se `panel` não é ancestral posicionado. */
-    offsetIn(el, panel) {
-        let y = 0, n = el;
-        while (n && n !== panel) { y += n.offsetTop; n = n.offsetParent; }
-        return n === panel ? y : null;
-    },
-
-    align(box) {
-        const panel = box.parentElement;
-        if (!panel || box.offsetParent === null) return;
-        box.style.top = '';
-        const body = panel.querySelector(':scope > .mad-drawer-body, :scope > .mad-modal-body');
-        const sec = body ? body.querySelector('.mad-form-section') : null;
-        const title = sec ? sec.querySelector(':scope > .mad-form-section-header .mad-form-section-title') : null;
-        if (!title || !title.offsetHeight) return;
-        const bodyTop = MadOverlayFloat.offsetIn(body, panel);
-        const secTop = MadOverlayFloat.offsetIn(sec, panel);
-        const titleTop = MadOverlayFloat.offsetIn(title, panel);
-        if (bodyTop === null || secTop === null || titleTop === null) return;
-        // Só quando a Seção abre a janela: conteúdo acima dela empurra o topo.
-        const pad = parseFloat(getComputedStyle(body).paddingTop) || 0;
-        if (secTop - (bodyTop + pad) > 6) return;
-        const top = Math.round(titleTop + title.offsetHeight / 2 - box.offsetHeight / 2);
-        box.style.top = Math.max(4, top) + 'px';
-    },
-
-    alignAll() {
-        document.querySelectorAll('[data-mad-overlay-float]').forEach(MadOverlayFloat.align);
-    },
-
-    /** Mede depois que o Alpine mostrou a janela e de novo quando a transição termina. */
-    schedule() {
-        requestAnimationFrame(() => MadOverlayFloat.alignAll());
-        setTimeout(() => MadOverlayFloat.alignAll(), 260);
-    },
-
-    bind() {
-        if (window.__madOverlayFloatBound) return;
-        window.__madOverlayFloatBound = true;
-        const onOpen = (e) => { if (e.detail && e.detail.action === 'open') MadOverlayFloat.schedule(); };
-        window.addEventListener('maddrawer', onOpen);
-        window.addEventListener('madmodal', onOpen);
-        window.addEventListener('resize', () => MadOverlayFloat.alignAll());
-    },
-};
-window.MadOverlayFloat = MadOverlayFloat;
-MadOverlayFloat.bind();
-// ── fim X flutuante ──
 
 // ── Modal arrastável (fórum #245) ──────────────────────────────────────────
 // `<mad-modal draggable>` e a tela com `protected static bool $draggable = true`

@@ -173,7 +173,7 @@ final class McpCustomTool extends McpManifestTool
         // garantir que o metodo filtra pelo ator injetado).
         if (empty($this->spec['reviewed']) && ! (new McpPermissionResolver())->isAdmin()) {
             McpScopeAudit::denied((string) ($this->spec['id'] ?? $method), 'custom-not-reviewed');
-            return Response::error('Tool custom e admin-only ate ser revisada (spec.reviewed).');
+            return Response::error('Esta ação só pode ser usada por administrador até ser revisada.');
         }
 
         // H3 (3): confirm obrigatorio, salvo tool explicitamente read_only.
@@ -183,12 +183,12 @@ final class McpCustomTool extends McpManifestTool
         }
 
         if (! class_exists($class) || ! method_exists($class, $method)) {
-            return Response::error("Metodo {$class}::{$method} indisponivel.");
+            return Response::error("Método {$class}::{$method} indisponível.");
         }
 
         $ref = new \ReflectionMethod($class, $method);
         if (! $ref->isPublic() || $ref->isAbstract()) {
-            return Response::error("Metodo {$class}::{$method} nao e invocavel.");
+            return Response::error("Método {$class}::{$method} não pode ser chamado.");
         }
 
         // H3 (2): args posicionais coagidos/validados contra os params declarados.
@@ -203,14 +203,14 @@ final class McpCustomTool extends McpManifestTool
             $raw = $request->get($p['name']);
             if ($raw === null || $raw === '') {
                 if ($p['required']) {
-                    return Response::error("Parametro obrigatorio ausente: {$p['name']}.");
+                    return Response::error("Parâmetro obrigatório ausente: {$p['name']}.");
                 }
                 $args[] = null;
                 continue;
             }
             [$ok, $value] = self::coerce($raw, $p['canonical']);
             if (! $ok) {
-                return Response::error("Parametro {$p['name']}: {$value}");
+                return Response::error("Parâmetro {$p['name']}: {$value}");
             }
             $args[] = $value;
         }

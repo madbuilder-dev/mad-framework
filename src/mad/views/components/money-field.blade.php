@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => null,'suffix' => '', 'placeholder' => '', 'decimals' => null, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
+@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => null,'suffix' => '', 'placeholder' => '', 'decimals' => null, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -60,7 +60,7 @@
         'allowNegative' => $allowNegative,
     ]);
 @endphp
-@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
+@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
 @if($__rm !== '')

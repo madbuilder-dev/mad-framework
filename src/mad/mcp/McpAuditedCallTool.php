@@ -36,7 +36,7 @@ final class McpAuditedCallTool implements Method
                         return JsonRpcResponse::error(
                             $request->id,
                             -32603,
-                            "Permissao negada para a tool [{$name}] (motivo: {$reason})."
+                            "Permissão negada para a tool [{$name}] (motivo: {$reason})."
                         );
                     }
                 }

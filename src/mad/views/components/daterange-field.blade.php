@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 
     'width' => '',
     'maxWidth' => '',
     'label' => '',
@@ -109,7 +109,7 @@
     \Mad\Form\MadFormRegistry::register($name_start, 'date', ['label' => strip_tags($label) . mad_t('mad.ui.range_start_suffix'), 'required' => $required, 'display_mask' => $display_mask, 'database_mask' => $database_mask]);
     \Mad\Form\MadFormRegistry::register($name_end,   'date', ['label' => strip_tags($label) . mad_t('mad.ui.range_end_suffix'),   'required' => false,      'display_mask' => $display_mask, 'database_mask' => $database_mask]);
 @endphp
-@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
+@php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false); @endphp
 <div class="mad-field" style="position:relative;{{ $_dimStyle }}" x-data="madDateRangePicker({{ $alpineCfg }})">
     @if($label)
         <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>

@@ -12,14 +12,15 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
-## [5.315.0] — 2026-11-14
+## [5.314.3] — 2026-11-15
 
-### Novidades
+### Melhorias
 
-- **Formulário:** `<mad-btn close>` é a ação pronta **Fechar**: fecha a cortina ou o modal em que o botão está, sem gravar nada; em página inteira, volta para a tela anterior. `close="TelaList"` diz para onde ir quando não há tela anterior.
-- **Layout:** novo `<mad-text>` para escrever um texto solto em qualquer lugar da tela, com tamanho, peso, cor, tom e alinhamento. Acompanha o tema claro/escuro e não grava nada.
-- **Layout:** cortina e modal sem título mostram o X de fechar no canto, por cima do conteúdo e sem faixa de cabeçalho. Com uma Seção no topo, o X fica na linha do título dela. Antes, sem título, não havia X. Janela com título não muda.
-- **Campos:** o destaque do campo ganha borda: `input-border-color`, `input-border-width` (1 a 6 px) e `input-border-sides` (`top`, `right`, `bottom`, `left`, separados por vírgula; vazio = todos). Vale para texto, número, moeda, data, hora, combo, seleção múltipla, período e textarea. A altura do campo não muda, e o foco e o vermelho de erro continuam por cima da borda. Campo sem essas opções fica como antes.
+- **Chat IA:** o chat do sistema (o do app logado) também passou a falar português com acento ao cancelar, recusar ou confirmar uma ação: "Ação cancelada. Nada foi alterado.", "Esta confirmação expirou…", "Você não tem permissão…". O mesmo vale para os avisos de erro que uma ação devolve ("Parâmetro obrigatório ausente", "Registro não encontrado").
+
+### Correções
+
+- **Chat IA:** no chat do sistema, um valor enviado na aprovação que o cartão não deixa editar era ignorado e a ação rodava mesmo assim. Agora a ação é recusada e nada é alterado.
 
 ## [5.314.2] — 2026-11-14
 

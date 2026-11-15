@@ -78,7 +78,7 @@ final class McpGrantResolver
             if ($owner !== null) {
                 return McpScopePlan::allow([$owner, 'in', [$this->one($uid)]], $stamp); // mais estreito, seguro
             }
-            return McpScopePlan::deny("nivel unit mas '{$entity}' nao tem coluna de escopo");
+            return McpScopePlan::deny("nível unit, mas '{$entity}' não tem coluna de escopo");
         }
 
         // own (default)

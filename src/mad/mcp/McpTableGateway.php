@@ -49,7 +49,7 @@ class McpTableGateway
     private static function ident(string $name): string
     {
         if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
-            throw new \InvalidArgumentException("Identificador invalido: {$name}");
+            throw new \InvalidArgumentException("Identificador inválido: {$name}");
         }
 
         return $name;
@@ -104,7 +104,7 @@ class McpTableGateway
     {
         $parts = explode('.', $table);
         if (count($parts) > 2) {
-            throw new \InvalidArgumentException("Identificador invalido: {$table}");
+            throw new \InvalidArgumentException("Identificador inválido: {$table}");
         }
         $table = implode('.', array_map([self::class, 'ident'], $parts));
         ProtectedData::assertTable($table);
@@ -239,7 +239,7 @@ class McpTableGateway
             $val = $f[2] ?? null;
 
             if (! in_array($op, self::OPS, true)) {
-                throw new \InvalidArgumentException("Operador nao permitido: {$op}");
+                throw new \InvalidArgumentException("Operador não permitido: {$op}");
             }
 
             // IS NULL / IS NOT NULL: sem bind (PDO nao liga `= NULL`). Usado pelo

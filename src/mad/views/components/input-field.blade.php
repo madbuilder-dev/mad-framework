@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -40,7 +40,7 @@
     $_effectiveType = $togglePassword ? 'password' : $type;
     // Width / max-width inline — normalizado (width="200" → 200px; sem isso a
     // declaração era inválida e a prop não fazia nada).
-    $_dimStyle  = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? '');
+    $_dimStyle  = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false);
     $_styleAttr = $_dimStyle !== '' ? ' style="' . $_dimStyle . '"' : '';
     // Wrapper precisa quando ha icone ou toggle
     $_iconSide = strtolower((string)$iconSide) === 'right' ? 'right' : 'left';

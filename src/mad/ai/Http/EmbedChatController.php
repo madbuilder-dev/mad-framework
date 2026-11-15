@@ -654,7 +654,7 @@ final class EmbedChatController
         return 'O usuário APROVOU no cartão a ação "' . $tool . '" e ela foi executada com sucesso.'
             . ($description !== '' ? "\nDescrição da ação: " . $description : '')
             . "\nRetorno da ação (JSON): " . $json
-            . "\n\nEscreva agora ao usuario, em poucas linhas, o resumo do que foi feito usando SO esse retorno"
+            . "\n\nEscreva agora ao usuário, em poucas linhas, o resumo do que foi feito usando SÓ esse retorno"
             . ' (número, total, parcelas, link, o que a descrição da ação pedir). Não chame ferramentas,'
             . ' não consulte os dados de novo e não peça nova confirmação.';
     }

@@ -147,7 +147,7 @@ final class McpToolCaller
         $tool = $this->tools[$name] ?? null;
         if ($tool === null) {
             $ms  = (int) round((microtime(true) - $t0) * 1000);
-            $res = ['error' => "Tool '{$name}' indisponivel ou sem permissao para este perfil."];
+            $res = ['error' => "Ação '{$name}' indisponível ou sem permissão para este perfil."];
             $sink?->toolUseEnd($name, $args, $ms, $res, false);
 
             return ['result' => $res, 'ok' => false, 'ms' => $ms];

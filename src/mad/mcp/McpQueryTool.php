@@ -62,7 +62,7 @@ final class McpQueryTool extends McpManifestTool
             $val      = $request->get($col);
             if ($val === null || $val === '') {
                 if (! $optional) {
-                    return Response::error("Parametro '{$col}' obrigatorio.");
+                    return Response::error("Parâmetro '{$col}' obrigatório.");
                 }
                 continue;
             }

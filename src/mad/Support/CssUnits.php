@@ -180,9 +180,7 @@ final class CssUnits
 
     /**
      * Destaque do CONTROLE do campo (o input/select/textarea): `input-bg`,
-     * `input-color`, `input-weight`, `input-italic` e a borda
-     * (`input-border-color`, `input-border-width`, `input-border-sides`, ver
-     * inputBorder()).
+     * `input-color`, `input-weight`, `input-italic`.
      *
      * Mesmo mecanismo do labelStyle(): `--mad-input-*` no wrapper, lidas pelas
      * regras de `.mad-input`, `.mad-textarea`, `.mad-sel-control` etc. O select
@@ -194,15 +192,8 @@ final class CssUnits
      * fundo hex opaco e sem `input-color`, a tinta vira a de maior contraste com
      * aquele fundo (a escura ou a clara do tema padrão), igual nos dois temas.
      */
-    public static function inputStyle(
-        mixed $bg,
-        mixed $color = null,
-        mixed $weight = null,
-        mixed $italic = null,
-        mixed $borderColor = null,
-        mixed $borderWidth = null,
-        mixed $borderSides = null,
-    ): string {
+    public static function inputStyle(mixed $bg, mixed $color = null, mixed $weight = null, mixed $italic = null): string
+    {
         $out = '';
 
         $b = self::color($bg);
@@ -214,63 +205,7 @@ final class CssUnits
             $color = self::contrastInk($b);
         }
 
-        return $out . self::textVars('input', $color, null, $weight, $italic)
-            . self::inputBorder($borderColor, $borderWidth, $borderSides);
-    }
-
-    /** Lados da borda do campo e o sufixo da var de cada um. */
-    private const BORDER_SIDES = ['top' => 't', 'right' => 'r', 'bottom' => 'b', 'left' => 'l'];
-
-    /** Espessura máxima da borda do campo (px): cabe no padding do combo (5px) sem mudar a altura. */
-    public const INPUT_BORDER_MAX = 6;
-
-    /**
-     * Borda do controle do campo (fórum #315): `input-border-color`,
-     * `input-border-width` (px, 1 a INPUT_BORDER_MAX) e `input-border-sides`
-     * (`top,bottom`…; vazio ou `all` = os quatro lados).
-     *
-     * Sai por lado (`--mad-input-bw-t`, `--mad-input-bc-t`…), lida pelo
-     * mad-ui.css com a borda de hoje como reserva — sem a prop, nada muda. Os
-     * lados que não estão na lista ficam com a borda padrão. Em cima e embaixo
-     * vai também `--mad-input-bx-*` (espessura além de 1px), que o CSS tira do
-     * padding: a altura do campo não muda. O foco e o vermelho de erro continuam
-     * vencendo (regras mais fortes no CSS).
-     */
-    public static function inputBorder(mixed $color, mixed $width = null, mixed $sides = null): string
-    {
-        $c = self::color($color);
-        $w = 0;
-        if (is_numeric($width) || (is_string($width) && preg_match('/^\s*\d+(\.\d+)?\s*px\s*$/i', $width))) {
-            $w = (int) round((float) preg_replace('/px/i', '', (string) $width));
-            $w = max(0, min(self::INPUT_BORDER_MAX, $w));
-        }
-        if ($c === '' && $w === 0) {
-            return '';
-        }
-
-        $list = is_string($sides) ? strtolower(trim($sides)) : '';
-        $chosen = ($list === '' || $list === 'all')
-            ? array_keys(self::BORDER_SIDES)
-            : array_values(array_intersect(array_keys(self::BORDER_SIDES), preg_split('/[\s,]+/', $list) ?: []));
-        if ($chosen === []) {
-            $chosen = array_keys(self::BORDER_SIDES);
-        }
-
-        $out = '';
-        foreach ($chosen as $side) {
-            $k = self::BORDER_SIDES[$side];
-            if ($w > 0) {
-                $out .= '--mad-input-bw-' . $k . ':' . $w . 'px;';
-                if (($k === 't' || $k === 'b') && $w > 1) {
-                    $out .= '--mad-input-bx-' . $k . ':' . ($w - 1) . 'px;';
-                }
-            }
-            if ($c !== '') {
-                $out .= '--mad-input-bc-' . $k . ':' . $c . ';';
-            }
-        }
-
-        return $out;
+        return $out . self::textVars('input', $color, null, $weight, $italic);
     }
 
     /**

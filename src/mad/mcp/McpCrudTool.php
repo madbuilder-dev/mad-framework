@@ -103,7 +103,7 @@ final class McpCrudTool extends McpManifestTool
         $pk = $this->pk();
         $id = $request->get($pk);
         if ($id === null || $id === '') {
-            return Response::error("Parametro {$pk} obrigatorio.");
+            return Response::error("Parâmetro {$pk} obrigatório.");
         }
 
         try {
@@ -113,7 +113,7 @@ final class McpCrudTool extends McpManifestTool
         }
 
         if ($row === null) {
-            return Response::error("Registro {$id} nao encontrado.");
+            return Response::error("Registro {$id} não encontrado.");
         }
 
         return Response::json($this->masker()->maskRow($row));
@@ -129,7 +129,7 @@ final class McpCrudTool extends McpManifestTool
 
         [$data, $errors] = $this->collect($request, requireRequired: true);
         if ($errors !== []) {
-            return Response::error('Validacao: ' . implode(' ', $errors));
+            return Response::error('Validação: ' . implode(' ', $errors));
         }
         if ($data === []) {
             return Response::error('Nenhum campo informado.');
@@ -166,12 +166,12 @@ final class McpCrudTool extends McpManifestTool
         $pk = $this->pk();
         $id = $request->get($pk);
         if ($id === null || $id === '') {
-            return Response::error("Parametro {$pk} obrigatorio.");
+            return Response::error("Parâmetro {$pk} obrigatório.");
         }
 
         [$data, $errors] = $this->collect($request, requireRequired: false);
         if ($errors !== []) {
-            return Response::error('Validacao: ' . implode(' ', $errors));
+            return Response::error('Validação: ' . implode(' ', $errors));
         }
         if ($data === []) {
             return Response::error('Nenhum campo para atualizar.');
@@ -193,7 +193,7 @@ final class McpCrudTool extends McpManifestTool
         }
 
         if (! empty($res['notfound'])) {
-            return Response::error("Registro {$id} nao encontrado.");
+            return Response::error("Registro {$id} não encontrado.");
         }
         $old = $res['old'];
         $row = $res['row'];
@@ -212,7 +212,7 @@ final class McpCrudTool extends McpManifestTool
         $pk = $this->pk();
         $id = $request->get($pk);
         if ($id === null || $id === '') {
-            return Response::error("Parametro {$pk} obrigatorio.");
+            return Response::error("Parâmetro {$pk} obrigatório.");
         }
         if (! (bool) $request->get('confirm', false)) {
             return Response::error('Operação destrutiva não confirmada. Reenvie com confirm=true.');
@@ -233,7 +233,7 @@ final class McpCrudTool extends McpManifestTool
         }
 
         if (! empty($res['notfound'])) {
-            return Response::error("Registro {$id} nao encontrado.");
+            return Response::error("Registro {$id} não encontrado.");
         }
         $old = $res['old'];
 

@@ -215,7 +215,7 @@ final class AgentConsoleController
             } catch (\Throwable $e) {
                 error_log('[agent-console] ' . $e->getMessage());
                 if (! $sink->aborted()) {
-                    $sink->error('Desculpe, ocorreu um erro ao processar sua solicitacao.');
+                    $sink->error('Desculpe, ocorreu um erro ao processar sua solicitação.');
                 }
                 $sink->done();
             }
@@ -284,8 +284,8 @@ final class AgentConsoleController
         $pending = $id !== '' ? $confirms->resolve($id) : null;
 
         if (! $approved) {
-            $sink->textDelta('Acao cancelada. Nada foi alterado.');
-            $messages[] = ['role' => 'assistant', 'content' => 'Acao cancelada pelo usuario.'];
+            $sink->textDelta('Ação cancelada. Nada foi alterado.');
+            $messages[] = ['role' => 'assistant', 'content' => 'Ação cancelada pelo usuário.'];
             $saveAll();
             $sink->messageEnd();
             $sink->done();
@@ -296,8 +296,8 @@ final class AgentConsoleController
         // Re-gate admin: só o administrador do dono (login `admin` E grupo 1)
         // executa a ação. Defesa contra approved forjado.
         if (! \Mad\Security\OwnerAdmin::session()) {
-            $sink->confirmResult($id, false, 'Voce nao tem permissao para executar esta acao (admin requerido).');
-            $sink->error('Voce nao tem permissao para executar esta acao (admin requerido).');
+            $sink->confirmResult($id, false, 'Você não tem permissão para executar esta ação (só administrador).');
+            $sink->error('Você não tem permissão para executar esta ação (só administrador).');
             $saveAll();
             $sink->done();
 
@@ -307,7 +307,7 @@ final class AgentConsoleController
         if ($pending === null) {
             [$text, $code] = $storageFailed
                 ? [self::STORAGE_READ_FAILED, 'CHAT_STORAGE_UNAVAILABLE']
-                : ['Confirmacao expirada ou invalida. Refaca a solicitacao.', 'CONFIRM_EXPIRED'];
+                : ['Esta confirmação expirou ou não vale mais. Peça a ação de novo.', 'CONFIRM_EXPIRED'];
             $sink->confirmResult($id, false, $text);
             $sink->error($text, $code);
             $saveAll();
@@ -318,18 +318,30 @@ final class AgentConsoleController
 
         $tool = $pending['tool'];
         // So os campos que o cartao declarou editaveis (as system tools nao
-        // declaram nenhum): o cliente nao injeta nem troca argumento.
-        $args = ConfirmCoordinator::applyValues($pending['args'], $pending['editable'] ?? [], $values);
+        // declaram nenhum): qualquer outra chave em `values` RECUSA a acao —
+        // nunca executa ignorando o que o cliente mandou.
+        [$args, $rejected] = ConfirmCoordinator::applyEdits($pending['args'], $pending['editable'] ?? [], $values);
+        if ($rejected !== []) {
+            $text = 'Não consegui aplicar o que você mudou em: ' . implode(', ', $rejected) . '. Nada foi alterado.';
+            $sink->confirmResult($id, false, $text);
+            $sink->textDelta($text);
+            $messages[] = ['role' => 'assistant', 'content' => 'Ação ' . $tool . ' NÃO executada: edição do cartão inválida em ' . implode(', ', $rejected) . '.'];
+            $saveAll();
+            $sink->messageEnd();
+            $sink->done();
+
+            return;
+        }
 
         $outcome = $executor->execute($tool, $args, $sink, $id);
 
         if ($outcome->ok) {
             $sink->confirmResult($id, true);
-            $sink->textDelta('Acao "' . $tool . '" executada com sucesso. ' . $outcome->message);
-            $messages[] = ['role' => 'assistant', 'content' => 'Acao ' . $tool . ' executada: ' . $outcome->message];
+            $sink->textDelta('Ação "' . $tool . '" executada com sucesso. ' . $outcome->message);
+            $messages[] = ['role' => 'assistant', 'content' => 'Ação ' . $tool . ' executada: ' . $outcome->message];
         } else {
-            $sink->confirmResult($id, false, 'Nao foi possivel executar a acao: ' . $outcome->message);
-            $sink->textDelta('Nao foi possivel executar a acao: ' . $outcome->message);
+            $sink->confirmResult($id, false, 'Não foi possível executar a ação: ' . $outcome->message);
+            $sink->textDelta('Não foi possível executar a ação: ' . $outcome->message);
             $messages[] = ['role' => 'assistant', 'content' => 'Falha ao executar ' . $tool . ': ' . $outcome->message];
         }
 
