@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.321.1] — 2026-11-16
+
+### Correções
+
+- **App gerado:** uma revisão de migration pendente com erro não trava mais as revisões mais novas do mesmo passo. **Migrar pendentes** roda só a mais nova, avisa no console quais pulou e, depois de aplicada, tira as antigas da lista (ficam guardadas em `storage/mad/migrations-superseded`). Revisão já aplicada nunca é tocada.
+
 ## [5.321.0] — 2026-11-16
 
 ### Novidades

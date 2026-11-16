@@ -88,6 +88,7 @@ class MadServiceProvider extends ServiceProvider
 
         $this->registerTrace();
         $this->registerDatabaseDrivers();
+        $this->registerMigrator();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -761,6 +762,26 @@ class MadServiceProvider extends ServiceProvider
      * pgsql ganha a MadPostgresConnection (bool/int sob PgBouncer — ver a
      * classe). Só se o app não tiver registrado resolver próprio.
      */
+    /**
+     * Migrator do app (fórum #336): revisão `_rNNN` pendente e superada não
+     * trava o migrate — ver MadMigrator. Os caminhos já registrados
+     * (loadMigrationsFrom de outros pacotes) passam para o novo.
+     */
+    private function registerMigrator(): void
+    {
+        $this->app->extend('migrator', function ($migrator, $app) {
+            if ($migrator instanceof \Mad\Database\MadMigrator) {
+                return $migrator;
+            }
+            $mad = new \Mad\Database\MadMigrator($app['migration.repository'], $app['db'], $app['files'], $app['events']);
+            foreach ($migrator->paths() as $path) {
+                $mad->path($path);
+            }
+
+            return $mad;
+        });
+    }
+
     private function registerDatabaseDrivers(): void
     {
         if (Connection::getResolver('pgsql') === null) {

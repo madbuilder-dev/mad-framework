@@ -1011,6 +1011,8 @@ return [
             'files'                     => 'Arquivos',
             'fix_errors'                => 'Corrija os erros antes de continuar.',
             'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
+            'migration_superseded'      => 'Superada, não roda: :name — a revisão mais nova (:newest) leva todas as mudanças.', // fórum #336
+            'migration_superseded_moved' => 'Revisão superada guardada fora da lista de migrations: :name.',
             'fullscreen'                => 'Tela cheia',
             'history'                   => 'Histórico',
             'image_no_source'           => '[Imagem sem origem válida]',

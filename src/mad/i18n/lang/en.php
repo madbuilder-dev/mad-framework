@@ -1020,6 +1020,8 @@ return [
             'files'                     => 'Files',
             'fix_errors'                => 'Fix the errors before continuing.',
             'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
+            'migration_superseded'      => 'Superseded, not run: :name — the newest revision (:newest) carries every change.', // fórum #336
+            'migration_superseded_moved' => 'Superseded revision moved out of the migrations list: :name.',
             'fullscreen'                => 'Full screen',
             'history'                   => 'History',
             'image_no_source'           => '[Image without a valid source]',
