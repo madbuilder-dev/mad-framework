@@ -7,7 +7,9 @@
      *
      * Campos da API disponíveis em fill-fields:
      *   bairro, cep, cidade, cidade_cod_ibge, estado, estado_cod_ibge,
-     *   logradouro, tipo_logradouro, uf, rua (= tipo_logradouro + logradouro)
+     *   logradouro, tipo_logradouro, uf, rua (= tipo_logradouro + logradouro),
+     *   pais_cod ('1058', código do país da NF-e) e pais ('Brasil')
+     *   — para a NF-e: 'codigo_municipio' => 'cidade_cod_ibge', 'codigo_pais' => 'pais_cod'
      *
      * Resolução automática de cidade/estado (opt-in — "mágica"):
      *   Declarando `city-model` e/ou `state-model`, o serviço busca no banco o

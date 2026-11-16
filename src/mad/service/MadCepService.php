@@ -45,7 +45,8 @@ use Mad\Http\MadStateCrypt;
  *
  * Campos retornados pela API (usaveis em fill-fields):
  *   bairro, cep, cidade, cidade_cod_ibge, estado, estado_cod_ibge,
- *   logradouro, tipo_logradouro, uf, rua (= tipo_logradouro + logradouro)
+ *   logradouro, tipo_logradouro, uf, rua (= tipo_logradouro + logradouro),
+ *   pais_cod ('1058', código BACEN do Brasil, o da NF-e) e pais ('Brasil')
  *   + cidade_id / estado_id quando a resolucao automatica esta ativa.
  *
  * Estende MadComponent apenas pelo contrato do dispatcher.
@@ -146,6 +147,11 @@ class MadCepService extends MadComponent
         // `rua`, nem do CEP vir normalizado na resposta.
         $dados->cep = $cep;
         $dados->rua = trim(($dados->tipo_logradouro ?? '') . ' ' . ($dados->logradouro ?? ''));
+        // País (fórum #331): o CEP é sempre do Brasil — a NF-e pede o código do
+        // país (tabela BACEN, Brasil = 1058) ao lado do código do município
+        // (`cidade_cod_ibge`). Só preenche se o backend não mandou.
+        $dados->pais_cod ??= '1058';
+        $dados->pais     ??= 'Brasil';
 
         return $dados;
     }

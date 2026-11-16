@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.320.0] — 2026-11-16
+
+### Novidades
+
+- **CEP:** a busca de CEP agora traz também o país: `pais_cod` (1058, o código do Brasil que a nota fiscal eletrônica pede) e `pais` (Brasil). Junto com o código do município, que já vinha em `cidade_cod_ibge`, os dois campos da NF-e podem ser preenchidos pelo CEP. Quem já mapeou os campos não precisa mudar nada.
+
 ## [5.319.1] — 2026-11-16
 
 ### Correções
