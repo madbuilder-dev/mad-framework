@@ -2540,6 +2540,18 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-text--success { color: var(--mad-success); }
 .mad-text--warning { color: var(--mad-warning-text, var(--mad-warning)); }
 .mad-text--danger  { color: var(--mad-danger-text, var(--mad-danger)); }
+/* valign (fórum #327): alinhamento vertical na linha da grade/flex. `middle` e
+   `bottom` alinham a célula; `field` põe o texto na altura da CAIXA do campo
+   vizinho — um rótulo invisível (.mad-label, a mesma altura do rótulo dos
+   campos) e o texto centralizado na altura de um campo (--mad-input-height),
+   como a coluna do .mad-field. Sem lh, o padding cai e o texto fica no alto da
+   caixa (ainda abaixo do rótulo). */
+.mad-text--valign-middle { align-self: center; }
+.mad-text--valign-bottom { align-self: end; }
+.mad-text-at-field { display: flex; flex-direction: column; gap: var(--mad-label-gap, 5px); min-width: 0; max-width: 100%; }
+.mad-text-at-field__label { visibility: hidden; pointer-events: none; user-select: none; }
+.mad-text-at-field > .mad-text { box-sizing: border-box; min-height: var(--mad-input-height, 38px);
+            padding-block: max(0px, calc((var(--mad-input-height, 38px) - 1lh) / 2)); }
 
 
 /* ═══════════════════════════════════════════════════════════════════

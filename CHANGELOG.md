@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.318.0] — 2026-11-15
+
+### Novidades
+
+- **Formulário:** o Texto livre (`<mad-text>`) ganhou alinhamento vertical (`valign`): `middle`, `bottom` ou `field`, que põe o texto na altura da caixa do campo ao lado — um "%" ao lado de "ISS (%)" fica alinhado com a caixa. Sem a opção, nada muda.
+
 ## [5.317.2] — 2026-11-15
 
 ### Correções
