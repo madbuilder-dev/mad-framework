@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.318.1] — 2026-11-15
+
+### Correções
+
+- **Formulário:** o Texto livre com `valign="field"` ficava alguns pixels acima da caixa do campo quando o tema dá margem ao rótulo dos campos. Agora acompanha o rótulo e fica na altura da caixa.
+
 ## [5.318.0] — 2026-11-15
 
 ### Novidades

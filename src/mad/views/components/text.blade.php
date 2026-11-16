@@ -80,9 +80,10 @@
     $_txtSlot  = isset($slot) ? trim((string) $slot) : '';
 @endphp
 @if($_txtV === 'field')
-{{-- Na altura da caixa do campo: um rótulo invisível (a mesma classe do rótulo dos
-     campos, então a mesma altura) e o texto centralizado na altura de um campo. --}}
-<div class="mad-text-at-field"><span class="mad-label mad-text-at-field__label" aria-hidden="true">&#8203;</span><div class="{{ $_txtClass }}{{ $_txtExtra !== '' ? ' ' . $_txtExtra : '' }}"@if($_txtCss !== '') style="{{ $_txtCss }}"@endif>{{ $_txtText }}{!! $_txtSlot !!}</div></div>
+{{-- Na altura da caixa do campo: um rótulo invisível — <label> com a classe do rótulo
+     dos campos, para pegar as mesmas regras (margem de `label` de tema/Bootstrap) e
+     ter a mesma altura — e o texto centralizado na altura de um campo. --}}
+<div class="mad-text-at-field"><label class="mad-label mad-text-at-field__label" aria-hidden="true">&#8203;</label><div class="{{ $_txtClass }}{{ $_txtExtra !== '' ? ' ' . $_txtExtra : '' }}"@if($_txtCss !== '') style="{{ $_txtCss }}"@endif>{{ $_txtText }}{!! $_txtSlot !!}</div></div>
 @else
 <div class="{{ $_txtClass }}{{ $_txtExtra !== '' ? ' ' . $_txtExtra : '' }}"@if($_txtCss !== '') style="{{ $_txtCss }}"@endif>{{ $_txtText }}{!! $_txtSlot !!}</div>
 @endif
