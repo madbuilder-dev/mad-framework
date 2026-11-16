@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.319.0] — 2026-11-16
+
+### Novidades
+
+- **Formulário:** nova função `addMinutes()` no valor de "Preencher valor quando": `fill-value="addMinutes({horario_inicio}, {tempo_atendimento})"` soma minutos a uma hora ou a uma data e hora, passando da meia-noite. O `+` continua juntando texto.
+
 ## [5.318.1] — 2026-11-15
 
 ### Correções

@@ -4353,6 +4353,13 @@ document.addEventListener('alpine:initialized', function () { _madComputeMountOr
    número, `{campo}` (o valor de outro campo) e as funções `today()` (data de
    hoje), `now()` (data e hora de agora) e `time()` (hora de agora), que saem
    no formato do campo de destino (máscara do campo de data; HH:MM no de hora).
+   `addMinutes(base, minutos)` (fórum #329) soma minutos a uma hora ou a uma
+   data e hora e sai no mesmo formato:
+       fill-value="addMinutes({horario_inicio}, {tempo_atendimento})"
+   A base é `{campo}` de hora/data e hora ou today()/now()/time(); os minutos,
+   `{campo}` (número, ou duração "01:30") ou número. Passa da meia-noite. Campo
+   vazio = não preenche. Só esses argumentos: outra coisa invalida o valor.
+   O `+` continua juntando texto ({a} + {b} = "14:3030").
 
    QUANDO preenche: no instante em que a regra PASSA a valer por uma mudança
    feita na tela. Fica de fora, de propósito:
@@ -4428,13 +4435,64 @@ var _madFill = (function () {
         return st.kind === 'date' ? day : day + ' ' + hourMin(d);
     }
 
-    // today() / now() / time() → $v.today()… só FORA de aspas: 'now()' entre
-    // aspas é texto.
+    // ── addMinutes(base, minutos) — fórum #329 ───────────────────────────────
+    // Soma minutos a uma hora ("14:30" + 45 → "15:15", passando da meia-noite
+    // se for o caso) ou a uma data e hora. Os argumentos são DADO, nunca
+    // código: cada um tem de ser `{campo}`, um número ou today()/now()/time().
+    // Outra coisa entre os parênteses invalida o valor inteiro (sem efeito,
+    // como qualquer valor inválido). O `+` continua sendo o do JavaScript:
+    // junta texto.
+    var ADD_FN_RE = /\baddMinutes\s*\(/g;
+    var ADD_ARG_FIELD = /^\{([a-zA-Z_]\w*)\}$/;
+    var ADD_ARG_NUM = /^[-+]?\d+(?:\.\d+)?$/;
+    var ADD_ARG_CLOCK = /^\$v\.(today|now|time)\(\)$/;   // já traduzido
+    // Dez anos em minutos: além disso é engano de campo, não conta de agenda.
+    var ADD_MAX_MINUTES = 5256000;
+
+    function addArg(a) {
+        a = a.trim();
+        var m;
+        if ((m = ADD_ARG_FIELD.exec(a))) return '$v.field(' + JSON.stringify(m[1]) + ')';
+        if (ADD_ARG_NUM.test(a)) return '(' + a + ')';
+        if ((m = ADD_ARG_CLOCK.exec(a))) return '$v.' + m[1] + '()';
+        return null;
+    }
+
+    // Cada addMinutes(…) de um trecho fora de aspas → $v.addMinutes(a, b).
+    // null = forma inválida (argumento que não é campo/número/relógio,
+    // parêntese sem fechar, número de argumentos errado).
+    function rewriteAdd(chunk) {
+        var out = '', pos = 0, m;
+        ADD_FN_RE.lastIndex = 0;
+        while ((m = ADD_FN_RE.exec(chunk))) {
+            var open = m.index + m[0].length, depth = 1, close = -1;
+            var cuts = [], j;
+            for (j = open; j < chunk.length; j++) {
+                var c = chunk.charAt(j);
+                if (c === '(') depth++;
+                else if (c === ')') { depth--; if (depth === 0) { close = j; break; } }
+                else if (c === ',' && depth === 1) cuts.push(j);
+            }
+            if (close === -1 || cuts.length !== 1) return null;
+            var a = addArg(chunk.slice(open, cuts[0]));
+            var b = addArg(chunk.slice(cuts[0] + 1, close));
+            if (a === null || b === null) return null;
+            out += chunk.slice(pos, m.index) + '$v.addMinutes(' + a + ', ' + b + ')';
+            pos = close + 1;
+            ADD_FN_RE.lastIndex = pos;
+        }
+        return out + chunk.slice(pos);
+    }
+
+    // today() / now() / time() → $v.today()… e addMinutes(…) → $v.addMinutes(…),
+    // só FORA de aspas: 'now()' entre aspas é texto. null = addMinutes inválido.
     function translate(expr) {
         var s = String(expr == null ? '' : expr);
-        var out = '', quote = '', chunk = '';
+        var out = '', quote = '', chunk = '', bad = false;
         var flush = function () {
-            out += chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()');
+            var js = rewriteAdd(chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()'));
+            if (js === null) bad = true;
+            else out += js;
             chunk = '';
         };
         for (var i = 0; i < s.length; i++) {
@@ -4449,12 +4507,128 @@ var _madFill = (function () {
             chunk += c;
         }
         flush();
-        return out;
+        return bad ? null : out;
     }
 
     function compileValue(expr) {
         var js = translate(expr);
-        return js.trim() === '' ? null : window._madWhen.compile(js);
+        return (js === null || js.trim() === '') ? null : window._madWhen.compile(js);
+    }
+
+    // Valor de `{campo}` dentro do addMinutes: o texto do campo e, se for um
+    // campo de data, a máscara com que ele mostra a data (dd/mm/yyyy ou
+    // mm/dd/yyyy, conforme o idioma) — para ler o dia certo.
+    function FieldRef(value, mask) {
+        this.value = value;
+        this.mask = mask;
+    }
+    FieldRef.prototype.toString = function () { return String(this.value == null ? '' : this.value); };
+
+    // Resultado "não preencha": campo vazio ou valor que não é hora/número no
+    // addMinutes. O preenchimento não escreve nada (nem apaga, com
+    // fill-overwrite). Somado a texto vale ''.
+    var NOTHING = { toString: function () { return ''; } };
+
+    function escRe(ch) { return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    // Texto → Date pela máscara do campo de data (os mesmos tokens do
+    // maskDate). null se não casar ou se a data não existir (31/02).
+    function parseMasked(s, mask) {
+        var re = '^', order = [], i = 0;
+        while (i < mask.length) {
+            var four = mask.substr(i, 4), two = mask.substr(i, 2);
+            if (four === 'yyyy') { re += '(\\d{4})'; order.push('y'); i += 4; }
+            else if (two === 'yy') { re += '(\\d{2})'; order.push('yy'); i += 2; }
+            else if (two === 'mm') { re += '(\\d{1,2})'; order.push('mo'); i += 2; }
+            else if (two === 'dd') { re += '(\\d{1,2})'; order.push('d'); i += 2; }
+            else if (two === 'hh' || two === 'HH') { re += '(\\d{1,2})'; order.push('h'); i += 2; }
+            else if (two === 'ii' || two === 'MM') { re += '(\\d{2})'; order.push('i'); i += 2; }
+            else if (two === 'ss' || two === 'SS') { re += '(\\d{2})'; order.push('s'); i += 2; }
+            else { re += escRe(mask.charAt(i)); i += 1; }
+        }
+        var m = new RegExp(re + '$').exec(s);
+        if (!m) return null;
+        var p = { y: null, mo: null, d: null, h: 0, i: 0, s: 0 };
+        for (var k = 0; k < order.length; k++) {
+            var v = parseInt(m[k + 1], 10);
+            if (order[k] === 'yy') p.y = 2000 + v; else p[order[k]] = v;
+        }
+        if (p.y === null || p.mo === null || p.d === null) return null;
+        if (p.mo < 1 || p.mo > 12 || p.d < 1 || p.h > 23 || p.i > 59 || p.s > 59) return null;
+        var dt = new Date(p.y, p.mo - 1, p.d, p.h, p.i, p.s);
+        if (dt.getFullYear() !== p.y || dt.getMonth() !== p.mo - 1 || dt.getDate() !== p.d) return null;
+        return dt;
+    }
+
+    var TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+    var FALLBACK_MASKS = [
+        'yyyy-mm-dd hh:ii:ss', 'yyyy-mm-dd hh:ii', 'yyyy-mm-dd',
+        'dd/mm/yyyy hh:ii:ss', 'dd/mm/yyyy hh:ii', 'dd/mm/yyyy',
+    ];
+
+    // Base da soma: hora ("14:30") ou data e hora. { kind, date } ou null.
+    function toBase(x) {
+        if (x instanceof Stamp) {
+            var sd = x.date;
+            // today(): o dia, à meia-noite. now()/time(): o instante.
+            if (x.kind === 'date') return { kind: 'datetime', date: new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()) };
+            return { kind: x.kind, date: new Date(sd.getTime()) };
+        }
+        var mask = '';
+        if (x instanceof FieldRef) { mask = x.mask || ''; x = x.value; }
+        if (x === null || x === undefined || typeof x !== 'string') return null;
+        var s = x.trim();
+        if (s === '') return null;
+        var m = TIME_RE.exec(s);
+        if (m) {
+            var h = parseInt(m[1], 10), mi = parseInt(m[2], 10), se = m[3] ? parseInt(m[3], 10) : 0;
+            if (h > 23 || mi > 59 || se > 59) return null;
+            var now = api.clock();
+            return { kind: 'time', date: new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mi, se) };
+        }
+        var d = mask ? parseMasked(s, mask) : null;
+        for (var i = 0; !d && i < FALLBACK_MASKS.length; i++) d = parseMasked(s.replace('T', ' '), FALLBACK_MASKS[i]);
+        return d ? { kind: 'datetime', date: d } : null;
+    }
+
+    // Quantidade de minutos: número, texto com número ("90", "1,5") ou duração
+    // em horas ("01:30" = 90). null se vazio ou outra coisa.
+    function toMinutes(x) {
+        if (typeof x === 'number') return isFinite(x) ? x : null;
+        if (x instanceof FieldRef) x = x.value;
+        if (x === null || x === undefined || typeof x !== 'string') return null;
+        var s = x.trim();
+        if (s === '') return null;
+        var m = /^([-+]?)(\d{1,5}):([0-5]\d)(?::([0-5]\d))?$/.exec(s);
+        if (m) {
+            var t = parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + (m[4] ? parseInt(m[4], 10) / 60 : 0);
+            return m[1] === '-' ? -t : t;
+        }
+        s = s.replace(',', '.');
+        return /^[-+]?\d+(?:\.\d+)?$/.test(s) ? parseFloat(s) : null;
+    }
+
+    function addMinutes(base, minutes) {
+        var b = toBase(base), n = toMinutes(minutes);
+        if (!b || n === null || Math.abs(n) > ADD_MAX_MINUTES) return NOTHING;
+        var d = new Date(b.date.getTime());
+        d.setSeconds(d.getSeconds() + Math.round(n * 60));
+        return new Stamp(b.kind, d);
+    }
+
+    // Máscara com que o campo de data mostra o valor (madDatePicker).
+    function pickerMask(ad) {
+        return (typeof ad._displayMask === 'string' && ad._displayMask)
+            ? ad._displayMask : (ad._withTime ? 'dd/mm/yyyy hh:ii' : 'dd/mm/yyyy');
+    }
+
+    function maskOf(scope, name, from) {
+        var els = window._madWhen.named(scope, name, from);
+        for (var i = 0; i < els.length; i++) {
+            var ad = fieldData(els[i]);
+            if (ad && 'selectedDate' in ad) return pickerMask(ad);
+        }
+        return '';
     }
 
     // Resultado que não é instante → texto do campo.
@@ -4526,8 +4700,7 @@ var _madFill = (function () {
         var d = st.date;
         var ad = fieldData(t.ctl);
         if (ad && 'selectedDate' in ad) {
-            var mask = (typeof ad._displayMask === 'string' && ad._displayMask)
-                ? ad._displayMask : (ad._withTime ? 'dd/mm/yyyy hh:ii' : 'dd/mm/yyyy');
+            var mask = pickerMask(ad);
             // "Data de hoje" num campo de data e hora: o dia, à meia-noite.
             var when = st.kind === 'date' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : d;
             return maskDate(when, mask);
@@ -4594,6 +4767,8 @@ var _madFill = (function () {
         g.today = function () { return new Stamp('date', api.clock()); };
         g.now = function () { return new Stamp('datetime', api.clock()); };
         g.time = function () { return new Stamp('time', api.clock()); };
+        g.field = function (n) { return new FieldRef(read(n), maskOf(scope, n, el)); };
+        g.addMinutes = addMinutes;
 
         var prev = null;        // estado da regra na última olhada (null = ainda sem base)
         var warned = false;
@@ -4620,6 +4795,8 @@ var _madFill = (function () {
             var v;
             try { v = value(g); }
             catch (e) { once('[mad-fill] erro ao calcular fill-value:', valueExpr, e); return false; }
+            // addMinutes com campo vazio (ou que não é hora/número): nada a escrever.
+            if (v === NOTHING) return false;
             var text = (v instanceof Stamp) ? stampText(v, t) : plain(v);
             var cur = currentValue(t);
             if (!opts.overwrite && cur.trim() !== '') return false;
@@ -4661,6 +4838,11 @@ var _madFill = (function () {
     api.translate = translate;
     api.compileValue = compileValue;
     api.maskDate = maskDate;
+    api.parseMasked = parseMasked;
+    api.addMinutes = addMinutes;
+    api.NOTHING = NOTHING;
+    api.Stamp = Stamp;
+    api.FieldRef = FieldRef;
     api.targetOf = targetOf;
     api.mount = mount;
     api.rebase = rebase;
