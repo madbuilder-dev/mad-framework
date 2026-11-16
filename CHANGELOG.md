@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.320.2] — 2026-11-16
+
+### Correções
+
+- **Detail Form:** campos de data e de data e hora no detalhe (mestre-detalhe) agora salvam. Antes, ao salvar, a linha voltava com "Um dos valores informados não está no formato esperado" no PostgreSQL e no MySQL, porque a data ia para o banco do jeito que aparece na tela (16/11/2026 13:40). Agora ela é gravada no formato do banco, um campo vazio fica sem valor, uma data que não existe (31/02) aponta a linha e o campo antes de salvar, e a lista mostra a data no formato do campo, também depois de recarregar.
+
 ## [5.320.1] — 2026-11-16
 
 ### Correções

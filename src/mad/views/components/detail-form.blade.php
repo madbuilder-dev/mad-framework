@@ -312,6 +312,7 @@
 
     $_dfFileCols = [];
     $_dfColMeta  = [];
+    $_dfDateFmt  = [];   // campo de data do editor => formato PHP da tela (célula sem formato)
     $_dfEditor   = [];   // campos do editor: colunas da LINHA, não do registro principal
     foreach (\Mad\Form\MadFormRegistry::getFields() as $_dfFn => $_dfFp) {
         if (in_array($_dfFn, $_dfFieldsBefore, true)) {
@@ -324,6 +325,19 @@
             $_dfColMeta[$_dfFn] = ['mask' => (string) $_dfFp['mask'], 'stripMask' => true];
         }
         $_dfT = $_dfFp['type'] ?? '';
+        // Data / data e hora do editor (fórum #334): a linha grava no formato do
+        // banco, como o formulário principal — o texto da tela ("16/11/2026 13:40")
+        // ia cru e PostgreSQL/MySQL recusavam a linha. A célula sem formato
+        // próprio mostra a data no formato do campo (inclusive a que volta do banco).
+        if ($_dfT === 'date' || $_dfT === 'datetime') {
+            $_dfColMeta[$_dfFn] = ($_dfColMeta[$_dfFn] ?? []) + array_filter([
+                'date'        => $_dfT,
+                'dbMask'      => (string) ($_dfFp['database_mask'] ?? ''),
+                'displayMask' => (string) ($_dfFp['display_mask'] ?? ''),
+            ]);
+            $_dfDateFmt[$_dfFn] = \Mad\Support\DateMask::toPhp((string) ($_dfFp['display_mask'] ?? '')
+                ?: ($_dfT === 'date' ? \Mad\Support\DateMask::date() : \Mad\Support\DateMask::datetime()));
+        }
         // `image` SEM `storage` (<mad-image-field>, <mad-signature-field>)
         // guarda o base64 na própria coluna — o hidden com `name` o leva na
         // linha, como no formulário próprio da tabela. Como coluna de arquivo
@@ -540,6 +554,14 @@
                                         $_cNumDec = $_dfNumDecimals[$_cNumKey];
                                     }
                                 }
+                                // Idem para o campo de data / data e hora (fórum #334): a linha que
+                                // volta do banco ("2026-11-16 13:40:00") aparece como a tela digita.
+                                $_cDateFmt = null;
+                                if ($_cNumDec === null && $col->builtinFormat === '' && !$col->hasTransform && $col->mediaFormat === ''
+                                    && $col->iconFormat === '' && !$col->isNumber && !$col->isMoney && !$col->isDate
+                                    && !$col->isBadge && !$col->isHtml) {
+                                    $_cDateFmt = $_dfDateFmt[\Mad\Grid\GridRenderHelpers::rowDataKey($col->field)] ?? null;
+                                }
                             @endphp
                             <td class="mad-dg-cell" style="text-align:{{ $col->align }};">
                                 @if($col->editable && $col->editType === 'switch')
@@ -603,6 +625,9 @@
                                 @elseif($col->isNumber)
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) ($_cDec ?? $col->numberDecimals) }})"></span>
+                                @elseif($_cDateFmt !== null)
+                                {{-- Campo de data do detalhe sem formato na coluna: o formato do campo (fórum #334). --}}
+                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($_cDateFmt, $_cv) !!}"></span>
                                 @elseif($_cNumDec !== null)
                                 {{-- Campo numérico do detalhe sem formato na coluna: mesma casa do campo (fórum #291 r5). --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $_cNumDec }})"></span>

@@ -10955,6 +10955,9 @@ class MadForm
      */
     private function _guardRowReferences(string $cls, string $fk, mixed $parentId, array $lines, string $detailName, array $fileColumns): array
     {
+        // Antes de qualquer escrita, como as chaves: data que não existe.
+        $this->_guardRowDates($detailName, $lines);
+
         $guarded = $lines !== [] ? ReferenceGuard::columns($cls) : [];
         $editor  = $lines !== [] ? $this->_rowEditorGuards($detailName) : [];
         if ($guarded === [] && $editor === []) {
@@ -11120,6 +11123,49 @@ class MadForm
             : self::_text('mad.form.row_invalid_unnamed', ['row' => $position, 'message' => $message], 'Linha :row: :message');
 
         return new ReferenceViolation([$name . '.' . $position . '.' . (string) ($found['columns'][0] ?? 'row') => $text]);
+    }
+
+    /**
+     * Data / data e hora do editor de um Detail Form com uma data que não existe
+     * (31/02/2026, 20/10/2026 24:00) — fórum #334. A conversão das linhas
+     * (MadFormRegistry::transformRowsWith) a deixa no formato da tela, e o banco
+     * recusaria com "Um dos valores informados não está no formato esperado".
+     * Aqui ela é apontada na lista, na linha e no campo, como no formulário
+     * principal (_rejectNonexistentDates). Uma linha recusada recusa o Salvar.
+     *
+     * @param list<array{0: array<string,mixed>, 1: object, 2: int}> $lines [linha, instância, posição]
+     *
+     * @throws ReferenceViolation
+     */
+    private function _guardRowDates(string $detailName, array $lines): void
+    {
+        $columns = MadFormRegistry::detailDateColumns($detailName);
+        if ($columns === [] || $lines === []) {
+            return;
+        }
+
+        $labels = null;
+        $errors = [];
+        foreach ($lines as [$row, , $position]) {
+            foreach ($columns as $column => $type) {
+                $value = is_array($row) ? ($row[$column] ?? null) : null;
+                if (!is_string($value) || !preg_match('#^\d{2}/\d{2}/\d{4}( \d{2}:\d{2}(:\d{2})?)?$#', $value = trim($value))) {
+                    continue;
+                }
+                if (self::parseDate($value) === null) {
+                    $labels ??= $this->rowLabels($detailName);
+                    $label   = trim((string) ($labels['columns'][$column] ?? '')) ?: $column;
+                    $errors[$detailName . '.' . $position . '.' . $column] = $this->_rowEditorMessage(
+                        $labels, $detailName, (int) $position,
+                        $label . ': ' . self::_text('mad.form.date_invalid', [], 'Data inválida.'),
+                    );
+                }
+            }
+        }
+
+        if ($errors) {
+            throw new ReferenceViolation($errors);
+        }
     }
 
     /** "Na lista Itens, linha 2: <motivo>" (rótulos lidos uma vez só). */

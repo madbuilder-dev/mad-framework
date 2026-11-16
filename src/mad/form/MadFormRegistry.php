@@ -1173,6 +1173,23 @@ class MadFormRegistry
                     }
                     continue;
                 }
+                // Data / data e hora do editor de um Detail Form (fórum #334): o texto
+                // da tela ("16/11/2026 13:40", "11/16/2026" em inglês) vai ao banco no
+                // formato dele, como no formulário principal (transformField); vazio
+                // vira null. Valor já no formato do banco (a linha que voltou dele)
+                // passa igual; data que não existe também — quem grava a aponta
+                // (MadForm::_guardRowDates). A linha toda em branco fica como está.
+                if (!empty($cfg['date'])) {
+                    if (!$blank && array_key_exists($field, $row) && ($row[$field] === null || is_string($row[$field]))) {
+                        $value = trim((string) $row[$field]);
+                        $rows[$i][$field] = $value === '' ? null : self::transformField($value, array_filter([
+                            'type'          => (string) $cfg['date'],
+                            'database_mask' => (string) ($cfg['dbMask'] ?? ''),
+                            'display_mask'  => (string) ($cfg['displayMask'] ?? ''),
+                        ]));
+                    }
+                    continue;
+                }
                 // Numérica com `empty-as="null"` (fw#584): vazio vira null. A linha
                 // toda em branco fica como está (o Salvar a descarta).
                 if (!empty($cfg['emptyNull'])) {
@@ -1220,6 +1237,23 @@ class MadFormRegistry
         }
 
         return true;
+    }
+
+    /**
+     * Colunas de data do editor de um Detail Form (fórum #334): coluna => 'date' | 'datetime'.
+     *
+     * @return array<string,string>
+     */
+    public static function detailDateColumns(string $name): array
+    {
+        $out = [];
+        foreach ((array) (self::$detailForms[$name]['colMeta'] ?? []) as $field => $cfg) {
+            if (is_array($cfg) && in_array($cfg['date'] ?? null, ['date', 'datetime'], true)) {
+                $out[(string) $field] = (string) $cfg['date'];
+            }
+        }
+
+        return $out;
     }
 
     /** A coluna `$field` da lista `$name` é caixa de marcar / chave (fw#375)? */
