@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.321.2] — 2026-11-16
+
+### Correções
+
+- **App gerado:** a revisão de migration gerada em outro dia agora substitui a revisão do mesmo passo que ficou pendente. Antes, as duas eram tratadas como passos diferentes, e a velha, com erro, seguia travando o **Migrar pendentes**.
+- **App gerado:** na Central de Comando › Migrations, a conexão não conta mais a revisão superada como pendente, e o **Ver alterações** mostra as views novas, alteradas e removidas, não só as tabelas.
+
 ## [5.321.1] — 2026-11-16
 
 ### Correções

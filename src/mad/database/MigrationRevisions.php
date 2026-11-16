@@ -21,11 +21,16 @@ final class MigrationRevisions
     /**
      * `2026_11_16_000008_update_max_sistema_v10_to_v11` + revisão. O nome sem
      * `_rNNN` (de antes das revisões) conta como revisão 0 do mesmo nome.
+     *
+     * A família é o passo (`update_<banco>_vX_to_vY`), SEM a data e a
+     * sequência do começo do nome (fórum #338): a revisão gerada em outro dia
+     * (`2026_11_17_…_r001`) é do mesmo passo que a `2026_11_16_…_r010` que
+     * ficou pendente, e é ela a mais nova.
      */
-    private const FAMILY = '/^(\d{4}_\d{2}_\d{2}_\d{6}_update_[a-z0-9_]+?_v\d+_to_v\d+)(?:_r(\d{3,}))?$/i';
+    private const FAMILY = '/^(\d{4}_\d{2}_\d{2}_\d{6})_(update_[a-z0-9_]+?_v\d+_to_v\d+)(?:_r(\d{3,}))?$/i';
 
     /**
-     * @return array{0: string, 1: int}|null  [nome sem revisão, revisão]
+     * @return array{0: string, 1: int}|null  [passo, revisão]
      */
     public static function family(string $migration): ?array
     {
@@ -33,7 +38,22 @@ final class MigrationRevisions
             return null;
         }
 
-        return [$m[1], isset($m[2]) ? (int) $m[2] : 0];
+        return [strtolower($m[2]), isset($m[3]) ? (int) $m[3] : 0];
+    }
+
+    /**
+     * Ordem dentro do passo: data e sequência do nome, depois a revisão (a
+     * revisão é número: `r1000` vem depois de `r999`).
+     *
+     * @return array{0: string, 1: int}|null
+     */
+    private static function rank(string $migration): ?array
+    {
+        if (! preg_match(self::FAMILY, $migration, $m)) {
+            return null;
+        }
+
+        return [$m[1], isset($m[3]) ? (int) $m[3] : 0];
     }
 
     /**
@@ -50,18 +70,19 @@ final class MigrationRevisions
             $ranSet[(string) $name] = true;
         }
 
-        $newest = [];   // nome sem revisão → [revisão, migration]
-        $members = [];  // nome sem revisão → migrations da família
+        $newest = [];   // passo → [ordem, migration]
+        $members = [];  // passo → migrations da família
         foreach ($migrations as $name) {
             $name = (string) $name;
             $fam = self::family($name);
             if ($fam === null) {
                 continue;
             }
-            [$base, $rev] = $fam;
+            $base = $fam[0];
+            $rank = self::rank($name);
             $members[$base][] = $name;
-            if (! isset($newest[$base]) || $rev > $newest[$base][0]) {
-                $newest[$base] = [$rev, $name];
+            if (! isset($newest[$base]) || ($rank <=> $newest[$base][0]) > 0) {
+                $newest[$base] = [$rank, $name];
             }
         }
 
