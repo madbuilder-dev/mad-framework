@@ -1367,12 +1367,20 @@ abstract class MadComponent
         $class    = $this->_wireClassName();
         $endpoint = $this->_wireEndpoint($class);
 
+        // "Nome do usuário nas mensagens" (fórum #235): os diálogos e avisos
+        // que o navegador monta sozinho (descartar alterações, confirmar
+        // exclusão, aviso do CEP…) leem o primeiro nome daqui. Só com a opção
+        // ligada e alguém logado — senão o HTML é o mesmo de antes. Só o
+        // primeiro nome, já limpo pelo toastUserName(), e escapado.
+        $who = MadResponse::toastUserName();
+
         $component = sprintf(
-            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s">%s</div>',
+            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s"%s>%s</div>',
             htmlspecialchars($class,    ENT_QUOTES),
             htmlspecialchars($id,       ENT_QUOTES),
             htmlspecialchars($state,    ENT_QUOTES),
             htmlspecialchars($endpoint, ENT_QUOTES),
+            $who !== '' ? ' data-mad-user="' . htmlspecialchars($who, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"' : '',
             $html
         );
 

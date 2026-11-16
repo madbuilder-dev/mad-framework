@@ -634,7 +634,10 @@ class MadResponse
         $name = (string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', strip_tags($name));
         $name = trim((string) preg_replace('/\s+/u', ' ', $name));
         $first = $name === '' ? '' : explode(' ', $name)[0];
-        if ($first === '' || str_contains($first, '@')) {
+        // Só um nome de verdade: começa por letra e tem só letras, apóstrofo,
+        // hífen ou ponto ("D'Ávila", "Jean-Luc"). Sobra de tag (">alert"),
+        // aspas ou e-mail não aparecem — nem no toast, nem no navegador.
+        if ($first === '' || ! preg_match("/^\\p{L}[\\p{L}\\p{M}'’.\\-]*$/u", $first)) {
             return '';
         }
 

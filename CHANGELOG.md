@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.320.1] — 2026-11-16
+
+### Correções
+
+- **App gerado:** com "Nome do usuário nas mensagens" ligada, as perguntas e os avisos que a própria tela mostra também saem com o primeiro nome: "Há alterações que não foram salvas…" ao fechar uma janela, a confirmação de excluir e os avisos de CEP, CNPJ e envio de arquivo. Antes, só os avisos que vinham do servidor traziam o nome.
+
 ## [5.320.0] — 2026-11-16
 
 ### Novidades

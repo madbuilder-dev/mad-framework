@@ -5995,6 +5995,12 @@ window.madToast = function (messageOrObj, type, title, duration) {
             duration: duration !== undefined ? duration : 4000,
         };
     }
+    // Nome do usuário (fórum #235): o toast do servidor já chega com ele (e
+    // fica como está: começa pelo nome); os avisos montados no navegador
+    // ganham aqui. `user: false` no objeto tira.
+    if (detail.user !== false && typeof window.madUserText === 'function' && detail.message) {
+        detail = { ...detail, message: window.madUserText(detail.message) };
+    }
     const position = detail.position || 'bottom-right';
     _madToastMount(position);
     setTimeout(() => window.dispatchEvent(new CustomEvent('mad-toast', { detail: { ...detail, position } })), 0);
@@ -8432,15 +8438,50 @@ window.madDeletePopover = function(event, onConfirm, message) {
 };
 
 /**
+ * Nome do usuário nas mensagens do navegador (fórum #235).
+ *
+ * A opção do projeto "Nome do usuário nas mensagens" já põe o primeiro nome
+ * nos toasts que o servidor manda (MadResponse::toast). Os diálogos e avisos
+ * que o navegador monta sozinho — descartar alterações ao fechar a janela,
+ * confirmar exclusão, os avisos do CEP/CNPJ/upload — leem o nome do atributo
+ * `data-mad-user` que o servidor põe no componente da tela (só com a opção
+ * ligada e alguém logado; só o primeiro nome, escapado). Sem o atributo, tudo
+ * fica como antes. O texto entra com textContent/x-text: nunca como HTML.
+ */
+window.madUserName = function () {
+    var el = document.querySelector('[mad-component][data-mad-user]');
+    var who = el ? String(el.getAttribute('data-mad-user') || '') : '';
+    who = who.replace(/[\u0000-\u001F\u007F<>]/g, '').trim();
+    return who.indexOf('@') >= 0 ? '' : who.slice(0, 40);
+};
+
+/** "Luciano, há alterações…" — mesma regra do MadResponse::withUserName. */
+window.madUserText = function (text) {
+    var msg = text == null ? '' : String(text);
+    var who = window.madUserName();
+    var t = msg.trim();
+    if (!who || !t || t.toLowerCase().indexOf(who.toLowerCase()) === 0) return msg;
+    var a = t.charAt(0), b = t.charAt(1);
+    // 1ª letra em minúscula, a não ser em sigla ("Luciano, CPF inválido").
+    if (a !== a.toLowerCase() && (b === '' || b !== b.toUpperCase())) t = a.toLowerCase() + t.slice(1);
+    var out = (typeof madT === 'function')
+        ? madT('toast_user', ':name, :message', { name: who, message: t })
+        : who + ', ' + t;
+    return out || (who + ', ' + t);
+};
+
+/**
  * madConfirm — Modal de confirmação nativa MAD.
  * Retorna Promise<boolean>.
  *
  * Uso:
  *   madConfirm('Tem certeza?').then(ok => { if (ok) ... });
  *   madConfirm('Excluir?', { danger: true, confirmText: 'Excluir' });
+ *   madConfirm('…', { user: false })   // sem o nome do usuário, mesmo com a opção ligada
  */
 window.madConfirm = function (message, options) {
     options = options || {};
+    if (options.user !== false && typeof window.madUserText === 'function') message = window.madUserText(message);
     return new Promise(function(resolve) {
         var overlay = document.createElement('div');
         overlay.className = 'mad-confirm-overlay';
@@ -8508,6 +8549,7 @@ window.madConfirm = function (message, options) {
  */
 window.madConfirmPopover = function (btn, message, options) {
     options = options || {};
+    if (options.user !== false && typeof window.madUserText === 'function') message = window.madUserText(message);
     return new Promise(function(resolve) {
         var old = document.querySelector('.mad-confirm-popover');
         if (old) old.remove();
