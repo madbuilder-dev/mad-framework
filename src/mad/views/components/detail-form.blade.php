@@ -213,6 +213,32 @@
     }
     unset($_dfNumTags, $_dfNumTag, $_dfNumN, $_dfNumD);
 
+    // ── Casas DECLARADAS nos campos do sub-form (fórum #330): a coluna `money`, a
+    // `num`/`number` sem valor e os formatos "Real"/"Número" (transform money/number)
+    // mostram as casas que o campo de mesmo nome declara (`decimals`/`:decimals`),
+    // na linha carregada, na criada/editada e no total. Coluna com casas escolhidas
+    // (`num="4"`, decimal-4, inteiro…), campo sem `decimals` ou sem campo: nada muda.
+    $_dfFieldDec = [];
+    if (preg_match_all('/<mad-(?:numeric|number|money)-field\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/', (string) $fieldSlot, $_dfFdTags)) {
+        foreach ($_dfFdTags[0] as $_dfFdTag) {
+            if (!preg_match('/\sname\s*=\s*"([^"{}$]+)"/', $_dfFdTag, $_dfFdN)) continue;
+            if (preg_match('/\s:?decimals\s*=\s*"(\d+)"/', $_dfFdTag, $_dfFdD)) {
+                $_dfFieldDec[$_dfFdN[1]] = max(0, min(20, (int) $_dfFdD[1]));
+            }
+        }
+    }
+    unset($_dfFdTags, $_dfFdTag, $_dfFdN, $_dfFdD);
+    $_dfInheritDec = static function ($col) use ($_dfFieldDec): ?int {
+        if ($col->hasTransform || $col->mediaFormat !== '' || $col->iconFormat !== '') return null;
+        $key = \Mad\Grid\GridRenderHelpers::rowDataKey($col->field);
+        if (!array_key_exists($key, $_dfFieldDec)) return null;
+        if ($col->isMoney || ($col->isNumber && $col->numberDecimalsAuto)) return $_dfFieldDec[$key];
+        if (!$col->isMoney && !$col->isNumber && in_array($col->builtinFormat, ['money', 'number'], true)) {
+            return $_dfFieldDec[$key];
+        }
+        return null;
+    };
+
     // ── Campos do sub-form com `compute` que lê o formulário principal (`{@campo}`,
     // fórum #291): as linhas que já existem recalculam esse campo quando o mestre
     // muda e na carga, como a tela. Só as tags com `{@` entram; as demais ficam como estão.
@@ -494,8 +520,10 @@
                                 // segue cru, que é o que vai no POST.
                                 $_cFmtKey = \Mad\Grid\GridRenderHelpers::fieldKeyJs($col->field);
                                 $_cSrvFmt = $col->hasTransform || $col->mediaFormat !== '' || $col->iconFormat !== '';
+                                // Casas do campo do sub-form (fórum #330) — null = as da coluna.
+                                $_cDec    = $_dfInheritDec($col);
                                 $_cFmtJs  = $col->builtinFormat !== ''
-                                    ? \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_cv)
+                                    ? \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_cv, $_cDec)
                                     : '';
                                 // Tem valor pré-formatado NESTA linha? (a criada/editada
                                 // no navegador não tem — cai no ramo cru, escapado
@@ -571,10 +599,10 @@
                                     return '<span class=&quot;mad-badge mad-badge-' + variant + '&quot;>' + lbl + '</span>';
                                 })()"></span>
                                 @elseif($col->isMoney)
-                                <span x-text="'{{ $col->moneyPrefix }} ' + madNumFmt({!! $_cv !!} || 0, {{ (int) $col->moneyDecimals }})"></span>
+                                <span x-text="'{{ $col->moneyPrefix }} ' + madNumFmt({!! $_cv !!} || 0, {{ (int) ($_cDec ?? $col->moneyDecimals) }})"></span>
                                 @elseif($col->isNumber)
                                 {{-- attr `num=`/`number=` — faltava aqui e caía no valor cru --}}
-                                <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $col->numberDecimals }})"></span>
+                                <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) ($_cDec ?? $col->numberDecimals) }})"></span>
                                 @elseif($_cNumDec !== null)
                                 {{-- Campo numérico do detalhe sem formato na coluna: mesma casa do campo (fórum #291 r5). --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $_cNumDec }})"></span>
@@ -664,11 +692,11 @@
                             } elseif (! $_hasFormula && ! in_array($col->totalFunc, ['sum', 'avg', 'min', 'max'], true)) {
                                 $_tot = '';
                             } elseif ($col->isMoney) {
-                                $_tot = "'{$col->moneyPrefix} ' + madNumFmt({$_agg}, " . (int) $col->moneyDecimals . ')';
+                                $_tot = "'{$col->moneyPrefix} ' + madNumFmt({$_agg}, " . (int) ($_dfInheritDec($col) ?? $col->moneyDecimals) . ')';
                             } elseif ($col->isNumber) {
-                                $_tot = "madNumFmt({$_agg}, " . (int) $col->numberDecimals . ')';
+                                $_tot = "madNumFmt({$_agg}, " . (int) ($_dfInheritDec($col) ?? $col->numberDecimals) . ')';
                             } elseif ($col->builtinFormat !== '') {
-                                $_tot = \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_agg);
+                                $_tot = \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_agg, $_dfInheritDec($col));
                             } else {
                                 $_tot = "madNumFmt({$_agg}, 2)";
                             }

@@ -2768,6 +2768,10 @@ class MadGridCompiler
             $key  = isset($a['num']) ? 'num' : 'number';
             $dec  = $a[$key]['type'] === 'string' ? (int)$a[$key]['value'] : 2;
             $c[] = "'numberDecimals' => {$dec}";
+            // Sem valor = casas não escolhidas: o detalhe usa as do campo (fórum #330).
+            if ($a[$key]['type'] !== 'string') {
+                $c[] = "'numberDecimalsAuto' => true";
+            }
         }
 
         // Display condition: 'Classe::metodo' estático

@@ -7486,7 +7486,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         switch ($c['renderType'] ?? '') {
             case 'badge':  $col->badge($c['badgeMap'] ?? []);           break;
             case 'money':  $col->money($c['moneyPrefix'] ?? '');        break;
-            case 'number': $col->number($c['numberDecimals'] ?? 2);     break;
+            case 'number':
+                $col->number($c['numberDecimals'] ?? 2);
+                $col->numberDecimalsAuto = !empty($c['numberDecimalsAuto']);
+                break;
             case 'date':   $col->date($c['dateFormat'] ?? 'd/m/Y');     break;
             case 'html':   $col->html();                                break;
         }

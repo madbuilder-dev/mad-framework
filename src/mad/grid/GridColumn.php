@@ -70,6 +70,12 @@ class GridColumn
     public int     $moneyDecimals = 2;
     public bool    $isNumber   = false;
     public int     $numberDecimals = 2;
+    /**
+     * `num`/`number` SEM valor (as 2 casas são o padrão, não uma escolha). No
+     * <mad-detail-form> a coluna assim, e a `money`, mostram as casas que o
+     * campo do sub-form declara (fórum #330). `num="4"` é escolha: não muda.
+     */
+    public bool    $numberDecimalsAuto = false;
     public bool    $isDate     = false;
     public string  $dateFormat = 'd/m/Y';
     /**

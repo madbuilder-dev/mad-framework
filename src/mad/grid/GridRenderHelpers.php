@@ -528,9 +528,12 @@ class GridRenderHelpers
      *
      * So aspas SIMPLES na expressao: ela e emitida dentro de `x-text="…"`.
      */
-    public static function builtinFormatJs(string $token, string $valueExpr): string
+    public static function builtinFormatJs(string $token, string $valueExpr, ?int $decimals = null): string
     {
         $t = strtolower(trim($token));
+        // Casas do campo do sub-form (fórum #330): só `money` e `number`, que não
+        // escolhem casas; `decimal-4`, `integer`, `percent` e as moedas seguem fixos.
+        $decimals = $decimals === null ? null : max(0, min(20, $decimals));
         if (! \Mad\Support\ValueFormatter::supports($t)) {
             return '';
         }
@@ -579,13 +582,13 @@ class GridRenderHelpers
 
         $body = match ($t) {
             // `money` SEM simbolo (contrato do ValueFormatter); os currency-* carregam.
-            'money'        => $num . 'return ' . $fmt($nloc, \Mad\Support\ValueFormatter::moneyDecimals()) . ';',
+            'money'        => $num . 'return ' . $fmt($nloc, $decimals ?? \Mad\Support\ValueFormatter::moneyDecimals()) . ';',
             'currency-usd' => $num . 'return ' . self::jsString(\Mad\Support\ValueFormatter::usdPrefix()) . '+' . $fmt('en-US', 2) . ';',
             'currency-eur' => $num . "return '\u{20AC} '+" . $fmt('pt-BR', 2) . ';',
             'currency-gbp' => $num . "return '\u{A3} '+" . $fmt('en-US', 2) . ';',
             'currency-jpy' => $num . "return '\u{A5} '+" . $fmt('en-US', 0) . ';',
 
-            'number'    => $num . 'return ' . $fmt($nloc, 2) . ';',
+            'number'    => $num . 'return ' . $fmt($nloc, $decimals ?? 2) . ';',
             'number-en' => $num . 'return ' . $fmt('en-US', 2) . ';',
             'integer'   => $num . 'return ' . $fmt($nloc, 0) . ';',
             'percent'   => $num . 'return ' . $fmt($nloc, 1) . "+'%';",

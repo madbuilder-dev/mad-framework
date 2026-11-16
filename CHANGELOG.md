@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.319.1] — 2026-11-16
+
+### Correções
+
+- **Detalhe:** no Detail Form, a coluna de dinheiro da lista mostrava sempre 2 casas, mesmo com o campo do sub-formulário guardando mais: um valor de 0,035426 aparecia como R$ 0,04. Agora a coluna mostra as casas que o campo declara, na linha que já existia, na linha nova ou editada e no total. Vale também para a coluna de número sem casas escolhidas e para os formatos "Real" e "Número". Coluna com casas escolhidas (como "4 casas decimais") continua igual.
+
 ## [5.319.0] — 2026-11-16
 
 ### Novidades
