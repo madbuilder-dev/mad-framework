@@ -9,12 +9,15 @@
     $icon   = is_string($icon ?? null) && preg_match('/^(tabler:)?[a-z0-9-]+$/', trim($icon)) ? trim($icon) : '';
     $class  = $class  ?? '';
     $style  = $style  ?? '';
+    // visible-when (fórum #335): o compilador manda `x-mad-when:visible` aqui,
+    // como na Seção. Sem condição, o HTML não muda.
+    $attrs  = $attrs  ?? '';
     $__cardEsc = function ($v) {
         return $v instanceof \Illuminate\Contracts\Support\Htmlable ? $v->toHtml() : e($v);
     };
 @endphp
 
-<div class="mad-card {{ $class }}" @if($style) style="{{ $style }}" @endif>
+<div class="mad-card {{ $class }}" @if($style) style="{{ $style }}" @endif{!! $attrs !== '' ? ' ' . $attrs : '' !!}>
     @if($header)
         @if($icon !== '')
             <div class="mad-card-header"><span class="mad-card-heading"><i data-lucide="{{ $icon }}" aria-hidden="true"></i>{!! $__cardEsc($header) !!}</span></div>

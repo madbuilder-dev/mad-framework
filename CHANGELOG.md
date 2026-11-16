@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.321.0] — 2026-11-16
+
+### Novidades
+
+- **Abas, Card e Grade:** o "Visível quando", que já existia nos campos, no botão e na Seção, agora vale também na Aba, no Card e na Grade, com as mesmas condições. A aba escondida some da tira de títulos: se ela estava aberta, abre a primeira aba visível, e se todas ficarem escondidas, as abas somem. O card e a grade somem e voltam junto com a condição. Os campos de dentro seguem a regra da Seção: continuam sendo enviados e não seguram o Salvar.
+
 ## [5.320.2] — 2026-11-16
 
 ### Correções

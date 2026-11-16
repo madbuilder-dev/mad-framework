@@ -3245,7 +3245,7 @@ window._madInitSelects = _madInitSelects;
    change/input dele — inclusive os disparados pelo servidor (op `val` do
    MadWire e o setItems do combo disparam input/change).
 
-   Alvo: o wrapper `.mad-field` do campo; sem ele (seção, botão), o próprio
+   Alvo: o wrapper `.mad-field` do campo; sem ele (seção, botão, card, grade, aba), o próprio
    elemento. Vários *-when sobre o mesmo controle (seção + campo) se somam:
    cada condição é um VOTO; o controle fica desabilitado enquanto houver voto
    e, sem votos, volta ao estado que tinha antes (nunca reabilita o que o
@@ -3260,6 +3260,9 @@ window._madInitSelects = _madInitSelects;
    (blockSubmit, chamado pelo submit do MadWire) segura o envio enquanto um
    campo obrigatório — fixo ou por condição — estiver vazio, e avisa no campo.
    Expressão inválida ou que lança = sem efeito (o campo fica como está).
+   Aba (fórum #335): o visible-when do `<mad-tab-panel>` esconde o TÍTULO da
+   aba na tira; se era a ativa, a primeira visível assume; sem nenhuma
+   visível, some o componente de abas (ver voteTab).
 */
 // <madWhen:core> — núcleo puro, fatiado por tests/js/mad-when.test.mjs
 var _madWhen = (function () {
@@ -3651,6 +3654,79 @@ var _madWhen = (function () {
         }
     }
 
+    // Aba sob visible-when (`<mad-tab-panel visible-when>`, fórum #335). O
+    // painel guarda o voto — o Salvar o lê por hiddenByCondition, a mesma
+    // regra da Seção —, mas quem o mostra e esconde continua sendo o x-show da
+    // aba ativa: mexer no display dele brigaria com o x-show. O que some é o
+    // TÍTULO da aba na tira; se ela era a ativa, a primeira aba visível
+    // assume; sem nenhuma aba visível, some o componente de abas inteiro.
+    function tabBoxOf(panel) {
+        if (!panel || !panel.classList || !panel.classList.contains('mad-tab-content')) return null;
+        if (!panel.getAttribute || panel.getAttribute('data-mad-tab') === null) return null;
+        return panel.closest ? panel.closest('.mad-tabs') : null;
+    }
+
+    function ownTabs(box) {
+        var out = [];
+        var all = box.querySelectorAll ? box.querySelectorAll('.mad-tab[data-mad-tab]') : [];
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].closest && all[i].closest('.mad-tabs') === box) out.push(all[i]);
+        }
+        return out;
+    }
+
+    function tabOff(btn) {
+        var v = btn._madWhenVis;
+        if (v && v.enforcing && v.votes.size > 0) return true;
+        return !!(btn.classList && btn.classList.contains('mad-hidden'));
+    }
+
+    function tabsData(box) {
+        if (!window.Alpine || typeof window.Alpine.$data !== 'function' || !box._x_dataStack) return null;
+        try {
+            var d = window.Alpine.$data(box);
+            return d && 'activeTab' in d ? d : null;
+        } catch (e) { return null; }
+    }
+
+    function syncTabs(box) {
+        var tabs = ownTabs(box);
+        var shown = [];
+        for (var i = 0; i < tabs.length; i++) {
+            if (!tabOff(tabs[i])) shown.push(tabs[i].getAttribute('data-mad-tab'));
+        }
+        voteHidden(box, 'mad-tabs-empty', tabs.length > 0 && shown.length === 0);
+        var d = shown.length ? tabsData(box) : null;
+        if (d && shown.indexOf(d.activeTab) === -1) d.activeTab = shown[0];
+    }
+
+    // A aba ativa muda por fora (a restaurada no redesenho, a do servidor, a
+    // do erro de campo): se cair numa aba escondida, volta para a primeira
+    // visível. O clique não chega aqui: o título escondido não aparece.
+    function watchTabs(box) {
+        if (box._madWhenTabsWatch || typeof window.Alpine.effect !== 'function') return;
+        if (!tabsData(box)) return;
+        box._madWhenTabsWatch = true;
+        window.Alpine.effect(function () {
+            var d = tabsData(box);
+            if (d) void d.activeTab;
+            Promise.resolve().then(function () { syncTabs(box); });
+        });
+    }
+
+    function voteTab(panel, box, id, hide) {
+        var st = panel._madWhenVis || (panel._madWhenVis = { votes: new Set(), base: '', enforcing: false });
+        if (hide) st.votes.add(id); else st.votes.delete(id);
+        st.enforcing = st.votes.size > 0;
+        var name = panel.getAttribute('data-mad-tab');
+        var tabs = ownTabs(box);
+        for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].getAttribute('data-mad-tab') === name) voteHidden(tabs[i], id, hide);
+        }
+        syncTabs(box);
+        if (window.Alpine) watchTabs(box);
+    }
+
     // Botão-link (`<mad-btn href>` = `<a class="mad-btn">`) sob disabled-when
     // (fw#258): link não tem `disabled`. O voto marca a classe (o CSS barra o
     // clique), avisa o leitor de tela e tira o link do Tab; sem votos, os
@@ -3691,6 +3767,7 @@ var _madWhen = (function () {
         }
         var id = ++_seq;
         var root = (el.closest && el.closest('.mad-field')) || el;
+        var tabBox = kind === 'visible' ? tabBoxOf(root) : null;
         var scope = (el.closest && (el.closest('form') || el.closest('[mad-component]'))) || document;
         var touched = new Set();
         var links = new Set();
@@ -3734,7 +3811,11 @@ var _madWhen = (function () {
 
         function apply() {
             var on = evaluate();
-            if (kind === 'visible') { voteHidden(root, id, on === false); recheck(root); return; }
+            if (kind === 'visible') {
+                if (tabBox) voteTab(root, tabBox, id, on === false); else voteHidden(root, id, on === false);
+                recheck(root);
+                return;
+            }
             if (on === null) on = false;
             var list = controls(root);
             for (var i = 0; i < list.length; i++) {
@@ -3758,7 +3839,7 @@ var _madWhen = (function () {
             for (var i = 0; i < locked.length; i++) voteClass(locked[i][0], locked[i][1], id, false);
             locked = [];
             stars.forEach(syncStar);
-            if (kind === 'visible') voteHidden(root, id, false);
+            if (kind === 'visible') { if (tabBox) voteTab(root, tabBox, id, false); else voteHidden(root, id, false); }
             if (kind === 'disabled' && root.classList) root.classList.remove('mad-when-disabled');
             links.forEach(function (a) { voteLink(a, id, false); });
             links.clear();

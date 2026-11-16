@@ -820,6 +820,11 @@ class MadGridCompiler
         $body    = $match[2] ?? '';
 
         $gridAttrs  = static::parseAttrs($attrStr);
+        // visible-when (fórum #335): a grade inteira some com a condição, pelo
+        // mesmo motor da Seção (`x-mad-when:visible` do mad-ui.js). Só a forma
+        // literal, como no MadBlade; sem o atributo, a saída não muda.
+        $visibleWhen = trim(static::str($gridAttrs, 'visible-when'));
+        unset($gridAttrs['visible-when']);
         $configParts = static::buildGridConfig($gridAttrs);
         static::$_actionNotes = [];
 
@@ -1210,10 +1215,33 @@ class MadGridCompiler
                 static::$_rememberOpen = $remember;
             }
 
-            return $diag . "<?php echo \$__component->_renderInlineGrid({$configStr}); ?>";
+            return $diag . static::wrapVisibleWhen($visibleWhen, "<?php echo \$__component->_renderInlineGrid({$configStr}); ?>");
         }
 
-        return $diag . "<?php echo \\Mad\\Grid\\MadGrid::_renderFromConfig({$configStr}); ?>";
+        return $diag . static::wrapVisibleWhen($visibleWhen, "<?php echo \\Mad\\Grid\\MadGrid::_renderFromConfig({$configStr}); ?>");
+    }
+
+    /**
+     * `<mad-grid visible-when="{tipo} == 2">` (fórum #335): embrulha a grade
+     * num `<div style="display:contents">` com `x-mad-when:visible`, o mesmo
+     * motor da Seção — escondida, some; sem a condição, a saída é a de antes.
+     * `display:contents` não muda o layout de quem contém a grade (linha,
+     * coluna, aba). Os campos que a condição lê são da TELA, como no MadBlade.
+     */
+    protected static function wrapVisibleWhen(string $cond, string $grid): string
+    {
+        if ($cond === '' || preg_match('/\{\{|\{!!/', $cond)) {
+            return $grid;
+        }
+        $uses = '';
+        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $cond, $m)) {
+            $names = array_map(static fn (string $n): string => var_export($n, true), array_values(array_unique($m[1])));
+            $uses = '<?php \\Mad\\Form\\MadFormRegistry::screenOnly([' . implode(', ', $names) . ']); ?>';
+        }
+
+        return '<div class="mad-grid-when" style="display:contents" x-mad-when:visible="'
+            . htmlspecialchars($cond, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '">'
+            . $uses . $grid . '</div>';
     }
 
     // ── Seek block compiler ────────────────────────────────────────────────────
