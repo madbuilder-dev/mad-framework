@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.326.1] — 2026-11-17
+
+### Correções
+
+- **Central de Comando:** logo depois de publicar o projeto pelo Deploy SSH ou pelo .zip, a aba **Código Fonte** não mostra mais "Atualização disponível" com o tema e as imagens (logo, favicon, CSS do tema) que já estão no servidor. Eles só aparecem quando o arquivo do servidor é diferente do que está no MadBuilder.
+
 ## [5.326.0] — 2026-11-17
 
 ### Novidades
