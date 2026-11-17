@@ -74,7 +74,7 @@ opcionalmente, `public static function rules($id = null): array`.
 | `$defaultOrder` | `?string` | `null` | Ordem default `"coluna asc\|desc"` quando não vem `sort`. |
 | `$perPage` | `int` | `15` | Itens por página default. |
 | `$maxPerPage` | `int` | `200` | Teto de `per_page` (defesa). |
-| `$details` | `array` | `[]` | Relações `hasMany` tratadas como detalhes. Múltiplas. |
+| `$details` | `array` | `[]` | Relações `hasMany` tratadas como detalhes. Múltiplas. Com chave (`['itens' => 'items']`) os itens vêm e vão no JSON nessa chave (a da relação continua aceita na entrada). |
 | `$transformers` | `array` | `[]` | `campo => fn($value, $model)`. Ver `addTransformer()`. |
 
 ### Projeção e alias (`$indexFields` / `$showFields`)

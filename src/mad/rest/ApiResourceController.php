@@ -23,6 +23,7 @@ use Illuminate\Validation\ValidationException;
  * O que ganha sobre o original:
  *  - MÚLTIPLOS detalhes, dirigidos por relações Eloquent (hasMany) já declaradas
  *    no model. A FK vem da própria relação ($details = ['items','payments']).
+ *    Chave do JSON diferente do nome da relação: ['itens' => 'items'] (fórum #349).
  *  - SYNC de detalhes no update: cria novos, atualiza por PK, APAGA os ausentes
  *    (o original nunca apagava → órfãos).
  *  - Regras de carregamento default: $with / $withCount eager-load (sem N+1; os
@@ -86,6 +87,11 @@ abstract class ApiResourceController
     /**
      * Relações hasMany tratadas como detalhes (mestre-detalhe). Múltiplas.
      * Ex.: ['items', 'payments']. A FK vem da relação; sync por diff de PK.
+     *
+     * Para o JSON usar outro nome, dê a chave (fórum #349):
+     * ['precos' => 'precoVolumeProdutos'] — os itens vêm e vão em `precos`
+     * (index, show, store, update). Na entrada a chave com o nome da relação
+     * continua aceita. Entrada sem chave (lista) segue igual ao de sempre.
      */
     protected array $details = [];
 
@@ -208,7 +214,7 @@ abstract class ApiResourceController
         }
 
         DB::connection($this->connectionName())->transaction(function () use ($object) {
-            foreach ($this->details as $relation) {
+            foreach ($this->detailRelations() as $relation) {
                 foreach ($this->relation($object, $relation)->get() as $child) {
                     $child->delete();
                 }
@@ -232,13 +238,16 @@ abstract class ApiResourceController
         $this->ignoredInBody = ['master' => [], 'details' => []];
         $payload = $request->all();
 
-        // Separa os detalhes do payload do master.
+        // Separa os detalhes do payload do master. A chave do JSON pode ser
+        // outra que a relação ($details com chave, fórum #349); a da relação
+        // continua aceita, e nenhuma das duas vai para o master.
         $detailPayload = [];
-        foreach ($this->details as $relation) {
-            if (array_key_exists($relation, $payload)) {
-                $detailPayload[$relation] = (array) ($payload[$relation] ?? []);
-                unset($payload[$relation]);
+        foreach ($this->detailRelations() as $key => $relation) {
+            $sent = array_key_exists($key, $payload) ? $key : (array_key_exists($relation, $payload) ? $relation : null);
+            if ($sent !== null) {
+                $detailPayload[$relation] = (array) ($payload[$sent] ?? []);
             }
+            unset($payload[$key], $payload[$relation]);
         }
 
         return DB::connection($this->connectionName())->transaction(function () use ($payload, $detailPayload, $id) {
@@ -400,9 +409,14 @@ abstract class ApiResourceController
             $body['ignored'] = $this->ignoredInBody['master'];
         }
 
+        $keys = array_flip($this->detailRelations());
         foreach ($this->ignoredInBody['details'] as $relation => $byKey) {
-            // toArray() devolve a relação em snake_case; a projeção, pelo nome.
-            $field = array_key_exists($relation, $body) ? $relation : \Illuminate\Support\Str::snake($relation);
+            // A chave do JSON ($details com chave, fórum #349); sem ela, a da
+            // relação — toArray() a devolve em snake_case, a projeção pelo nome.
+            $field = $keys[$relation] ?? $relation;
+            if (!array_key_exists($field, $body)) {
+                $field = array_key_exists($relation, $body) ? $relation : \Illuminate\Support\Str::snake($relation);
+            }
             if (!isset($body[$field]) || !is_array($body[$field])) {
                 continue;
             }
@@ -424,7 +438,7 @@ abstract class ApiResourceController
     /** Query base com eager-load default (with + withCount + detalhes). */
     protected function newQuery(): Builder
     {
-        $with = array_values(array_unique(array_merge($this->with, $this->details)));
+        $with = array_values(array_unique(array_merge($this->with, array_values($this->detailRelations()))));
 
         $query = $this->model::query();
         if ($with) {
@@ -884,7 +898,7 @@ abstract class ApiResourceController
         }
 
         if (empty($fields)) {
-            return $this->applyTransformers($object->toArray(), $object);
+            return $this->applyTransformers($this->renameDetailKeys($object->toArray()), $object);
         }
 
         $data = [];
@@ -905,10 +919,11 @@ abstract class ApiResourceController
             $data[$pk] = $object->getKey();
         }
 
-        // Detalhes eager-loaded entram pela sua relação.
-        foreach ($this->details as $relation) {
+        // Detalhes eager-loaded entram pela chave do JSON (a relação, ou a
+        // chave dada em $details — fórum #349).
+        foreach ($this->detailRelations() as $key => $relation) {
             if ($object->relationLoaded($relation)) {
-                $data[$relation] = $object->getRelation($relation)->toArray();
+                $data[$key] = $object->getRelation($relation)->toArray();
             }
         }
 
@@ -1001,6 +1016,50 @@ abstract class ApiResourceController
     }
 
     /** Resolve a relação hasMany pelo nome (valida que é hasMany). */
+    /**
+     * `$details` como [chave do JSON => relação]. Na lista (['items']) a chave
+     * é o próprio nome da relação; com chave (['itens' => 'items'], fórum
+     * #349), a chave dada.
+     *
+     * @return array<string, string>
+     */
+    protected function detailRelations(): array
+    {
+        $out = [];
+        foreach ($this->details as $key => $relation) {
+            $relation = (string) $relation;
+            if ($relation === '') {
+                continue;
+            }
+            $out[is_string($key) && $key !== '' ? $key : $relation] = $relation;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Saída sem projeção (toArray): a relação vem com o nome do Eloquent (em
+     * snake_case, por padrão). Detalhe com chave própria em $details passa a
+     * sair nessa chave; os demais ficam como sempre.
+     */
+    private function renameDetailKeys(array $data): array
+    {
+        foreach ($this->detailRelations() as $key => $relation) {
+            if ($key === $relation) {
+                continue;
+            }
+            foreach ([$relation, \Illuminate\Support\Str::snake($relation)] as $natural) {
+                if (array_key_exists($natural, $data)) {
+                    $data[$key] = $data[$natural];
+                    unset($data[$natural]);
+                    break;
+                }
+            }
+        }
+
+        return $data;
+    }
+
     protected function relation(Model $object, string $name): HasMany
     {
         $relation = $object->{$name}();

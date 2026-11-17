@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.326.2] — 2026-11-17
+
+### Correções
+
+- **API REST:** o **Nome da propriedade de detalhe** da API Controller passa a valer. Os itens vêm e vão no JSON com esse nome no index, show, store e update (`$details = ['precos' => 'precoVolumeProdutos']`), e não mais com o nome da relação. Na entrada, a chave com o nome da relação continua aceita. A validação, os campos obrigatórios do item, `beforeSaveDetail`/`afterSaveDetail` e o relatório de campos ignorados seguem iguais. API Controller sem esse nome preenchido não muda.
+
+### Atenção
+
+- **API REST:** quem preencheu o Nome da propriedade de detalhe e já lia os itens pela chave da relação passa a recebê-los no nome configurado depois de salvar a API Controller de novo.
+
 ## [5.326.1] — 2026-11-17
 
 ### Correções
