@@ -31,11 +31,12 @@
             }
         }
     }
-    // "Validar documento" (fórum #341): só nas máscaras cpf, cnpj e cpfcnpj.
-    // Desligada (o padrão), nada muda: sem atributo no input e sem chave no
-    // __mad_form. Ligada, o Salvar recusa o dígito verificador errado
-    // (MadForm::validate) e o navegador avisa ao sair do campo (mad-ui.js).
-    $_docKind = \Mad\Support\MadDocument::enabled($validateDocument ?? false) ? \Mad\Support\MadDocument::kind((string)$mask) : '';
+    // "Validar documento" (fórum #341). Nua: o tipo vem da máscara (cpf, cnpj,
+    // cpfcnpj). Com valor: o tipo dito (cns, renavam, vin, placa, pix, cpf…).
+    // Desligada (o padrão) ou tipo desconhecido, nada muda: sem atributo no
+    // input e sem chave no __mad_form. Ligada, o Salvar recusa formato/dígito
+    // errado (MadForm::validate) e o navegador avisa ao sair do campo (mad-ui.js).
+    $_docKind = \Mad\Support\MadDocument::resolve($validateDocument ?? false, (string)$mask);
     if ($_docKind !== '') {
         $_maskAttr .= ' data-mad-validate-doc="' . $_docKind . '"';
     }

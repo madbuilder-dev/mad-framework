@@ -6300,7 +6300,12 @@ function _madUploadSlot(root, name) {
 var _MAD_DOC_MSG = {
     doc_bad_cpf:      'CPF inválido: confira o número digitado.',
     doc_bad_cnpj:     'CNPJ inválido: confira o número digitado.',
-    doc_bad_cpf_cnpj: 'CPF ou CNPJ inválido: confira o número digitado.'
+    doc_bad_cpf_cnpj: 'CPF ou CNPJ inválido: confira o número digitado.',
+    doc_bad_cns:      'Cartão SUS (CNS) inválido: confira o número digitado.',
+    doc_bad_renavam:  'RENAVAM inválido: confira o número digitado.',
+    doc_bad_vin:      'Chassi inválido: confira os 17 caracteres digitados.',
+    doc_bad_placa:    'Placa inválida: use o padrão antigo (ABC-1234) ou Mercosul (ABC1D23).',
+    doc_bad_pix:      'Chave Pix inválida: use CPF, CNPJ, e-mail, celular com +55 ou chave aleatória.'
 };
 
 function _madCpfOk(d) {
@@ -6331,9 +6336,79 @@ function _madCnpjOk(c) {
     return c.slice(12) === String(a) + String(b);
 }
 
+// Cartão SUS (fw 5.324): definitivo (1/2) = PIS + 000/001 + dígito; provisório (7/8/9) = Σ d×(15−i) mod 11 = 0.
+function _madCnsOk(raw) {
+    var d = String(raw).replace(/[\s.\-]/g, '');
+    if (!/^\d{15}$/.test(d)) return false;
+    var i, sum = 0;
+    if (d.charAt(0) === '1' || d.charAt(0) === '2') {
+        var pis = d.slice(0, 11);
+        for (i = 0; i < 11; i++) sum += Number(pis.charAt(i)) * (15 - i);
+        var dv = 11 - (sum % 11);
+        if (dv === 11) dv = 0;
+        if (dv === 10) { sum += 2; dv = 11 - (sum % 11); return d === pis + '001' + dv; }
+        return d === pis + '000' + dv;
+    }
+    if (/^[789]/.test(d)) {
+        for (i = 0; i < 15; i++) sum += Number(d.charAt(i)) * (15 - i);
+        return sum % 11 === 0;
+    }
+    return false;
+}
+
+// RENAVAM: 11 dígitos (o de 9 com dois zeros à esquerda); pesos 3,2,9,8,7,6,5,4,3,2; (Σ×10) mod 11, 10 → 0.
+function _madRenavamOk(raw) {
+    var d = String(raw).replace(/[\s.\-]/g, '');
+    if (!/^(\d{9}|\d{11})$/.test(d)) return false;
+    while (d.length < 11) d = '0' + d;
+    if (/^(\d)\1{10}$/.test(d)) return false;
+    var w = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2], sum = 0;
+    for (var i = 0; i < 10; i++) sum += Number(d.charAt(i)) * w[i];
+    var dv = (sum * 10) % 11;
+    return (dv === 10 ? 0 : dv) === Number(d.charAt(10));
+}
+
+// Chassi (VIN): 17 caracteres sem I, O e Q; dígito da posição 9 só nos de origem que o exige (1–5, L).
+var _MAD_VIN_W = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+var _MAD_VIN_L = { A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,J:1,K:2,L:3,M:4,N:5,P:7,R:9,S:2,T:3,U:4,V:5,W:6,X:7,Y:8,Z:9 };
+function _madVinOk(raw) {
+    var v = String(raw).replace(/[\s\-]/g, '').toUpperCase();
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) return false;
+    if (!/^[1-5L]/.test(v)) return true;
+    var sum = 0;
+    for (var i = 0; i < 17; i++) {
+        var c = v.charAt(i);
+        sum += (/\d/.test(c) ? Number(c) : (_MAD_VIN_L[c] || 0)) * _MAD_VIN_W[i];
+    }
+    var r = sum % 11;
+    return (r === 10 ? 'X' : String(r)) === v.charAt(8);
+}
+
+// Chave Pix pelo formato (nada é consultado): e-mail, celular +55, aleatória (UUID), CPF ou CNPJ.
+function _madPixOk(raw) {
+    var v = String(raw).trim();
+    // E-mail: mesma regra do servidor (FILTER_VALIDATE_EMAIL) nos casos comuns —
+    // sem ponto no início/fim ou repetido, domínio com ponto e sem hífen na ponta.
+    if (v.indexOf('@') !== -1) return v.length <= 77 && /^[A-Za-z0-9!#$%&'*+\/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+\/=?^_`{|}~-]+)*@([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/.test(v);
+    // Celular: +55, DDD e número; espaço, hífen e parênteses são só digitação.
+    if (v.charAt(0) === '+') return /^\+55[1-9]{2}\d{8,9}$/.test(v.replace(/[\s\-()]/g, ''));
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true;
+    if (/[^0-9A-Za-z.\-\/\s]/.test(v)) return false;
+    var c = v.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    if (/^\d{11}$/.test(c)) return _madCpfOk(c);
+    return c.length === 14 && _madCnpjOk(c);
+}
+
 // '' quando o documento é válido (ou vazio); senão a chave da mensagem.
 function _madDocProblem(value, kind) {
-    var c = String(value == null ? '' : value).replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    var raw = String(value == null ? '' : value);
+    if (raw.trim() === '') return '';
+    if (kind === 'cns') return _madCnsOk(raw) ? '' : 'doc_bad_cns';
+    if (kind === 'renavam') return _madRenavamOk(raw) ? '' : 'doc_bad_renavam';
+    if (kind === 'vin') return _madVinOk(raw) ? '' : 'doc_bad_vin';
+    if (kind === 'placa') return /^[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}$/.test(raw.trim().toUpperCase()) ? '' : 'doc_bad_placa';
+    if (kind === 'pix') return _madPixOk(raw) ? '' : 'doc_bad_pix';
+    var c = raw.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
     if (c === '') return '';
     var digits = /^\d+$/.test(c);
     if (kind === 'cpf') return digits && _madCpfOk(c) ? '' : 'doc_bad_cpf';

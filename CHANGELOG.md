@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.324.0] — 2026-11-17
+
+### Novidades
+
+- **Campos:** a opção **Validar documento** ganhou tipos: Cartão SUS (CNS), RENAVAM, chassi, placa e chave Pix. Escolha o tipo no campo de texto (`validate-document="cns"`, `"renavam"`, `"vin"`, `"placa"` ou `"pix"`), com ou sem máscara. O campo confere o formato e o dígito verificador ao sair dele e de novo no Salvar, com a mensagem embaixo do campo, sem consultar nenhum serviço de fora. O chassi confere o dígito da posição 9 só nos de origem que o exigem (América do Norte e China); o brasileiro confere o formato. A chave Pix aceita CPF, CNPJ, e-mail, celular com +55 ou chave aleatória. Campo vazio só dá erro se for obrigatório. Sem a opção, nada muda; a opção sem tipo continua pegando o tipo da máscara de CPF ou CNPJ.
+
 ## [5.323.0] — 2026-11-17
 
 ### Novidades
