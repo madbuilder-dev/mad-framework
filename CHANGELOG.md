@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.322.0] — 2026-11-17
+
+### Novidades
+
+- **Field List:** nova coluna do tipo **Data/Hora** (`type="datetime"`). Usa o mesmo calendário da coluna Data, com hora e minuto: na tela aparece `dd/mm/aaaa hh:mm` (no formato do idioma do app) e no banco grava `AAAA-MM-DD HH:MM:SS`. Ao editar um registro salvo, a data e a hora voltam certas. A coluna Data e as outras não mudam.
+
 ## [5.321.2] — 2026-11-16
 
 ### Correções

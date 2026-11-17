@@ -96,7 +96,10 @@
         if ($sortable) $parts[] = '24px'; // espaço para o handle
         foreach ($visibleCols as $_i => $_c) {
             if (isset($skip[$_i])) continue;
-            $parts[] = trim((string) $_c->width) === '' ? 'minmax(7.5rem, 1fr)' : \Mad\Form\FieldListColumn::cssTrack($_c->width);
+            // Data/Hora (#340): piso de 9rem; em 7.5rem "16/11/2026 14:30" corta.
+            $parts[] = trim((string) $_c->width) === ''
+                ? ($_c->type === 'datetime' ? 'minmax(9rem, 1fr)' : 'minmax(7.5rem, 1fr)')
+                : \Mad\Form\FieldListColumn::cssTrack($_c->width);
         }
         if (!empty($actions)) $parts[] = ((count($actions) * 32) + 8) . 'px';
         if ($removable) $parts[] = '48px';
@@ -1144,21 +1147,26 @@
                                        :disabled="!({{ $dw }})">
                             @endif
 
-                        @elseif($col->type === 'date')
+                        @elseif($col->type === 'date' || $col->type === 'datetime')
                         @php
+                            // `datetime` (fórum #340): o mesmo popup, com a hora
+                            // (madDateTimePicker). Na tela dd/mm/aaaa hh:mm (a máscara
+                            // do idioma); na linha e no banco AAAA-MM-DD HH:MM:SS. A
+                            // coluna `date` sai exatamente como antes.
+                            $_flDt = $col->type === 'datetime';
                             $minIso = '';
                             $maxIso = '';
                             if ($col->min !== null) { $ts = strtotime((string)$col->min); if ($ts) $minIso = date('Y-m-d', $ts); }
                             if ($col->max !== null) { $ts = strtotime((string)$col->max); if ($ts) $maxIso = date('Y-m-d', $ts); }
                             $dpCfg = [
-                                'displayMask'  => \Mad\Support\DateMask::date(),
-                                'databaseMask' => 'yyyy-mm-dd',
+                                'displayMask'  => $_flDt ? \Mad\Support\DateMask::datetime() : \Mad\Support\DateMask::date(),
+                                'databaseMask' => $_flDt ? 'yyyy-mm-dd HH:MM:SS' : 'yyyy-mm-dd',
                                 'min'          => $minIso,
                                 'max'          => $maxIso,
                             ];
                         @endphp
-                            <div class="mad-fl-date mad-input-group" style="position:relative;"
-                                 x-data="madDatePicker(Object.assign({{ json_encode($dpCfg, JSON_UNESCAPED_UNICODE) }}, {
+                            <div class="mad-fl-date{{ $_flDt ? ' mad-fl-datetime' : '' }} mad-input-group" style="position:relative;"
+                                 x-data="{{ $_flDt ? 'madDateTimePicker' : 'madDatePicker' }}(Object.assign({{ json_encode($dpCfg, JSON_UNESCAPED_UNICODE) }}, {
                                     initialValue: row['{{ $fld }}'] || '',
                                     onCommit: function(iso) { row['{{ $fld }}'] = iso; }
                                  }))"
@@ -1167,7 +1175,7 @@
                                  @click.outside="close()">
                                 <input type="text"
                                        class="mad-input mad-input-sm"
-                                       placeholder="{{ $ph ?: \Mad\Support\DateMask::placeholder() }}"
+                                       placeholder="{{ $ph ?: \Mad\Support\DateMask::placeholder($_flDt ? \Mad\Support\DateMask::datetime() : null) }}"
                                        autocomplete="off"
                                        inputmode="numeric"
                                        @if($col->required) required @endif
@@ -1190,12 +1198,12 @@
                                         @click="toggle()"
                                         @if($col->disabled || $col->readonly) disabled @endif
                                         @if($dw !== '') :disabled="{{ $dw }}" @endif>
-                                    <i data-lucide="calendar" style="width:12px;height:12px;"></i>
+                                    <i data-lucide="{{ $_flDt ? 'calendar-clock' : 'calendar' }}" style="width:12px;height:12px;"></i>
                                 </button>
                                 <input type="hidden"
                                        name="{{ $fld }}[]"
                                        x-model="row['{{ $fld }}']">
-                                @include('components.partials.date-popup', ['withTime' => false])
+                                @include('components.partials.date-popup', ['withTime' => $_flDt])
                             </div>
 
                         @elseif($col->type === 'spinner')
