@@ -65,6 +65,15 @@ class MadFormRegistry
      */
     private static array $labelSources = [];
 
+    /**
+     * "Visível para" (#346): regras de cada campo de bloco restrito desenhado
+     * nesta requisição, negado ou não — `[nome => [chave => ['g' => grupos, 'u' => logins]]]`
+     * (bloco restrito dentro de outro: as duas regras, e TODAS têm de deixar).
+     * Vai no token cifrado: o Salvar reavalia para o usuário LOGADO, e o token
+     * de quem pode ver, reaproveitado por quem não pode, não reabre o campo.
+     */
+    private static array $guards = [];
+
     /** @var string Chave secreta para AES-256-CBC */
     private static string $secret = '';
 
@@ -195,6 +204,7 @@ class MadFormRegistry
         self::$detailFileColumns = [];
         self::$captures          = [];
         self::$labelSources      = [];
+        self::$guards            = [];
     }
 
     /**
@@ -345,6 +355,74 @@ class MadFormRegistry
      *
      * @return list<MadForm>
      */
+    /**
+     * "Visível para" (fórum #346): o bloco destes campos não foi desenhado para
+     * o usuário (ramo `else` do `if` que o MadBlade põe em volta). Os
+     * formulários da tela anotam a regra e passam a recusá-los no Salvar.
+     *
+     * @param  list<string>  $names
+     * @param  list<string>  $groups
+     * @param  list<string>  $users
+     */
+    public static function denyFields(array $names, array|string $groups, array|string $users): void
+    {
+        self::restrictFields($names, $groups, $users, true);
+    }
+
+    /**
+     * Ramo `if` (o usuário vê o bloco): só anota a regra dos campos, que vai no
+     * token e no estado da tela para o Salvar reavaliar — o token ou o estado
+     * desta tela, levados para a sessão de quem não vê, não liberam o campo.
+     *
+     * @param  list<string>  $names
+     */
+    public static function guardFields(array $names, array|string $groups, array|string $users): void
+    {
+        self::restrictFields($names, $groups, $users, false);
+    }
+
+    private static function restrictFields(array $names, array|string $groups, array|string $users, bool $denied): void
+    {
+        $groups = array_values(is_array($groups) ? $groups : \Mad\Security\VisibleFor::parse($groups));
+        $users  = array_values(is_array($users) ? $users : \Mad\Security\VisibleFor::parse($users));
+        foreach ($names as $name) {
+            $name = (string) $name;
+            if ($name === '') {
+                continue;
+            }
+            $rule = ['g' => $groups, 'u' => $users];
+            self::$guards[$name][md5(serialize($rule))] = $rule;
+            if ($denied) {
+                unset(self::$fields[$name], self::$fieldLists[$name], self::$detailForms[$name]);
+            }
+        }
+        foreach (self::screenForms() as $form) {
+            $form->restrictFields($names, $groups, $users, $denied);
+        }
+    }
+
+    /**
+     * Tira do schema (decifrado do token) os campos de bloco restrito que o
+     * usuário logado não vê.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private static function withoutDenied(array $schema, mixed $guards): array
+    {
+        if (!is_array($guards) || $guards === []) {
+            return $schema;
+        }
+        foreach ($guards as $name => $rules) {
+            if (\Mad\Security\VisibleFor::allowsAll($rules)) {
+                continue;
+            }
+            unset($schema[$name], self::$fieldLists[$name], self::$detailForms[$name], self::$detailFileColumns[$name]);
+        }
+
+        return $schema;
+    }
+
     private static function screenForms(): array
     {
         $component = \Mad\Component\MadRenderContext::getComponent() ?? self::$acting?->get();
@@ -518,6 +596,9 @@ class MadFormRegistry
         if (!empty(self::$detailFileColumns)) {
             $payload['__mad_detail_file_cols'] = self::$detailFileColumns;
         }
+        if (!empty(self::$guards)) {
+            $payload['__mad_visible_for'] = self::$guards;
+        }
 
         return MadStateCrypt::encrypt($payload);
     }
@@ -551,8 +632,10 @@ class MadFormRegistry
             self::$detailFileColumns = $data['__mad_detail_file_cols'];
             unset($data['__mad_detail_file_cols']);
         }
+        $guards = $data['__mad_visible_for'] ?? null;
+        unset($data['__mad_visible_for']);
 
-        return $data;
+        return self::withoutDenied($data, $guards);
     }
 
     /**

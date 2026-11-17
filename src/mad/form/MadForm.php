@@ -271,6 +271,13 @@ class MadForm
     /** Nome reservado, em `$_known`, do registro que o `save()` gravou por último (`tabela#chave`). */
     private const SAVED = '@saved';
 
+    /**
+     * Nome reservado, em `$_known`, dos campos de bloco com "Visível para"
+     * (`visible-groups`/`visible-users`, fórum #346) que o usuário da tela NÃO
+     * vê, com a regra: `[campo => ['g' => grupos, 'u' => logins]]`.
+     */
+    private const DENIED = '@denied';
+
     /** Tipo com que `<mad-html-editor-field>` se registra (MadFormRegistry::register). */
     private const HTML_EDITOR = 'html-editor';
 
@@ -711,7 +718,7 @@ class MadForm
         if (empty($schema)) {
             // Data digitada num campo que a tela anotou (cortina cujo botão
             // não posta token nenhum): mesmo formato do get() (fw#463).
-            $this->_dataCache = MadFormData::make($this->_withDbDates($this->fields));
+            $this->_dataCache = MadFormData::make($this->_withDbDates($this->_withoutDenied($this->fields)));
             return $this->_dataCache;
         }
 
@@ -744,6 +751,10 @@ class MadForm
                 }
             }
         }
+
+        // "Visível para" (fórum #346): nem o token postado (que pode ser de
+        // outra tela) nem um set() traz de volta o campo que o usuário não vê.
+        $result = $this->_withoutDenied($result);
 
         $this->_dataCache = MadFormData::make($result, array_keys($schema));
         return $this->_dataCache;
@@ -1027,6 +1038,12 @@ class MadForm
         $untouched = [];
         foreach ($loaded as $name => $print) {
             $name = (string) $name;
+            // "Visível para" negado: a coluna fica com o valor do banco, valha o
+            // que valer o token (`$schema` vem do navegador).
+            if ($this->isDenied($name)) {
+                $untouched[] = $name;
+                continue;
+            }
             // O schema (token) continua valendo para o campo `<mad-*>` desenhado
             // fora do render da tela; o que o navegador MANDOU só conta na tela
             // de antes — hoje o que ele manda sem a tela ter já foi recusado.
@@ -1778,6 +1795,89 @@ class MadForm
                 $this->_known[self::DECLARED][$part] = [];
             }
         }
+    }
+
+    /**
+     * "Visível para" (fórum #346): o bloco destes campos NÃO foi desenhado para
+     * o usuário da tela (o `if` que o MadBlade põe em volta negou). O valor sai
+     * do formulário — e do estado que vai ao navegador —, a declaração sai
+     * também (uma declaração de render anterior não reabre o campo), e a regra
+     * fica no estado cifrado para o Salvar reavaliar: o que o navegador mandar
+     * para eles é recusado, a validação os pula e a coluna fica com o valor do
+     * banco.
+     *
+     * @param  list<string>  $names
+     * @param  list<string>  $groups
+     * @param  list<string>  $users
+     *
+     * @internal chamado por MadFormRegistry::denyFields()
+     */
+    public function denyFields(array $names, array|string $groups, array|string $users): void
+    {
+        $this->restrictFields($names, $groups, $users, true);
+    }
+
+    /**
+     * Anota a regra "Visível para" dos campos (negados ou não): o Salvar a
+     * reavalia para o usuário LOGADO, então o estado desta tela levado para a
+     * sessão de quem não vê não libera o campo. Negado (`$denied`), o valor e a
+     * declaração saem já.
+     *
+     * @param  list<string>  $names
+     *
+     * @internal chamado por MadFormRegistry::denyFields() / guardFields()
+     */
+    public function restrictFields(array $names, array|string $groups, array|string $users, bool $denied): void
+    {
+        $groups = is_array($groups) ? $groups : \Mad\Security\VisibleFor::parse($groups);
+        $users  = is_array($users) ? $users : \Mad\Security\VisibleFor::parse($users);
+        foreach ($names as $name) {
+            $name = (string) $name;
+            if ($name === '' || $name[0] === '@') {
+                continue;
+            }
+            if (!is_array($this->_known[self::DENIED] ?? null)) {
+                $this->_known[self::DENIED] = [];
+            }
+            // Bloco restrito dentro de outro: as duas regras ficam (todas têm de
+            // deixar). A chave é a regra: o próximo desenho não duplica.
+            $rule = ['g' => array_values($groups), 'u' => array_values($users)];
+            $this->_known[self::DENIED][$name][md5(serialize($rule))] = $rule;
+            if ($denied) {
+                unset($this->fields[$name], $this->_known[self::DECLARED]['k'][$name]);
+            }
+        }
+        $this->_dataCache = null;
+    }
+
+    /**
+     * O campo é de bloco "Visível para" que o usuário LOGADO não vê? A regra é
+     * reavaliada a cada requisição (nunca vem do navegador): quem ganhou o
+     * grupo depois vê o bloco no próximo desenho.
+     */
+    public function isDenied(string $field): bool
+    {
+        $rules = $this->_known[self::DENIED][$field] ?? null;
+
+        return is_array($rules) && !\Mad\Security\VisibleFor::allowsAll($rules);
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function _withoutDenied(array $values): array
+    {
+        if (empty($this->_known[self::DENIED])) {
+            return $values;
+        }
+        foreach (array_keys($values) as $name) {
+            if ($this->isDenied((string) $name)) {
+                unset($values[$name]);
+            }
+        }
+
+        return $values;
     }
 
     /**
@@ -2564,6 +2664,13 @@ class MadForm
      */
     public function takesFromBrowser(string $field, mixed $value = null): bool
     {
+        // "Visível para" (fórum #346): o bloco não foi desenhado para este
+        // usuário — vale mesmo na tela aberta antes desta versão.
+        if ($this->isDenied($field)) {
+            $this->_refused[$field] = 'o campo é de um bloco que o usuário não vê (Visível para)';
+
+            return false;
+        }
         if (!$this->declares() || isset($this->_known[self::DECLARED]['k'][$field])) {
             // Caminho de arquivo que o campo não tem (fw#533): descartado.
             $refusal = $this->_fileValueRefusal($field, $value);
@@ -7754,6 +7861,14 @@ class MadForm
             }
         }
 
+        // "Visível para" (fórum #346): a regra de um campo que o usuário não vê
+        // não vale (um `required` escondido não pode travar o Salvar).
+        foreach (array_keys($parsedRules) as $field) {
+            if ($this->isDenied((string) $field)) {
+                unset($parsedRules[$field]);
+            }
+        }
+
         // Campo com regra é campo que o código da tela conhece (a confirmação
         // da senha, o aceite): não é valor perdido quando não é coluna.
         foreach ($parsedRules as $field => $_) {
@@ -12070,7 +12185,9 @@ class MadForm
     {
         $state = [
             '__mad_form_name' => $this->name,
-            'fields'          => $this->fields,
+            // "Visível para" (fórum #346): o valor do campo que o usuário não
+            // vê não vai ao navegador, nem cifrado.
+            'fields'          => $this->_withoutDenied($this->fields),
             'items'           => $this->items,
             'placeholders'    => $this->placeholders,
             'hidden'          => $this->hidden,

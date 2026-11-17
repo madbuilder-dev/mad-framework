@@ -5,6 +5,12 @@
     $style   = $style   ?? '';
     // wrap: abas quebram linha em vez de rolar (tela larga com muitas abas).
     $wrap    = filter_var($wrap ?? false, FILTER_VALIDATE_BOOLEAN) || ($wrap ?? null) === '';
+    // "Visível para" (#346): a aba inicial pode ter sido tirada no servidor
+    // para este usuário — começa então pela primeira que ficou.
+    if ($default !== '' && ! str_contains((string) ($slot ?? ''), 'data-mad-tab="' . e($default) . '"')
+        && preg_match('/data-mad-tab="([^"]*)"/', (string) ($slot ?? ''), $_firstTab)) {
+        $default = html_entity_decode($_firstTab[1], ENT_QUOTES);
+    }
     $variantClass = match($variant) {
         'underline' => ' mad-tabs-underline',
         'vertical'  => ' mad-tabs-vertical',

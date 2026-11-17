@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.326.0] — 2026-11-17
+
+### Novidades
+
+- **Telas:** nova opção **Visível para** na aba, na seção (card), na grade e no campo: `visible-groups="rh, financeiro"` (grupos de permissão, pelo código) e/ou `visible-users="joao.silva"` (logins). Para quem não está na lista, o bloco é tirado no servidor: não vai no HTML nem nos dados da tela, e o Salvar ignora o que chegar para os campos dele — a coluna fica com o valor do banco. Basta casar um grupo (inclusive os que vêm do papel ou da unidade) ou um login. O administrador dono sempre vê; grupo ou login que não existe mais não libera ninguém. Junto com a condição (`visible-when`), as duas valem. Sem a opção, nada muda.
+
+### Atenção
+
+- **Visível para:** é restrição de tela, não permissão do dado. O mesmo dado pode aparecer numa listagem, numa exportação ou na API: restrinja também lá.
+
 ## [5.325.0] — 2026-11-17
 
 ### Correções

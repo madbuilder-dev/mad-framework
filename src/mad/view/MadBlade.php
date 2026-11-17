@@ -69,6 +69,13 @@ class MadBladeCompiler extends BladeCompiler
         //       não precisa saber que a outra existe.
         $value = \Mad\Dashboard\MadDashFiltersCompiler::hoistFiltersOutOfHost($value);
 
+        // 0.86. "Visível para" (visible-groups / visible-users): a tag vira um
+        //       `if` por usuário logado. Logo depois do içamento dos filtros (o
+        //       filtro da grade restrita some junto) e ANTES de qualquer
+        //       compiler consumir as tags — no render já seria tarde: o slot
+        //       desenha os campos antes do template do bloco.
+        $value = VisibleForCompiler::compile($value);
+
         // 0.9. <mad-grid-filters style="sidebar-*">: embrulha filters + o
         //      <mad-grid> seguinte no layout de coluna. TEM que rodar antes
         //      do MadGridCompiler — depois dele a tag <mad-grid> não existe
