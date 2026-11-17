@@ -23,9 +23,27 @@ final class MadScratchStorage
 {
     public const DISK = 'mad_tmp';
 
+    /**
+     * Permissões do scratch: sem "outros", com o GRUPO (builder#682). O padrão
+     * do Laravel para pasta privada é 0700 — a pasta ficava só do usuário do
+     * servidor web e o backup do Deploy SSH (usuário de deploy, no grupo do
+     * servidor web) parava em "storage/app/mad-tmp: Permission denied".
+     */
+    public const PERMISSIONS = [
+        'file' => ['public' => 0664, 'private' => 0660],
+        'dir'  => ['public' => 0775, 'private' => 0770],
+    ];
+
     /** O disco de scratch — use direto para readStream/copy/files/etc. */
     public static function disk(): FilesystemAdapter
     {
+        // App com o config/filesystems.php de antes da 5.325 (o disco sem
+        // `permissions`): vale o mesmo, antes da 1ª resolução do disco.
+        $key = 'filesystems.disks.' . self::DISK;
+        if (is_array(config($key)) && config($key . '.permissions') === null) {
+            config([$key . '.permissions' => self::PERMISSIONS]);
+        }
+
         return Storage::disk(self::DISK);
     }
 

@@ -11,8 +11,12 @@ namespace Mad\Install;
  *
  * - Seed a partir de .env.example quando o .env ainda não existe (clone fresco).
  * - Reescreve a linha existente (mesmo se comentada: `# KEY=...`) ou anexa no fim.
- * - Escrita atômica (temp + rename) pra nunca deixar um .env truncado.
- * - Permissão: .env novo 0640; o que já existia mantém a que tinha.
+ * - Escrita atômica (temp + rename) pra nunca deixar um .env truncado. Sem
+ *   escrita na pasta (servidor web dono só do arquivo .env, fórum/issue
+ *   builder#683), grava no próprio arquivo, com trava.
+ * - Permissão: .env novo 0640; o que já existia mantém dono e grupo como
+ *   estavam, mas perde a leitura de "outros" (o .zip chegava 0644 — APP_KEY e
+ *   senha do banco legíveis por qualquer conta do servidor).
  */
 final class EnvWriter
 {
@@ -51,17 +55,67 @@ final class EnvWriter
         // Permissão: .env novo nasce 0640 (dono lê e grava, o grupo — onde
         // costumam estar o servidor web e o usuário do deploy — só lê, os
         // outros nada: o arquivo tem a APP_KEY e as senhas do banco). .env que
-        // já existia mantém a permissão que tinha: quem o criou sabe quem
-        // precisa ler.
-        $mode = is_file($path) ? (@fileperms($path) & 0777) : 0640;
-        if (! $mode) {
-            $mode = 0640;
+        // já existia mantém dono e grupo como estavam (quem o criou sabe quem
+        // precisa ler) e perde só o "outros" (builder#683).
+        $mode = is_file($path) ? (@fileperms($path) & 0770) : 0640;
+        $mode = ($mode ?: 0640) | 0600;
+
+        // Atômico: temporário na mesma pasta + rename. `@`: o handler de erro
+        // do Laravel transforma o aviso do PHP em exceção, e aqui a falha tem
+        // plano B.
+        $tmp = $path . '.tmp' . bin2hex(random_bytes(4));
+        if (@file_put_contents($tmp, $contents, LOCK_EX) !== false) {
+            @chmod($tmp, $mode);
+            if (@rename($tmp, $path)) {
+                return;
+            }
+            @unlink($tmp);
         }
 
-        $tmp = $path . '.tmp' . bin2hex(random_bytes(4));
-        file_put_contents($tmp, $contents, LOCK_EX);
-        @chmod($tmp, $mode);
-        rename($tmp, $path);
+        // Plano B (builder#683): a pasta do projeto não aceita arquivo novo
+        // (dona do root, só o .env do servidor web — como mandava o LEIA-ME
+        // antigo). Grava no próprio arquivo, com trava; o chmod só vale quando
+        // o PHP é o dono (senão o sistema recusa e a permissão fica como está).
+        if (is_file($path) && is_writable($path)) {
+            if (@file_put_contents($path, $contents, LOCK_EX) === false) {
+                throw self::notWritable($path);
+            }
+            @chmod($path, $mode);
+
+            return;
+        }
+
+        throw self::notWritable($path);
+    }
+
+    /**
+     * O instalador consegue gravar o `.env`? Arquivo gravável, ou pasta onde
+     * dá para criar (o .env novo ou o temporário da troca atômica). O
+     * instalador confere ANTES de mexer no banco: se a gravação falhasse só no
+     * fim, as migrations já teriam rodado e o /install não abriria de novo.
+     */
+    public static function writable(?string $path = null): bool
+    {
+        $path = self::target($path ?? base_path('.env'));
+        if (is_file($path) && is_writable($path)) {
+            return true;
+        }
+
+        return is_writable(dirname($path));
+    }
+
+    /** Exceção com o que fazer, no idioma do app (o caminho é do próprio servidor). */
+    public static function notWritable(string $path): \RuntimeException
+    {
+        $user = function_exists('posix_geteuid') && function_exists('posix_getpwuid')
+            ? (string) (posix_getpwuid(posix_geteuid())['name'] ?? '')
+            : '';
+
+        return new \RuntimeException(__('install.env_not_writable', [
+            'path' => $path,
+            'dir'  => dirname($path),
+            'user' => $user !== '' ? $user : 'www-data',
+        ]));
     }
 
     /** Alvo final do `.env` quando ele é link simbólico (mesmo link quebrado). */

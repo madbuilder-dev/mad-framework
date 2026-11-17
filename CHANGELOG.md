@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.325.0] — 2026-11-17
+
+### Correções
+
+- **Instalador:** instalar o projeto num servidor em que só o arquivo `.env` (e não a pasta do projeto) é do usuário do servidor web não trava mais o sistema. O instalador grava no próprio `.env` e, quando não consegue gravar, avisa ANTES de mexer no banco, com o comando para dar a permissão. Antes, as tabelas eram criadas, o `/install` fechava e o login dava erro 500.
+- **Instalador:** as mensagens de erro do `/install` aparecem numa janela no meio da tela; antes saíam sem formatação, no rodapé da página.
+- **Instalador:** o `.env` que já existia perde a leitura de "outros" ao ser gravado (o projeto baixado chegava com `644`, com a chave do app e a senha do banco legíveis por qualquer usuário do servidor).
+- **Arquivos temporários:** a pasta `storage/app/mad-tmp` passa a ser criada com acesso do grupo do servidor web, sem acesso de "outros". Antes ela nascia só do usuário do servidor web, e a atualização pelo Deploy SSH parava no backup ("Permission denied").
+- **Leia-me do projeto:** pede o `chown` na pasta inteira e `chmod 640` no `.env`, lista as 15 extensões do PHP e explica que o token do `/install` é o `INSTALL_TOKEN` do `.env`.
+
 ## [5.324.0] — 2026-11-17
 
 ### Novidades
