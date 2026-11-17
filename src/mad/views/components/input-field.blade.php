@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false, 'validateDocument' => false])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -30,6 +30,14 @@
                 $maxlength = (string)$_aliasMax;
             }
         }
+    }
+    // "Validar documento" (fórum #341): só nas máscaras cpf, cnpj e cpfcnpj.
+    // Desligada (o padrão), nada muda: sem atributo no input e sem chave no
+    // __mad_form. Ligada, o Salvar recusa o dígito verificador errado
+    // (MadForm::validate) e o navegador avisa ao sair do campo (mad-ui.js).
+    $_docKind = \Mad\Support\MadDocument::enabled($validateDocument ?? false) ? \Mad\Support\MadDocument::kind((string)$mask) : '';
+    if ($_docKind !== '') {
+        $_maskAttr .= ' data-mad-validate-doc="' . $_docKind . '"';
     }
     // Force case (upper/lower/title) — aplicado client-side apos mascara
     $_forceCaseAttr = '';
@@ -88,6 +96,7 @@
         'mask'      => $mask,
         'stripMask' => $stripMask,
         'maskFit'   => $_maskFit,
+        'validateDocument' => $_docKind,
     ]);
 @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}

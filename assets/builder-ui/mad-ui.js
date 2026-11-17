@@ -6284,6 +6284,115 @@ function _madUploadSlot(root, name) {
     return null;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   "Validar documento" (fórum #341)
+   ───────────────────────────────────────────────────────────────────
+   Campo de CPF/CNPJ com `validate-document` (o input leva
+   `data-mad-validate-doc="cpf|cnpj|cpfcnpj"`) avisa AO SAIR DO CAMPO quando
+   o documento não fecha o dígito verificador ou é sequência repetida
+   (000.000.000-00, 11.111.111/1111-11). A conta espelha a do servidor
+   (\Mad\Support\MadDocument → SheetColumn::cpfCheckDigitsOk e
+   MadCnpj::isValid, CNPJ numérico ou alfanumérico), que recusa o Salvar com
+   a mesma regra. Vazio não avisa: quem exige é o `required`. O aviso vai no
+   slot de erro do campo e sai quando o valor fica válido ou vazio. O
+   documento digitado nunca vai para console nem log.
+   ═══════════════════════════════════════════════════════════════════ */
+var _MAD_DOC_MSG = {
+    doc_bad_cpf:      'CPF inválido: confira o número digitado.',
+    doc_bad_cnpj:     'CNPJ inválido: confira o número digitado.',
+    doc_bad_cpf_cnpj: 'CPF ou CNPJ inválido: confira o número digitado.'
+};
+
+function _madCpfOk(d) {
+    if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
+    for (var t = 9; t < 11; t++) {
+        var sum = 0;
+        for (var i = 0; i < t; i++) sum += Number(d.charAt(i)) * ((t + 1) - i);
+        if (Number(d.charAt(t)) !== ((10 * sum) % 11) % 10) return false;
+    }
+    return true;
+}
+
+// Módulo 11 do CNPJ: dígito vale o número, letra vale ASCII-48 (17..42).
+function _madCnpjMod11(chars) {
+    var sum = 0, w = 2;
+    for (var i = chars.length - 1; i >= 0; i--) {
+        sum += (chars.charCodeAt(i) - 48) * w;
+        w = w === 9 ? 2 : w + 1;
+    }
+    var r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+}
+
+function _madCnpjOk(c) {
+    if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(c) || /^(.)\1{11}/.test(c.slice(0, 12))) return false;
+    var a = _madCnpjMod11(c.slice(0, 12));
+    var b = _madCnpjMod11(c.slice(0, 12) + a);
+    return c.slice(12) === String(a) + String(b);
+}
+
+// '' quando o documento é válido (ou vazio); senão a chave da mensagem.
+function _madDocProblem(value, kind) {
+    var c = String(value == null ? '' : value).replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    if (c === '') return '';
+    var digits = /^\d+$/.test(c);
+    if (kind === 'cpf') return digits && _madCpfOk(c) ? '' : 'doc_bad_cpf';
+    if (kind === 'cnpj') return _madCnpjOk(c) ? '' : 'doc_bad_cnpj';
+    if (kind === 'cpfcnpj') {
+        if (digits && c.length === 11) return _madCpfOk(c) ? '' : 'doc_bad_cpf';
+        if (c.length === 14) return _madCnpjOk(c) ? '' : 'doc_bad_cnpj';
+        return 'doc_bad_cpf_cnpj';
+    }
+    return '';
+}
+
+// Confere o campo e mostra (ou tira) o aviso no slot de erro dele.
+function _madDocCheck(input) {
+    if (!input || typeof input.getAttribute !== 'function') return;
+    var kind = input.getAttribute('data-mad-validate-doc') || '';
+    var key  = _madDocProblem(input.value, kind);
+    var root = typeof input.closest === 'function' ? input.closest('.mad-field') : null;
+    var slot = root ? _madUploadSlot(root, input.getAttribute('name') || '') : null;
+    if (key) {
+        if (!input._madDocErr) {
+            input._madDocErr = true;
+            if (slot) { slot._madDocHint = slot.innerHTML; slot._madDocHintErr = slot.classList.contains('mad-error'); }
+            if (root) root._madDocHadErr = root.classList.contains('mad-field-error');
+            input._madDocInputErr = input.classList.contains('mad-input-error');
+        }
+        if (slot) { slot.textContent = madT(key, _MAD_DOC_MSG[key]); slot.classList.add('mad-error'); }
+        if (root) root.classList.add('mad-field-error');
+        input.classList.add('mad-input-error');
+        input.setAttribute('aria-invalid', 'true');
+    } else if (input._madDocErr) {
+        input._madDocErr = false;
+        if (slot && slot._madDocHint !== undefined) {
+            slot.innerHTML = slot._madDocHint;
+            slot.classList.toggle('mad-error', !!slot._madDocHintErr);
+            slot._madDocHint = undefined;
+        }
+        if (root) root.classList.toggle('mad-field-error', !!root._madDocHadErr);
+        input.classList.toggle('mad-input-error', !!input._madDocInputErr);
+        input.removeAttribute('aria-invalid');
+    }
+}
+
+// Um ouvinte no documento (focusout borbulha; blur não): vale também para o
+// campo que entra depois (aba, drawer, morph do MadWire), sem init por campo.
+if (typeof document !== 'undefined' && !window.__madDocWired) {
+    window.__madDocWired = true;
+    document.addEventListener('focusout', function (e) {
+        var t = e.target;
+        if (t && typeof t.matches === 'function' && t.matches('input[data-mad-validate-doc]')) _madDocCheck(t);
+    }, true);
+    // Com o aviso na tela, ele sai assim que o valor digitado fica válido.
+    document.addEventListener('input', function (e) {
+        var t = e.target;
+        if (t && t._madDocErr && typeof t.matches === 'function' && t.matches('input[data-mad-validate-doc]')
+            && !_madDocProblem(t.value, t.getAttribute('data-mad-validate-doc') || '')) _madDocCheck(t);
+    }, true);
+}
+
 /** Número da caixa do spinner; vazio ou inválido → null. */
 function _madSpinParse(raw) {
     if (raw === null || raw === undefined || raw === '') return null;

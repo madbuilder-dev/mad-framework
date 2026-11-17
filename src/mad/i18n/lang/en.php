@@ -333,6 +333,9 @@ return [
         // Screen field (or list column) that is not a table column: Save refuses the
         // platform-generated field and tells what was not saved.
         'form' => [
+            'bad_cnpj'               => 'Invalid CNPJ: check the number you typed.',
+            'bad_cpf'                => 'Invalid CPF: check the number you typed.',
+            'bad_cpf_cnpj'           => 'Invalid CPF or CNPJ: check the number you typed.',
             'bad_plate'              => ':label must be a license plate in the old (ABC-1234) or Mercosul (ABC-1D23) format.',
             'bad_plate_old'          => ':label must be a license plate in the old format (ABC-1234).',
             'bad_plate_mercosul'     => ':label must be a license plate in the Mercosul format (ABC-1D23).',
@@ -1107,6 +1110,9 @@ return [
         // Textos de interface do JavaScript (mad-ui.js, mad.js, mad-livewire.js, casco). Viram window.MAD_I18N fora do pt-BR; o pt-BR é o texto do próprio código.
         'js' => [
             'confirm' => 'Confirm',
+            'doc_bad_cnpj'              => 'Invalid CNPJ: check the number you typed.',
+            'doc_bad_cpf'               => 'Invalid CPF: check the number you typed.',
+            'doc_bad_cpf_cnpj'          => 'Invalid CPF or CNPJ: check the number you typed.',
             'ok' => 'OK',
             'keep_editing' => 'Keep editing',
             'save' => 'Save',

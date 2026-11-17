@@ -24,6 +24,8 @@
      *   required     bool
      *   disabled     bool
      *   strip-mask   bool     Remove mascara no getData() — backend recebe so digitos
+     *   validate-document bool  Confere o digito verificador ao sair do campo e no
+     *                         Salvar (default: false; forum #341)
      *   attrs        string   Atributos HTML extras
      *   id           string   ID do elemento (default: $name)
      *
@@ -64,6 +66,10 @@
     $_maskFit    = !isset($stripMask);
     $stripMask   = !empty($stripMask);
     $attrs       = $attrs       ?? '';
+    // "Validar documento" (fórum #341): desligada, nada muda no HTML nem no
+    // __mad_form; ligada, o Salvar e o navegador conferem o dígito verificador.
+    $_docKind    = \Mad\Support\MadDocument::enabled($validateDocument ?? false) ? 'cnpj' : '';
+    $_docAttr    = $_docKind !== '' ? ' data-mad-validate-doc="cnpj"' : '';
     $fillMode    = ($fillMode ?? 'overwrite') === 'empty' ? 'empty' : 'overwrite';
 
     // Resolucao automatica de cidade/estado — mesmos props/defaults do cep-field.
@@ -99,6 +105,7 @@
         'mask'      => 'cnpj',
         'stripMask' => $stripMask,
         'maskFit'   => $_maskFit,
+        'validateDocument' => $_docKind,
     ]);
 
     // Config de resolucao automatica (so vai no token quando ha model declarado).
@@ -166,7 +173,7 @@
             style="border-top-right-radius:0;border-bottom-right-radius:0;"
             @if($required) required @endif
             @if($disabled) disabled @endif
-            {!! $attrs !!}
+            {!! $attrs !!}{!! $_docAttr !!}
         >
         <button
             type="button"

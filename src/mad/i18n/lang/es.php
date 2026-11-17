@@ -326,6 +326,9 @@ return [
         // Campo de la pantalla (o columna de una lista) que no es columna de la tabla:
         // Guardar rechaza el campo generado por la plataforma y avisa de lo no guardado.
         'form' => [
+            'bad_cnpj'               => 'CNPJ no válido: revise el número ingresado.',
+            'bad_cpf'                => 'CPF no válido: revise el número ingresado.',
+            'bad_cpf_cnpj'           => 'CPF o CNPJ no válido: revise el número ingresado.',
             'bad_plate'              => ':label debe ser una placa en el formato antiguo (ABC-1234) o Mercosur (ABC-1D23).',
             'bad_plate_old'          => ':label debe ser una placa en el formato antiguo (ABC-1234).',
             'bad_plate_mercosul'     => ':label debe ser una placa en el formato Mercosur (ABC-1D23).',
@@ -1095,6 +1098,9 @@ return [
         // Textos de interface do JavaScript (mad-ui.js, mad.js, mad-livewire.js, casco). Viram window.MAD_I18N fora do pt-BR; o pt-BR é o texto do próprio código.
         'js' => [
             'confirm' => 'Confirmar',
+            'doc_bad_cnpj'              => 'CNPJ no válido: revise el número ingresado.',
+            'doc_bad_cpf'               => 'CPF no válido: revise el número ingresado.',
+            'doc_bad_cpf_cnpj'          => 'CPF o CNPJ no válido: revise el número ingresado.',
             'ok' => 'OK',
             'keep_editing' => 'Seguir editando',
             'save' => 'Guardar',

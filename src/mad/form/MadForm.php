@@ -7794,6 +7794,12 @@ class MadForm
         // requisição forjada mandasse.
         $errors += $this->_declaredPlateErrors($data, $attrs, $errors);
 
+        // "Validar documento" (fórum #341): CPF/CNPJ com dígito verificador
+        // errado ou sequência repetida não grava. Só nos campos que ligaram a
+        // opção; vazio passa (quem exige é o `required`).
+        [$docErrors, $docFields] = $this->_declaredDocumentErrors($data, $errors);
+        $errors += $docErrors;
+
         // Escolha do navegador fora da lista do campo (fw#531): a tela que
         // valida e grava por conta própria também não segue com ela.
         $choices = $this->_browserChoiceErrors();
@@ -7819,7 +7825,7 @@ class MadForm
         if ($errors) {
             throw new MadValidationException(
                 $errors,
-                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused)), ...array_map('strval', array_keys($choices)), ...array_map('strval', array_keys($range))])),
+                array_values(array_unique([...array_keys($parsedRules), ...array_map('strval', array_keys($refused)), ...array_map('strval', array_keys($choices)), ...array_map('strval', array_keys($range)), ...$docFields])),
                 '',
                 $this->_knownFieldNames($data),
             );
@@ -7936,6 +7942,42 @@ class MadForm
         }
 
         return $out;
+    }
+
+    /**
+     * CPF/CNPJ inválido nos campos que ligaram "Validar documento"
+     * (`validate-document`, fórum #341). A conta é a do framework
+     * (MadDocument → SheetColumn::cpfCheckDigitsOk / MadCnpj::isValid).
+     * Vazio passa (quem exige é o `required`); campo já recusado por outra
+     * regra fica com a mensagem dela. A mensagem nunca leva o documento
+     * digitado.
+     *
+     * @param  array<string, mixed> $data
+     * @param  array<string, mixed> $errors  já recusados por outra regra
+     * @return array{0: array<string, string>, 1: list<string>} erros e os campos conferidos
+     */
+    private function _declaredDocumentErrors(array $data, array $errors): array
+    {
+        $out     = [];
+        $checked = [];
+        foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
+            $name = (string) $name;
+            $kind = is_array($props) ? \Mad\Support\MadDocument::kind((string) ($props['validateDocument'] ?? '')) : '';
+            if ($kind === '') {
+                continue;
+            }
+            $checked[] = $name;
+            $value = $data[$name] ?? null;
+            if (isset($errors[$name]) || !is_string($value)) {
+                continue;
+            }
+            $key = \Mad\Support\MadDocument::problem($value, $kind);
+            if ($key !== null) {
+                $out[$name] = mad_t($key);
+            }
+        }
+
+        return [$out, $checked];
     }
 
     /** "150", "150.5", "1.500,25" → número; vazio ou texto → null. */

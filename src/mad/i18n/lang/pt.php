@@ -326,6 +326,9 @@ return [
         // Campo da tela (ou coluna de uma lista) que não é coluna da tabela: o Salvar
         // recusa o campo gerado pela plataforma e avisa do que não foi gravado.
         'form' => [
+            'bad_cnpj'               => 'CNPJ inválido: confira o número digitado.',
+            'bad_cpf'                => 'CPF inválido: confira o número digitado.',
+            'bad_cpf_cnpj'           => 'CPF ou CNPJ inválido: confira o número digitado.',
             'bad_plate'              => ':label precisa ser uma placa no padrão antigo (ABC-1234) ou Mercosul (ABC-1D23).',
             'bad_plate_old'          => ':label precisa ser uma placa no padrão antigo (ABC-1234).',
             'bad_plate_mercosul'     => ':label precisa ser uma placa no padrão Mercosul (ABC-1D23).',
@@ -1098,6 +1101,9 @@ return [
         // Textos de interface do JavaScript (mad-ui.js, mad.js, mad-livewire.js, casco). Viram window.MAD_I18N fora do pt-BR; o pt-BR é o texto do próprio código.
         'js' => [
             'confirm' => 'Confirmar',
+            'doc_bad_cnpj'              => 'CNPJ inválido: confira o número digitado.',
+            'doc_bad_cpf'               => 'CPF inválido: confira o número digitado.',
+            'doc_bad_cpf_cnpj'          => 'CPF ou CNPJ inválido: confira o número digitado.',
             'ok' => 'OK',
             'keep_editing' => 'Continuar editando',
             'save' => 'Salvar',

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.323.0] — 2026-11-17
+
+### Novidades
+
+- **Campos:** nova opção **Validar documento** (`validate-document`) nos campos com máscara de CPF, de CNPJ e de CPF/CNPJ, e no campo CNPJ. Vem desligada. Ligada, o campo confere o dígito verificador ao sair dele e de novo no Salvar, com a mensagem embaixo do campo, e recusa sequências repetidas como 000.000.000-00 e 11.111.111/1111-11. O CNPJ com letras (formato novo da Receita) também é conferido. Campo vazio só dá erro se for obrigatório. Sem a opção, nada muda.
+
 ## [5.322.0] — 2026-11-17
 
 ### Novidades
