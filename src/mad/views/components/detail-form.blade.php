@@ -13,6 +13,11 @@
     $width      = trim((string)($width ?? ''));   // largura do overlay (modal/drawer)
     $perPage    = (int)($perPage ?? 0);
     $sticky     = !empty($sticky);
+    // Lado da coluna de ações (fórum #357): mesmo `action-side` da <mad-grid>. Padrão: direita.
+    // Na listagem, as diretivas desse lado ficam na coluna 0 de propósito: não deixam
+    // espaço no HTML, e à direita a saída é a de antes, byte a byte. A célula das ações
+    // é capturada uma vez (antes do x-for) e impressa do lado pedido.
+    $actionSide = strtolower(trim((string) ($actionSide ?? 'right'))) === 'left' ? 'left' : 'right';
     $fieldSlot  = $fieldSlot  ?? '';
     $colConfigs = $colConfigs ?? [];
     $actConfigs = $actConfigs ?? [];
@@ -494,6 +499,9 @@
             <table class="mad-dg-table">
                 <thead class="mad-dg-head{{ $sticky ? ' mad-dg-sticky' : '' }}">
                     <tr>
+@if($actionSide === 'left')
+                        <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
+@endif
                         @foreach($columns as $col)
                         @php
                             // Config crua (sem passar pelo setter fluente) trazia '140'
@@ -504,13 +512,46 @@
                             {{ $col->label }}
                         </th>
                         @endforeach
+@if($actionSide === 'right')
                         <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
+@endif
                     </tr>
                 </thead>
                 <tbody>
+@php ob_start(); @endphp
+                            <td class="mad-dg-cell mad-dg-actions-cell" style="text-align:center;">
+                                <div class="mad-dg-actions">
+                                    <button type="button" class="mad-dg-action-btn" title="{{ mad_t('mad.ui.edit') }}"
+                                            @click="editRow(idx)">
+                                        <i data-lucide="pencil" style="width:14px;height:14px;"></i>
+                                    </button>
+                                    <button type="button" class="mad-dg-action-btn mad-dg-action-danger"
+                                            title="{{ mad_t('mad.ui.remove') }}" @click="madDeletePopover($event, () => deleteRow(idx))">
+                                        <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                                    </button>
+                                    @foreach($actions as $act)
+                                    {{-- As linhas do detalhe são montadas no navegador (x-for), então
+                                         não há linha em PHP para os callbacks por linha. Permissão não
+                                         depende da linha — é da ação — e por isso vem de permMode(). --}}
+                                    @if($act->permMode() !== 'hide')
+                                    @php $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : ''; @endphp
+                                    <button type="button"
+                                            class="mad-dg-action-btn{{ $act->isPrimary ? ' mad-dg-action-primary' : '' }}{{ $act->isDanger ? ' mad-dg-action-danger' : '' }}"
+                                            title="{{ $act->denyTitle() ?: $act->label }}"@if($act->permMode() === 'disable') aria-disabled="true" data-mad-deny @endif{!! $_dfCondAttr !!}
+                                            @click="callAction('{{ $act->method }}', row, idx)">
+                                        @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
+                                    </button>
+                                    @endif
+                                    @endforeach
+                                </div>
+                            </td>
+@php $_dfActionsCell = ob_get_clean(); @endphp
                     <template x-for="(row, idx) in (perPage > 0 ? pagedRows : rows)" :key="row.__id">
                         <tr class="mad-dg-row" :class="{ 'mad-df-row-editing': (typeof editIndex!=='undefined' && editIndex === idx) }"
                             x-init="$nextTick(() => { if (typeof _madLucide === 'function') _madLucide([$el]); })">
+@if($actionSide === 'left')
+@php echo $_dfActionsCell; @endphp
+@endif
                             @foreach($columns as $col)
                             @php
                                 // `field` e TEMPLATE DE EXIBICAO, nao chave da linha:
@@ -649,32 +690,9 @@
                                 @endif
                             </td>
                             @endforeach
-                            <td class="mad-dg-cell mad-dg-actions-cell" style="text-align:center;">
-                                <div class="mad-dg-actions">
-                                    <button type="button" class="mad-dg-action-btn" title="{{ mad_t('mad.ui.edit') }}"
-                                            @click="editRow(idx)">
-                                        <i data-lucide="pencil" style="width:14px;height:14px;"></i>
-                                    </button>
-                                    <button type="button" class="mad-dg-action-btn mad-dg-action-danger"
-                                            title="{{ mad_t('mad.ui.remove') }}" @click="madDeletePopover($event, () => deleteRow(idx))">
-                                        <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-                                    </button>
-                                    @foreach($actions as $act)
-                                    {{-- As linhas do detalhe são montadas no navegador (x-for), então
-                                         não há linha em PHP para os callbacks por linha. Permissão não
-                                         depende da linha — é da ação — e por isso vem de permMode(). --}}
-                                    @if($act->permMode() !== 'hide')
-                                    @php $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : ''; @endphp
-                                    <button type="button"
-                                            class="mad-dg-action-btn{{ $act->isPrimary ? ' mad-dg-action-primary' : '' }}{{ $act->isDanger ? ' mad-dg-action-danger' : '' }}"
-                                            title="{{ $act->denyTitle() ?: $act->label }}"@if($act->permMode() === 'disable') aria-disabled="true" data-mad-deny @endif{!! $_dfCondAttr !!}
-                                            @click="callAction('{{ $act->method }}', row, idx)">
-                                        @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
-                                    </button>
-                                    @endif
-                                    @endforeach
-                                </div>
-                            </td>
+@if($actionSide === 'right')
+@php echo $_dfActionsCell; @endphp
+@endif
                         </tr>
                     </template>
                 </tbody>
@@ -693,6 +711,9 @@
                 @if($hasTotals)
                 <tfoot class="mad-dg-foot" x-show="rows.length > 0">
                     <tr>
+@if($actionSide === 'left')
+                        <td></td>
+@endif
                         @foreach($columns as $_dfColIdx => $col)
                         @php
                             // Agregado calculado no cliente por `_agg()` (madDetailForm) —
@@ -732,7 +753,9 @@
                             @endif
                         </td>
                         @endforeach
+@if($actionSide === 'right')
                         <td></td>
+@endif
                     </tr>
                 </tfoot>
                 @endif

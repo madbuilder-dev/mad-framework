@@ -1385,6 +1385,9 @@ class MadGridCompiler
         $formCols  = static::str($attrs, 'form-cols', '2');
         $perPage   = static::str($attrs, 'per-page', '0');
         $sticky    = static::has($attrs, 'sticky') ? 'true' : 'false';
+        // Lado da coluna de ações da listagem: mesmo nome e valores da <mad-grid>
+        // (`action-side="left|right"`, ou o atalho `actions-left`). Padrão: direita.
+        $actionSide = static::detailActionSide($attrs, 'right');
 
         // form-title e add-label suportam expressões PHP (:form-title="__('key')")
         $formTitleExpr = isset($attrs['form-title']) ? static::emit($attrs['form-title']) : "''";
@@ -1433,6 +1436,7 @@ class MadGridCompiler
             // Herda atributos da grid
             if (static::has($gridAttrs, 'sticky'))    $sticky  = 'true';
             if (isset($gridAttrs['per-page']))        $perPage = static::str($gridAttrs, 'per-page', $perPage);
+            $actionSide = static::detailActionSide($gridAttrs, $actionSide);
         }
 
         // Remove tags organizacionais
@@ -1492,12 +1496,27 @@ class MadGridCompiler
              . "'width' => " . static::qs($overlayWidth) . ", "
              . "'perPage' => " . (int)$perPage . ", "
              . "'sticky' => {$sticky}, "
+             // Só o lado esquerdo vai no array: sem a opção, a tela compila como antes.
+             . ($actionSide === 'left' ? "'actionSide' => 'left', " : '')
              . "'fieldSlot' => \$_df_{$name}_fs, "
              . "'colConfigs' => {$colsStr}, "
              . "'actConfigs' => {$actsStr}, "
              . "'rows' => {$rowsExpr}"
              . "]); ?>"
              . "<?php echo \$__env->renderComponent(); ?>";
+    }
+
+    /**
+     * `action-side` / `actions-left` de um <mad-detail-form> (ou do <mad-grid>
+     * de dentro dele). Valor que não é `left` nem `right` mantém o atual.
+     */
+    protected static function detailActionSide(array $attrs, string $current): string
+    {
+        if (static::has($attrs, 'actions-left')) return 'left';
+        if (!isset($attrs['action-side'])) return $current;
+        $side = strtolower(trim(static::str($attrs, 'action-side', $current)));
+
+        return in_array($side, ['left', 'right'], true) ? $side : $current;
     }
 
     // ── Attribute parser ──────────────────────────────────────────────────────

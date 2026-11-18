@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.328.0] — 2026-11-18
+
+### Novidades
+
+- **Detalhe:** `<mad-detail-form action-side="left">` leva a coluna de ações da listagem para a esquerda, como na `<mad-grid>`. Sem o atributo, as ações continuam à direita, como antes.
+
 ## [5.327.0] — 2026-11-18
 
 ### Novidades
