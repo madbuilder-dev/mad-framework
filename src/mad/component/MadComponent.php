@@ -178,6 +178,26 @@ abstract class MadComponent
     protected bool $_rowAttach = false;
 
     /**
+     * Aberta pela ação Visualizar da listagem (`<mad-grid view-action>`, fórum
+     * #351: o `onEdit` da tela com `mad_view=1`): campos em leitura, sem os
+     * botões que gravam, e o canal reativo recusa gravar
+     * ({@see \Mad\Form\ViewOnly}). PERSISTIDO no state criptografado: o
+     * navegador não desliga o modo (o parâmetro só LIGA — restringe quem o
+     * manda, nunca libera nada).
+     */
+    protected bool $_viewOnly = false;
+
+    /**
+     * Ações próprias da tela que continuam valendo no modo Visualizar (só
+     * leem: imprimir, gerar PDF). As outras são recusadas nesse modo.
+     *
+     *   protected static array $viewActions = ['onImprimir'];
+     *
+     * @var list<string>
+     */
+    protected static array $viewActions = [];
+
+    /**
      * Combo que abriu esta tela ("Sem resultados → Cadastrar novo"), decriptado
      * do token assinado `_mad_origin`. Guardado como array porque PERSISTE NO
      * STATE — o POST do MadWire (o save) não reenvia a query string do GET
@@ -431,6 +451,12 @@ abstract class MadComponent
             // formulário desta tela.
             \Mad\Form\MadFormRegistry::actingComponent($this);
 
+            // Ação "Visualizar" da listagem (fórum #351): o registro abre só
+            // para leitura. Ligado antes do mount, o onEdit da tela já o vê.
+            if (!empty($cleanParams[\Mad\Form\ViewOnly::PARAM])) {
+                $this->_viewOnly = true;
+            }
+
             if (!$this->_mounted) {
                 $this->boot();
                 $this->_resolveAndCall('mount', $cleanParams);
@@ -491,6 +517,9 @@ abstract class MadComponent
                     $this->_applyComboOriginPrefill($cleanParams);
                     $this->_applyUnitProfilePrefill($cleanParams);
                     $this->_offerForwardParams();
+                    if ($this->_viewOnly) {
+                        $this->viewOnly();
+                    }
                     $this->_echoRendered();
                 }
                 return;
@@ -499,6 +528,9 @@ abstract class MadComponent
             $this->_applyComboOriginPrefill($cleanParams);
             $this->_applyUnitProfilePrefill($cleanParams);
             $this->_offerForwardParams();
+            if ($this->_viewOnly) {
+                $this->viewOnly();
+            }
             $this->_echoRendered();
 
         } catch (\Throwable $e) {
@@ -1504,6 +1536,9 @@ abstract class MadComponent
         if ($this->_rowAttach) {
             $state['_rowAttach'] = true;
         }
+        if ($this->_viewOnly) {
+            $state['_viewOnly'] = true;
+        }
         // Origem do combo: o POST do MadWire (o save) não reenvia a query string
         // do GET que abriu o drawer — sem isto, returnToCombo() sempre veria null.
         if ($this->_comboOrigin !== []) {
@@ -1536,6 +1571,12 @@ abstract class MadComponent
             $this->_rowAttach = true;
             unset($state['_rowAttach']);
         }
+
+        // Modo Visualizar (fórum #351): só o estado criptografado o liga.
+        if (!empty($state['_viewOnly'])) {
+            $this->_viewOnly = true;
+        }
+        unset($state['_viewOnly']);
 
         // Restaura a origem do combo (interna, sobrevive aos POSTs do wire)
         if (isset($state['_comboOrigin']) && is_array($state['_comboOrigin'])) {
@@ -2493,6 +2534,36 @@ abstract class MadComponent
     public function isRowAttach(): bool
     {
         return $this->_rowAttach;
+    }
+
+    /**
+     * Liga o modo Visualizar (fórum #351) — a ação Visualizar da listagem faz
+     * isso sozinha; pelo código serve para, por exemplo, abrir só para leitura
+     * o registro já fechado, no onEdit: campos em leitura, botões que gravam
+     * escondidos e gravar recusado no servidor. Vale para o resto da vida da
+     * tela aberta.
+     */
+    public function viewOnly(): void
+    {
+        $this->_viewOnly = true;
+        foreach ($this->_getPublicPropNames() as $name) {
+            if (!$this->_isInitialized($name)) continue;
+            if ($this->$name instanceof MadForm && $this->$name->readMode === '') {
+                $this->$name->readMode();
+            }
+        }
+    }
+
+    /** A tela está aberta só para visualização ({@see viewOnly()})? */
+    public function isViewOnly(): bool
+    {
+        return $this->_viewOnly;
+    }
+
+    /** @internal A ação própria está na lista `$viewActions` da tela? */
+    public function _viewOnlyAllows(string $method): bool
+    {
+        return in_array($method, static::$viewActions, true);
     }
 
     /** O request atual carrega o header X-Mad-Row-Attach? */

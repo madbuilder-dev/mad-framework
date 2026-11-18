@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.327.0] — 2026-11-18
+
+### Novidades
+
+- **Listagem:** nova ação **Visualizar** (olho) na grade, ligada por `<mad-grid view-action>` e desligada por padrão. Ela fica logo depois do Editar e abre o mesmo formulário só para leitura: os campos aparecem como texto, os botões que gravam somem e o servidor recusa salvar, incluir, editar, excluir e as ações próprias da tela nesse modo, mesmo que alguém tente por fora. Aparece para quem tem a permissão **Visualizar** da tela. Sem Editar na grade, informe a tela: `view-action="PessoaForm"`. Ação própria que só lê, como imprimir, continua valendo se a tela a listar em `protected static array $viewActions = ['onImprimir'];`. Pelo código, `$this->viewOnly()` no `onEdit` abre o registro do mesmo jeito.
+
 ## [5.326.3] — 2026-11-18
 
 ### Correções

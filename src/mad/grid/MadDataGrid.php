@@ -7566,6 +7566,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $act->nav($a['navClass'] ?? '', $a['navMethod'] ?? 'show', !empty($a['navDrawer']));
             if (!empty($a['navRow'])) $act->row();
             if (!empty($a['navParams'])) $act->navParams = (array)$a['navParams'];
+            if (!empty($a['navView'])) $act->navView = true;
         }
 
         // Dono da permissão: a tela que contém o grid para <mad-del>/<mad-act>,

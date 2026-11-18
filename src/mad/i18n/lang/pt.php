@@ -694,6 +694,8 @@ return [
         'no_permission_to'  => 'Sem permissão para :action',
         'no_screen_access'  => 'Sem acesso a esta tela',
         'no_permission_heading' => 'Sem permissão',
+        'view_only_refused' => 'Este registro está aberto só para visualização.',
+        'view_only_heading' => 'Somente visualização',
 
         // Seletor de ícones (<mad-icon-field>)
         'icon_field' => [

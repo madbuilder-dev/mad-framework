@@ -706,6 +706,8 @@ return [
         'no_permission_to'  => 'No permission to :action',
         'no_screen_access'  => 'No access to this screen',
         'no_permission_heading' => 'No permission',
+        'view_only_refused' => 'This record is open for viewing only.',
+        'view_only_heading' => 'View only',
 
         // Seletor de ícones (<mad-icon-field>)
         'icon_field' => [

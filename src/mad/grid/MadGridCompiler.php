@@ -43,6 +43,9 @@ use Mad\View\MadBlade;
  * │  selectable               Coluna de seleção (checkbox) + ações em lote      │
  * │  row-click                Clique na linha executa a 1ª ação dela (o "clique │
  * │                           padrão" do 4.0); ações de exclusão ficam de fora  │
+ * │  view-action              Ação Visualizar (olho) logo depois do Editar: a   │
+ * │                           mesma tela, só para leitura (mad_view=1); o      │
+ * │                           servidor recusa gravar. ="PessoaForm" sem Editar │
  * │  remember-filters         Lembra filtros, busca, ordenação, página e itens  │
  * │                           por página na sessão: voltam no F5, ao reabrir    │
  * │                           pelo menu e ao voltar do formulário. Parâmetro de │
@@ -1130,6 +1133,8 @@ class MadGridCompiler
         // Aceita tanto <mad-col> quanto <mad-column>, <mad-act> quanto <mad-action>
         preg_match_all('/<mad-(col(?:umn)?|nav|del|act(?:ion)?)([\s\S]*?)\s*\/>/s', $inner, $children, PREG_SET_ORDER);
 
+        $editNav    = null;   // o Editar da linha: a base do view-action
+        $editNavPos = null;
         foreach ($children as $child) {
             $type       = $child[1];
             $childAttrs = static::parseAttrs($child[2] ?? '');
@@ -1137,11 +1142,23 @@ class MadGridCompiler
             switch ($type) {
                 case 'col':
                 case 'column': $colConfigs[] = static::buildColConfig($childAttrs);  break;
-                case 'nav':    $actConfigs[] = static::buildNavConfig($childAttrs);  break;
+                case 'nav':
+                    $actConfigs[] = static::buildNavConfig($childAttrs);
+                    if ($editNav === null && static::isEditNav($childAttrs)) {
+                        $editNav    = $childAttrs;
+                        $editNavPos = count($actConfigs) - 1;
+                    }
+                    break;
                 case 'del':    $actConfigs[] = static::buildDelConfig($childAttrs);  break;
                 case 'act':
                 case 'action': $actConfigs[] = static::buildActConfig($childAttrs);  break;
             }
+        }
+        // view-action (fórum #351): "Visualizar" logo depois do Editar da
+        // linha — a mesma tela, aberta só para leitura.
+        $viewNav = static::buildViewActionNav($gridAttrs, $editNav);
+        if ($viewNav !== null) {
+            array_splice($actConfigs, $editNavPos === null ? count($actConfigs) : $editNavPos + 1, 0, [$viewNav]);
         }
         // Ação sem método nem navigate: não entra (e o aviso já foi anotado).
         $actConfigs = array_values(array_filter($actConfigs, fn ($p) => $p !== ''));
@@ -3076,6 +3093,60 @@ class MadGridCompiler
         array_push($c, ...static::actConditionParts($a));
         if (isset($a['transform']))         $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));
         return '[' . implode(', ', $c) . ']';
+    }
+
+    /** O `<mad-nav>` abre o registro para editar (`Form::onEdit(...)` ou `method="onEdit"`)? */
+    protected static function isEditNav(array $a): bool
+    {
+        $nav = static::str($a, 'navigate', static::str($a, 'target'));
+        if (preg_match('/^\w+::onEdit\b/', $nav)) {
+            return true;
+        }
+
+        return static::str($a, 'method') === 'onEdit';
+    }
+
+    /**
+     * `<mad-grid view-action>` (fórum #351) → a ação "Visualizar" da linha:
+     * olho, rótulo traduzido, o mesmo destino e os mesmos parâmetros do Editar
+     * (`Form::onEdit`) mais `mad_view=1` — o formulário abre só para leitura e o
+     * servidor recusa gravar ({@see \Mad\Form\ViewOnly}). `view-action="PessoaForm"`
+     * nomeia a tela quando a grade não tem Editar. Permissão: a do Editar
+     * (abrir o registro = Visualizar da tela).
+     * null = desligado (ausente ou ="false") ou sem tela (com aviso).
+     */
+    protected static function buildViewActionNav(array $gridAttrs, ?array $editNav): ?string
+    {
+        if (!static::has($gridAttrs, 'view-action')) {
+            return null;
+        }
+        $val = trim(static::str($gridAttrs, 'view-action'));
+        if (strtolower($val) === 'false' || $val === '0') {
+            return null;
+        }
+
+        if ($val !== '' && !in_array(strtolower($val), ['true', '1'], true)) {
+            if (!preg_match('/^\w+$/', $val)) {
+                static::$_actionNotes[] = 'view-action="' . $val . '": informe só o nome da tela (ex.: view-action="PessoaForm").';
+                return null;
+            }
+            $a = ['navigate' => ['type' => 'string', 'value' => $val . '::onEdit({id})']];
+        } elseif ($editNav !== null) {
+            // Mesmo destino, mesmos parâmetros e mesmo jeito de abrir (cortina,
+            // linha) do Editar. As condições do Editar não vêm: ver o registro
+            // não depende do status que trava a edição.
+            $a = array_intersect_key($editNav, array_flip(['navigate', 'target', 'method', 'params', 'drawer', 'row']));
+        } else {
+            static::$_actionNotes[] = 'view-action: a grade não tem a ação Editar (<mad-nav navigate="Form::onEdit({id})" />)'
+                . ' — informe a tela: view-action="PessoaForm".';
+            return null;
+        }
+
+        $a['icon']  = ['type' => 'string', 'value' => 'eye'];
+        $a['label'] = ['type' => 'php', 'value' => "mad_t('mad.action_view')"];
+
+        // `navView`: o runtime manda `mad_view=1` ({@see GridAction::getNavAttr()}).
+        return substr(static::buildNavConfig($a), 0, -1) . ", 'navView' => true]";
     }
 
     /**

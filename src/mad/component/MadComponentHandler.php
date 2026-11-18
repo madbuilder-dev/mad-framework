@@ -595,6 +595,15 @@ class MadComponentHandler
             // A recusa diz O QUE foi recusado ("Sem permissão para excluir"),
             // não "você não tem acesso a esta tela" — a tela ABRIU, contradizer
             // isso parece defeito do sistema em vez de regra do perfil.
+            // Registro aberto pela ação Visualizar (fórum #351): só leitura.
+            // Salvar, incluir, editar, excluir e ações próprias da tela são
+            // recusados aqui — o modo vem do estado criptografado, e esconder
+            // o botão não basta.
+            if (method_exists($component, 'isViewOnly') && $component->isViewOnly()
+                && \Mad\Form\ViewOnly::refuses($action, $component)) {
+                return \Mad\Form\ViewOnly::wirePayload();
+            }
+
             $negada = PermissionGate::deniedActionKey($component, $action);
             if ($negada !== null) {
                 return MadForbidden::wirePayload($negada, PermissionGate::actionOwners($component)) + ['status' => 403];

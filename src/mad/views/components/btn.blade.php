@@ -134,6 +134,11 @@
             $_permMode  = $_permDec['mode'];
             $_permTitle = $_permDec['title'];
         }
+        // Registro aberto pela ação Visualizar (fórum #351): o botão que grava
+        // nesta tela some. Navegar para outra tela continua valendo.
+        if ($_permAction !== '@open' && !($_permOther ?? false) && \Mad\Form\ViewOnly::hides($_permAction)) {
+            $_permMode = 'hide';
+        }
     }
     // Modo "desabilitados, com dica": o botão NÃO leva `disabled`. Com ele o
     // tema (`button:disabled{pointer-events:none}`) e o `.mad-btn:disabled`

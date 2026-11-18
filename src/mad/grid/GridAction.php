@@ -45,6 +45,7 @@ class GridAction
     public bool    $navDrawer  = false;
     public bool    $navRow     = false; // abre o alvo anexado à linha (quick-edit)
     public array   $navParams  = [];   // ['param_name' => '{campo}' ou 'valor_fixo']
+    public bool    $navView    = false; // ação Visualizar (fórum #351): abre com mad_view=1
     /** Opções do Mad.rowAttach (`expand`, `embed`, `label`) — ver MadAction::jsRowAttach(). */
     public array   $navRowOpts = [];
     /**
@@ -410,6 +411,11 @@ class GridAction
             }
         } else {
             $params = ['id' => (string)$id];
+        }
+
+        // Ação Visualizar (`<mad-grid view-action>`): a tela abre só para leitura.
+        if ($this->navView) {
+            $params[\Mad\Form\ViewOnly::PARAM] = '1';
         }
 
         foreach ($this->navForward as $key) {
