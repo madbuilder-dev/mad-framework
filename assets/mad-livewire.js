@@ -2311,6 +2311,8 @@ const MadWire = (() => {
         // O morph troca os nos: os flags `_madMaskInit` / `_madForceInit` morrem
         // junto, entao a mascara precisa ser religada aqui.
         if (typeof _madEnergizeFields === 'function')       _madEnergizeFields(newWrapper);
+        // JS próprio da tela (data-mad-js): o wrapper redesenhado é outro nó.
+        if (typeof Mad !== 'undefined' && Mad.initScreenJs) try { Mad.initScreenJs(newWrapper); } catch {}
 
         // Depois do initTree: o <mad-tabs> novo já tem o activeTab do Alpine.
         if (uiState) try { Mad.restoreUiState(newWrapper, uiState); } catch (e) { console.error('[MadWire] ui state:', e); }

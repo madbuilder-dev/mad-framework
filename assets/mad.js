@@ -3556,6 +3556,35 @@ const Mad = {
         // Aba que o usuário tinha aberta numa tela embutida redesenhada junto
         // com a de fora: o HTML dela só chega agora (ver restoreUiState).
         this._applyPendingTabs(root);
+
+        // JS próprio da tela (data-mad-js) no HTML que acabou de entrar.
+        this.initScreenJs(root);
+    },
+
+    /**
+     * JS próprio de uma tela, sem <script> no Blade (fórum #358): o elemento
+     * `<div data-mad-js="NomeDaTela">` chama `MadApp.NomeDaTela.init(el)`
+     * quando o HTML da tela entra na página — abertura, navegação, cortina,
+     * modal e redesenho do MadWire (o wrapper novo é outro nó). A classe mora
+     * no JS global do projeto (`public/app/custom/app.js`, carregado pela
+     * casca). Um init por elemento; nome fora de identificador JS, classe
+     * ausente ou sem `init` estático: nada acontece. Erro no init da tela não
+     * derruba o resto da página.
+     */
+    initScreenJs(root) {
+        const scope = root || document;
+        const nodes = [];
+        if (scope.matches && scope.matches('[data-mad-js]')) nodes.push(scope);
+        if (scope.querySelectorAll) scope.querySelectorAll('[data-mad-js]').forEach((n) => nodes.push(n));
+        nodes.forEach((el) => {
+            if (el._madJsInit) return;
+            const name = el.getAttribute('data-mad-js') || '';
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return;
+            const screen = window.MadApp && Object.prototype.hasOwnProperty.call(window.MadApp, name) ? window.MadApp[name] : null;
+            if (!screen || typeof screen.init !== 'function') return;
+            el._madJsInit = true;
+            try { screen.init(el); } catch (e) { console.error('[Mad] data-mad-js ' + name + ':', e); }
+        });
     },
 
     /**
@@ -4838,6 +4867,14 @@ window.MadModalDrag = MadModalDrag;
 // precisam dessa atribuicao explicita.
 window.Mad = Mad;
 window.MadLoader = MadLoader;
+// Registro das classes de JS das telas (`MadApp.NomeDaTela = class …`), ver initScreenJs.
+window.MadApp = window.MadApp || {};
+// Tela que veio na página inteira (sem injeção): o JS dela liga ao carregar.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => Mad.initScreenJs(document), { once: true });
+} else {
+    Mad.initScreenJs(document);
+}
 
 // Aviso que a página anterior mandou junto de uma navegação completa (o toast
 // "Cliente salvo." de Após salvar › Ir para outra página): aparece agora.

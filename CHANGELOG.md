@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.329.0] — 2026-11-18
+
+### Novidades
+
+- **App:** o app passa a carregar o CSS e o JS globais do projeto, `public/app/custom/app.css` e `public/app/custom/app.js`, quando eles existem. São arquivos do projeto: a atualização do framework não mexe neles. É onde as telas importadas do 4.0 guardam o próprio CSS, com classes que levam o prefixo da tela, e a própria classe de JS.
+- **Telas:** JS próprio de uma tela sem `<script>` no Blade. Um elemento `<div data-mad-js="NomeDaTela">` chama `MadApp.NomeDaTela.init(elemento)` quando a tela abre, numa cortina, numa janela ou depois de um redesenho. A classe fica no JS global do projeto, por exemplo `MadApp.PesquisaPrecoBuscaForm = class { static init(root) { … } };`. Erro no JS de uma tela não para as outras.
+
 ## [5.328.0] — 2026-11-18
 
 ### Novidades
