@@ -85,7 +85,10 @@
     [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
 
-    $placeholder = strtr($display_mask, ['ii' => 'mm', 'y' => mad_t('mad.ui.year_letter')]);
+    // Bloqueado (disabled/readonly) não recebe digitação: sem a máscara, o
+    // campo vazio fica em branco em vez de "dd/mm/aaaa" (fórum #353). O CSS
+    // `.mad-date-input` cobre o bloqueio que vem depois (disabled-when).
+    $placeholder = ($disabled || $readonly) ? '' : strtr($display_mask, ['ii' => 'mm', 'y' => mad_t('mad.ui.year_letter')]);
 
     $alpineCfg = json_encode([
         'displayMask'  => $display_mask,
@@ -122,7 +125,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="text"
-            class="mad-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input mad-date-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             @if($weekdayLabels) :class="{ 'mad-date-input--weekday': weekdayText }" @endif
             value="{{ $value }}"
             placeholder="{{ $placeholder }}"

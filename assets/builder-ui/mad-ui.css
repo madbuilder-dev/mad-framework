@@ -4598,6 +4598,11 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   text-overflow: ellipsis;
 }
 .mad-input.mad-date-input--weekday { -webkit-text-fill-color: transparent; }
+/* Data e data/hora bloqueadas e vazias ficam em branco, sem a máscara
+   "dd/mm/aaaa" (fórum #353). Vale também para o bloqueio que chega depois
+   (disabled-when/readonly-when); campo editável continua com a máscara. */
+.mad-input.mad-date-input:disabled::placeholder,
+.mad-input.mad-date-input:read-only::placeholder { color: transparent; }
 .mad-datepicker-btn {
   display: inline-flex;
   align-items: center;

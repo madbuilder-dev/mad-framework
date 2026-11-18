@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.326.3] — 2026-11-18
+
+### Correções
+
+- **Formulário:** campo de data ou de data/hora desabilitado ou somente leitura, e vazio, fica em branco. Antes mostrava a máscara "dd/mm/aaaa" em cinza, como se faltasse preencher um campo que não aceita digitação. Vale também para o campo bloqueado por condição (Desabilitar quando, Somente leitura quando). Campo editável continua com a máscara.
+
 ## [5.326.2] — 2026-11-17
 
 ### Correções
