@@ -591,8 +591,12 @@
                                 $_cSrvFmt = $col->hasTransform || $col->mediaFormat !== '' || $col->iconFormat !== '';
                                 // Casas do campo do sub-form (fórum #330) — null = as da coluna.
                                 $_cDec    = $_dfInheritDec($col);
+                                // Formato em que o campo de data do sub-form escreve a linha
+                                // criada/editada no navegador ("10/11/2026"): a célula lê por
+                                // ele, e não como mês/dia (troca de dia e mês na grade).
+                                $_cInFmt  = $_dfDateFmt[\Mad\Grid\GridRenderHelpers::rowDataKey($col->field)] ?? null;
                                 $_cFmtJs  = $col->builtinFormat !== ''
-                                    ? \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_cv, $_cDec)
+                                    ? \Mad\Grid\GridRenderHelpers::builtinFormatJs($col->builtinFormat, $_cv, $_cDec, $_cInFmt)
                                     : '';
                                 // Tem valor pré-formatado NESTA linha? (a criada/editada
                                 // no navegador não tem — cai no ramo cru, escapado
@@ -685,7 +689,7 @@
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) ($_cDec ?? $col->numberDecimals) }})"></span>
                                 @elseif($_cDateFmt !== null)
                                 {{-- Campo de data do detalhe sem formato na coluna: o formato do campo (fórum #334). --}}
-                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($_cDateFmt, $_cv) !!}"></span>
+                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($_cDateFmt, $_cv, $_cDateFmt) !!}"></span>
                                 @elseif($_cNumDec !== null)
                                 {{-- Campo numérico do detalhe sem formato na coluna: mesma casa do campo (fórum #291 r5). --}}
                                 <span x-text="madNumFmt({!! $_cv !!} || 0, {{ (int) $_cNumDec }})"></span>
@@ -693,7 +697,7 @@
                                 {{-- Formato da coluna (H:i, l, d/m/Y…), igual à listagem; hora
                                      pura vale (fórum #294). Antes: sempre a data do navegador,
                                      "Invalid Date" na hora e o dia anterior a oeste de Greenwich. --}}
-                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($col->dateFormat, $_cv) !!}"></span>
+                                <span x-text="{!! \Mad\Grid\GridRenderHelpers::dateFormatJs($col->dateFormat, $_cv, $_cInFmt) !!}"></span>
                                 @elseif($_cFmtJs !== '')
                                 {{-- Token built-in do formatter-select (money/cpf/date-long/…):
                                      gêmeo JS do ValueFormatter, emitido inline. FALLBACK de

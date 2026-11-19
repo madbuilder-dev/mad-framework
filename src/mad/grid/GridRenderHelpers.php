@@ -528,7 +528,7 @@ class GridRenderHelpers
      *
      * So aspas SIMPLES na expressao: ela e emitida dentro de `x-text="…"`.
      */
-    public static function builtinFormatJs(string $token, string $valueExpr, ?int $decimals = null): string
+    public static function builtinFormatJs(string $token, string $valueExpr, ?int $decimals = null, ?string $inputFormat = null): string
     {
         $t = strtolower(trim($token));
         // Casas do campo do sub-form (fórum #330): só `money` e `number`, que não
@@ -551,7 +551,9 @@ class GridRenderHelpers
         $str = "const s=(v===null||v===undefined||typeof v==='object')?'':String(v);";
         $dig = $str . "const d=s.replace(/\\D+/g,'');";
 
-        $date = $str . self::jsDateParse();
+        // `$inputFormat`: formato em que o campo de data do sub-form ESCREVE a
+        // linha editada no navegador ("10/11/2026"); ver jsDateParse().
+        $date = $str . self::jsDateParse(false, [$inputFormat]);
 
         // Meses e dias da semana no idioma do app (os mesmos do ValueFormatter).
         $jsList      = static fn (array $l): string => "['" . implode("','", array_map(
@@ -635,8 +637,12 @@ class GridRenderHelpers
      * dos horários gerados mostrava "Invalid Date"). D, l, M e F saem no idioma
      * do app, com a maiúscula do nome que abre o texto; `\x` é o x literal.
      * Valor que não é data sai cru.
+     *
+     * `$inputFormat`: formato PHP em que o campo de data do sub-form escreve a
+     * linha criada ou editada no navegador (o da tela: "10/11/2026 08:30").
+     * Sem ele, valem os do idioma do app — ver jsDateParse().
      */
-    public static function dateFormatJs(string $phpFormat, string $valueExpr): string
+    public static function dateFormatJs(string $phpFormat, string $valueExpr, ?string $inputFormat = null): string
     {
         $names = '';
         if (strpbrk($phpFormat, 'DlMF') !== false) {
@@ -659,7 +665,7 @@ class GridRenderHelpers
 
         return '(()=>{const v=' . $valueExpr . ';'
             . "const s=(v===null||v===undefined||typeof v==='object')?'':String(v);"
-            . self::jsDateParse(true) . $names
+            . self::jsDateParse(true, [$inputFormat]) . $names
             . 'return ' . self::jsDateExpr($phpFormat, true) . ';})()';
     }
 
@@ -672,18 +678,94 @@ class GridRenderHelpers
      * `$zone`: ISO com fuso ("…T23:15:00.000000Z", "+03:00", o `toArray()` do
      * Eloquent) vai para o fuso de quem olha, como o `GridColumn` faz no
      * servidor. Sem ele (tokens do ValueFormatter) vale o texto, como no PHP.
+     *
+     * Texto da TELA ("10/11/2026", "10/11/2026 08:30"): é o que o campo de data
+     * do sub-form do `<mad-detail-form>` deixa na linha criada ou editada no
+     * navegador. Ele é lido pelas PARTES do formato do campo (`$inputFormats`)
+     * e do idioma do app, nunca pelo `new Date(s)` — que lê barra como mês/dia
+     * e trocava dia e mês na grade depois do Atualizar (10/11 virava 11/10; com
+     * dia > 12 saía cru e parecia certo). Texto no formato mas com data que não
+     * existe (31/02) sai cru, como no servidor.
+     *
+     * @param list<string|null> $inputFormats
      */
-    private static function jsDateParse(bool $zone = false): string
+    private static function jsDateParse(bool $zone = false, array $inputFormats = []): string
     {
+        $formats = [];
+        foreach ([...$inputFormats, \Mad\Support\ValueFormatter::dateFormat(true), \Mad\Support\ValueFormatter::dateFormat(false)] as $f) {
+            if (!is_string($f) || $f === '') {
+                continue;
+            }
+            $formats[] = $f;
+            // Data e hora sem segundos também lê o texto com segundos.
+            if (str_contains($f, 'i') && !str_contains($f, 's')) {
+                $formats[] = $f . ':s';
+            }
+        }
+
         return "if(s==='')return '';"
+            . self::jsTextDate(array_values(array_unique($formats)))
             . ($zone ? "const _z=/(?:[zZ]|[+-]\\d{2}:?\\d{2})$/.test(s.trim())&&!isNaN(new Date(s));" : 'const _z=false;')
             . "const _m=_z?null:/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?)?/.exec(s);"
             . "const _h=(_m||_z)?null:/^(\\d{1,2}):(\\d{2})(?::(\\d{2}))?$/.exec(s.trim());"
             . "const _n=new Date();"
             . "const _t=_z?new Date(s):_m?new Date(+_m[1],+_m[2]-1,+_m[3],+(_m[4]||0),+(_m[5]||0),+(_m[6]||0))"
             . ":(_h?new Date(_n.getFullYear(),_n.getMonth(),_n.getDate(),+_h[1],+_h[2],+(_h[3]||0))"
-            . ":(/^\\d+$/.test(s)?new Date(Number(s)*1000):new Date(s)));"
+            . ":(/^\\d+$/.test(s)?new Date(Number(s)*1000):((_x)=>_x===false?new Date(NaN):(_x||new Date(s)))(_txt(s))));"
             . "if(isNaN(_t))return s;const p=(x)=>String(x).padStart(2,'0');";
+    }
+
+    /**
+     * `_txt(x)`: lê `x` por um dos formatos PHP (`d/m/Y`, `m/d/Y H:i`…) pelas
+     * PARTES — dia, mês, ano, hora, minuto, segundo. Devolve o Date, `false`
+     * quando o texto tem o formato mas a data não existe (31/02, 25h) e `null`
+     * quando não casa com nenhum. Formato com nome de dia/mês (D l M F) não é
+     * texto digitável e fica de fora.
+     *
+     * @param list<string> $formats
+     */
+    private static function jsTextDate(array $formats): string
+    {
+        $tok   = ['d' => 'D', 'j' => 'D', 'm' => 'M', 'n' => 'M', 'Y' => 'Y', 'y' => 'y',
+            'H' => 'h', 'G' => 'h', 'i' => 'i', 's' => 's'];
+        $tests = [];
+        foreach ($formats as $f) {
+            $re    = '';
+            $order = [];
+            $chars = preg_split('//u', $f, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            for ($i = 0, $n = count($chars); $i < $n; $i++) {
+                $c = $chars[$i];
+                if ($c === '\\') {
+                    $re .= preg_quote($chars[++$i] ?? '', '/');
+                    continue;
+                }
+                if (isset($tok[$c])) {
+                    $k       = $tok[$c];
+                    $re     .= match ($k) { 'Y' => '(\\d{4})', 'y', 'i', 's' => '(\\d{2})', default => '(\\d{1,2})' };
+                    $order[] = $k;
+                    continue;
+                }
+                if (preg_match('/\\p{L}/u', $c)) {
+                    continue 2;
+                }
+                $re .= preg_quote($c, '/');
+            }
+            if (!in_array('D', $order, true) || !in_array('M', $order, true)
+                || (!in_array('Y', $order, true) && !in_array('y', $order, true))) {
+                continue;
+            }
+            $at   = static fn (string $k): string => ($p = array_search($k, $order, true)) === false ? 'null' : 'r[' . ($p + 1) . ']';
+            $year = in_array('Y', $order, true) ? $at('Y') : '(2000+(+' . $at('y') . '))';
+            $tests[] = '(r=/^' . $re . '$/.exec(x))?_k(' . $year . ',' . $at('M') . ',' . $at('D') . ','
+                . $at('h') . ',' . $at('i') . ',' . $at('s') . ')';
+        }
+        if (!$tests) {
+            return 'const _txt=()=>null;';
+        }
+
+        return 'const _k=(Y,M,D,h,i,c)=>{const t=new Date(+Y,+M-1,+D,+(h||0),+(i||0),+(c||0));'
+            . 'return(t.getFullYear()===+Y&&t.getMonth()===+M-1&&t.getDate()===+D&&(h==null||t.getHours()===+h))?t:false;};'
+            . 'const _txt=(x)=>{let r;x=x.trim();return ' . implode(':', $tests) . ':null;};';
     }
 
     /**

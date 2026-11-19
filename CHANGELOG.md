@@ -12,6 +12,11 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.331.1] — 2026-11-19
+
+### Correções
+
+- **Detalhe:** ao editar uma linha do `<mad-detail-form>` e clicar em Atualizar, a grade trocava dia e mês da data quando o dia ia até 12 (10/11/2026 aparecia como 11/10/2026), também na data e hora. Agora a grade mostra a mesma data do campo. A data gravada no banco já saía certa.
 ## [5.331.0] — 2026-11-19
 
 ### Novidades
