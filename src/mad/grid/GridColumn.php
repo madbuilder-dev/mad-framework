@@ -145,6 +145,13 @@ class GridColumn
     public string  $editLockedTitle = '';
     public bool    $isHtml        = false;
     public         $displayConditionFn = null;  // callable () => bool
+    /**
+     * Mostra o valor da célula só nas linhas em que a expressão vale (fórum
+     * #365): `{campo} == 'A'`, com `{campo}` lido da própria linha, como o
+     * `visible-when` dos campos. Hoje só a listagem do <mad-detail-form> usa
+     * (as linhas dela são montadas no navegador). '' = sempre.
+     */
+    public string  $visibleWhen = '';
     public string  $evaluate   = '';          // expression: '{valor} * {quantidade}'
 
     // ── Saldo acumulado (running balance) ─────────────────────────────────
@@ -524,6 +531,13 @@ class GridColumn
             $fn = self::resolveTransformRef($fn);
         }
         $this->displayConditionFn = $fn;
+        return $this;
+    }
+
+    /** Condição por linha da célula (ver {@see $visibleWhen}). */
+    public function visibleWhen(string $expr): self
+    {
+        $this->visibleWhen = trim($expr);
         return $this;
     }
 

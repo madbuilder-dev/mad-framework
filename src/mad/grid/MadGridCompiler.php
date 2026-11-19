@@ -2843,6 +2843,12 @@ class MadGridCompiler
             $c[] = static::kv('displayCondition', static::qs(static::str($a, 'display-condition')));
         }
 
+        // Condição por linha da célula (fórum #365): `visible-when="{tipo} == 'A'"`.
+        // Só texto literal, como o `visible-when` dos campos.
+        if (isset($a['visible-when']) && $a['visible-when']['type'] === 'string' && trim((string) $a['visible-when']['value']) !== '') {
+            $c[] = static::kv('visibleWhen', static::qs(trim((string) $a['visible-when']['value'])));
+        }
+
         // Transform estático: 'Classe::metodo'
         if (isset($a['transform'])) {
             $c[] = static::kv('transform', static::qs(static::str($a, 'transform')));

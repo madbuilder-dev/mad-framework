@@ -31,6 +31,17 @@
     foreach ($colConfigs as $c) {
         $columns[] = \Mad\Grid\MadDataGrid::_colFromConfig($c);
     }
+    // Coluna que a tela escondeu ("Oculta" ou `display-condition` falso) sai da
+    // listagem, como na <mad-grid> — no detalhe as duas eram ignoradas (fórum
+    // #365). O índice continua o da coluna (fórmulas de total contam por ele).
+    $_dfShowCol = [];
+    $_dfColWhen = [];
+    foreach ($columns as $_dfCi => $_dfCol) {
+        $_dfShowCol[$_dfCi] = !$_dfCol->hidden && $_dfCol->checkDisplay();
+        // `visible-when` da coluna: o valor da célula só aparece nas linhas em que vale.
+        if ($_dfShowCol[$_dfCi] && $_dfCol->visibleWhen !== '') $_dfColWhen[$_dfCi] = $_dfCol->visibleWhen;
+    }
+    unset($_dfCi, $_dfCol);
     // A linha do detalhe roda na TELA que contém o <mad-detail-form> — é ela que
     // o perfil marca. Sem informar o dono aqui, as ações da linha (Excluir e
     // companhia) eram as únicas da tela que escapavam da permissão por ação:
@@ -313,6 +324,7 @@
     }
     \Mad\Component\MadRenderContext::getForm()?->declareDetailActions($name, $_dfByMeth ?? [], (string) $model, (string) $foreignKey);
     unset($_dfByMeth);
+    if ($_dfColWhen) $alpineCfg['colWhen'] = $_dfColWhen;
     $alpineCfg = json_encode($alpineCfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $_dfFileCols = [];
@@ -397,7 +409,7 @@
     \Mad\Component\MadRenderContext::getForm()?->rowsRendered($name, $normalizedRows);
     unset($_form, $_dfEditor);
 
-    $hasTotals = !empty(array_filter($columns, fn($c) => $c->totalFunc || $c->totalFormula !== ''));
+    $hasTotals = !empty(array_filter($columns, fn($c, $i) => $_dfShowCol[$i] && ($c->totalFunc || $c->totalFormula !== ''), ARRAY_FILTER_USE_BOTH));
 @endphp
 
 <div class="mad-df" data-mad-df-name="{{ $name }}" x-data="madDetailForm({{ $alpineCfg }})">
@@ -503,6 +515,7 @@
                         <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
 @endif
                         @foreach($columns as $col)
+@continue(!$_dfShowCol[$loop->index])
                         @php
                             // Config crua (sem passar pelo setter fluente) trazia '140'
                             // sem unidade e a largura era descartada em silêncio.
@@ -553,6 +566,7 @@
 @php echo $_dfActionsCell; @endphp
 @endif
                             @foreach($columns as $col)
+@continue(!$_dfShowCol[$loop->index])
                             @php
                                 // `field` e TEMPLATE DE EXIBICAO, nao chave da linha:
                                 // a linha do servidor traz o template resolvido na
@@ -605,6 +619,9 @@
                                 }
                             @endphp
                             <td class="mad-dg-cell" style="text-align:{{ $col->align }};">
+@if(isset($_dfColWhen[$loop->index]))
+                                <span data-mad-col-when x-show="_colVis(row, {{ $loop->index }})">
+@endif
                                 @if($col->editable && $col->editType === 'switch')
                                 {{-- Chave liga/desliga (fórum #297): alterna o valor da linha;
                                      grava com o formulário. 'true'/'false' vão como booleano. --}}
@@ -688,6 +705,9 @@
                                 @else
                                 <span x-text="{!! $_cv !!}"></span>
                                 @endif
+@if(isset($_dfColWhen[$loop->index]))
+                                </span>
+@endif
                             </td>
                             @endforeach
 @if($actionSide === 'right')
@@ -700,7 +720,7 @@
                 {{-- Empty state --}}
                 <tbody x-show="rows.length === 0">
                     <tr>
-                        <td colspan="{{ count($columns) + 1 }}" class="mad-dg-cell" style="text-align:center;padding:24px;color:var(--mad-muted-fg);">
+                        <td colspan="{{ count(array_filter($_dfShowCol)) + 1 }}" class="mad-dg-cell" style="text-align:center;padding:24px;color:var(--mad-muted-fg);">
                             <i data-lucide="inbox" style="width:24px;height:24px;margin-bottom:8px;opacity:.5;"></i>
                             <div>{{ mad_t('mad.ui.no_items_added') }}</div>
                         </td>
@@ -715,6 +735,7 @@
                         <td></td>
 @endif
                         @foreach($columns as $_dfColIdx => $col)
+@continue(!$_dfShowCol[$_dfColIdx])
                         @php
                             // Agregado calculado no cliente por `_agg()` (madDetailForm) —
                             // as mesmas cinco funções da grid (computeTotals). O total é

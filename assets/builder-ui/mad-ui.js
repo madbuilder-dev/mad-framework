@@ -14378,6 +14378,27 @@ document.addEventListener('alpine:init', () => {
                 if (w) MadWire.call(w, method, [row, index]);
             },
 
+            // Célula com condição por linha (`visible-when` da <mad-col>, fórum
+            // #365): `{campo}` é o valor do campo NESTA linha — a carregada do
+            // banco e a adicionada ali. Mesmo compilador do *-when dos campos;
+            // expressão inválida ou que lança = célula visível (sem efeito).
+            _colVis(row, i) {
+                const expr = (cfg.colWhen || {})[i];
+                if (!expr) return true;
+                const cache = this._colWhenFns || (this._colWhenFns = {});
+                if (!(i in cache)) {
+                    cache[i] = (typeof _madWhen !== 'undefined' && _madWhen.compile) ? _madWhen.compile(expr) : null;
+                    if (!cache[i] && window.console) window.console.warn('[mad-detail-form] visible-when inválido na coluna:', expr);
+                }
+                const fn = cache[i];
+                if (!fn) return true;
+                try {
+                    return !!fn((n) => { const v = row ? row[n] : undefined; return v == null ? '' : v; });
+                } catch (e) {
+                    return true;
+                }
+            },
+
             // Ação com condição (fw#363): 'show' | 'hide' | 'off' (desabilitada).
             // `when-*`/`disabled-*` valem sobre a linha como está; o que é PHP
             // (`display-condition`) vem calculado por linha carregada (actFn).

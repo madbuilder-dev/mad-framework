@@ -7517,6 +7517,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $col->displayCondition($c['displayCondition']);
         }
 
+        // Condição por linha da célula (fórum #365): `{campo} == 'A'`.
+        if (!empty($c['visibleWhen']) && is_string($c['visibleWhen'])) {
+            $col->visibleWhen($c['visibleWhen']);
+        }
+
         return $col;
     }
 

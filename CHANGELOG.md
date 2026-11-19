@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.330.0] — 2026-11-19
+
+### Novidades
+
+- **Detalhe:** `<mad-col visible-when="{tipo_obs} != 'A'">` na listagem do `<mad-detail-form>` mostra o valor da célula só nas linhas em que a condição vale, com os campos da própria linha. A coluna e o cabeçalho continuam; nas outras linhas a célula fica vazia.
+
+### Correções
+
+- **Detalhe:** "Oculta" (`hidden`) e a condição de exibição (`display-condition`) da coluna agora escondem a coluna na listagem do `<mad-detail-form>`, como na `<mad-grid>`. Antes eram ignoradas e a coluna aparecia.
+
 ## [5.329.1] — 2026-11-18
 
 ### Correções
