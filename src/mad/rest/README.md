@@ -241,7 +241,10 @@ protected function authorize(string $action, Request $request): void
 
 - **Validação antes de escrever.** Master e todas as linhas de detalhe são
   validados (via `Model::rules()`) antes de qualquer `save()` — falha não deixa
-  meia-gravação.
+  meia-gravação. Na linha de detalhe, a regra da FK do mestre (`pedido_id`)
+  não vale: a FK vem da relação, a linha não precisa mandá-la e o valor do
+  corpo é ignorado. Erro de uma linha sai com a lista e a posição
+  (`pedido_item.1.produto_id`); erro do master, com o nome do campo.
 
 - **`resolveId()` usa o último parâmetro da rota** (`end($params)`), então
   independe do nome gerado pelo `apiResource` (`{order}`), e cai pro

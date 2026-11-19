@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.331.2] — 2026-11-19
+
+### Correções
+
+- **API REST:** criar um registro com itens pela API, como um pedido com os itens e os prazos, dava 422 "O campo pedido id é obrigatório." mesmo com tudo certo, e editar dava o mesmo erro em toda linha que não repetia o `pedido_id`. Agora a linha do detalhe não precisa mandar a chave do registro principal: ela vem dele, como sempre veio na gravação, e um valor diferente no corpo continua ignorado. As outras regras da linha seguem valendo.
+
+### Atenção
+
+- **API REST:** o erro de uma linha de detalhe passa a vir com a lista e a posição da linha, como `pedido_item.1.produto_id`, em vez de só `produto_id`. Quem lê a chave do erro de um detalhe no próprio sistema deve usar o nome novo. O erro de um campo do registro principal continua com o nome do campo.
+
 ## [5.331.1] — 2026-11-19
 
 ### Correções

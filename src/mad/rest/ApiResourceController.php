@@ -242,15 +242,17 @@ abstract class ApiResourceController
         // outra que a relação ($details com chave, fórum #349); a da relação
         // continua aceita, e nenhuma das duas vai para o master.
         $detailPayload = [];
+        $sentKeys      = [];
         foreach ($this->detailRelations() as $key => $relation) {
             $sent = array_key_exists($key, $payload) ? $key : (array_key_exists($relation, $payload) ? $relation : null);
             if ($sent !== null) {
                 $detailPayload[$relation] = (array) ($payload[$sent] ?? []);
+                $sentKeys[$relation]      = $sent;
             }
             unset($payload[$key], $payload[$relation]);
         }
 
-        return DB::connection($this->connectionName())->transaction(function () use ($payload, $detailPayload, $id) {
+        return DB::connection($this->connectionName())->transaction(function () use ($payload, $detailPayload, $sentKeys, $id) {
             $master = $id !== null
                 ? $this->newQuery()->findOrFail($id)
                 : $this->newModel();
@@ -261,9 +263,29 @@ abstract class ApiResourceController
                 $hasMany     = $this->relation($master, $relation);
                 $detailClass = get_class($hasMany->getRelated());
                 $detailPk    = $this->keyOf($detailClass);
-                foreach ($rows as $row) {
+                // A FK do mestre vem da relação (syncDetails), nunca do corpo:
+                // a linha não a traz — no store o mestre nem existe ainda — e o
+                // valor do corpo é descartado. Exigir/conferir a FK aqui dava
+                // 422 "pedido id é obrigatório" a toda linha nova (fórum #371).
+                $foreign = $hasMany->getForeignKeyName();
+                foreach (array_values($rows) as $index => $row) {
                     $row = (array) $row;
-                    $this->validateData($detailClass, $row, $this->detailRowKey($master, $hasMany, $row[$detailPk] ?? null));
+                    unset($row[$foreign]);
+                    try {
+                        $this->validateData(
+                            $detailClass, $row,
+                            $this->detailRowKey($master, $hasMany, $row[$detailPk] ?? null),
+                            [$foreign]
+                        );
+                    } catch (ValidationException $e) {
+                        // Erro da linha com a lista e a posição: `itens.1.produto_id`.
+                        $prefix = ($sentKeys[$relation] ?? $relation) . '.' . $index . '.';
+                        $keyed  = [];
+                        foreach ($e->errors() as $field => $messages) {
+                            $keyed[$prefix . $field] = $messages;
+                        }
+                        throw ValidationException::withMessages($keyed);
+                    }
                 }
             }
 
@@ -952,15 +974,18 @@ abstract class ApiResourceController
 
     /**
      * Valida $data contra Model::rules($id). Lança ValidationException (→ 422)
-     * em falha. Sem rules() no model, passa direto.
+     * em falha. Sem rules() no model, passa direto. `$except` = campos cujas
+     * regras não valem aqui (a FK do mestre numa linha de detalhe).
+     *
+     * @param  list<string>  $except
      */
-    protected function validateData(string $modelClass, array $data, $id = null): array
+    protected function validateData(string $modelClass, array $data, $id = null, array $except = []): array
     {
         if (!method_exists($modelClass, 'rules')) {
             return $data;
         }
 
-        $rules = (array) $modelClass::rules($id);
+        $rules = array_diff_key((array) $modelClass::rules($id), array_flip($except));
         if (!$rules) {
             return $data;
         }
