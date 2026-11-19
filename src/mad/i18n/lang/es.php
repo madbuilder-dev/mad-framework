@@ -1132,6 +1132,8 @@ return [
             'clear'                     => 'Limpiar',
             'close'                     => 'Cerrar',
             'cnpj_incomplete'           => 'Ingrese un CNPJ completo (14 caracteres).',
+            'cnpj_lookup_only'          => 'La consulta es solo para CNPJ: el CPF queda como se escribió.',
+            'cpf_cnpj_incomplete'       => 'Ingrese un CPF (11 dígitos) o un CNPJ completo (14 caracteres).',
             'data_filled'               => '¡Datos completados!',
             'delete'                    => 'Eliminar',
             'digits_needed'             => 'Ingrese :n dígitos.',

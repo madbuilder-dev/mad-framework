@@ -1144,6 +1144,8 @@ return [
             'clear'                     => 'Clear',
             'close'                     => 'Close',
             'cnpj_incomplete'           => 'Enter a complete CNPJ (14 characters).',
+            'cnpj_lookup_only'          => 'The lookup is for CNPJ only: the CPF stays as typed.',
+            'cpf_cnpj_incomplete'       => 'Enter a CPF (11 digits) or a complete CNPJ (14 characters).',
             'data_filled'               => 'Data filled in!',
             'delete'                    => 'Delete',
             'digits_needed'             => 'Enter :n digits.',

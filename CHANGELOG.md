@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.331.0] — 2026-11-19
+
+### Novidades
+
+- **Campo CNPJ:** a opção `accept-cpf`, desligada por padrão, faz o mesmo campo aceitar CPF ou CNPJ. A máscara segue o que se digita: CPF até 11 dígitos, CNPJ a partir do 12º caractere. A consulta e o preenchimento dos outros campos só rodam com o CNPJ completo, nunca com um CPF; a lupa com um CPF só avisa que a consulta é para CNPJ. Com `validate-document`, o navegador e o Salvar conferem o CPF ou o CNPJ. Sem a opção, o campo continua aceitando só CNPJ.
+
 ## [5.330.0] — 2026-11-19
 
 ### Novidades

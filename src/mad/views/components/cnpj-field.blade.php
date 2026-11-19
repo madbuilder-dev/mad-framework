@@ -26,6 +26,10 @@
      *   strip-mask   bool     Remove mascara no getData() — backend recebe so digitos
      *   validate-document bool  Confere o digito verificador ao sair do campo e no
      *                         Salvar (default: false; forum #341)
+     *   accept-cpf   bool     Aceita CPF tambem (default: false; forum #370): mascara
+     *                         CPF/CNPJ conforme o que se digita, a consulta so roda
+     *                         com o CNPJ completo (14 caracteres) — CPF nunca vai a
+     *                         API — e o validate-document confere CPF ou CNPJ
      *   attrs        string   Atributos HTML extras
      *   id           string   ID do elemento (default: $name)
      *
@@ -56,7 +60,9 @@
     $fillFields  = $fillFields  ?? [];
     $auto        = isset($auto) ? !empty($auto) : true;
     $full        = !empty($full);
-    $placeholder = $placeholder ?? '00.000.000/0000-00';
+    // "Aceita CPF" (fórum #370): desligada, nada muda no HTML nem no __mad_form.
+    $acceptCpf   = !empty($acceptCpf);
+    $placeholder = $placeholder ?? ($acceptCpf ? '000.000.000-00 / 00.000.000/0000-00' : '00.000.000/0000-00');
     $hint        = $hint        ?? '';
     $error       = $error       ?? '';
     $required    = !empty($required);
@@ -68,8 +74,8 @@
     $attrs       = $attrs       ?? '';
     // "Validar documento" (fórum #341): desligada, nada muda no HTML nem no
     // __mad_form; ligada, o Salvar e o navegador conferem o dígito verificador.
-    $_docKind    = \Mad\Support\MadDocument::enabled($validateDocument ?? false) ? 'cnpj' : '';
-    $_docAttr    = $_docKind !== '' ? ' data-mad-validate-doc="cnpj"' : '';
+    $_docKind    = \Mad\Support\MadDocument::enabled($validateDocument ?? false) ? ($acceptCpf ? 'cpfcnpj' : 'cnpj') : '';
+    $_docAttr    = $_docKind !== '' ? ' data-mad-validate-doc="' . $_docKind . '"' : '';
     $fillMode    = ($fillMode ?? 'overwrite') === 'empty' ? 'empty' : 'overwrite';
 
     // Resolucao automatica de cidade/estado — mesmos props/defaults do cep-field.
@@ -102,7 +108,7 @@
         'label'     => strip_tags($label),
         'type'      => 'text',
         'required'  => $required,
-        'mask'      => 'cnpj',
+        'mask'      => $acceptCpf ? 'cpfcnpj' : 'cnpj',
         'stripMask' => $stripMask,
         'maskFit'   => $_maskFit,
         'validateDocument' => $_docKind,
@@ -149,7 +155,7 @@
     $xDataCfg = json_encode([
         'token' => $cnpjToken,
         'auto'  => (bool)$auto,
-    ] + ($fillMode === 'empty' ? ['fillMode' => 'empty'] : []), JSON_UNESCAPED_UNICODE);
+    ] + ($fillMode === 'empty' ? ['fillMode' => 'empty'] : []) + ($acceptCpf ? ['acceptCpf' => true] : []), JSON_UNESCAPED_UNICODE);
     $width    = $width ?? '';
     $maxWidth = $maxWidth ?? '';
 @endphp

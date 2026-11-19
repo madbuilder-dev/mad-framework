@@ -7703,6 +7703,21 @@ function _madMaskCnpj(value) {
 }
 
 /**
+ * `<mad-cnpj-field accept-cpf>` (fórum #370): CPF enquanto só há dígitos e até
+ * 11 deles; do 12º caractere (ou com letra, CNPJ alfanumérico) em diante, a
+ * máscara de CNPJ.
+ */
+function _madMaskCpfCnpj(value) {
+    var raw = String(value || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 14);
+    if (raw.length > 11 || /[A-Z]/.test(raw)) return _madMaskCnpj(raw);
+    var out = raw;
+    if (raw.length > 3) out = raw.slice(0, 3) + '.' + raw.slice(3);
+    if (raw.length > 6) out = raw.slice(0, 3) + '.' + raw.slice(3, 6) + '.' + raw.slice(6);
+    if (raw.length > 9) out = raw.slice(0, 3) + '.' + raw.slice(3, 6) + '.' + raw.slice(6, 9) + '-' + raw.slice(9);
+    return out;
+}
+
+/**
  * @deprecated Bloco LEGADO de CEP/CNPJ (_madCepCnpjSetField/_madCepCnpjApplyValues/
  * _madCepCnpjLookup/_madInitCepField/_madInitCnpjField): nenhum blade atual emite
  * data-mad-cep-field — o caminho vivo é o Alpine.data madCepField/madCnpjField
@@ -8374,10 +8389,13 @@ document.addEventListener('alpine:init', () => {
                         e.preventDefault();
                         var clean = self._clean(input.value);
                         if (clean.length !== self._maxDigits) {
+                            // CPF completo no campo que aceita CPF: não há o que
+                            // consultar (a consulta é só de CNPJ) — avisa e não chama.
+                            var cpfOnly = self._acceptCpf && /^\d{11}$/.test(clean);
                             if (typeof madToast === 'function') {
-                                madToast(self._lengthMsg, 'warning');
+                                madToast(cpfOnly ? madT('cnpj_lookup_only', 'A consulta é só para CNPJ: o CPF fica como foi digitado.') : self._lengthMsg, cpfOnly ? 'info' : 'warning');
                             }
-                            input.focus();
+                            if (!cpfOnly) input.focus();
                             return;
                         }
                         self._lookup(input, btn);
@@ -8604,14 +8622,25 @@ document.addEventListener('alpine:init', () => {
         mask:      _madMaskCep,
     }));
 
-    Alpine.data('madCnpjField', _madApiFieldFactory({
+    var _madCnpjFieldBase = _madApiFieldFactory({
         endpoint:  'cnpj',
         maxDigits: 14,
         mask:      _madMaskCnpj,
         // CNPJ alfanumerico (Receita, julho/2026): 12 posicoes [0-9A-Z] + 2 DV.
         clean:     function (v) { return String(v || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase(); },
         lengthMsg: madT('cnpj_incomplete', 'Informe um CNPJ completo (14 caracteres).'),
-    }));
+    });
+    // `accept-cpf` (fórum #370): mascara CPF ou CNPJ; a consulta continua só
+    // com os 14 caracteres do CNPJ (o CPF nunca vai à API).
+    Alpine.data('madCnpjField', function (cfg) {
+        var comp = _madCnpjFieldBase(cfg);
+        if (cfg && cfg.acceptCpf) {
+            comp._acceptCpf = true;
+            comp._mask      = _madMaskCpfCnpj;
+            comp._lengthMsg = madT('cpf_cnpj_incomplete', 'Informe um CPF (11 dígitos) ou um CNPJ completo (14 caracteres).');
+        }
+        return comp;
+    });
 });
 
 madToast.info    = (message, title = '', position) => madToast({ message, type: 'info',    title, icon: 'ℹ️', position });
