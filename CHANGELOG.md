@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.329.1] — 2026-11-18
+
+### Correções
+
+- **Telas:** o JS próprio da tela (`<div data-mad-js="NomeDaTela">`) não rodava quando a tela abria numa cortina ou numa janela pelo app: pelo menu, pelo Editar da listagem ou por um botão. A classe `MadApp.NomeDaTela` existia e o CSS da tela valia, mas o `init` não era chamado. Agora ele roda uma vez em cada abertura e de novo depois de um redesenho da tela. Só a página aberta direto pelo endereço já funcionava.
+
 ## [5.329.0] — 2026-11-18
 
 ### Novidades

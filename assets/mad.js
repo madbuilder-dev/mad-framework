@@ -1223,6 +1223,8 @@ const Mad = {
             if (window.Alpine) try { Alpine.initTree(container); } catch {}
             if (typeof _madLucide === 'function') _madLucide();
             if (typeof _madEnergizeFields === 'function') _madEnergizeFields(container);
+            // JS próprio da tela (data-mad-js): o conteúdo já foi para o <body>.
+            this.initScreenJs(document);
 
         } catch (e) {
             this._onError(e);
@@ -1551,6 +1553,7 @@ const Mad = {
                 if (window.Alpine) try { Alpine.initTree(container); } catch {}
                 if (typeof _madLucide === 'function') _madLucide();
                 if (typeof _madEnergizeFields === 'function') _madEnergizeFields(container);
+                this.initScreenJs(document);
             } else {
                 // Pagina INTERNA aberta de DENTRO de uma tela (botao Novo/Editar,
                 // voltar): com as abas ligadas troca o conteudo da aba ATIVA
@@ -3557,8 +3560,10 @@ const Mad = {
         // com a de fora: o HTML dela só chega agora (ver restoreUiState).
         this._applyPendingTabs(root);
 
-        // JS próprio da tela (data-mad-js) no HTML que acabou de entrar.
-        this.initScreenJs(root);
+        // JS próprio da tela (data-mad-js) no HTML que acabou de entrar. Na
+        // página toda: a cortina/janela que chegou junto já subiu para o
+        // <body> (script do wrapper + x-teleport), fora do `root`.
+        this.initScreenJs(document);
     },
 
     /**
@@ -3567,7 +3572,8 @@ const Mad = {
      * quando o HTML da tela entra na página — abertura, navegação, cortina,
      * modal e redesenho do MadWire (o wrapper novo é outro nó). A classe mora
      * no JS global do projeto (`public/app/custom/app.js`, carregado pela
-     * casca). Um init por elemento; nome fora de identificador JS, classe
+     * casca). Quem injeta HTML chama com `document`: o conteúdo de cortina e
+     * janela sobe para o <body> (x-teleport). Um init por elemento; nome fora de identificador JS, classe
      * ausente ou sem `init` estático: nada acontece. Erro no init da tela não
      * derruba o resto da página.
      */

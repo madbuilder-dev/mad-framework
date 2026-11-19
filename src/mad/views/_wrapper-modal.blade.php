@@ -76,6 +76,10 @@
     // Esta lista tinha SO os selects: form aberto em modal ficava sem mascara,
     // force-case, db-search e select-check.
     if (typeof _madEnergizeFields === 'function') _madEnergizeFields(wrap);
+    // JS próprio da tela (data-mad-js, fórum #358): o conteúdo acabou de subir
+    // para o <body> (x-teleport). Sem o mad.js ou o app.js ainda (página
+    // carregada direto), quem liga é o DOMContentLoaded do mad.js.
+    if (window.Mad && typeof Mad.initScreenJs === 'function') { try { Mad.initScreenJs(document); } catch (e) {} }
     window.dispatchEvent(new CustomEvent('madmodal', { detail: { name: '{{ $id }}', action: 'open' } }));
 })();
 </script>
