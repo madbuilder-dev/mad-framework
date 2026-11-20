@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.332.0] — 2026-11-20
+
+### Novidades
+
+- **Listagem (grid):** o filtro avançado (`<mad-custom-filters>`) ganha grupos. Em "Adicionar grupo", o usuário junta condições entre parênteses, cada grupo com o seu "todas" ou "qualquer uma": (Situação não contém R ou Situação está vazio) e Estoque maior que 0. Os filtros já salvos continuam valendo.
+
+### Atenção
+
+- **Listagem (grid):** no filtro avançado, "não contém" agora também traz os registros com o campo vazio. Um filtro salvo com "não contém" pode passar a mostrar mais registros. O "não contém" do filtro da coluna não mudou.
+
 ## [5.331.2] — 2026-11-19
 
 ### Correções

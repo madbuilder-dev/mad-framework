@@ -310,21 +310,44 @@ final class GridSavedFilterStore
     // ── Sanitização ───────────────────────────────────────────────────────
 
     /**
-     * Payload defensivo — só ESTRUTURA ({match, rules:[{k,op,v,d}]}) com tipos
-     * e tetos. O significado de cada regra é revalidado pelo grid ao aplicar.
+     * Payload defensivo — só ESTRUTURA ({match, rules:[item]}) com tipos e
+     * tetos; item = condição {k,op,v,d} ou grupo {match, rules:[condição]} (um
+     * nível, como o grid aceita). O significado de cada regra é revalidado
+     * pelo grid ao aplicar. RULES_MAX conta as condições de todos os grupos.
      *
      * @param  array<string, mixed> $payload
-     * @return array{match: string, rules: list<array{k: string, op: string, v: mixed, d: string}>}
+     * @return array{match: string, rules: list<array>}
      */
     public static function sanitizePayload(array $payload): array
     {
         if (($payload['kind'] ?? '') === 'view') {
             return self::sanitizeViewPayload($payload);
         }
-        $match = ($payload['match'] ?? '') === 'any' ? 'any' : 'all';
+        $left = self::RULES_MAX;
+
+        return [
+            'match' => ($payload['match'] ?? '') === 'any' ? 'any' : 'all',
+            'rules' => self::sanitizeRules((array) ($payload['rules'] ?? []), 0, $left),
+        ];
+    }
+
+    /** Condições e grupos (ver sanitizePayload); `$left` = condições que ainda cabem. */
+    private static function sanitizeRules(array $raw, int $depth, int &$left): array
+    {
         $rules = [];
-        foreach ((array) ($payload['rules'] ?? []) as $r) {
+        foreach ($raw as $r) {
+            if ($left <= 0) break;
             if (!is_array($r)) continue;
+
+            if (!array_key_exists('k', $r) && is_array($r['rules'] ?? null)) {
+                if ($depth >= 1) continue;
+                $kids = self::sanitizeRules($r['rules'], $depth + 1, $left);
+                if ($kids !== []) {
+                    $rules[] = ['match' => ($r['match'] ?? '') === 'any' ? 'any' : 'all', 'rules' => $kids];
+                }
+                continue;
+            }
+
             $k  = $r['k'] ?? '';
             $op = $r['op'] ?? '';
             if (!is_string($k) || $k === '' || strlen($k) > 200 || !is_string($op) || $op === '' || strlen($op) > 20) {
@@ -350,10 +373,22 @@ final class GridSavedFilterStore
                 'v'  => $v,
                 'd'  => is_scalar($d) ? mb_substr(trim((string) $d), 0, 300) : '',
             ];
-            if (count($rules) >= self::RULES_MAX) break;
+            $left--;
         }
 
-        return ['match' => $match, 'rules' => $rules];
+        return $rules;
+    }
+
+    /** Quantas condições há numa lista de regras (as de dentro dos grupos também). */
+    private static function countRules(mixed $rules): int
+    {
+        $n = 0;
+        foreach (is_array($rules) ? $rules : [] as $r) {
+            if (!is_array($r)) continue;
+            $n += (!array_key_exists('k', $r) && is_array($r['rules'] ?? null)) ? self::countRules($r['rules']) : 1;
+        }
+
+        return $n;
     }
 
     /**
@@ -531,8 +566,8 @@ final class GridSavedFilterStore
             'canDefault' => $own,
             'count'     => !is_array($payload) ? 0 : (($payload['kind'] ?? '') === 'view'
                 ? count(array_filter((array) ($payload['filters'] ?? []), fn ($v) => $v !== '' && $v !== [] && $v !== null))
-                    + count((array) ($payload['cf']['rules'] ?? []))
-                : (is_array($payload['rules'] ?? null) ? count($payload['rules']) : 0)),
+                    + self::countRules($payload['cf']['rules'] ?? [])
+                : self::countRules($payload['rules'] ?? [])),
         ];
     }
 }

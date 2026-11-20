@@ -10662,28 +10662,45 @@ document.addEventListener('alpine:init', () => {
             }
             return String(r.v == null ? '' : r.v).trim() !== '';
         }
-        // Regra do servidor ({k,op,v,d}) → linha do rascunho (com _id local).
-        function toDraft(rules) {
-            return (isArr(rules) ? rules : []).filter(r => r && DEF[r.k]).map(r => {
-                const sh = shape(r.k, r.op);
-                let v = r.v;
-                if (sh === 'tags' || sh === 'opt-multi') {
-                    v = isArr(v) ? v.map(String) : (v == null || v === '' ? [] : [String(v)]);
-                } else if (sh === 'range-number' || sh === 'range-date') {
-                    v = isArr(v) ? [String(v[0] == null ? '' : v[0]), String(v[1] == null ? '' : v[1])] : ['', ''];
-                } else if (sh === 'none') {
-                    v = '';
-                } else {
-                    v = v == null ? '' : String(v);
+        // Grupo = `{match, rules}` sem `k` ("(A ou B) e C", um nível só, como o
+        // servidor aceita). Linha do rascunho sempre tem a chave `k` (null antes
+        // de escolher a coluna).
+        const isGrp    = it => !!it && typeof it === 'object' && isArr(it.rules) && !('k' in it);
+        const leavesOf = items => (isArr(items) ? items : []).reduce((a, it) => a.concat(isGrp(it) ? it.rules : [it]), []);
+
+        // Regra do servidor ({k,op,v,d} ou grupo) → item do rascunho (com _id local).
+        function toDraft(rules, inGroup) {
+            const out = [];
+            (isArr(rules) ? rules : []).forEach(r => {
+                if (isGrp(r)) {
+                    if (inGroup) return;
+                    const kids = toDraft(r.rules, true);
+                    if (kids.length) out.push({ _id: 'g' + (++_.seq), match: r.match === 'any' ? 'any' : 'all', rules: kids });
+                    return;
                 }
-                // datetime-local quer `YYYY-MM-DDTHH:MM`; o servidor guarda com espaço e segundos.
-                if (sh === 'datetime' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(v)) v = v.slice(0, 16).replace(' ', 'T');
-                const d = r.d ? String(r.d) : '';
-                if (d && DEF[r.k].kind === 'dbsearch' && typeof v === 'string' && v !== '') {
-                    (_.lbl[r.k] = _.lbl[r.k] || {})[v] = d;
-                }
-                return { _id: 'r' + (++_.seq), k: r.k, op: r.op, v, d };
+                if (r && DEF[r.k]) out.push(toDraftRule(r));
             });
+            return out;
+        }
+        function toDraftRule(r) {
+            const sh = shape(r.k, r.op);
+            let v = r.v;
+            if (sh === 'tags' || sh === 'opt-multi') {
+                v = isArr(v) ? v.map(String) : (v == null || v === '' ? [] : [String(v)]);
+            } else if (sh === 'range-number' || sh === 'range-date') {
+                v = isArr(v) ? [String(v[0] == null ? '' : v[0]), String(v[1] == null ? '' : v[1])] : ['', ''];
+            } else if (sh === 'none') {
+                v = '';
+            } else {
+                v = v == null ? '' : String(v);
+            }
+            // datetime-local quer `YYYY-MM-DDTHH:MM`; o servidor guarda com espaço e segundos.
+            if (sh === 'datetime' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(v)) v = v.slice(0, 16).replace(' ', 'T');
+            const d = r.d ? String(r.d) : '';
+            if (d && DEF[r.k].kind === 'dbsearch' && typeof v === 'string' && v !== '') {
+                (_.lbl[r.k] = _.lbl[r.k] || {})[v] = d;
+            }
+            return { _id: 'r' + (++_.seq), k: r.k, op: r.op, v, d };
         }
         // Linha do rascunho → regra que o servidor recebe (sem _id).
         function toServer(r) {
@@ -10694,16 +10711,31 @@ document.addEventListener('alpine:init', () => {
             else v = String(v == null ? '' : v).trim();
             return { k: r.k, op: r.op, v, d: r.d || '' };
         }
+        // Itens do rascunho → o que o servidor recebe. `all` = também as linhas
+        // incompletas (guardar o rascunho num redesenho); grupo vazio sai.
+        function itemsOut(items, all) {
+            const out = [];
+            (isArr(items) ? items : []).forEach(it => {
+                if (isGrp(it)) {
+                    const kids = itemsOut(it.rules, all);
+                    if (kids.length) out.push({ match: it.match === 'any' ? 'any' : 'all', rules: kids });
+                    return;
+                }
+                if (all ? !!(it.k && DEF[it.k]) : complete(it)) out.push(toServer(it));
+            });
+            return out;
+        }
         // Chave de comparação (sem `d`, que é só rótulo) — "alterado" e "nada mudou".
+        function specOf(items) {
+            return itemsOut(items, false).map(x => isGrp(x)
+                ? ['g', x.match, x.rules.map(y => [y.k, y.op, y.v])]
+                : [x.k, x.op, x.v]);
+        }
         function specKey(match, rules) {
-            return JSON.stringify([match === 'any' ? 'any' : 'all',
-                rules.filter(complete).map(toServer).map(x => [x.k, x.op, x.v])]);
+            return JSON.stringify([match === 'any' ? 'any' : 'all', specOf(rules)]);
         }
         function payloadOf(match, rules, all) {
-            return {
-                match: match === 'any' ? 'any' : 'all',
-                rules: rules.filter(r => (all ? !!(r.k && DEF[r.k]) : complete(r))).map(toServer),
-            };
+            return { match: match === 'any' ? 'any' : 'all', rules: itemsOut(rules, all) };
         }
         function valueLabel(k, x) {
             const d = DEF[k], s = String(x);
@@ -10836,8 +10868,17 @@ document.addEventListener('alpine:init', () => {
             domId(p, r) { return ID + '-' + p + '-' + (r && r._id ? r._id : r); },
             shapeOf(r) { return shape(r.k, r.op); },
             opsOf(r) { return r.k && DEF[r.k] ? DEF[r.k].ops : []; },
-            conjLabel(i) { return i === 0 ? tr('where') : (this.draft.match === 'any' ? tr('or') : tr('and')); },
-            switchTitle() { return tr('switch_match', { conj: this.draft.match === 'any' ? tr('and') : tr('or') }); },
+            // E/OU do NÍVEL do item: o do grupo para linhas de um grupo, o de
+            // cima para linhas soltas e para o próprio grupo.
+            isGroup(it) { return isGrp(it); },
+            _matchOf(it) { const g = it ? this._parent(it) : null; return g ? g.match : this.draft.match; },
+            conjLabel(i, it) { return i === 0 ? tr('where') : (this._matchOf(it) === 'any' ? tr('or') : tr('and')); },
+            switchTitle(it) {
+                const conj = this._matchOf(it) === 'any' ? tr('and') : tr('or');
+                return tr(it && this._parent(it) ? 'switch_match_group' : 'switch_match', { conj });
+            },
+            leafCount() { return leavesOf(this.draft.rules).length; },
+            atMax() { return this.leafCount() >= MAX; },
             kindIcon(d) {
                 if (!d) return '';
                 if (d.group) return '<span class="mad-dg-cf-kind is-rel"><i data-lucide="link"></i></span>';
@@ -10871,7 +10912,7 @@ document.addEventListener('alpine:init', () => {
                 delete n[r._id];
                 this.invalid = n;
             },
-            hasComplete() { return this.draft.rules.some(complete); },
+            hasComplete() { return leavesOf(this.draft.rules).some(complete); },
             modified() { return this.viewId !== null && specKey(this.draft.match, this.draft.rules) !== _.appliedKey; },
 
             // ── Abrir / fechar ───────────────────────────────────────────
@@ -10889,7 +10930,8 @@ document.addEventListener('alpine:init', () => {
                 this.countVal  = null;
                 this.countFor  = '';
                 this.sheet     = window.innerWidth < 640;
-                const flash    = o.flashIndex != null && o.flashIndex >= 0 ? (this.draft.rules[o.flashIndex] || null) : null;
+                // Índice do chip = posição de leitura da condição (grupos inclusive).
+                const flash    = o.flashIndex != null && o.flashIndex >= 0 ? (leavesOf(this.draft.rules)[o.flashIndex] || null) : null;
                 this.flashId   = flash ? flash._id : null;
                 clearTimeout(_.flashTimer);
                 if (flash) _.flashTimer = setTimeout(() => { this.flashId = null; }, 1000);
@@ -10909,7 +10951,7 @@ document.addEventListener('alpine:init', () => {
                         if (!pop) return null;
                         let el = flash ? this._byId(this.domId('f', flash)) : null;
                         if (!el && this.savedOpen) el = pop.querySelector('.mad-dg-cf-saved-toggle');
-                        if (!el) el = pop.querySelector('.mad-dg-cf-field') || pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add');
+                        if (!el) el = pop.querySelector('.mad-dg-cf-field') || pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add:not(.is-grp)');
                         return el;
                     };
                     const focusIt = () => {
@@ -10968,31 +11010,67 @@ document.addEventListener('alpine:init', () => {
 
             // ── Linhas ───────────────────────────────────────────────────
             setMatch(m) { this.draft.match = m === 'any' ? 'any' : 'all'; },
-            toggleMatch() { this.setMatch(this.draft.match === 'any' ? 'all' : 'any'); },
+            // Sem item (ou item solto/grupo): o E/OU de cima; linha de grupo: o do grupo.
+            toggleMatch(it) {
+                const g = it ? this._parent(it) : null;
+                if (g) { g.match = g.match === 'any' ? 'all' : 'any'; return; }
+                this.setMatch(this.draft.match === 'any' ? 'all' : 'any');
+            },
+            setGroupMatch(g, m) { if (isGrp(g)) g.match = m === 'any' ? 'any' : 'all'; },
 
-            addRule(rule, openOpts) {
-                if (this.draft.rules.length >= MAX) return;
+            // `grp` = grupo do rascunho onde a condição entra (sem ele, no nível de cima).
+            addRule(rule, openOpts, grp) {
+                if (this.atMax()) return;
                 this.savedOpen = false;
-                this.draft.rules.push(Object.assign({ _id: 'r' + (++_.seq), k: null, op: null, v: '', d: '' }, rule || {}));
-                const r = this.draft.rules[this.draft.rules.length - 1];
+                const list = isGrp(grp) ? grp.rules : this.draft.rules;
+                list.push(Object.assign({ _id: 'r' + (++_.seq), k: null, op: null, v: '', d: '' }, rule || {}));
+                const r = list[list.length - 1];
                 if (!rule) { this.openMenu('field', r); return; }
                 if (openOpts) { this.openMenu('opt', r); return; }
                 this.$nextTick(() => { this._focus(this.domId('v', r)) || this._focus(this.domId('o', r)); });
             },
 
+            // Grupo novo já nasce com uma condição (e a lista de colunas aberta).
+            // "qualquer uma" dentro: o caso comum é "(A ou B) e C".
+            addGroup() {
+                if (this.atMax()) return;
+                this.draft.rules.push({ _id: 'g' + (++_.seq), match: 'any', rules: [] });
+                this.addRule(null, false, this.draft.rules[this.draft.rules.length - 1]);
+            },
+
             useSuggestion(s) { this.addRule(clone(s.rule), !!s.openOpts); },
 
             removeRow(r) {
-                const i = this.draft.rules.findIndex(x => x._id === r._id);
+                const g    = this._parent(r);
+                const list = g ? g.rules : this.draft.rules;
+                const i    = list.findIndex(x => x._id === r._id);
                 if (i < 0) return;
                 if (this.menu && this.menu.row === r._id) this.menu = null;
                 this.clearInvalid(r);
+                list.splice(i, 1);
+                // Grupo que fica sem condição sai junto.
+                if (g && g.rules.length === 0) this.removeGroup(g);
+                else this._focusNear(list, i);
+            },
+
+            removeGroup(g) {
+                const i = this.draft.rules.findIndex(x => x._id === g._id);
+                if (i < 0) return;
+                if (this.menu && g.rules.some(r => r._id === this.menu.row)) this.menu = null;
+                g.rules.forEach(r => this.clearInvalid(r));
                 this.draft.rules.splice(i, 1);
+                this._focusNear(this.draft.rules, i);
+            },
+
+            // Foco depois de remover: o item anterior da mesma lista (a última
+            // linha dele, se for grupo); sem nenhum, sugestões / "Adicionar".
+            _focusNear(list, i) {
                 this.$nextTick(() => {
-                    const prev = this.draft.rules[Math.max(0, i - 1)];
+                    let prev = list[Math.max(0, i - 1)] || null;
+                    if (isGrp(prev)) prev = prev.rules[prev.rules.length - 1] || null;
                     if (prev) { this._focus(this.domId('f', prev)); return; }
                     const pop = this._pop();
-                    const el = pop && (pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add'));
+                    const el = pop && (pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add:not(.is-grp)'));
                     if (el) el.focus();
                 });
             },
@@ -11299,7 +11377,7 @@ document.addEventListener('alpine:init', () => {
             // Condição com coluna mas sem valor: vermelho + "Informe um valor" +
             // foco no primeiro campo. Linha sem coluna é descartada em silêncio.
             _validate() {
-                const bad = this.draft.rules.filter(r => r.k && !complete(r));
+                const bad = leavesOf(this.draft.rules).filter(r => r.k && !complete(r));
                 if (!bad.length) return true;
                 const inv = {};
                 bad.forEach(r => { inv[r._id] = true; });
@@ -11337,7 +11415,7 @@ document.addEventListener('alpine:init', () => {
                 }
                 this.$nextTick(() => {
                     const pop = this._pop();
-                    const el = pop && (pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add'));
+                    const el = pop && (pop.querySelector('.mad-dg-cf-suggest button') || pop.querySelector('.mad-dg-cf-add:not(.is-grp)'));
                     if (el) el.focus();
                 });
             },
@@ -11470,7 +11548,12 @@ document.addEventListener('alpine:init', () => {
             _menuEl() { const l = this._layer(); return l ? l.querySelector('.mad-dg-cf-menu') : null; },
             _btn()    { return _.host ? _.host.querySelector('.mad-dg-cf-trigger') : null; },
             _byId(id) { const l = this._layer(); return l && id ? l.querySelector('[id="' + id + '"]') : null; },
-            _rule(id) { return this.draft.rules.find(r => r._id === id) || null; },
+            _rule(id) { return leavesOf(this.draft.rules).find(r => r._id === id) || null; },
+            // Grupo que contém a linha (null = linha solta, ou o item já é um grupo).
+            _parent(it) {
+                if (!it || isGrp(it)) return null;
+                return this.draft.rules.find(g => isGrp(g) && g.rules.some(r => r._id === it._id)) || null;
+            },
             _focus(id) {
                 const el = this._byId(id);
                 if (!el || typeof el.focus !== 'function') return false;

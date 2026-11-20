@@ -8182,6 +8182,21 @@ html[data-theme="dark"] .mad-dg-cf-chips-any {
   cursor: pointer;
 }
 .mad-dg-cf-chip-x:hover { background: color-mix(in srgb, var(--mad-text) 10%, transparent); color: var(--mad-text); }
+/* Com grupos: "Estoque > 0 e ( Situação … ou Situação … )" — palavra e
+   parênteses entre os chips, discretos, para a barra ler como a consulta. */
+.mad-dg-cf-chip-conj {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mad-text-subtle);
+}
+.mad-dg-cf-chip-paren {
+  font-size: 1.05rem;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--mad-text-muted);
+}
 .mad-dg-cf-chips-any { font-weight: 600; color: var(--cf-accent-ink); }
 .mad-dg-cf-dropped {
   display: inline-flex;
@@ -8577,6 +8592,58 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   font-weight: 600;
   cursor: pointer;
 }
+/* Item do x-for (condição solta ou grupo): não ocupa caixa no grid. */
+.mad-dg-cf-item { display: contents; }
+.mad-dg-cf-adds {
+  justify-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: 48px;
+}
+.mad-dg-cf-adds .mad-dg-cf-add { margin-left: 0; }
+.mad-dg-cf-adds.is-centered { justify-self: center; margin-left: 0; }
+.mad-dg-cf-add-group { color: var(--mad-text-muted); font-weight: 500; }
+/* Grupo: e/ou de fora na coluna das linhas + caixa com as condições dele. */
+.mad-dg-cf-grp {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  animation: mad-dg-cf-row-in 180ms ease;
+}
+.mad-dg-cf-grp-box {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px 4px;
+  border: 1px solid var(--mad-border);
+  border-left: 3px solid var(--cf-accent-border);
+  border-radius: var(--mad-radius-md);
+  background: var(--mad-bg-subtle);
+}
+.mad-dg-cf-grp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--mad-text-muted);
+}
+.mad-dg-cf-grp-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--mad-text);
+}
+.mad-dg-cf-grp-title svg { width: 14px; height: 14px; color: var(--cf-accent-ink); }
+.mad-dg-cf-grp-head .mad-dg-cf-seg button { padding: 2px 8px; font-size: 12px; }
+.mad-dg-cf-grp-del { margin-left: auto; }
+.mad-dg-cf-grp-box .mad-dg-cf-row {
+  grid-template-columns: 44px minmax(120px, 1.15fr) minmax(110px, .95fr) minmax(130px, 1.35fr) 30px;
+}
+.mad-dg-cf-grp-box .mad-dg-cf-add { margin-left: 48px; padding: 4px 8px; }
 .mad-dg-cf-add.is-centered { justify-self: center; margin-left: 0; }
 .mad-dg-cf-add:hover:not(:disabled) { background: var(--cf-accent-subtle); }
 .mad-dg-cf-add:disabled { color: var(--mad-text-subtle); cursor: not-allowed; }
@@ -8866,6 +8933,12 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 .mad-dg-cf-pop.is-sheet .mad-dg-cf-pair { grid-template-columns: 1fr; }
 .mad-dg-cf-pop.is-sheet .mad-dg-cf-pair-sep { display: none; }
 .mad-dg-cf-pop.is-sheet .mad-dg-cf-add { margin-left: 0; }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-adds { margin-left: 0; }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-grp { grid-template-columns: 1fr; gap: 6px; }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-grp > .mad-dg-cf-conj { grid-area: auto; justify-self: start; height: 22px; padding: 0 8px; }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-grp-box { padding: 8px; }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-grp-box .mad-dg-cf-row { grid-template-columns: 1fr 1fr 30px; background: var(--mad-bg); }
+.mad-dg-cf-pop.is-sheet .mad-dg-cf-grp-box .mad-dg-cf-add { margin-left: 0; }
 .mad-dg-cf-pop.is-sheet .mad-dg-cf-kbd { display: none; }
 /* Aplicar ocupa a linha de baixo inteira: alvo grande, ao alcance do polegar. */
 .mad-dg-cf-pop.is-sheet .mad-dg-cf-foot .mad-dg-cf-apply { flex: 1 1 100%; order: 10; height: 40px; }
@@ -8897,6 +8970,7 @@ html.mad-dg-cf-lock body { overflow: hidden; }
   .mad-dg-cf-pop,
   .mad-dg-cf-scrim,
   .mad-dg-cf-row,
+  .mad-dg-cf-grp,
   .mad-dg-cf-menu,
   .mad-dg-cf-saved { animation: none !important; }
 }

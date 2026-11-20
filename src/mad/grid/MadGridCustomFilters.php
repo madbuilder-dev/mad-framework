@@ -36,8 +36,14 @@ use Mad\Ui\MadToast;
  * └────────────────────────────────────────────────────────────────────────┘
  *
  * Shape do estado (`customFilterState`):
- *   ['match' => 'all'|'any', 'rules' => [['k','op','v','d'], …],
+ *   ['match' => 'all'|'any', 'rules' => [item, …],
  *    'viewId' => ?int (filtro salvo aplicado), 'touched' => bool]
+ *
+ *   item = condição ['k','op','v','d'] OU grupo ['match' => 'all'|'any',
+ *   'rules' => [condição, …]] — "(A ou B) e C". Um nível de grupo
+ *   (CUSTOM_FILTER_MAX_DEPTH): grupo dentro de grupo é descartado. Lista só de
+ *   condições (o formato de antes, e o dos filtros já salvos) é um grupo só.
+ *   O teto de condições conta as de dentro dos grupos.
  *
  * `touched` = o estado já foi decidido nesta abertura (pelo usuário ou pelo
  * filtro padrão) — o padrão salvo só é aplicado com touched=false.
@@ -74,6 +80,9 @@ trait MadGridCustomFilters
     /** Teto duro de condições, qualquer que seja o `max` declarado. */
     public const CUSTOM_FILTER_HARD_MAX = 20;
 
+    /** Níveis de grupo abaixo da raiz: 1 = "(A ou B) e C"; grupo em grupo sai. */
+    public const CUSTOM_FILTER_MAX_DEPTH = 1;
+
     /** Operadores sem valor (o `v` da regra é ignorado). */
     public const CUSTOM_FILTER_NO_VALUE_OPS = ['empty', 'not empty', 'is null', 'is not null'];
 
@@ -96,9 +105,10 @@ trait MadGridCustomFilters
     // ── Handlers (wire) ──────────────────────────────────────────────────
 
     /**
-     * Aplica o filtro montado na UI: `{match: 'all'|'any', rules: [{k,op,v,d}],
-     * keepView?: bool}`. Cada regra é validada contra as defs; inválida sai
-     * (fail-closed). Volta à página 1 e recarrega.
+     * Aplica o filtro montado na UI: `{match: 'all'|'any', rules: [item],
+     * keepView?: bool}` — item = `{k,op,v,d}` ou grupo `{match, rules}`. Cada
+     * regra é validada contra as defs; inválida sai (fail-closed). Volta à
+     * página 1 e recarrega.
      */
     public function onCustomFilterApply(array $payload = []): void
     {
@@ -126,15 +136,39 @@ trait MadGridCustomFilters
     /** Remove UMA condição (índice de `customFilters.rules[].index` da view). */
     public function onCustomFilterRemove(int $index): void
     {
-        // O índice é o da lista EM VIGOR (a mesma que a view expõe em
-        // `rules[].index`) — regra inválida no estado não desloca a contagem.
-        $rules = array_map(fn ($pair) => $pair[1], $this->_cfActiveRules());
-        if (!array_key_exists($index, $rules)) {
+        // O índice é o da condição EM VIGOR, contada em ordem também dentro dos
+        // grupos (o mesmo que a view expõe em `rules[].index`) — regra inválida
+        // no estado não desloca a contagem. Grupo que fica vazio sai junto.
+        $tree = $this->_cfActiveTree();
+        $n    = 0;
+        $hit  = false;
+        foreach ($tree as $i => $item) {
+            if (!static::_cfIsGroup($item)) {
+                if ($n++ === $index) {
+                    unset($tree[$i]);
+                    $hit = true;
+                    break;
+                }
+                continue;
+            }
+            foreach ($item['rules'] as $j => $rule) {
+                if ($n++ !== $index) continue;
+                unset($item['rules'][$j]);
+                $item['rules'] = array_values($item['rules']);
+                if ($item['rules'] === []) {
+                    unset($tree[$i]);
+                } else {
+                    $tree[$i] = $item;
+                }
+                $hit = true;
+                break 2;
+            }
+        }
+        if (!$hit) {
             return;
         }
-        array_splice($rules, $index, 1);
         $state = $this->_cfState();
-        $state['rules']   = $rules;
+        $state['rules']   = array_values($tree);
         $state['touched'] = true;
         $state['viewId']  = null;   // o filtro na tela já não é o salvo
         $this->customFilterState = $state;
@@ -219,14 +253,14 @@ trait MadGridCustomFilters
                 'rules' => is_array($payload['rules'] ?? null) ? $payload['rules'] : [],
             ]);
         }
-        $active = $this->_cfActiveRules();
+        $active = $this->_cfActiveTree();
         if ($active === []) {
             return MadToast::warning(MadLang::t('mad.gridcf.nothing_to_save'));
         }
 
         $payload = [
             'match' => $this->_cfState()['match'],
-            'rules' => array_map(fn ($pair) => $pair[1], $active),
+            'rules' => $active,
         ];
         $id = $ctx['store']->save(
             $ctx['gridKey'],
@@ -539,55 +573,105 @@ trait MadGridCustomFilters
     }
 
     /**
-     * Condições em vigor, REVALIDADAS contra as defs e cortadas no máximo.
+     * Condições e grupos em vigor (mesmo shape de `rules` no estado),
+     * REVALIDADOS contra as defs e cortados no máximo — é o que vira SQL.
+     *
+     * @return list<array> condições normalizadas e grupos {match, rules}
+     */
+    protected function _cfActiveTree(): array
+    {
+        if ($this->customFilterDefs === [] || $this->_cfDefsByKey() === []) {
+            return [];
+        }
+
+        return $this->_cfValidateRules($this->_cfState()['rules'])[0];
+    }
+
+    /**
+     * Condições em vigor, em ordem (também as de dentro dos grupos),
+     * REVALIDADAS contra as defs e cortadas no máximo.
      *
      * @return list<array{0: array, 1: array}> pares [def, regra normalizada]
      */
     protected function _cfActiveRules(): array
     {
-        if ($this->customFilterDefs === []) {
-            return [];
-        }
         $defs = $this->_cfDefsByKey();
-        if ($defs === []) {
-            return [];
+        $out  = [];
+        foreach (static::_cfLeaves($this->_cfActiveTree()) as $rule) {
+            $out[] = [$defs[$rule['k']], $rule];
         }
 
+        return $out;
+    }
+
+    /** Item do estado é grupo (`{match, rules}`) e não condição? */
+    protected static function _cfIsGroup(mixed $item): bool
+    {
+        return is_array($item) && !array_key_exists('k', $item) && is_array($item['rules'] ?? null);
+    }
+
+    /**
+     * Condições de uma árvore já validada, em ordem de leitura.
+     *
+     * @return list<array>
+     */
+    protected static function _cfLeaves(array $items): array
+    {
         $out = [];
-        $max = $this->_cfMax();
-        foreach ($this->_cfState()['rules'] as $r) {
-            $def = $defs[(string) ($r['k'] ?? '')] ?? null;
-            if ($def === null) continue;
-            $norm = $this->_cfNormalizeRule($r, $def);
-            if ($norm === null) continue;
-            $out[] = [$def, $norm];
-            if (count($out) >= $max) break;
+        foreach ($items as $item) {
+            if (static::_cfIsGroup($item)) {
+                array_push($out, ...static::_cfLeaves($item['rules']));
+            } elseif (is_array($item)) {
+                $out[] = $item;
+            }
         }
 
         return $out;
     }
 
     /**
-     * Valida uma lista de regras cruas (do cliente ou de um filtro salvo).
+     * Valida uma lista crua de condições e grupos (do cliente, de um filtro
+     * salvo ou de uma visão). Condição precisa casar com uma def; grupo leva
+     * `match` (all|any, qualquer outra coisa vira all) e as condições dele.
+     * Grupo vazio sai; grupo além de CUSTOM_FILTER_MAX_DEPTH sai inteiro. O
+     * teto (`max`) conta as condições de todos os grupos juntas.
      *
-     * @return array{0: list<array>, 1: int} [regras válidas, descartadas]
+     * @return array{0: list<array>, 1: int} [itens válidos, condições descartadas]
      */
     protected function _cfValidateRules(array $raw): array
     {
         $defs    = $this->_cfDefsByKey();
-        $max     = $this->_cfMax();
-        $rules   = [];
+        $left    = $this->_cfMax();
         $dropped = 0;
-        foreach ($raw as $r) {
-            if (!is_array($r)) { $dropped++; continue; }
-            $def  = $defs[is_scalar($r['k'] ?? null) ? (string) $r['k'] : ''] ?? null;
-            $norm = $def !== null ? $this->_cfNormalizeRule($r, $def) : null;
-            if ($norm === null) { $dropped++; continue; }
-            if (count($rules) >= $max) { $dropped++; continue; }
-            $rules[] = $norm;
-        }
 
-        return [$rules, $dropped];
+        $walk = function (array $items, int $depth) use (&$walk, &$left, &$dropped, $defs): array {
+            $out = [];
+            foreach ($items as $r) {
+                if (!is_array($r)) { $dropped++; continue; }
+
+                if (static::_cfIsGroup($r)) {
+                    if ($depth >= static::CUSTOM_FILTER_MAX_DEPTH) {
+                        $dropped += max(1, count(static::_cfLeaves([$r])));
+                        continue;
+                    }
+                    $kids = $walk(array_values($r['rules']), $depth + 1);
+                    if ($kids !== []) {
+                        $out[] = ['match' => ($r['match'] ?? '') === 'any' ? 'any' : 'all', 'rules' => $kids];
+                    }
+                    continue;
+                }
+
+                $def  = $defs[is_scalar($r['k'] ?? null) ? (string) $r['k'] : ''] ?? null;
+                $norm = $def !== null ? $this->_cfNormalizeRule($r, $def) : null;
+                if ($norm === null || $left <= 0) { $dropped++; continue; }
+                $left--;
+                $out[] = $norm;
+            }
+
+            return $out;
+        };
+
+        return [$walk(array_values($raw), 0), $dropped];
     }
 
     /**
@@ -797,7 +881,10 @@ trait MadGridCustomFilters
 
     /**
      * (E2) do _buildQuery: UM grupo envolvendo as condições, cada uma no seu
-     * próprio fechamento — `where` (todas) ou `orWhere` (qualquer uma).
+     * próprio fechamento — `where` (todas) ou `orWhere` (qualquer uma). Um
+     * grupo do usuário vira um fechamento aninhado com o E/OU dele:
+     * `((A or B) and C)`. Só entram condições e grupos já revalidados
+     * (_cfActiveTree): campo da def, operador da lista do tipo, valor em bind.
      *
      * Regra cujo campo/operador falha fechado produz um fechamento VAZIO, que o
      * Laravel descarta (addNestedWhereQuery ignora grupo sem where): um OR só de
@@ -806,17 +893,30 @@ trait MadGridCustomFilters
      */
     protected function _applyCustomFilters($q): void
     {
-        $pairs = $this->_cfActiveRules();
-        if ($pairs === []) {
+        $tree = $this->_cfActiveTree();
+        if ($tree === []) {
             return;
         }
-        $any = $this->_cfState()['match'] === 'any';
 
-        $q->where(function ($g) use ($pairs, $any) {
-            foreach ($pairs as [$def, $rule]) {
-                $one = function ($w) use ($def, $rule) {
-                    $this->_cfApplyRule($w, $def, $rule);
-                };
+        $this->_cfApplyGroup($q, $this->_cfState()['match'] === 'any', $tree, $this->_cfDefsByKey());
+    }
+
+    /** Um nível da árvore (raiz ou grupo) → `where(fn)` com where/orWhere por item. */
+    protected function _cfApplyGroup($q, bool $any, array $items, array $defs): void
+    {
+        $q->where(function ($g) use ($items, $any, $defs) {
+            foreach ($items as $item) {
+                if (static::_cfIsGroup($item)) {
+                    $one = function ($w) use ($item, $defs) {
+                        $this->_cfApplyGroup($w, $item['match'] === 'any', $item['rules'], $defs);
+                    };
+                } else {
+                    $def = $defs[$item['k']] ?? null;
+                    if ($def === null) continue;
+                    $one = function ($w) use ($def, $item) {
+                        $this->_cfApplyRule($w, $def, $item);
+                    };
+                }
                 $any ? $g->orWhere($one) : $g->where($one);
             }
         });
@@ -830,11 +930,27 @@ trait MadGridCustomFilters
      * No tipo `date` o `<` vai com o dia puro — mesmo instante nos bancos de
      * servidor, e evita a comparação de texto do SQLite, onde '2026-07-28' é
      * MENOR que '2026-07-28 00:00:00' e o próprio dia vazaria.
+     *
+     * "não contém" (`not like`, só de texto) traz também o campo VAZIO — NULL
+     * ou '', a mesma regra do "está vazio": o NOT LIKE do SQL descarta o NULL,
+     * e "situação não contém R" escondia as linhas sem situação. Vale só aqui,
+     * no filtro avançado; o filtro de coluna segue o NOT LIKE puro.
      */
     protected function _cfApplyRule($w, array $def, array $rule): void
     {
         $op = (string) $rule['op'];
         $v  = $rule['v'];
+        if ($op === 'not like') {
+            $field = (string) $def['field'];
+            $w->where(function ($x) use ($field, $v) {
+                $this->_applyColWhere($x, $field, 'not like', $v);
+                $x->orWhere(function ($y) use ($field) {
+                    $this->_applyColWhere($y, $field, 'empty', null);
+                });
+            });
+
+            return;
+        }
         if (in_array($def['kind'], ['date', 'datetime'], true) && is_string($v) && strlen($v) === 10) {
             if ($op === '>') {
                 $v .= ' 23:59:59';
@@ -1176,6 +1292,23 @@ trait MadGridCustomFilters
             ];
         }
 
+        // Mesma árvore com os chips no lugar das condições: a barra de filtros
+        // mostra "Estoque > 0 e (Situação não contém R ou Situação está vazia)".
+        $tree  = $this->_cfActiveTree();
+        $leaf  = 0;
+        $items = [];
+        foreach ($tree as $item) {
+            if (static::_cfIsGroup($item)) {
+                $chips = [];
+                foreach ($item['rules'] as $_) {
+                    $chips[] = $viewRules[$leaf++];
+                }
+                $items[] = ['group' => true, 'match' => $item['match'], 'rules' => $chips];
+            } else {
+                $items[] = ['group' => false, 'rule' => $viewRules[$leaf++]];
+            }
+        }
+
         $saved = $this->_cfSavedList($ctx);
         $viewName = '';
         foreach (array_merge($saved['mine'], $saved['shared']) as $item) {
@@ -1189,8 +1322,10 @@ trait MadGridCustomFilters
             'max'        => $cfg['max'],
             'defs'       => $viewDefs,
             'rules'      => $viewRules,
+            'items'      => $items,
+            'groups'     => count(array_filter($items, fn ($it) => $it['group'])),
             'count'      => count($viewRules),
-            'state'      => ['match' => $state['match'], 'rules' => array_map(fn ($p) => $p[1], $active),
+            'state'      => ['match' => $state['match'], 'rules' => $tree,
                              'viewId' => $state['viewId'], 'touched' => $state['touched']],
             'viewId'     => $state['viewId'],
             'viewName'   => $viewName,

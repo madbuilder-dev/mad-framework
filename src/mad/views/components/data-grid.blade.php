@@ -553,8 +553,31 @@
         // (dbcombo/dbsearch → nome, data no locale, período nomeado). O
         // `index` é o da lista em vigor — o mesmo que onCustomFilterRemove usa.
         $cfChips   = $cfEnabled ? array_values((array) ($customFilters['rules'] ?? [])) : [];
-        $cfAny     = $cfEnabled && ($customFilters['match'] ?? 'all') === 'any' && count($cfChips) > 1;
+        $cfGroups  = $cfEnabled ? (int) ($customFilters['groups'] ?? 0) : 0;
+        $cfAny     = $cfEnabled && $cfGroups === 0 && ($customFilters['match'] ?? 'all') === 'any' && count($cfChips) > 1;
         $cfDropped = $cfEnabled ? (int) ($customFilters['dropped'] ?? 0) : 0;
+        // Com grupos a barra lê como a consulta: "Estoque > 0 e ( Situação
+        // não contém R ou Situação está vazio )" — chips, e/ou e parênteses.
+        // Sem grupos, só os chips (e o "Qualquer uma:" na frente, se for OU).
+        $cfTokens  = [];
+        if ($cfGroups > 0) {
+            $cfConj = fn ($m) => \Mad\I18n\MadLang::t($m === 'any' ? 'mad.gridcf.or' : 'mad.gridcf.and');
+            foreach (array_values((array) ($customFilters['items'] ?? [])) as $cfN => $cfIt) {
+                if ($cfN > 0) $cfTokens[] = ['t' => 'conj', 'text' => $cfConj($customFilters['match'] ?? 'all')];
+                if (!empty($cfIt['group'])) {
+                    $cfTokens[] = ['t' => 'open'];
+                    foreach (array_values((array) ($cfIt['rules'] ?? [])) as $cfM => $cfGr) {
+                        if ($cfM > 0) $cfTokens[] = ['t' => 'conj', 'text' => $cfConj($cfIt['match'] ?? 'all')];
+                        $cfTokens[] = ['t' => 'chip', 'chip' => (array) $cfGr];
+                    }
+                    $cfTokens[] = ['t' => 'close'];
+                } else {
+                    $cfTokens[] = ['t' => 'chip', 'chip' => (array) ($cfIt['rule'] ?? [])];
+                }
+            }
+        } else {
+            foreach ($cfChips as $cfGr) $cfTokens[] = ['t' => 'chip', 'chip' => (array) $cfGr];
+        }
     @endphp
     @php $_remembered = !empty($rememberedNotice); @endphp
     @if(!empty($activeFilters) || !empty($cfChips) || $cfDropped > 0 || $_remembered)
@@ -589,8 +612,13 @@
         @if($cfAny)
         <span class="mad-dg-active-filters-label mad-dg-cf-chips-any">{{ \Mad\I18n\MadLang::t('mad.gridcf.chip_any_prefix') }}</span>
         @endif
-        @foreach($cfChips as $cfChip)
-        @php $cfIdx = (int) ($cfChip['index'] ?? 0); @endphp
+        @foreach($cfTokens as $cfTok)
+        @if($cfTok['t'] === 'conj')
+        <span class="mad-dg-cf-chip-conj">{{ $cfTok['text'] }}</span>
+        @elseif($cfTok['t'] === 'open' || $cfTok['t'] === 'close')
+        <span class="mad-dg-cf-chip-paren" aria-hidden="true">{{ $cfTok['t'] === 'open' ? '(' : ')' }}</span>
+        @else
+        @php $cfChip = $cfTok['chip']; $cfIdx = (int) ($cfChip['index'] ?? 0); @endphp
         <span class="mad-dg-cf-chip" role="button" tabindex="0" data-cf-chip="{{ $cfIdx }}"
               title="{{ \Mad\I18n\MadLang::t('mad.gridcf.edit_condition') }}"
               @click="if (!$event.target.closest('.mad-dg-cf-chip-x')) $dispatch('mad-dg-cf-open', { index: {{ $cfIdx }} })"
@@ -602,6 +630,7 @@
                 <i data-lucide="x" style="width:12px;height:12px;"></i>
             </button>
         </span>
+        @endif
         @endforeach
         @endif
         @if($cfDropped > 0)

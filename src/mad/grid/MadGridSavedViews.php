@@ -317,14 +317,13 @@ trait MadGridSavedViews
     /** Estado atual da grade como payload de visão. */
     protected function _svSnapshot(array $client): array
     {
-        $cf = $this->_cfActiveRules();
-
         return [
             'kind'    => 'view',
             'filters' => $this->filterStateSnapshot(),
             'cf'      => [
                 'match' => $this->_cfState()['match'] ?? 'all',
-                'rules' => array_map(fn ($pair) => $pair[1], $cf),
+                // Condições e grupos do filtro avançado ("(A ou B) e C").
+                'rules' => $this->_cfActiveTree(),
             ],
             'search'  => $this->search,
             'sort'    => ['by' => $this->sortBy, 'dir' => $this->sortDir],
