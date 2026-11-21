@@ -12,6 +12,21 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.333.0] — 2026-11-21
+
+### Novidades
+
+- **Chat:** a IA do app (Chat IA e Copilot) aceita a chave direta do Google (Gemini), da OpenAI e da xAI (Grok), ao lado de OpenRouter, Anthropic e Mad Coding Plan. Escolha o provedor e cole a chave em Preferências › IA (fica cifrada no servidor) ou use `GEMINI_API_KEY`, `OPENAI_API_KEY` ou `XAI_API_KEY` no `.env`.
+- **Chat:** a lista de modelos do Google, da OpenAI e da xAI vem da sua própria chave, pelo botão "Carregar modelos". Sem modelo escolhido, vale o padrão do provedor.
+
+### Melhorias
+
+- **Chat:** quando o provedor recusa ou interrompe a resposta (chave inválida, modelo sem acesso, limite de tokens), o chat mostra o motivo em vez de ficar sem resposta.
+
+### Atenção
+
+- **App gerado:** num app que já existe nada muda até você escolher um dos provedores novos. Para ver as opções, atualize o framework (card Mad Framework) e a tela de Preferências (Central de Comando › Código Fonte). Com Google, OpenAI ou xAI escolhido, o Copilot usa essa chave mesmo com o Mad Coding Plan ligado.
+
 ## [5.332.0] — 2026-11-20
 
 ### Novidades

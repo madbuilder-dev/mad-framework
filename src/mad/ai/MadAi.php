@@ -6,6 +6,10 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\AiManager;
+use Mad\Ai\Gateways\SecretScrubber;
+use Mad\Ai\Gateways\StatusAwareGeminiGateway;
+use Mad\Ai\Gateways\StatusAwareOpenAiGateway;
+use Mad\Ai\Gateways\StatusAwareXaiGateway;
 use Mad\Security\StoredSecret;
 
 /**
@@ -17,13 +21,16 @@ use Mad\Security\StoredSecret;
  *
  *  (a) montar config('ai') com a precedência MAD (doc: docs/ia-do-app.md):
  *        1. chave própria (Preferências › IA, chaves ai_*; senão config/mad.php
- *           [ai] / env) do provider escolhido → anthropic | openrouter;
+ *           [ai] / env) do provider escolhido → anthropic | openrouter |
+ *           google | openai | xai (os três últimos: MadAiProviders, 5.333.0);
  *        2. Mad Coding Plan do DONO do projeto → provider `coding_plan`
  *           (MAD_AI_CODING_PLAN ligado no MadBuilder e a opção "Usar o Mad
  *           Coding Plan" ligada em Preferências › IA);
  *        3. nada → a chamada falha com o motivo (MadAiException);
  *  (b) ligar o rastreio de custo do OpenRouter (usage.cost → AiCallCost) via
- *      o seam público useTextGateway — sem patch de vendor;
+ *      o seam público useTextGateway — sem patch de vendor; no Google, OpenAI
+ *      e xAI, o gateway que mostra o motivo quando o provedor conta a falha
+ *      dentro do stream (Gateways\StatusAware*);
  *  (c) no `coding_plan`, o CodingPlanGateway: driver anthropic do laravel/ai
  *      apontado para a Messages API do MadBuilder, com a credencial curta que
  *      `codingPlanSession()` minta com o MAD_PROJECT_TOKEN. O modelo é o da
@@ -89,7 +96,7 @@ final class MadAi
             $provider = self::providerRaw();
             // Instâncias de um boot anterior (troca de preferência, testes)
             // carregariam o gateway antigo.
-            $manager->forgetInstance(['anthropic', 'openrouter', self::CODING_PLAN]);
+            $manager->forgetInstance(['anthropic', 'openrouter', ...array_keys(MadAiProviders::DIRECT), self::CODING_PLAN]);
 
             if (self::$modo === self::MODO_CHAVE_PROPRIA) {
                 // Custo por chamada (OpenRouter): gateway estendido tapeia
@@ -97,6 +104,17 @@ final class MadAi
                 if ($provider === 'openrouter') {
                     $manager->textProvider('openrouter')
                         ->useTextGateway(new CostTrackingOpenRouterGateway(app('events')));
+                }
+                // Google/OpenAI/xAI contam a falha dentro do stream (HTTP 200):
+                // sem estes gateways o chat recebia uma resposta vazia e muda.
+                $gateway = match ($provider) {
+                    'google' => new StatusAwareGeminiGateway(app('events')),
+                    'openai' => new StatusAwareOpenAiGateway(app('events')),
+                    'xai'    => new StatusAwareXaiGateway(app('events')),
+                    default  => null,
+                };
+                if ($gateway !== null) {
+                    $manager->textProvider($provider)->useTextGateway($gateway);
                 }
             } else {
                 // Coding Plan — e também "nada configurado": a chamada cai no
@@ -170,7 +188,28 @@ final class MadAi
             return $model;
         }
 
+        if (MadAiProviders::isDirect($provider)) {
+            // Sem modelo escolhido: o padrão do próprio driver do laravel/ai.
+            try {
+                return (string) app(AiManager::class)->textProvider($provider)->defaultTextModel();
+            } catch (\Throwable) {
+                return '';
+            }
+        }
+
         return $provider === 'openrouter' ? self::DEFAULT_OPENROUTER_MODEL : self::DEFAULT_ANTHROPIC_MODEL;
+    }
+
+    /**
+     * A IA usa a chave própria de um provedor de chave direta (Google, OpenAI,
+     * xAI)? Então o Copilot IA também usa essa chave, mesmo com o Mad Coding
+     * Plan ligado no projeto: quem escolheu um desses provedores e colou a
+     * chave quer a IA por ela (fórum #376). Anthropic e OpenRouter seguem como
+     * antes (com o Coding Plan ligado, o Copilot usa a franquia do dono).
+     */
+    public static function usaChaveDireta(): bool
+    {
+        return self::modo() === self::MODO_CHAVE_PROPRIA && MadAiProviders::isDirect(self::provider());
     }
 
     public static function maxSteps(): int
@@ -430,9 +469,14 @@ final class MadAi
                 return $msg !== '' ? $msg : 'O modelo recusou o pedido.';
         }
 
+        // Motivo que o provedor devolveu (Google/OpenAI/xAI/Anthropic: `error.message`),
+        // sem chave nenhuma — o usuário vê por que a chamada falhou.
+        $detail = $call ? self::providerDetail($body) : '';
+        $why    = $detail !== '' ? ' Motivo: ' . $detail : '';
+
         if ($status === 401) {
             return $call
-                ? 'A IA recusou a credencial deste sistema. Tente de novo; se continuar, confira a chave em Preferências › IA.'
+                ? 'A IA recusou a credencial deste sistema. Tente de novo; se continuar, confira a chave em Preferências › IA.' . $why
                 : 'O MadBuilder não reconheceu este sistema (token do projeto inválido ou revogado). Publique o projeto de novo.';
         }
         if ($status === 429) {
@@ -442,10 +486,29 @@ final class MadAi
             return 'A conta da chave de IA deste sistema está sem crédito. Confira a chave em Preferências › IA.';
         }
         if ($status === 400) {
-            return 'O modelo recusou o pedido.';
+            return $detail !== '' ? 'O modelo recusou o pedido: ' . $detail : 'O modelo recusou o pedido.';
+        }
+        if ($status === 403 && $call) {
+            return 'A chave de IA deste sistema não tem permissão para este pedido. Confira a chave e o modelo em Preferências › IA.' . $why;
+        }
+        if ($status === 404 && $call) {
+            return 'O provedor de IA não encontrou o modelo escolhido. Confira o modelo em Preferências › IA.' . $why;
         }
 
         return 'A IA está indisponível no momento. Tente de novo em instantes.';
+    }
+
+    /**
+     * `error.message` (ou `message`) do corpo de erro do provedor, sem chave.
+     *
+     * @param array<string, mixed> $body
+     */
+    private static function providerDetail(array $body): string
+    {
+        $error = $body['error'] ?? null;
+        $msg   = is_array($error) ? ($error['message'] ?? '') : (is_string($error) ? $error : ($body['message'] ?? ''));
+
+        return SecretScrubber::clean(trim((string) $msg));
     }
 
     /** 'd/m/Y H:i' no fuso do app; '' quando não dá para ler. */
@@ -521,7 +584,7 @@ final class MadAi
         };
 
         $provider = strtolower($pref('ai_provider') ?? (string) ($ai['provider'] ?? 'anthropic'));
-        if (! in_array($provider, ['anthropic', 'openrouter'], true)) {
+        if (! in_array($provider, MadAiProviders::ids(), true)) {
             $provider = 'anthropic';
         }
         $maxSteps  = (int) ($pref('ai_max_steps') ?? $ai['max_steps'] ?? 8);
@@ -550,8 +613,32 @@ final class MadAi
             $openrouter['url'] = $openrouterUrl;
         }
 
+        // Google (Gemini), OpenAI e xAI: mesma precedência (Preferências cifradas >
+        // [ai] > .env). Sem modelo escolhido, vale o padrão do driver.
+        $direct = [];
+        foreach (MadAiProviders::DIRECT as $id => $meta) {
+            $model = $pref($meta['pref_model']) ?? trim((string) ($ai[$meta['config_model']] ?? ''));
+            // Vazio no [ai] conta como não informado: o .env ainda vale.
+            $configKey = trim((string) ($ai[$meta['config_key']] ?? ''));
+            $entry     = [
+                'driver' => $meta['driver'],
+                'key'    => $secret($meta['pref_key'], MadAiProviders::secretLabel($id))
+                    ?? ($configKey !== '' ? $configKey : (string) (getenv($meta['env']) ?: '')),
+            ];
+            if ($model !== '') {
+                $entry['models'] = ['text' => ['default' => $model, 'cheapest' => $model, 'smartest' => $model]];
+            }
+            $url = trim((string) ($ai[$meta['config_url']] ?? ''));
+            $url = $url !== '' ? $url : (string) (getenv($meta['env_url']) ?: '');
+            if ($url !== '') {
+                $entry['url'] = $url;
+            }
+            $direct[$id] = $entry;
+        }
+
         // 1. Chave própria do provider escolhido.
-        $ownKey = trim($provider === 'openrouter' ? $openrouterKey : $anthropicKey) !== '';
+        $keys   = ['openrouter' => $openrouterKey, 'anthropic' => $anthropicKey] + array_map(static fn (array $p): string => (string) $p['key'], $direct);
+        $ownKey = trim($keys[$provider] ?? '') !== '';
 
         // 2. Mad Coding Plan: ligado no projeto (MAD_AI_CODING_PLAN, do
         //    MadBuilder) e não desligado aqui (Preferências › IA — a mesma
@@ -592,6 +679,7 @@ final class MadAi
                     ],
                 ],
                 'openrouter' => $openrouter,
+                ...$direct,
                 // Credencial e URL vêm da sessão, na hora (CodingPlanGateway).
                 // A `key` aqui é só um marcador — nunca vai a lugar nenhum.
                 self::CODING_PLAN => [

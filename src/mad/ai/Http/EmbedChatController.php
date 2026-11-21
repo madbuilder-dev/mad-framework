@@ -167,6 +167,7 @@ final class EmbedChatController
                             self::helpAvailable(),
                         );
                         $runner = match (true) {
+                            MadAi::usaChaveDireta()             => new AgentRunner($sink),
                             (bool) config('mad.ai.coding_plan') => new CodingPlanAgentRunner($sink),
                             self::proxyEnabled()                => CodingPlanAgentRunner::viaProxy($sink),
                             default                             => new AgentRunner($sink),
@@ -293,7 +294,10 @@ final class EmbedChatController
                 // chave de IA): mesmo loop, modelo pela chave da plataforma, que
                 // debita no developer. Antes o proxy repassava à plataforma só a
                 // frase do usuário: sem system, tools, histórico nem confirmação.
+                // Chave própria do Google/OpenAI/xAI escolhida em Preferências › IA
+                // vale também com o Coding Plan ligado (MadAi::usaChaveDireta).
                 $runner = match (true) {
+                    MadAi::usaChaveDireta()             => new AgentRunner($sink),
                     (bool) config('mad.ai.coding_plan') => new CodingPlanAgentRunner($sink),
                     self::proxyEnabled()                => CodingPlanAgentRunner::viaProxy($sink),
                     default                             => new AgentRunner($sink),
