@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.333.1] — 2026-11-23
+
+### Melhorias
+
+- **Upload:** imagens, áudios e anexos já abertos numa tela que se atualiza sozinha (caixa de entrada, painel) não são baixados de novo a cada atualização: o navegador reaproveita o arquivo. A tela fica mais leve e o servidor não sobrecarrega.
+
 ## [5.333.0] — 2026-11-21
 
 ### Novidades

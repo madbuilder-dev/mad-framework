@@ -53,6 +53,13 @@ class MadDownloadController
         'svg', 'svgz', 'html', 'htm', 'xhtml', 'xml', 'mathml', 'vtt',
     ];
 
+    /**
+     * Cache do navegador para o arquivo baixado (privado, nunca em proxy). A URL
+     * assinada fica igual dentro da hora (mad_download_url); depois disto o
+     * navegador revalida com If-None-Match / If-Modified-Since e recebe 304.
+     */
+    private const BROWSER_CACHE_SECONDS = 600;
+
     /** CSP do modo anexo: se o arquivo for aberto mesmo assim, nada roda nem carrega. */
     private const ATTACHMENT_CSP = "sandbox; default-src 'none'";
 
@@ -123,10 +130,39 @@ class MadDownloadController
             abort(404);
         }
 
+        // Validadores baratos (data + tamanho, sem ler o conteúdo): a mesma
+        // mídia pedida de novo pela tela (lista que se atualiza sozinha) vira
+        // 304 sem corpo, em vez de passar o arquivo inteiro pelo PHP de novo.
+        [$modified, $size] = MadUploadStorage::stat($relative);
+        $etag = $modified !== null
+            ? substr(sha1($relative . '|' . $modified . '|' . $size . '|' . $disposition), 0, 20)
+            : null;
+
+        if ($etag !== null) {
+            $probe = new Response();
+            $this->applyBrowserCache($probe, $etag, $modified);
+            if ($probe->isNotModified($request)) {
+                $probe->headers->set('X-Content-Type-Options', 'nosniff');
+
+                return $probe;
+            }
+        }
+
         $streamed = MadUploadStorage::response($relative, $basename, $headers, $disposition);
         $streamed->setPrivate();
+        if ($etag !== null) {
+            $this->applyBrowserCache($streamed, $etag, $modified);
+        }
 
         return $streamed;
+    }
+
+    private function applyBrowserCache(Response $response, string $etag, int $modified): void
+    {
+        $response->setPrivate();
+        $response->setMaxAge(self::BROWSER_CACHE_SECONDS);
+        $response->setEtag($etag);
+        $response->setLastModified((new \DateTimeImmutable())->setTimestamp($modified));
     }
 
     /**

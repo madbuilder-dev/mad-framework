@@ -225,6 +225,24 @@ final class MadUploadStorage
     }
 
     /**
+     * Data de modificação e tamanho do arquivo (`[timestamp, bytes]`), ou
+     * `[null, null]` quando o disco não informa — validadores baratos do cache
+     * do navegador no download (sem ler o conteúdo; no S3 é um HEAD).
+     *
+     * @return array{0: ?int, 1: ?int}
+     */
+    public static function stat(string $relPath): array
+    {
+        try {
+            $disk = self::disk();
+
+            return [(int) $disk->lastModified($relPath), (int) $disk->size($relPath)];
+        } catch (\Throwable) {
+            return [null, null];
+        }
+    }
+
+    /**
      * Os primeiros bytes do arquivo ('' se não existe ou não deu para ler) —
      * para conferir o tipo pelo conteúdo sem baixar o arquivo inteiro.
      */

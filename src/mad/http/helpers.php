@@ -59,9 +59,18 @@ if (!function_exists('mad_download_url')) {
                 // atrás de proxy / com APP_URL divergente do host servido).
                 // Com a base da requisição (app em subpasta, fórum #299): o
                 // Laravel a tira do link relativo; a assinatura é sem ela.
+                //
+                // Validade em DEGRAU de 1 h: vence na hora cheia, de 6 a 7 h
+                // depois. Com `agora + 6 h` cada renderização assinava outra URL
+                // e o navegador baixava de novo a mesma mídia a cada atualização
+                // da tela (23/11/2026: uma caixa de entrada que se atualiza a cada
+                // ~20 s baixou 16 arquivos 2.475 vezes numa hora). Assim a URL
+                // fica igual dentro da hora e o cache do navegador vale.
+                $expires = (intdiv(now()->getTimestamp(), 3600) + 7) * 3600;
+
                 return \Mad\Routing\RoutingDriver::withRequestBase(\Illuminate\Support\Facades\URL::temporarySignedRoute(
                     'mad.download',
-                    now()->addHours(6),
+                    \Illuminate\Support\Carbon::createFromTimestamp($expires),
                     $params,
                     false
                 ));
