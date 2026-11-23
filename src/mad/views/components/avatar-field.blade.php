@@ -113,6 +113,11 @@
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{{-- Formulário em leitura / modo Visualizar (fórum #351, #382): a foto, sem trocar nem remover. --}}
+{!! \Mad\Form\ReadMode::fileField($__rm, ['name' => $name, 'label' => $label, 'image' => (string) $previewUrl, 'round' => true, 'style' => $_dimStyle ?? '']) !!}
+@else
 <div class="mad-field mad-avatar-field{{ $hasError ? ' mad-field-error' : '' }}"
      x-data="madAvatarField({{ $_jsonConfig }})"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
 
@@ -169,3 +174,4 @@
     {{-- Slot de erro SEMPRE presente (MadResponse::fieldError() escreve nele) --}}
     <div class="mad-hint mad-hint-error{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{{ $hasError ? $error : '' }}</div>
 </div>
+@endif

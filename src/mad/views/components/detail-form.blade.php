@@ -410,9 +410,17 @@
     unset($_form, $_dfEditor);
 
     $hasTotals = !empty(array_filter($columns, fn($c, $i) => $_dfShowCol[$i] && ($c->totalFunc || $c->totalFormula !== ''), ARRAY_FILTER_USE_BOTH));
+
+    // Formulário em leitura / modo Visualizar (#351, fórum #382): só a lista
+    // dos itens — sem Adicionar, sem o formulário do item, sem Editar/Remover
+    // e sem célula editável. Ação própria da linha segue a regra dos botões
+    // da tela aberta pelo Visualizar (some a que grava).
+    $_dfRead = \Mad\Form\ReadMode::mode($__env) !== '';
+    $_dfActHidden = fn($act) => $act->permMode() === 'hide' || ($_dfRead && \Mad\Form\ViewOnly::hides((string) $act->method));
+    $_dfShowActions = ! $_dfRead || count(array_filter($actions, fn($a) => ! $_dfActHidden($a))) > 0;
 @endphp
 
-<div class="mad-df" data-mad-df-name="{{ $name }}" x-data="madDetailForm({{ $alpineCfg }})">
+<div class="mad-df{{ $_dfRead ? ' mad-df-read' : '' }}" data-mad-df-name="{{ $name }}" x-data="madDetailForm({{ $alpineCfg }})">
 
     {{-- Token de escopo: sobrevive ao POST para o auto-save aplicar o mesmo escopo --}}
     @if($_dfCritToken)
@@ -433,7 +441,9 @@
         $dfDrawerSize  = $width !== '' ? $width : 'md';
     @endphp
 
-    @if($mode === 'modal')
+    @if($_dfRead)
+    {{-- Em leitura: sem Adicionar e sem o formulário do item. --}}
+    @elseif($mode === 'modal')
 
     {{-- Botão Adicionar --}}
     <div class="mad-df-toolbar">
@@ -511,7 +521,7 @@
             <table class="mad-dg-table">
                 <thead class="mad-dg-head{{ $sticky ? ' mad-dg-sticky' : '' }}">
                     <tr>
-@if($actionSide === 'left')
+@if($actionSide === 'left' && $_dfShowActions)
                         <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
 @endif
                         @foreach($columns as $col)
@@ -525,7 +535,7 @@
                             {{ $col->label }}
                         </th>
                         @endforeach
-@if($actionSide === 'right')
+@if($actionSide === 'right' && $_dfShowActions)
                         <th class="mad-dg-th" style="width:80px;text-align:center;">{{ mad_t('mad.ui.actions') }}</th>
 @endif
                     </tr>
@@ -534,6 +544,7 @@
 @php ob_start(); @endphp
                             <td class="mad-dg-cell mad-dg-actions-cell" style="text-align:center;">
                                 <div class="mad-dg-actions">
+                                    @if(! $_dfRead)
                                     <button type="button" class="mad-dg-action-btn" title="{{ mad_t('mad.ui.edit') }}"
                                             @click="editRow(idx)">
                                         <i data-lucide="pencil" style="width:14px;height:14px;"></i>
@@ -542,11 +553,12 @@
                                             title="{{ mad_t('mad.ui.remove') }}" @click="madDeletePopover($event, () => deleteRow(idx))">
                                         <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
                                     </button>
+                                    @endif
                                     @foreach($actions as $act)
                                     {{-- As linhas do detalhe são montadas no navegador (x-for), então
                                          não há linha em PHP para os callbacks por linha. Permissão não
                                          depende da linha — é da ação — e por isso vem de permMode(). --}}
-                                    @if($act->permMode() !== 'hide')
+                                    @if(! $_dfActHidden($act))
                                     @php $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : ''; @endphp
                                     <button type="button"
                                             class="mad-dg-action-btn{{ $act->isPrimary ? ' mad-dg-action-primary' : '' }}{{ $act->isDanger ? ' mad-dg-action-danger' : '' }}"
@@ -562,7 +574,7 @@
                     <template x-for="(row, idx) in (perPage > 0 ? pagedRows : rows)" :key="row.__id">
                         <tr class="mad-dg-row" :class="{ 'mad-df-row-editing': (typeof editIndex!=='undefined' && editIndex === idx) }"
                             x-init="$nextTick(() => { if (typeof _madLucide === 'function') _madLucide([$el]); })">
-@if($actionSide === 'left')
+@if($actionSide === 'left' && $_dfShowActions)
 @php echo $_dfActionsCell; @endphp
 @endif
                             @foreach($columns as $col)
@@ -626,7 +638,7 @@
 @if(isset($_dfColWhen[$loop->index]))
                                 <span data-mad-col-when x-show="_colVis(row, {{ $loop->index }})">
 @endif
-                                @if($col->editable && $col->editType === 'switch')
+                                @if(! $_dfRead && $col->editable && $col->editType === 'switch')
                                 {{-- Chave liga/desliga (fórum #297): alterna o valor da linha;
                                      grava com o formulário. 'true'/'false' vão como booleano. --}}
                                 @php
@@ -641,7 +653,7 @@
                                            @change="row['{{ $_ck }}'] = $event.target.checked ? {{ $_swOnJs }} : {{ $_swOffJs }}">
                                     <span class="mad-toggle-track"></span>
                                 </label>
-                                @elseif($col->editable && $col->editMode === 'inline')
+                                @elseif(! $_dfRead && $col->editable && $col->editMode === 'inline')
                                 {{-- Inline edit: campo sempre visível --}}
                                 @if($col->editType === 'money')
                                 <input type="text" inputmode="decimal" class="mad-input mad-dg-inline-input"
@@ -714,7 +726,7 @@
 @endif
                             </td>
                             @endforeach
-@if($actionSide === 'right')
+@if($actionSide === 'right' && $_dfShowActions)
 @php echo $_dfActionsCell; @endphp
 @endif
                         </tr>
@@ -724,7 +736,7 @@
                 {{-- Empty state --}}
                 <tbody x-show="rows.length === 0">
                     <tr>
-                        <td colspan="{{ count(array_filter($_dfShowCol)) + 1 }}" class="mad-dg-cell" style="text-align:center;padding:24px;color:var(--mad-muted-fg);">
+                        <td colspan="{{ count(array_filter($_dfShowCol)) + ($_dfShowActions ? 1 : 0) }}" class="mad-dg-cell" style="text-align:center;padding:24px;color:var(--mad-muted-fg);">
                             <i data-lucide="inbox" style="width:24px;height:24px;margin-bottom:8px;opacity:.5;"></i>
                             <div>{{ mad_t('mad.ui.no_items_added') }}</div>
                         </td>
@@ -735,7 +747,7 @@
                 @if($hasTotals)
                 <tfoot class="mad-dg-foot" x-show="rows.length > 0">
                     <tr>
-@if($actionSide === 'left')
+@if($actionSide === 'left' && $_dfShowActions)
                         <td></td>
 @endif
                         @foreach($columns as $_dfColIdx => $col)
@@ -778,7 +790,7 @@
                             @endif
                         </td>
                         @endforeach
-@if($actionSide === 'right')
+@if($actionSide === 'right' && $_dfShowActions)
                         <td></td>
 @endif
                     </tr>

@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.334.1] — 2026-11-23
+
+### Correções
+
+- **Formulário:** no modo Visualizar (e no `<mad-form read>`), os campos de imagem, arquivo, vários arquivos, avatar e assinatura mostram só o arquivo para ver ou baixar. Antes apareciam Girar, Remover, câmera e o envio de arquivo.
+- **Detalhe:** no modo Visualizar, o `<mad-detail-form>` mostra só a lista dos itens, sem Adicionar, Editar, Remover nem célula editável; na lista de campos, a célula de arquivo não deixa escolher nem remover arquivo.
+
 ## [5.334.0] — 2026-11-23
 
 ### Novidades

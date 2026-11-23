@@ -115,6 +115,11 @@
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{{-- Formulário em leitura / modo Visualizar (fórum #351, #382): a assinatura, sem desenhar, digitar, enviar nem limpar. --}}
+{!! \Mad\Form\ReadMode::fileField($__rm, ['name' => $name, 'label' => $label, 'image' => (string) $value, 'style' => $_dimStyle ?? '']) !!}
+@else
 <div class="mad-field{{ $hasError ? ' mad-field-error' : '' }}"
      x-data="madSignatureField({{ $_jsonConfig }})"
      @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
@@ -342,3 +347,4 @@
 
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

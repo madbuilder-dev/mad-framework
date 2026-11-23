@@ -69,10 +69,12 @@ final class ReadMode
      *
      * @param array{
      *     name?: string, label?: string, text?: string|null, html?: string|null,
-     *     raw?: string|array|null, hidden?: bool, bool?: bool, on?: bool, class?: string, style?: string
+     *     raw?: string|array|null, hidden?: bool, bool?: bool, on?: bool, class?: string, style?: string,
+     *     empty?: bool, noHidden?: bool
      * } $o  `text` (escapado) ou `html` (já seguro); `raw` vai no hidden; `bool`
      *       = campo sim/não, ligado conforme `on` (desligado conta como vazio no
-     *       modo 'filled').
+     *       modo 'filled'); `empty` decide o vazio quando o html não tem texto;
+     *       `noHidden` = sem o valor no formulário.
      */
     public static function field(string $mode, array $o): string
     {
@@ -84,6 +86,9 @@ final class ReadMode
         $empty = $html === null
             ? ($text === null || trim((string) $text) === '')
             : trim(strip_tags((string) $html)) === '';
+        if (array_key_exists('empty', $o)) {
+            $empty = (bool) $o['empty'];   // html sem texto que vale (uma <img>)
+        }
         if ($isBool) {
             $on    = array_key_exists('on', $o) ? (bool) $o['on'] : self::truthy($raw);
             $text  = $on ? mad_t('mad.field.yes') : mad_t('mad.field.no');
@@ -91,7 +96,10 @@ final class ReadMode
             $empty = ! $on;
         }
 
-        $hiddenInputs = self::hiddenInputs($name, $raw);
+        // Campos de arquivo (`noHidden`): sem o valor no formulário — um path ou
+        // um vazio no lugar do arquivo poderia ser lido como "trocar/remover"
+        // por uma ação que grave o formulário.
+        $hiddenInputs = empty($o['noHidden']) ? self::hiddenInputs($name, $raw) : '';
         if ($mode === self::FILLED && $empty) {
             // Fora da tela, mas o valor continua no formulário.
             return '<div class="mad-field-read-skip" hidden'
@@ -115,6 +123,78 @@ final class ReadMode
             . '<div class="mad-display-field-value">' . $value . '</div>'
             . $hiddenInputs
             . '</div>';
+    }
+
+    /**
+     * Campo de arquivo em leitura (imagem, arquivo, vários arquivos, avatar,
+     * assinatura): rótulo e o arquivo para ver/baixar — nada de enviar,
+     * trocar, girar, recortar, tirar foto ou remover. Sem arquivo, "—".
+     *
+     * @param array{name?: string, label?: string, image?: string, files?: list<array{name?: string, url?: string}>,
+     *              round?: bool, style?: string, class?: string} $o
+     */
+    public static function fileField(string $mode, array $o): string
+    {
+        $html = '';
+        if (($o['image'] ?? '') !== '') {
+            $html = self::imageHtml((string) $o['image'], ! empty($o['round']));
+        } elseif (! empty($o['files'])) {
+            $html = self::fileLinksHtml((array) $o['files']);
+        }
+
+        return self::field($mode, [
+            'name'     => (string) ($o['name'] ?? ''),
+            'label'    => (string) ($o['label'] ?? ''),
+            'html'     => $html !== '' ? $html : null,
+            'empty'    => $html === '',
+            'noHidden' => true,
+            'class'    => trim('mad-field-read-file ' . ($o['class'] ?? '')),
+            'style'    => (string) ($o['style'] ?? ''),
+        ]);
+    }
+
+    /** `<img>` só com endereço de imagem: http(s), data:image/, caminho do site. Outro esquema (`javascript:`) não vira imagem. */
+    public static function imageHtml(string $src, bool $round = false): string
+    {
+        $src = trim($src);
+        if ($src === '' || ! self::safeUrl($src, true)) {
+            return '';
+        }
+
+        return '<img class="mad-field-read-image' . ($round ? ' is-round' : '') . '" src="' . e($src) . '" alt="" loading="lazy">';
+    }
+
+    /** Links para ver/baixar os arquivos (`[['name' => …, 'url' => …]]`); sem endereço, só o nome. */
+    public static function fileLinksHtml(array $files): string
+    {
+        $items = [];
+        foreach ($files as $f) {
+            $name = trim((string) ($f['name'] ?? ''));
+            $url  = trim((string) ($f['url'] ?? ''));
+            if ($name === '' && $url === '') {
+                continue;
+            }
+            $label = e($name !== '' ? $name : basename(parse_url($url, PHP_URL_PATH) ?: $url));
+            $items[] = $url !== '' && self::safeUrl($url, false)
+                ? '<a class="mad-field-read-file-link" href="' . e($url) . '" target="_blank" rel="noopener">' . $label . '</a>'
+                : '<span class="mad-field-read-file-link">' . $label . '</span>';
+        }
+
+        return $items === [] ? '' : '<div class="mad-field-read-files">' . implode('', $items) . '</div>';
+    }
+
+    /** Endereço que pode ir num src/href: http(s), caminho relativo, ou (`$image`) data:image/. */
+    private static function safeUrl(string $url, bool $image): bool
+    {
+        if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $url, $m) !== 1) {
+            return true;   // relativo (ou //host): o navegador usa o esquema da página
+        }
+        $scheme = strtolower(rtrim($m[0], ':'));
+        if ($scheme === 'http' || $scheme === 'https') {
+            return true;
+        }
+
+        return $image && $scheme === 'data' && preg_match('#^data:image/[a-z0-9.+-]+[;,]#i', $url) === 1;
     }
 
     /** Rótulos das opções escolhidas (`[valor => rótulo]`), na ordem da escolha. */

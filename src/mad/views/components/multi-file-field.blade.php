@@ -148,6 +148,11 @@
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{{-- Formulário em leitura / modo Visualizar (fórum #351, #382): os arquivos para ver/baixar, sem enviar, colar, tirar foto nem remover. --}}
+{!! \Mad\Form\ReadMode::fileField($__rm, ['name' => $name, 'label' => $label, 'files' => $existingFiles, 'style' => $_dimStyle ?? '']) !!}
+@else
 <div class="mad-field"@if($_camMode !== '') data-camera="{{ $_camMode }}"@endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <span class="mad-label">{!! $label !!}{!! $reqStar !!}</span>
@@ -271,3 +276,4 @@
         </div>
     </div>
 </div>
+@endif

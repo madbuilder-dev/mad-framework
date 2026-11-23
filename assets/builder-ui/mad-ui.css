@@ -2889,6 +2889,23 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-form-grid > :has(> .mad-field-read-skip:only-child) { display: none; }
 .mad-form-read .mad-field:not(.mad-field-read) :is(input:not([type="hidden"]), select, textarea, .mad-sel-control) { pointer-events: none; }
 .mad-form-read :is(.mad-fl-add-btn, .mad-fl-add-row, .mad-fl-remove-btn, .mad-fl-handle) { display: none; }
+/* Célula de arquivo da lista de campos em leitura: o arquivo para ver, sem
+   escolher, trocar ou remover (a janela dos vários arquivos vira galeria). */
+.mad-form-read :is(.mad-fl-file-pick, .mad-fl-file-tag-x, .mad-flm-modal .mad-file-body, .mad-flm-modal .mad-multi-file-card-remove) { display: none; }
+/* Campo de arquivo em leitura (imagem, arquivo, vários arquivos, avatar,
+   assinatura — #382): o arquivo para ver/baixar, sem enviar, trocar ou remover. */
+.mad-field-read-image {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border: 1px solid var(--mad-border);
+  border-radius: var(--mad-radius-md, 8px);
+  background: var(--mad-bg-subtle);
+}
+.mad-field-read-image.is-round { width: 72px; height: 72px; object-fit: cover; border-radius: 50%; }
+.mad-field-read-files { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mad-field-read-file-link { overflow-wrap: anywhere; }
 
 /* Tema ERP: ficha em leitura — rótulo 12 mudo, valor 13.5 (rubrica da ficha). */
 .mad-layout-erp .mad-display-field-label {
