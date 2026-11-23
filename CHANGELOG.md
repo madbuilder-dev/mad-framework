@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.334.0] — 2026-11-23
+
+### Novidades
+
+- **Campos:** o campo de texto troca a máscara pelo valor de outro campo: com `mask-by="tipo_fj"` e `mask-map="F:cpf,J:cnpj"`, vira CPF ou CNPJ conforme o tipo escolhido, na hora e já certo na edição; valor fora da lista fica sem máscara (estrangeiro). Com `validate-document`, o Salvar confere o documento pelo mesmo tipo.
+
 ## [5.333.1] — 2026-11-23
 
 ### Melhorias

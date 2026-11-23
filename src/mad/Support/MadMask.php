@@ -124,4 +124,73 @@ class MadMask
 
         return is_string($stripped) ? $stripped : $value;
     }
+
+    /** Máscaras que o `mask-map` aceita (fórum #381). */
+    public const MAP_MASKS = ['cpf', 'cnpj'];
+
+    /**
+     * `mask-by` válido: nome de campo simples (letra/_ no início, depois
+     * letras, dígitos, `_`, `-`, `.`). Fora disso, '' (a opção fica desligada).
+     */
+    public static function maskByName(string $name): string
+    {
+        $name = trim($name);
+
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_.\-]{0,63}$/', $name) === 1 ? $name : '';
+    }
+
+    /**
+     * `mask-map="F:cpf,J:cnpj"` → `['F' => 'cpf', 'J' => 'cnpj']`. Só as
+     * máscaras de {@see MAP_MASKS}; par malformado ou máscara desconhecida é
+     * ignorado. Valor fora do mapa = sem máscara (estrangeiro).
+     *
+     * @return array<string, string>
+     */
+    public static function parseMap(string $map): array
+    {
+        $out = [];
+        foreach (explode(',', $map) as $pair) {
+            $parts = explode(':', $pair);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            $value = trim($parts[0]);
+            $mask  = strtolower(trim($parts[1]));
+            if ($value === '' || mb_strlen($value) > 64 || !in_array($mask, self::MAP_MASKS, true)) {
+                continue;
+            }
+            $out[$value] = $mask;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Máscara pelo valor de outro campo (`mask-by` + `mask-map`, fórum #381):
+     * devolve os props do campo com `mask` (e o `validateDocument`, quando a
+     * opção está ligada) resolvidos pelo valor do campo de controle QUE VEIO
+     * NO ENVIO. O mapa vem do registro assinado da tela — o navegador só
+     * escolhe entre as opções dela. Campo sem `maskBy`: props como estão.
+     *
+     * @param  array<string, mixed> $props
+     * @param  array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public static function resolveBy(array $props, array $data): array
+    {
+        $by = (string) ($props['maskBy'] ?? '');
+        if ($by === '') {
+            return $props;
+        }
+        $control = $data[$by] ?? null;
+        $map     = is_array($props['maskMap'] ?? null) ? $props['maskMap'] : [];
+        $alias   = is_scalar($control) ? (string) ($map[trim((string) $control)] ?? '') : '';
+        $alias   = in_array($alias, self::MAP_MASKS, true) ? $alias : '';
+        $props['mask'] = $alias;
+        if (!empty($props['validateDocumentByMask'])) {
+            $props['validateDocument'] = $alias;
+        }
+
+        return $props;
+    }
 }

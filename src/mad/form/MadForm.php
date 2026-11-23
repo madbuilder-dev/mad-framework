@@ -7964,6 +7964,7 @@ class MadForm
         foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
             $name  = (string) $name;
             $value = $this->fields[$name] ?? null;
+            $props = is_array($props) ? \Mad\Support\MadMask::resolveBy($props, (array) $this->fields) : $props;
             if (!is_array($props) || empty($props['maskFit']) || ($props['mask'] ?? '') === ''
                 || !is_string($value) || $value === '' || !isset($rules[$name])) {
                 continue;
@@ -8044,6 +8045,7 @@ class MadForm
         $out = [];
         foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
             $name = (string) $name;
+            $props = is_array($props) ? \Mad\Support\MadMask::resolveBy($props, $data) : $props;
             $mask = is_array($props) ? (string) ($props['mask'] ?? '') : '';
             if ($mask === '' || !\Mad\Support\MadMask::isPlate($mask) || isset($errors[$name])) {
                 continue;
@@ -8077,6 +8079,8 @@ class MadForm
         $checked = [];
         foreach ((array) MadFormRegistry::fromRequest() as $name => $props) {
             $name = (string) $name;
+            // `mask-by` (fórum #381): o tipo sai do valor do campo de controle enviado.
+            $props = is_array($props) ? \Mad\Support\MadMask::resolveBy($props, $data) : $props;
             $kind = is_array($props) ? \Mad\Support\MadDocument::kind((string) ($props['validateDocument'] ?? '')) : '';
             if ($kind === '') {
                 continue;

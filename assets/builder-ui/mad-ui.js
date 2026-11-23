@@ -8067,9 +8067,12 @@ function _madInitMaskedInput(root) {
         if (el._madMaskInit) return;
         el._madMaskInit = true;
 
-        var alias = el.getAttribute('data-mad-mask');
+        // `mask-by` (fórum #381) reaponta o atributo depois do init: lê a cada vez.
+        function currentAlias() { return el.getAttribute('data-mad-mask') || ''; }
 
         function reformat() {
+            var alias = currentAlias();
+            if (alias === '') return el.value;
             var pattern = _madResolveMaskPattern(alias, el.value);
             // Trunca cru pelo pattern para impedir excesso (especialmente aliases dinamicos).
             // A classe TEM que incluir 'X': o pattern do CNPJ e 'XX.XXX.XXX/XXXX-99',
@@ -8083,6 +8086,7 @@ function _madInitMaskedInput(root) {
         }
 
         el.addEventListener('input', function () {
+            if (currentAlias() === '') return;
             var oldVal  = el.value;
             var oldPos  = el.selectionStart || 0;
             // Conta digitos/letras antes do cursor para reposicionar depois
@@ -8092,11 +8096,21 @@ function _madInitMaskedInput(root) {
             if (formatted === oldVal) return;
             el.value = formatted;
 
-            var pattern = _madResolveMaskPattern(alias, formatted);
+            var pattern = _madResolveMaskPattern(currentAlias(), formatted);
             var newPos  = _madMaskedCursor(pattern, rawBefore);
             try { el.setSelectionRange(newPos, newPos); } catch (e) {}
             _madSyncAlpineModel(el);
         });
+
+        // Reformata com a máscara atual (o `mask-by` chama ao trocar de tipo).
+        el._madMaskReformat = function () {
+            if (!el.value) return;
+            var f = reformat();
+            if (f !== el.value) {
+                el.value = f;
+                _madSyncAlpineModel(el);
+            }
+        };
 
         // Formata valor inicial (quando vem populado do server)
         if (el.value) {
@@ -8107,8 +8121,78 @@ function _madInitMaskedInput(root) {
             }
         }
     });
+    _madInitMaskBy(scope);
 }
 window._madInitMaskedInput = _madInitMaskedInput;
+
+/* ═══════════════════════════════════════════════════════════════════
+   Máscara pelo valor de outro campo (fórum #381)
+   ───────────────────────────────────────────────────────────────────
+   <mad-input-field mask-by="tipo_fj" mask-map="F:cpf,J:cnpj">: o input leva
+   `data-mad-mask-by` e o mapa em JSON (`data-mad-mask-map`). O valor do campo
+   de controle (radio marcado, select ou input de mesmo `name`, no mesmo
+   formulário) escolhe a máscara: só `cpf`/`cnpj` do mapa; fora dele, sem
+   máscara. Com `data-mad-validate-doc-by`, o aviso de documento segue o mesmo
+   tipo. Troca na hora (change/input do controle) e já abre certa na edição.
+   O Salvar não confia nisto: o servidor resolve pelo valor enviado
+   (MadMask::resolveBy).
+   ─────────────────────────────────────────────────────────────── */
+function _madMaskByControlValue(el, name) {
+    var sel = '[name="' + String(name).replace(/["\\]/g, '') + '"]';
+    var scope = el.form || (typeof el.closest === 'function' ? el.closest('form, [data-mad-form]') : null) || document;
+    var nodes = scope.querySelectorAll(sel);
+    if (!nodes.length && scope !== document) nodes = document.querySelectorAll(sel);
+    for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n === el) continue;
+        if (n.type === 'radio' || n.type === 'checkbox') {
+            if (n.checked) return String(n.value == null ? '' : n.value).trim();
+            continue;
+        }
+        return String(n.value == null ? '' : n.value).trim();
+    }
+    return '';
+}
+
+function _madApplyMaskBy(el) {
+    var name = el.getAttribute('data-mad-mask-by') || '';
+    if (!name) return;
+    var map = {};
+    try { map = JSON.parse(el.getAttribute('data-mad-mask-map') || '{}') || {}; } catch (e) { map = {}; }
+    var v = _madMaskByControlValue(el, name);
+    var alias = Object.prototype.hasOwnProperty.call(map, v) ? String(map[v]) : '';
+    if (alias !== 'cpf' && alias !== 'cnpj') alias = '';
+    if (el.getAttribute('data-mad-validate-doc-by') === '1') {
+        if (alias) el.setAttribute('data-mad-validate-doc', alias);
+        else el.removeAttribute('data-mad-validate-doc');
+    }
+    var prev = el.getAttribute('data-mad-mask') || '';
+    if (prev !== alias || !el._madMaskByApplied) {
+        el._madMaskByApplied = true;
+        el.setAttribute('data-mad-mask', alias);
+        if (alias && typeof el._madMaskReformat === 'function') el._madMaskReformat();
+    }
+    if (el._madDocErr && typeof _madDocCheck === 'function') _madDocCheck(el);
+}
+
+function _madInitMaskBy(root) {
+    var scope = root || document;
+    if (typeof scope.querySelectorAll !== 'function') return;
+    scope.querySelectorAll('input[data-mad-mask-by]').forEach(function (el) { _madApplyMaskBy(el); });
+    if (window._madMaskByWired || typeof document === 'undefined') return;
+    window._madMaskByWired = true;
+    var onControl = function (e) {
+        var t = e.target;
+        var name = t && t.getAttribute ? (t.getAttribute('name') || '') : '';
+        if (!name) return;
+        document.querySelectorAll('input[data-mad-mask-by]').forEach(function (el) {
+            if (el !== t && el.getAttribute('data-mad-mask-by') === name) _madApplyMaskBy(el);
+        });
+    };
+    document.addEventListener('change', onControl, true);
+    document.addEventListener('input', onControl, true);
+}
+window._madInitMaskBy = _madInitMaskBy;
 
 /* ═══════════════════════════════════════════════════════════════════
    Force case — <mad-input-field force-case="upper|lower|title">

@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false, 'validateDocument' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false, 'validateDocument' => false, 'maskBy' => '', 'maskMap' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -20,6 +20,19 @@
     $attrs = \Mad\Support\MadFieldValue::mergeAttrs($attrs, (string)$name, $value ?? '');
     // Mascara — alias conhecido ou pattern literal (9 = digito, A = letra, * = alfanumerico, demais = literal)
     $_maskAttr = '';
+    // Máscara pelo valor de outro campo (fórum #381): `mask-by="tipo_fj"` +
+    // `mask-map="F:cpf,J:cnpj"`. A máscara fixa sai; o navegador troca pelo
+    // valor do campo de controle (mad-ui.js) e o Salvar valida pelo valor
+    // ENVIADO dele (MadMask::resolveBy, mapa do registro assinado). Valor fora
+    // do mapa = sem máscara e sem validação de documento. Sem `mask-by`, nada
+    // muda (nem atributo, nem chave no registro).
+    $_maskBy  = \Mad\Support\MadMask::maskByName((string) ($maskBy ?? ''));
+    $_maskMap = $_maskBy !== '' ? \Mad\Support\MadMask::parseMap((string) ($maskMap ?? '')) : [];
+    if ($_maskBy !== '' && $_maskMap !== []) {
+        $mask = '';
+    } else {
+        $_maskBy = '';
+    }
     if ($mask !== '') {
         $_maskAttr = ' data-mad-mask="' . htmlspecialchars((string)$mask, ENT_QUOTES) . '"';
         // Auto maxlength quando alias tem tamanho fixo e usuario nao passou maxlength.
@@ -39,6 +52,17 @@
     $_docKind = \Mad\Support\MadDocument::resolve($validateDocument ?? false, (string)$mask);
     if ($_docKind !== '') {
         $_maskAttr .= ' data-mad-validate-doc="' . $_docKind . '"';
+    }
+    $_docByMask = false;
+    if ($_maskBy !== '') {
+        // O atributo `data-mad-mask` nasce vazio: o mad-ui.js o aponta pelo
+        // valor do campo de controle (e o reaponta quando ele muda).
+        $_maskAttr = ' data-mad-mask="" data-mad-mask-by="' . htmlspecialchars($_maskBy, ENT_QUOTES)
+            . '" data-mad-mask-map="' . htmlspecialchars((string) json_encode($_maskMap, JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '"';
+        $_docByMask = \Mad\Support\MadDocument::enabled($validateDocument ?? false);
+        if ($_docByMask) {
+            $_maskAttr .= ' data-mad-validate-doc-by="1"';
+        }
     }
     // Force case (upper/lower/title) — aplicado client-side apos mascara
     $_forceCaseAttr = '';
@@ -98,7 +122,7 @@
         'stripMask' => $stripMask,
         'maskFit'   => $_maskFit,
         'validateDocument' => $_docKind,
-    ]);
+    ] + ($_maskBy !== '' ? ['maskBy' => $_maskBy, 'maskMap' => $_maskMap, 'validateDocumentByMask' => $_docByMask] : []));
 @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
