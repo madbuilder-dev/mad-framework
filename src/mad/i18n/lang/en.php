@@ -598,6 +598,7 @@ return [
             'search_btn' => 'Search',
             'searching'  => 'Searching…',
             'not_found'  => 'Address not found.',
+            'approximate' => 'Exact address not found: the pin is on the neighborhood or city. Drag it to the right spot.',
             'hint'       => 'Drag the pin or click the map to adjust the position.',
             'notice'     => 'Address search uses OpenStreetMap (Nominatim): the text you type is sent to that service.',
             'clear'      => 'Clear position',

@@ -587,6 +587,7 @@ return [
             'search_btn' => 'Buscar',
             'searching'  => 'Buscando…',
             'not_found'  => 'Endereço não encontrado.',
+            'approximate' => 'Endereço exato não encontrado: o pino está no bairro ou na cidade. Arraste-o até o local certo.',
             'hint'       => 'Arraste o pino ou clique no mapa para ajustar a posição.',
             'notice'     => 'A busca de endereço usa o OpenStreetMap (Nominatim): o texto digitado é enviado a esse serviço.',
             'clear'      => 'Limpar posição',

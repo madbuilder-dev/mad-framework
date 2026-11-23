@@ -274,20 +274,103 @@
 
     // ── <mad-map-field> ─────────────────────────────────────────────────
 
-    var lastGeocode = 0;
+    // ── busca de endereço (Nominatim) ────────────────────────────────────
+    //
+    // O Nominatim não acha nada quando o texto livre junta o CEP com a rua e
+    // o número ("01310-100, Avenida Paulista, 1000, …" → []), e muita rua
+    // brasileira nem está no OpenStreetMap. A busca vai em degraus (fórum
+    // #383): o endereço sem CEP e sem complemento → sem o número → rua e
+    // cidade → bairro e cidade → cidade e UF. Os dois últimos dão uma posição
+    // aproximada (o campo avisa) e só valem se o resultado for mesmo um
+    // bairro/cidade — "Centro, Anápolis" devolve uma clínica qualquer, e o
+    // pino não pode ir para lá. Só o CEP (sem outro campo) busca pelo CEP.
 
-    function geocode(text, country) {
-        var q = String(text || '').trim();
+    var CEP_RE = /^\s*(\d{5})-?(\d{3})\s*$/;
+    var AREA_TYPES = ['suburb', 'neighbourhood', 'quarter', 'city_district', 'borough', 'district', 'subdistrict',
+        'residential', 'city', 'town', 'village', 'hamlet', 'municipality', 'county', 'state_district'];
+
+    // Papel de cada parte do endereço: pelo nome do campo, senão pelo valor.
+    function fieldRole(name, value) {
+        var n = String(name || '').toLowerCase().replace(/\[\]$/, '').split('.').pop();
+        var v = String(value || '').trim();
+        if (/(^|_)(cep|zip|zipcode|postal|postalcode|postcode|codigo_postal)($|_)/.test(n)) return 'cep';
+        if (/(^|_)(n|num|numero|number|nro)($|_)/.test(n)) return 'number';
+        if (/complement|(^|_)compl($|_)|apto|apartamento|referencia/.test(n)) return 'extra';
+        if (/bairro|district|neighbo|suburb|distrito/.test(n)) return 'district';
+        if (/cidade|city|municipio|localidade|town/.test(n)) return 'city';
+        if (/(^|_)(uf|estado|state|provincia|province)($|_)/.test(n)) return 'state';
+        if (/(^|_)(pais|country)($|_)/.test(n)) return 'country';
+        if (/logradouro|endereco|address|street|(^|_)rua($|_)|avenida/.test(n)) return 'street';
+        if (CEP_RE.test(v)) return 'cep';
+        if (/^(\d{1,6}[a-z]?|s\/?n)$/i.test(v)) return 'number';
+        if (/^[a-z]{2}$/i.test(v)) return 'state';
+        return 'other';
+    }
+
+    // Degraus da busca, do mais preciso ao mais amplo: [{ q, approx }].
+    // `parts`: [{ name, value }] na ordem do geocode-from (ou do texto).
+    function geocodeSteps(parts) {
+        var list = (parts || []).map(function (p) {
+            var v = String((p && p.value) || '').trim();
+            return { v: v, r: fieldRole(p && p.name, v) };
+        }).filter(function (p) { return p.v !== ''; });
+        var of = function (r) { return list.filter(function (p) { return p.r === r; }).map(function (p) { return p.v; }); };
+        var street = of('street'), district = of('district'), city = of('city');
+        var others = of('other');
+        // Campos sem nome conhecido ("end", "bai"…): rua, bairro… cidade, na ordem.
+        if (!city.length && others.length >= 2) {
+            street = street.length ? street : [others[0]];
+            city = [others[others.length - 1]];
+            if (!district.length) district = others.slice(1, -1);
+        }
+        var state = of('state'), country = of('country');
+        var region = city.concat(state, country);
+        var steps = [];
+        var add = function (items, approx) {
+            items = items.filter(Boolean);
+            // Só número/UF não é endereço.
+            if (!items.some(function (v) { return !/^\d+[a-z]?$/i.test(v) && !/^[a-z]{2}$/i.test(v); })) return;
+            var q = items.join(', ');
+            if (q.length < 3 || steps.some(function (s) { return s.q === q; })) return;
+            steps.push({ q: q, approx: !!approx });
+        };
+        var main = list.filter(function (p) { return p.r !== 'cep' && p.r !== 'extra'; });
+        add(main.map(function (p) { return p.v; }), false);
+        add(main.filter(function (p) { return p.r !== 'number'; }).map(function (p) { return p.v; }), false);
+        if (street.length && city.length) add(street.concat(region), false);
+        if (district.length && city.length) add(district.concat(region), true);
+        if (city.length) add(region, true);
+        var cep = of('cep')[0];
+        if (!steps.length && cep) steps.push({ q: cep, approx: false });
+        return steps;
+    }
+
+    // Uma consulta por vez, com 1,1 s entre elas (política do Nominatim),
+    // inclusive entre campos de mapa diferentes da mesma página.
+    var lastGeocode = 0;
+    var geoChain = Promise.resolve();
+    function throttled(fn) {
+        var p = geoChain.then(function () {
+            var wait = Math.max(0, lastGeocode + 1100 - Date.now());
+            return new Promise(function (r) { setTimeout(r, wait); });
+        }).then(function () {
+            lastGeocode = Date.now();
+            return fn();
+        });
+        geoChain = p.catch(function () {});
+        return p;
+    }
+
+    // Um degrau: [lat, lng] ou null. No degrau aproximado, só bairro/cidade.
+    function geocodeStep(step, country) {
+        var q = String((step && step.q) || '').trim();
         if (q.length < 3) return Promise.resolve(null);
-        var params = new URLSearchParams({ format: 'jsonv2', limit: '1', addressdetails: '0' });
-        var cep = q.match(/^\s*(\d{5})-?(\d{3})\s*$/);
+        var params = new URLSearchParams({ format: 'jsonv2', limit: step.approx ? '5' : '1', addressdetails: '0' });
+        var cep = q.match(CEP_RE);
         if (cep) params.set('postalcode', cep[1] + '-' + cep[2]);
         else params.set('q', q);
         if (country) params.set('countrycodes', country);
-        // Política do Nominatim: no máximo uma consulta por segundo.
-        var wait = Math.max(0, lastGeocode + 1100 - Date.now());
-        return new Promise(function (r) { setTimeout(r, wait); }).then(function () {
-            lastGeocode = Date.now();
+        return throttled(function () {
             return fetch('https://nominatim.openstreetmap.org/search?' + params.toString(), {
                 headers: { 'Accept': 'application/json', 'Accept-Language': document.documentElement.lang || 'pt-BR' },
                 credentials: 'omit',
@@ -296,11 +379,40 @@
         }).then(function (res) {
             return res.ok ? res.json() : [];
         }).then(function (rows) {
-            var r = Array.isArray(rows) && rows[0];
+            rows = Array.isArray(rows) ? rows : [];
+            var r = step.approx
+                ? rows.filter(function (x) { return AREA_TYPES.indexOf(String(x.addresstype || x.type || '')) >= 0; })[0]
+                : rows[0];
             if (!r) return null;
             var lat = parseFloat(r.lat), lng = parseFloat(r.lon);
             return (isFinite(lat) && isFinite(lng)) ? [lat, lng] : null;
         });
+    }
+
+    // Endereço em partes → { ll, approx, q } do primeiro degrau que achar, ou
+    // null. `stale()` verdadeiro para a busca (o usuário já mudou o endereço).
+    function geocodeParts(parts, country, stale) {
+        var steps = geocodeSteps(parts);
+        var i = 0;
+        var next = function () {
+            if (i >= steps.length || (stale && stale())) return Promise.resolve(null);
+            var step = steps[i++];
+            return geocodeStep(step, country).then(function (ll) {
+                return ll ? { ll: ll, approx: step.approx, q: step.q } : next();
+            });
+        };
+        return next();
+    }
+
+    // Texto livre da caixa de busca: as partes entre vírgulas, pelo valor.
+    function geocodeText(text, country, stale) {
+        var parts = String(text || '').split(',').map(function (v) { return { name: '', value: v }; });
+        return geocodeParts(parts, country, stale);
+    }
+
+    // Compatível com a versão anterior: [lat, lng] ou null.
+    function geocode(text, country) {
+        return geocodeText(text, country).then(function (r) { return r ? r.ll : null; });
     }
 
     function mountField(el, cfg) {
@@ -318,14 +430,23 @@
         // por ela de novo; a que o usuário arrastou/clicou, não.
         var auto = false;
 
+        // Aviso da busca (procurando / não achou / posição aproximada). Sem a
+        // caixa de busca (search="false"), vai no rodapé, junto das coordenadas:
+        // a busca pelos campos do formulário também avisa.
         var msg = null;
-        if (search) {
+        var foot = el.querySelector('.mad-map-field-foot');
+        if (search || foot) {
             msg = document.createElement('span');
             msg.className = 'mad-map-search-msg';
             msg.setAttribute('aria-live', 'polite');
-            search.parentNode.appendChild(msg);
+            if (search) search.parentNode.appendChild(msg);
+            else foot.insertBefore(msg, foot.firstChild);
         }
-        function say(text) { if (msg) msg.textContent = text || ''; }
+        function say(text, warn) {
+            if (!msg) return;
+            msg.textContent = text || '';
+            msg.classList.toggle('is-warn', !!(text && warn));
+        }
 
         function emit(input) {
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -347,12 +468,13 @@
                 marker.on('dragend', function () {
                     var ll = marker.getLatLng();
                     auto = false;
+                    say('');
                     write(ll.lat, ll.lng);
                 });
             } else {
                 marker.setLatLng([lat, lng]);
             }
-            if (opts.fly) map.setView([lat, lng], Math.max(map.getZoom() || 0, cfg.zoom || 16));
+            if (opts.fly) map.setView([lat, lng], opts.zoom || Math.max(map.getZoom() || 0, cfg.zoom || 16));
             if (opts.write) write(lat, lng);
         }
 
@@ -374,19 +496,28 @@
         if (!cfg.disabled) {
             map.on('click', function (e) {
                 auto = false;
+                say('');
                 place(e.latlng.lat, e.latlng.lng, { write: true });
             });
             if (clearBtn) clearBtn.addEventListener('click', clear);
         }
 
-        function run(text, fromForm) {
+        // Só a busca mais recente vale: mudar o endereço no meio dos degraus
+        // abandona os que faltam da anterior.
+        var runSeq = 0;
+        function run(text, fromForm, parts) {
+            var my = ++runSeq;
+            var stale = function () { return my !== runSeq; };
             say(cfg.text && cfg.text.searching);
-            return geocode(text, cfg.country).then(function (ll) {
-                if (!ll) { say(cfg.text && cfg.text.notFound); return; }
-                say('');
+            var lookup = parts ? geocodeParts(parts, cfg.country, stale) : geocodeText(text, cfg.country, stale);
+            return lookup.then(function (r) {
+                if (stale()) return;
+                if (!r) { say(cfg.text && cfg.text.notFound); return; }
+                // Achou só o bairro ou a cidade: o pino fica lá, com o aviso.
+                say(r.approx ? (cfg.text && cfg.text.approximate) : '', r.approx);
                 if (fromForm) auto = true;
-                place(ll[0], ll[1], { write: true, fly: true });
-            }).catch(function () { say(cfg.text && cfg.text.notFound); });
+                place(r.ll[0], r.ll[1], { write: true, fly: true, zoom: r.approx ? 14 : 0 });
+            }).catch(function () { if (!stale()) say(cfg.text && cfg.text.notFound); });
         }
 
         if (search && !cfg.disabled) {
@@ -416,16 +547,16 @@
                 ft = setTimeout(function () {
                     var parts = from.map(function (n) {
                         var f = scope.querySelector('[name="' + n.replace(/"/g, '') + '"]');
-                        return f ? String(f.value || '').trim() : '';
-                    }).filter(Boolean);
-                    var text = parts.join(', ');
+                        return { name: n, value: f ? String(f.value || '').trim() : '' };
+                    }).filter(function (p) { return p.value !== ''; });
+                    var text = parts.map(function (p) { return p.value; }).join(', ');
                     if (!text || text === lastText) return;
                     lastText = text;
                     if (search) search.value = text;
                     // Posição escolhida à mão (ou que veio do registro) fica;
                     // o usuário busca de novo pelo botão, se quiser.
                     if (marker && !auto) return;
-                    run(text, true);
+                    run(text, true, parts);
                 }, 1200);
             };
             scope.addEventListener('change', function (e) {
@@ -453,7 +584,10 @@
         });
     }
 
-    window.MadMap = { __ready: true, mount: mount, destroy: destroy, geocode: geocode, _layerGroups: layerGroups };
+    window.MadMap = {
+        __ready: true, mount: mount, destroy: destroy, geocode: geocode,
+        geocodeParts: geocodeParts, _geocodeSteps: geocodeSteps, _layerGroups: layerGroups,
+    };
 
     var queue = window.__madMapQueue || [];
     window.__madMapQueue = [];

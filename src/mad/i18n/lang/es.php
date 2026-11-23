@@ -587,6 +587,7 @@ return [
             'search_btn' => 'Buscar',
             'searching'  => 'Buscando…',
             'not_found'  => 'Dirección no encontrada.',
+            'approximate' => 'No se encontró la dirección exacta: el pin está en el barrio o la ciudad. Arrástralo al lugar correcto.',
             'hint'       => 'Arrastre el pin o haga clic en el mapa para ajustar la posición.',
             'notice'     => 'La búsqueda de direcciones usa OpenStreetMap (Nominatim): el texto escrito se envía a ese servicio.',
             'clear'      => 'Borrar posición',

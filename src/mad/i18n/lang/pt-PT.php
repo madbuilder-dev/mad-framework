@@ -343,6 +343,7 @@ return [
             'search_btn' => 'Procurar',
             'searching'  => 'A procurar…',
             'not_found'  => 'Morada não encontrada.',
+            'approximate' => 'Morada exata não encontrada: o pino está no bairro ou na cidade. Arraste-o até ao local certo.',
             'hint'       => 'Arraste o pino ou clique no mapa para ajustar a posição.',
             'notice'     => 'A pesquisa de moradas usa o OpenStreetMap (Nominatim): o texto escrito é enviado a esse serviço.',
             'clear'      => 'Limpar posição',

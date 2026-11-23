@@ -56,7 +56,7 @@
         'tiles' => '', 'layers' => [],
         'text' => [
             'loadError' => mad_t('mad.map.load_error'), 'searching' => mad_t('mad.map.searching'),
-            'notFound' => mad_t('mad.map.not_found'),
+            'notFound' => mad_t('mad.map.not_found'), 'approximate' => mad_t('mad.map.approximate'),
         ],
     ];
 @endphp

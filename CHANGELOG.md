@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.334.2] — 2026-11-23
+
+### Correções
+
+- **Campos:** a Posição no mapa com `geocode-from` volta a achar o endereço quando o CEP e o número estão entre os campos. Antes o pino não aparecia e o campo dizia "Endereço não encontrado".
+- **Campos:** quando a rua não está no mapa do OpenStreetMap, a Posição no mapa põe o pino no bairro ou na cidade e avisa que a posição é aproximada, para você arrastar o pino até o local certo.
+
 ## [5.334.1] — 2026-11-23
 
 ### Correções
