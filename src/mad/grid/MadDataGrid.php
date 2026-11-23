@@ -230,6 +230,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected string $exportLabel = '';
 
     /**
+     * Título na barra de ferramentas da grade, ao lado do atualizar (fórum
+     * #387). '' = sem título (padrão). No Blade: `<mad-grid title="...">` ou
+     * `:title="__('chave')"` — o atributo vence esta prop.
+     */
+    protected string $toolbarTitle = '';
+
+    /**
      * Metadados do relatório que o AJAX de export precisa: título, nome do
      * arquivo, subtítulo, período e filtros já RESOLVIDOS em texto, e as
      * opções de quebra/linha descritiva.
@@ -612,6 +619,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return is_string($label) ? trim($label) : '';
+    }
+
+    /**
+     * Título da barra de ferramentas ('' = sem título). O `title` do Blade
+     * vence a prop PHP. Lido do config do render (inline) ou do gridConfig,
+     * que viaja no estado — o AJAX que redesenha a grade mantém o título.
+     */
+    protected function _toolbarTitleText(): string
+    {
+        $cfg   = $this->_bladeGridConfig();
+        $title = array_key_exists('toolbarTitle', $cfg) ? $cfg['toolbarTitle'] : $this->toolbarTitle;
+
+        return is_scalar($title) && !is_bool($title) ? trim((string) $title) : '';
     }
 
     /**
@@ -6661,6 +6681,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'searchValue'  => $this->search,
             'exportable'   => $this->exportable,
             'exportLabel'  => $this->_exportLabelText(),
+            'toolbarTitle' => $this->_toolbarTitleText(),
             'permExport'   => $this->_permExportMode(),
             'refreshable'  => $this->refreshable,
             'autoRefreshSeconds' => $this->getAutoRefresh(),
@@ -6948,6 +6969,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'searchValue'  => $this->search,
             'exportable'    => $this->exportable,
             'exportLabel'   => $this->_exportLabelText(),
+            'toolbarTitle'  => $this->_toolbarTitleText(),
             'permExport'    => $this->_permExportMode(),
             'refreshable'   => $this->refreshable,
             'autoRefreshSeconds' => $this->getAutoRefresh(),

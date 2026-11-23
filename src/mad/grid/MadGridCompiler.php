@@ -20,6 +20,8 @@ use Mad\View\MadBlade;
  * │  model="Pessoa"           Classe do model Eloquent para auto-query                    │
  * │  per-page="15"            Registros por página                              │
  * │  self                     Grid inline (colunas definidas no Blade)          │
+ * │  title="Resultado"        Título na barra, ao lado do atualizar (aceita     │
+ * │                           :title="__('chave')"; sem ele, nada muda)         │
  * │  searchable               Barra de busca rápida                             │
  * │  :search-columns="[...]"  Campos para busca (notação ponto: 'rel.campo')   │
  * │  sticky                   Thead fixo ao rolar                               │
@@ -1942,6 +1944,13 @@ class MadGridCompiler
             } elseif ($flag !== 'false') {
                 $c[] = static::kv('exportLabel', static::emit($label));
             }
+        }
+        // Título na barra de ferramentas, ao lado do atualizar (fórum #387).
+        // Literal ou `:title="__('chave')"` (traduzível, como os rótulos);
+        // atributo nu ou vazio = sem título, a grade sai como sempre.
+        if (isset($a['title']) && $a['title']['type'] !== 'bool'
+            && ($a['title']['type'] === 'php' || trim((string) $a['title']['value']) !== '')) {
+            $c[] = static::kv('toolbarTitle', static::emit($a['title']));
         }
         if (static::has($a, 'actions-left')) {
             $c[] = "'actionSide' => 'left'";

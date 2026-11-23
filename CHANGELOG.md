@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.335.0] — 2026-11-23
+
+### Novidades
+
+- **Listagem (grid):** `<mad-grid title="Resultado da pesquisa">` mostra um título na barra da listagem, ao lado do botão de atualizar, no mesmo estilo do título do painel de filtros. Aceita chave de tradução (`:title="__('chave')"`); sem título, nada muda.
+
 ## [5.334.2] — 2026-11-23
 
 ### Correções

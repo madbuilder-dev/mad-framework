@@ -268,10 +268,17 @@
         $hasRefresh = $refreshable ?? false;
         $hasChooser = $columnChooser && !$hasActions && $hasChoosable;
         $_gv = !empty($gridViews) ? $gridViews : null;
-        $showToolbar = $searchable || $hasExport || $hasChooser || ($cardView && empty($gridCompact)) || $hasRefresh || $cfEnabled || $_gv;
+        // `<mad-grid title>` (fórum #387): título à esquerda da barra, no lugar
+        // vazio ao lado do atualizar. Sem título a barra sai byte a byte igual
+        // (o @if fica na coluna 0) e não aparece só por causa dele.
+        $_dgTitle = is_scalar($toolbarTitle ?? null) ? trim((string) $toolbarTitle) : '';
+        $showToolbar = $searchable || $hasExport || $hasChooser || ($cardView && empty($gridCompact)) || $hasRefresh || $cfEnabled || $_gv || $_dgTitle !== '';
     @endphp
     @if($showToolbar)
     <div class="mad-dg-toolbar">
+@if($_dgTitle !== '')
+        <div class="mad-dg-toolbar-title">{{ $_dgTitle }}</div>
+@endif
         @if($searchable)
         <input type="search" class="mad-input mad-dg-search" placeholder="{{ __('grid.search_placeholder') }}" x-model="search" @input="handleSearch()" @search="handleSearch()">
         @endif

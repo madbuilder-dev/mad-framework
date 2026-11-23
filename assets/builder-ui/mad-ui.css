@@ -7755,6 +7755,15 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   gap: 4px;
   margin-left: auto;
 }
+/* Título da barra (<mad-grid title>, fórum #387): o mesmo texto do título de
+   seção — o do painel de filtros. Quebra a linha em vez de empurrar os botões. */
+.mad-dg-toolbar-title {
+  min-width: 0;
+  font-size: var(--mad-section-title-size, .875rem);
+  font-weight: var(--mad-section-title-weight, 600);
+  color: var(--mad-section-title-color, var(--mad-text));
+  overflow-wrap: anywhere;
+}
 
 /* ── Seleção de linhas (<mad-grid selectable>) ───────────────────── */
 .mad-dg-selbar {
