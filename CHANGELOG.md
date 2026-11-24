@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.343.2] — 2026-11-24
+
+### Melhorias
+
+- **Central de Comando:** a aba **Código Fonte** avisa "Há tabelas novas para criar" quando o MadBuilder tem mudança no banco ainda não aplicada no app, antes e depois de aplicar o código. O botão **Abrir Migrations** consulta o MadBuilder e leva a **Migrar pendentes**. Para receber, aplique o Código Fonte pela própria Central.
+
+### Correções
+
+- **Central de Comando:** em **Migrations › Ver alterações**, a tabela alterada aparecia sem o nome. Agora mostra o nome da tabela.
+
 ## [5.343.1] — 2026-11-24
 
 ### Correções
