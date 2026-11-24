@@ -443,6 +443,13 @@ final class EmbedChatController
             $tools[] = new \Mad\Ai\Tools\HelpGetTool($sink);
         }
 
+        // Skills (#395): o prompt lista nome e descrição; skill_get devolve as
+        // instruções sob demanda. Só texto do manifesto — não executa nada e
+        // não muda as permissões das outras tools. Sem skill: não entra.
+        if ($manifest !== null && $manifest->skills() !== []) {
+            $tools[] = new \Mad\Ai\Tools\SkillGetTool($sink, $manifest);
+        }
+
         // Micro-BI: widgets salvos com SQL determinística (tela "Meus
         // Dashboards"). Independem do manifest (db_schema degrada pra
         // introspecção nativa quando ele falta). O preview/save devolvem ao

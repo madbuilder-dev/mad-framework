@@ -343,6 +343,82 @@ final class McpManifest
         return (array) ($this->data['fewshot'] ?? []);
     }
 
+    /** Limites das skills do Copilot (#395). O Studio recusa acima disso; aqui é a segunda trava. */
+    public const SKILLS_MAX             = 30;
+    public const SKILL_NAME_MAX         = 64;
+    public const SKILL_DESCRIPTION_MAX  = 500;
+    public const SKILL_INSTRUCTIONS_MAX = 20000;
+    public const SKILLS_TOTAL_MAX       = 100000;
+
+    /**
+     * Skills do Copilot (#395): procedimentos que o dono do sistema escreve no
+     * MCP Server do Studio. O prompt leva só nome e descrição; as instruções
+     * saem sob demanda pela tool `skill_get`.
+     *
+     * Texto de skill é dado: nome e descrição viram UMA linha (sem quebra, sem
+     * caractere de controle), para não abrirem seção nova no system prompt.
+     * Nome repetido (sem diferenciar maiúscula) fica com a primeira. Limites:
+     * {@see SKILLS_MAX} skills, instruções cortadas em
+     * {@see SKILL_INSTRUCTIONS_MAX} e {@see SKILLS_TOTAL_MAX} no total.
+     *
+     * @return list<array{name: string, description: string, instructions: string}>
+     */
+    public function skills(): array
+    {
+        $out   = [];
+        $seen  = [];
+        $total = 0;
+        foreach ((array) ($this->data['skills'] ?? []) as $raw) {
+            if (! is_array($raw) || count($out) >= self::SKILLS_MAX) {
+                continue;
+            }
+            $name         = self::skillLine((string) ($raw['name'] ?? ''), self::SKILL_NAME_MAX);
+            $description  = self::skillLine((string) ($raw['description'] ?? ''), self::SKILL_DESCRIPTION_MAX);
+            $instructions = trim(str_replace("\r\n", "\n", (string) ($raw['instructions'] ?? '')));
+            $instructions = (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $instructions);
+            if (mb_strlen($instructions) > self::SKILL_INSTRUCTIONS_MAX) {
+                $instructions = mb_substr($instructions, 0, self::SKILL_INSTRUCTIONS_MAX);
+            }
+            $key = mb_strtolower($name);
+            if ($name === '' || $instructions === '' || isset($seen[$key])) {
+                continue;
+            }
+            $total += mb_strlen($instructions);
+            if ($total > self::SKILLS_TOTAL_MAX) {
+                break;
+            }
+            $seen[$key] = true;
+            $out[]      = ['name' => $name, 'description' => $description, 'instructions' => $instructions];
+        }
+
+        return $out;
+    }
+
+    /** A skill de nome `$name` (sem diferenciar maiúscula nem espaço nas pontas), ou null. */
+    public function skill(string $name): ?array
+    {
+        $key = mb_strtolower(self::skillLine($name, self::SKILL_NAME_MAX));
+        if ($key === '') {
+            return null;
+        }
+        foreach ($this->skills() as $skill) {
+            if (mb_strtolower($skill['name']) === $key) {
+                return $skill;
+            }
+        }
+
+        return null;
+    }
+
+    /** Texto de uma linha só: sem quebra, tab nem caractere de controle; espaços juntos; cortado em $max. */
+    private static function skillLine(string $text, int $max): string
+    {
+        $text = (string) preg_replace('/[\x00-\x1F\x7F\x{2028}\x{2029}]+/u', ' ', $text);
+        $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+
+        return mb_strlen($text) > $max ? rtrim(mb_substr($text, 0, $max)) : $text;
+    }
+
     public function instructions(): string
     {
         return $this->systemValue('instructions');

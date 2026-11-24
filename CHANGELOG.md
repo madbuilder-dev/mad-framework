@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.337.0] — 2026-11-24
+
+### Novidades
+
+- **Chat IA:** o Copilot do sistema segue as skills criadas no MCP Server do Studio: o prompt leva só o nome e quando usar cada uma, e as instruções são lidas quando o pedido combina. Uma skill não executa nada nem muda as permissões do usuário.
+
 ## [5.336.1] — 2026-11-24
 
 ### Correções
