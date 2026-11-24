@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.335.1] — 2026-11-23
+
+### Correções
+
+- **Campos:** com a máscara escolhida por outro campo (`mask-by`) e "Remover máscara" (`strip-mask`) ligado, o Salvar recusava o CPF ou CNPJ digitado com "não pode ter mais que 14 caracteres". Agora a máscara sai antes de conferir e de gravar: o banco recebe só os números.
+
 ## [5.335.0] — 2026-11-23
 
 ### Novidades

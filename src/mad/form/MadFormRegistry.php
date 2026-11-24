@@ -1410,7 +1410,7 @@ class MadFormRegistry
      *
      * Usado por MadForm::getData() (instância e estático).
      */
-    public static function transformField(mixed $value, array $props): mixed
+    public static function transformField(mixed $value, array $props, array $data = []): mixed
     {
         $type = $props['type'] ?? 'input';
 
@@ -1459,7 +1459,7 @@ class MadFormRegistry
             default     => $value,
         };
 
-        return self::stripMaskValue($transformed, $props);
+        return self::stripMaskValue($transformed, $props, $data);
     }
 
     /**
@@ -1476,9 +1476,20 @@ class MadFormRegistry
      *
      * Sem `mask` não remove nada: o valor não foi mascarado no client, e
      * "tirar a máscara" apagaria caractere legítimo do dado.
+     *
+     * Campo com `mask-by` (fórum #381/#391) não tem `mask` fixa: ela sai do
+     * valor do campo de controle ENVIADO junto (`$data`), pelo mapa assinado
+     * da tela. Sem os dados (ou valor fora do mapa) não há máscara e nada é
+     * removido. Antes o strip-mask ficava morto nesses campos: o CNPJ
+     * mascarado (18) caía no `max:14` da coluna.
+     *
+     * @param  array<string,mixed>  $data  dados do formulário (campo de controle do `mask-by`)
      */
-    public static function stripMaskValue(mixed $value, array $props): mixed
+    public static function stripMaskValue(mixed $value, array $props, array $data = []): mixed
     {
+        if (!empty($props['maskBy'])) {
+            $props = \Mad\Support\MadMask::resolveBy($props, $data);
+        }
         if (empty($props['stripMask']) || empty($props['mask'])
             || !is_string($value) || $value === '') {
             return $value;

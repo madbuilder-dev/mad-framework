@@ -679,10 +679,11 @@ trait MadDbBlocksTrait
         $schema = is_array($cfg['formSchema'] ?? null) ? $cfg['formSchema'] : [];
         $screen = array_diff_key($posted, $schema) !== [] ? MadFormRegistry::fromRequest() : [];
 
+        $raw = $posted; // campo de controle do `mask-by` com o valor enviado
         foreach ($posted as $k => $v) {
             $props = $schema[$k] ?? $screen[$k] ?? null;
             if (is_array($props) && isset($props['type'])) {
-                $posted[$k] = MadFormRegistry::transformField($v, $props);
+                $posted[$k] = MadFormRegistry::transformField($v, $props, $raw);
             } elseif ($pivot !== null) {
                 $posted[$k] = self::_blockByCast($pivot, (string) $k, $v);
             }

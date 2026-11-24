@@ -727,7 +727,7 @@ class MadForm
             if (!array_key_exists($name, $this->fields)) {
                 continue;
             }
-            $result[$name] = MadFormRegistry::transformField($this->fields[$name], $props);
+            $result[$name] = MadFormRegistry::transformField($this->fields[$name], $props, $this->fields);
         }
 
         // Inclui dados de field-lists (arrays não presentes no schema do form)
@@ -8256,7 +8256,7 @@ class MadForm
         $schema = MadFormRegistry::fromRequest();
         foreach (is_array($schema) ? $schema : [] as $name => $props) {
             if (array_key_exists($name, $fields) && is_array($props)) {
-                $fields[$name] = MadFormRegistry::stripMaskValue($fields[$name], $props);
+                $fields[$name] = MadFormRegistry::stripMaskValue($fields[$name], $props, $fields);
             }
         }
 
@@ -12253,7 +12253,7 @@ class MadForm
             if (!array_key_exists($name, $state)) {
                 continue;
             }
-            $result[$name] = MadFormRegistry::transformField($state[$name], $props);
+            $result[$name] = MadFormRegistry::transformField($state[$name], $props, $state);
         }
 
         return $result;
