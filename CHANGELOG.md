@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.343.1] — 2026-11-24
+
+### Correções
+
+- **Formulário:** "Validar documento" não recusa mais o Salvar por causa de um CPF ou CNPJ escondido pela condição de exibição do próprio campo (ex.: o CPF some quando o tipo de pessoa é Jurídica). Com o campo à vista, o documento continua conferido.
+- **Campos:** a máscara não corta mais um valor gravado que não cabe nela (ex.: um CNPJ de 14 dígitos guardado na coluna de um campo de CPF). Ele aparece como está e o Salvar grava igual; antes o registro perdia os últimos dígitos. Campo escondido pela condição de exibição devolve o valor gravado sem reformatar.
+
 ## [5.343.0] — 2026-11-24
 
 ### Novidades

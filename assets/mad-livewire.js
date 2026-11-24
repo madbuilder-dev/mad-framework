@@ -1018,7 +1018,10 @@ const MadWire = (() => {
                 return;
             }
 
-            result[prop] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+            // Campo com máscara escondido por condição devolve o valor que veio
+            // do servidor quando só a formatação mudou (fórum #402, mad-ui.js).
+            result[prop] = el.type === 'checkbox' ? (el.checked ? '1' : '0')
+                : (typeof window._madMaskSendValue === 'function' ? window._madMaskSendValue(el) : el.value);
         });
         return result;
     }

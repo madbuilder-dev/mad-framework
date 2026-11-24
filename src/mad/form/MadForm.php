@@ -8090,6 +8090,16 @@ class MadForm
             if (isset($errors[$name]) || !is_string($value)) {
                 continue;
             }
+            // Fórum #402: campo escondido pela PRÓPRIA condição (`visible-when`)
+            // não é conferido — "Tipo de pessoa: Jurídica" esconde o CPF e o
+            // Salvar recusava um documento que a pessoa nem vê. A condição vem
+            // do token cifrado e é avaliada com os valores ENVIADOS: requisição
+            // forjada não esconde um campo que está à vista. Condição que o
+            // servidor não sabe avaliar = campo à vista (confere, como antes).
+            $when = is_array($props) ? (string) ($props['visibleWhen'] ?? '') : '';
+            if ($when !== '' && WhenCondition::evaluate($when, $data) === false) {
+                continue;
+            }
             $key = \Mad\Support\MadDocument::problem($value, $kind);
             if ($key !== null) {
                 $out[$name] = mad_t($key);

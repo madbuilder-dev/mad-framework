@@ -122,6 +122,9 @@
         'stripMask' => $stripMask,
         'maskFit'   => $_maskFit,
         'validateDocument' => $_docKind,
+        // Fórum #402: a condição de exibição do próprio campo vai junto (cifrada)
+        // para o Salvar não conferir o documento do campo que ela esconde.
+        'visibleWhen' => ($_docKind !== '' || $_docByMask) ? \Mad\Form\WhenCondition::fromAttrs((string) $attrs) : '',
     ] + ($_maskBy !== '' ? ['maskBy' => $_maskBy, 'maskMap' => $_maskMap, 'validateDocumentByMask' => $_docByMask] : []));
 @endphp
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}

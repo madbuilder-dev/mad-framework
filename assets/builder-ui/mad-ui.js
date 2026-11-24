@@ -1145,7 +1145,7 @@ function _madFlOnChange(el, hydrate) {
     wrapper.querySelectorAll('[data-mad-model], [data-mad-model-live]').forEach(function(mel) {
         if (typeof _madWhen !== 'undefined' && _madWhen.disabledByWhen(mel)) return;
         var prop = (mel.dataset.madModel || mel.dataset.madModelLive || '').trim();
-        if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : mel.value);
+        if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : _madMaskSendValue(mel));
     });
 
     // Inclui o schema token do formulário (para transformação de datas, etc.)
@@ -8422,6 +8422,41 @@ function _madMaskedCursor(pattern, rawCharsBeforeCursor) {
     return pos;
 }
 
+/**
+ * O valor cabe na máscara sem perder caractere? (fórum #402)
+ *
+ * A máscara corta o que passa das posições dela (e pula o que a posição não
+ * aceita). No que o usuário DIGITA isso é o limite do campo; num valor que
+ * veio GRAVADO, cortar é perder dado: o CNPJ de 14 dígitos guardado na coluna
+ * de um campo de CPF virava "112.223.330-00" ao abrir, e o Salvar gravava o
+ * pedaço por cima. Valor que não cabe fica como veio.
+ */
+function _madMaskFits(value, alias) {
+    var clean = String(value == null ? '' : value).replace(/[^0-9A-Za-z]/g, '');
+    if (clean === '' || !alias) return true;
+    var pattern = _madResolveMaskPattern(alias, value);
+    var kept = _madApplyMaskPattern(clean, pattern).replace(/[^0-9A-Za-z]/g, '');
+    return kept.toUpperCase() === clean.toUpperCase();
+}
+
+/**
+ * Valor que o Salvar manda de um campo com máscara (fórum #402). Escondido por
+ * condição (`visible-when`, da seção ou do próprio campo) e sem mudança além da
+ * formatação da máscara: volta o valor que veio do servidor, byte a byte — o
+ * campo que a pessoa nem vê não regrava o registro com outro formato. Campo à
+ * vista, ou com o valor de fato mudado, manda o que está nele, como sempre.
+ */
+function _madMaskSendValue(el) {
+    if (!el) return '';
+    var orig = el._madMaskOrig;
+    if (orig === undefined || el.value === orig) return el.value;
+    if (typeof _madWhen === 'undefined' || !_madWhen.hiddenByCondition(el)) return el.value;
+    var strip = function (v) { return String(v == null ? '' : v).replace(/[^0-9A-Za-z]/g, '').toUpperCase(); };
+    return strip(el.value) === strip(orig) ? orig : el.value;
+}
+window._madMaskFits = _madMaskFits;
+window._madMaskSendValue = _madMaskSendValue;
+
 // Exports pro mad-sheet.js (cellSetMasked): células virtualizadas nascem
 // depois do DOMContentLoaded — o init global de mask não as cobre, então a
 // planilha aplica mask/cursor/force-case no próprio handler @input.
@@ -8457,6 +8492,9 @@ function _madInitMaskedInput(root) {
         // `mask-by` (fórum #381) reaponta o atributo depois do init: lê a cada vez.
         function currentAlias() { return el.getAttribute('data-mad-mask') || ''; }
 
+        // Cabe na máscara atual sem cortar nada? (fórum #402)
+        function fits(value) { return _madMaskFits(value, currentAlias()); }
+
         function reformat() {
             var alias = currentAlias();
             if (alias === '') return el.value;
@@ -8474,6 +8512,12 @@ function _madInitMaskedInput(root) {
 
         el.addEventListener('input', function () {
             if (currentAlias() === '') return;
+            // Valor gravado que não cabe na máscara (fórum #402): fica como
+            // está até a edição fazê-lo caber — aí volta a ser mascarado.
+            if (el._madMaskKept) {
+                if (!fits(el.value)) return;
+                el._madMaskKept = false;
+            }
             var oldVal  = el.value;
             var oldPos  = el.selectionStart || 0;
             // Conta digitos/letras antes do cursor para reposicionar depois
@@ -8492,6 +8536,9 @@ function _madInitMaskedInput(root) {
         // Reformata com a máscara atual (o `mask-by` chama ao trocar de tipo).
         el._madMaskReformat = function () {
             if (!el.value) return;
+            // Trocar a máscara (mask-by) não corta o que já está no campo.
+            if (!fits(el.value)) { el._madMaskKept = true; return; }
+            el._madMaskKept = false;
             var f = reformat();
             if (f !== el.value) {
                 el.value = f;
@@ -8499,8 +8546,13 @@ function _madInitMaskedInput(root) {
             }
         };
 
-        // Formata valor inicial (quando vem populado do server)
-        if (el.value) {
+        // Formata valor inicial (quando vem populado do server). O que veio
+        // fica guardado (o Salvar do campo escondido devolve ele — ver
+        // _madMaskSendValue) e o que não cabe na máscara não é cortado.
+        el._madMaskOrig = el.value;
+        if (el.value && !fits(el.value)) {
+            el._madMaskKept = true;
+        } else if (el.value) {
             var initFormatted = reformat();
             if (initFormatted !== el.value) {
                 el.value = initFormatted;
@@ -12357,7 +12409,7 @@ document.addEventListener('alpine:init', () => {
                 wrapper.querySelectorAll('[data-mad-model], [data-mad-model-live]').forEach(function(mel) {
                     if (typeof _madWhen !== 'undefined' && _madWhen.disabledByWhen(mel)) return;
                     const prop = (mel.dataset.madModel || mel.dataset.madModelLive || '').trim();
-                    if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : mel.value);
+                    if (prop) body.append('mad_model[' + prop + ']', mel.type === 'checkbox' ? (mel.checked ? '1' : '0') : _madMaskSendValue(mel));
                 });
 
                 const formToken = wrapper.querySelector('input[name="__mad_form"]');
