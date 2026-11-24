@@ -856,7 +856,12 @@ trait MadFiltersTrait
 
             $val = $this->$name;
             if ($val === '' || $val === null || $val === []) continue;
-            if ($model !== null && !$this->modelHasColumn($model, $name)) continue;
+            if ($model !== null && !$this->modelHasColumn($model, $name)) {
+                // Campo calculado do Model com `#[FilterBy('cpf', 'cnpj')]`
+                // (fórum #393): filtra nas colunas declaradas, com OU.
+                $this->_applyAccessorAutoFilter($q, $model, $name, $val);
+                continue;
+            }
             if ($columns !== null && !isset($columns[strtolower($name)])) continue;
 
             // Coluna NUMÉRICA com valor que não é número: a opção do filtro não
@@ -889,6 +894,82 @@ trait MadFiltersTrait
         }
         // onSearch(Builder) é aplicado por _applyOnSearch (camada B); o antigo
         // contrato 2-arg foi removido — o hook hoje recebe só o Query Builder.
+    }
+
+    /**
+     * Filtro automático de um campo CALCULADO do Model (accessor) que declara
+     * as colunas em que filtra: `#[FilterBy('cpf', 'cnpj')]` (fórum #393).
+     *
+     * O valor vai a cada coluna declarada com o operador do campo e as colunas
+     * se unem com OU ("123" acha o CPF OU o CNPJ com 123); `!=` nega o grupo
+     * inteiro. Só valem colunas reais da tabela do Model
+     * ({@see \Mad\Database\ModelAccessors::filterColumns()}); sem
+     * declaração, o campo continua fora do automático, como antes.
+     *
+     * Operador: o declarado (`$autoFilterOps`/`filter-op=`) ou, sem ele, `like`
+     * quando alguma coluna é texto e `=` nas outras. Coluna numérica com valor
+     * que não é número sai do grupo (como no filtro de uma coluna só).
+     */
+    protected function _applyAccessorAutoFilter($q, string $modelClass, string $name, mixed $val): void
+    {
+        $columns = $this->_accessorFilterColumns($modelClass, $name);
+        if ($columns === []) {
+            return;
+        }
+
+        $declared = strtolower(trim((string) (($this->autoFilterOps ?? [])[$name] ?? ($this->_madBladeFilterOps[$name] ?? ''))));
+        $anyText  = false;
+        foreach ($columns as $col) {
+            if ($this->_isTextColumn($modelClass, $col)) {
+                $anyText = true;
+                break;
+            }
+        }
+        $op = in_array($declared, self::AUTO_FILTER_OPS, true) ? $declared : ($anyText ? 'like' : '=');
+
+        if (is_array($val)) {
+            $vals = array_values(array_filter($val, 'is_scalar'));
+            if ($vals === []) return;
+            $op = 'in';
+        }
+
+        $eligible = [];
+        foreach ($columns as $col) {
+            $numeric = $this->_isNumericColumn($modelClass, $col);
+            if ($numeric && $op === 'in') {
+                if (array_filter($vals, 'is_numeric') === []) continue;
+            } elseif ($numeric && !is_numeric($val) && !in_array($op, ['like', 'starts', 'ends'], true)) {
+                continue;
+            }
+            $eligible[] = \Mad\Database\QuerySource::qualify($q, $col);
+        }
+        if ($eligible === []) return;
+
+        \Mad\Database\ModelAccessors::whereAnyColumn($q, $eligible, $op, function ($w, string $col, string $o) use ($val): void {
+            if ($o === 'in') {
+                $w->whereIn($col, array_values(array_filter((array) $val, 'is_scalar')));
+                return;
+            }
+            $this->_applyAutoFilterWhere($w, $col, (string) $val, $o);
+        });
+    }
+
+    /**
+     * Colunas declaradas no accessor `$name` do Model `$modelClass` com
+     * `#[FilterBy]`, já validadas contra a tabela. Lista vazia = não declarado.
+     *
+     * @return list<string>
+     */
+    protected function _accessorFilterColumns(string $modelClass, string $name): array
+    {
+        try {
+            if (!class_exists($modelClass) || !is_subclass_of($modelClass, \Illuminate\Database\Eloquent\Model::class)) {
+                return [];
+            }
+            return \Mad\Database\ModelAccessors::filterColumns(new $modelClass(), $name);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

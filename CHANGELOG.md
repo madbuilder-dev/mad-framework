@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.336.0] — 2026-11-24
+
+### Novidades
+
+- **Listagem (grid):** um campo calculado do Model pode dizer em quais colunas filtra e busca: `#[FilterBy('cpf', 'cnpj')]` no accessor. O filtro da coluna, o campo do painel de filtros e a busca da listagem procuram nessas colunas, com o operador escolhido. Sem a declaração, nada muda.
+
 ## [5.335.1] — 2026-11-23
 
 ### Correções

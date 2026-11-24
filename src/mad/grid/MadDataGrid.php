@@ -4232,28 +4232,58 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _isVirtualField(string $field, $q = null): bool
     {
-        if ($q !== null) {
-            $model = static::_gridModel($q);
-        } else {
-            $model = null;
-            if (!empty($this->model) && !$this->_usesSource()) {
-                try {
-                    $class = class_exists($this->model)
-                        ? $this->model
-                        : \Mad\Form\ModelOptionsLoader::resolveModelClass($this->model);
-                    if (is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
-                        $model = new $class();
-                    }
-                } catch (\Throwable) {
-                    $model = null;
-                }
-            }
-        }
+        $model = $this->_fieldModel($q);
         if ($model === null) {
             return false;
         }
 
         return \Mad\Database\ModelAccessors::virtualPath($model, GridRenderHelpers::groupGrainBase($field));
+    }
+
+    /** Model da listagem para perguntar sobre um campo: o do builder, ou o `$model` declarado. */
+    private function _fieldModel($q = null): ?\Illuminate\Database\Eloquent\Model
+    {
+        if ($q !== null) {
+            return static::_gridModel($q);
+        }
+        if (empty($this->model) || $this->_usesSource()) {
+            return null;
+        }
+        try {
+            $class = class_exists($this->model)
+                ? $this->model
+                : \Mad\Form\ModelOptionsLoader::resolveModelClass($this->model);
+            if (is_subclass_of($class, \Illuminate\Database\Eloquent\Model::class)) {
+                return new $class();
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
+    /**
+     * Colunas reais em que o campo calculado filtra e busca, declaradas no
+     * accessor com `#[FilterBy('cpf', 'cnpj')]` (fórum #393). Só o accessor do
+     * PRÓPRIO Model (sem caminho de relação). Lista vazia = só exibição.
+     *
+     * @return list<string>
+     */
+    protected function _virtualFilterColumns(string $field, $q = null): array
+    {
+        $name = static::_unbrace(GridRenderHelpers::groupGrainBase($field));
+        if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+            return [];
+        }
+        $model = $this->_fieldModel($q);
+
+        return $model === null ? [] : \Mad\Database\ModelAccessors::filterColumns($model, $name);
+    }
+
+    /** Campo calculado SEM `#[FilterBy]`: não há WHERE possível (só exibição). */
+    protected function _isUnfilterableField(string $field, $q = null): bool
+    {
+        return $this->_isVirtualField($field, $q) && $this->_virtualFilterColumns($field, $q) === [];
     }
 
     /**
@@ -4264,16 +4294,18 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _dropVirtualFilter(GridColumn $col): void
     {
+        // Accessor com `#[FilterBy]` (fórum #393) filtra nas colunas declaradas:
+        // o funil fica.
         if ($col->filterKind !== ''
-            && $this->_isVirtualField($col->filterField !== '' ? $col->filterField : $col->field)) {
+            && $this->_isUnfilterableField($col->filterField !== '' ? $col->filterField : $col->field)) {
             $col->filterKind = '';
         }
-        if (($col->filterable || $col->hasFilterPopover) && $this->_isVirtualField($col->field)) {
+        if (($col->filterable || $col->hasFilterPopover) && $this->_isUnfilterableField($col->field)) {
             $col->filterable       = false;
             $col->hasFilterPopover = false;
         }
         if ($col->colFilterToken !== '' && $col->filterKind === ''
-            && $this->_isVirtualField($col->colFilterField !== '' ? $col->colFilterField : $col->field)) {
+            && $this->_isUnfilterableField($col->colFilterField !== '' ? $col->colFilterField : $col->field)) {
             $col->colFilterToken = '';
         }
     }
@@ -4614,8 +4646,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 continue;
             }
             // Accessor do Model sem coluna: o estado pode trazer o `filter` de
-            // antes, mas não há WHERE possível.
-            if ($this->_isVirtualField($field)) {
+            // antes, mas não há WHERE possível — a não ser que ele declare as
+            // colunas com `#[FilterBy]` (fórum #393).
+            if ($this->_isUnfilterableField($field)) {
                 return null;
             }
 
@@ -8080,7 +8113,20 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // também com o RÓTULO e vira o código gravado (fórum #292).
         $optionCodes = $this->_searchOptionCodes($fields, $this->search, $q);
 
-        $real = array_values(array_filter($fields, fn ($f) => ! $this->_isVirtualField((string) $f, $q)));
+        // Accessor com `#[FilterBy('cpf', 'cnpj')]` (fórum #393) vira as colunas
+        // que ele declara: a busca procura nelas, no mesmo OR.
+        $real = [];
+        foreach ($fields as $f) {
+            if (! $this->_isVirtualField((string) $f, $q)) {
+                $real[] = $f;
+                continue;
+            }
+            foreach ($this->_virtualFilterColumns((string) $f, $q) as $col) {
+                if (! in_array($col, $real, true)) {
+                    $real[] = $col;
+                }
+            }
+        }
         if ($real === [] && ($model = static::_gridModel($q)) !== null) {
             $real = \Mad\Database\ModelAccessors::textColumns($model);
         }
@@ -11059,7 +11105,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // '{cliente->nome_formatado}'): não há WHERE possível. O funil nem é
         // oferecido (_dropVirtualFilter); isto cobre o filtro que o estado de
         // antes ainda traga — ignorado em vez de derrubar a listagem.
+        // Com `#[FilterBy('cpf', 'cnpj')]` no accessor (fórum #393), o filtro vai
+        // às colunas declaradas com OU, com o mesmo operador.
         if ($this->_isVirtualField($field, $q)) {
+            $cols = array_map(
+                static fn (string $c) => \Mad\Database\QuerySource::qualify($q, $c),
+                $this->_virtualFilterColumns($field, $q)
+            );
+            \Mad\Database\ModelAccessors::whereAnyColumn($q, $cols, $op, static function ($w, string $col, string $o) use ($value): void {
+                static::_whereOp($w, $col, $o, $value);
+            });
             return;
         }
 

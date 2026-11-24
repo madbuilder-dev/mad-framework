@@ -171,6 +171,145 @@ final class ModelAccessors
     }
 
     /**
+     * Colunas reais em que o accessor `$attr` filtra e busca, declaradas com
+     * `#[FilterBy('cpf', 'cnpj')]` no método do accessor (fórum #393).
+     *
+     * Lista vazia = não declarado, ou nenhuma coluna válida: o campo segue só
+     * exibição, como antes. Só entra coluna da tabela do PRÓPRIO Model,
+     * conferida no schema (ou declarada no próprio Model: chave, `$fillable`),
+     * fora as escondidas (`$hidden`: senha, token). Nada vem do navegador: o
+     * nome das colunas sai do código do Model.
+     *
+     * @return list<string>
+     */
+    public static function filterColumns(Model $model, string $attr): array
+    {
+        $attr = self::unbrace($attr);
+        if (! preg_match(self::IDENT_RE, $attr) || ! self::isVirtual($model, $attr)) {
+            return [];
+        }
+
+        $hidden = array_flip(array_map('strtolower', $model->getHidden()));
+        $out    = [];
+        foreach (self::declaredFilterColumns($model, $attr) as $col) {
+            if (! preg_match(self::IDENT_RE, $col) || isset($hidden[strtolower($col)])) {
+                continue;
+            }
+            if (self::isColumn($model, $col) !== true || in_array($col, $out, true)) {
+                continue;
+            }
+            $out[] = $col;
+        }
+
+        return $out;
+    }
+
+    /** Operador negativo => o positivo que ele nega. */
+    private const NEGATED_OPS = [
+        'not like' => 'like',
+        '!='       => '=',
+        '<>'       => '=',
+        'not in'   => 'in',
+        'empty'    => 'not empty',
+        'is null'  => 'is not null',
+    ];
+
+    /**
+     * WHERE de um campo calculado com `#[FilterBy]`: o mesmo predicado em cada
+     * coluna declarada, unido com OU — "contém 123" acha a linha em que o CPF
+     * OU o CNPJ contém 123.
+     *
+     * Operador negativo é a negação do positivo sobre o grupo inteiro:
+     * "não contém 123" = nem o CPF nem o CNPJ contém 123. Cada coluna do grupo
+     * negado exige `IS NOT NULL` antes do predicado, para o NOT não virar NULL
+     * (e esconder a linha) quando uma das colunas está vazia.
+     *
+     * O valor nunca entra no SQL: `$apply` usa o builder (bind).
+     *
+     * @param list<string> $columns colunas já validadas ({@see filterColumns()}) e já
+     *                              qualificadas pelo chamador (`tabela.coluna`)
+     * @param callable(mixed $where, string $column, string $op): void $apply
+     */
+    public static function whereAnyColumn($q, array $columns, string $op, callable $apply): void
+    {
+        if ($columns === []) {
+            return;
+        }
+
+        $positive = self::NEGATED_OPS[$op] ?? null;
+        if ($positive === null) {
+            $q->where(static function ($group) use ($columns, $op, $apply): void {
+                foreach ($columns as $column) {
+                    $group->orWhere(static function ($one) use ($column, $op, $apply): void {
+                        $apply($one, $column, $op);
+                    });
+                }
+            });
+
+            return;
+        }
+
+        $q->whereNot(static function ($group) use ($columns, $positive, $apply): void {
+            foreach ($columns as $column) {
+                $group->orWhere(static function ($one) use ($column, $positive, $apply): void {
+                    $one->whereNotNull($column);
+                    $apply($one, $column, $positive);
+                });
+            }
+        });
+    }
+
+    /** @var array<string, list<string>> classe|accessor => nomes declarados (código não muda no request) */
+    private static array $declaredFilterMemo = [];
+
+    /**
+     * Nomes do `#[FilterBy(…)]` do método do accessor, sem validar: estilo
+     * clássico (`getXxxAttribute`) e Laravel 9+ (`xxx(): Attribute`). Lê os
+     * argumentos pela reflexão, sem instanciar o atributo — `FilterBy` sem o
+     * `use` também casa pelo nome curto.
+     *
+     * @return list<string>
+     */
+    private static function declaredFilterColumns(Model $model, string $attr): array
+    {
+        $key = $model::class . '|' . $attr;
+        if (array_key_exists($key, self::$declaredFilterMemo)) {
+            return self::$declaredFilterMemo[$key];
+        }
+
+        $out = [];
+        foreach (['get' . Str::studly($attr) . 'Attribute', Str::camel($attr)] as $method) {
+            if (! method_exists($model, $method)) {
+                continue;
+            }
+            try {
+                $attributes = (new \ReflectionMethod($model, $method))->getAttributes();
+            } catch (\Throwable) {
+                continue;
+            }
+            foreach ($attributes as $attribute) {
+                $name  = $attribute->getName();
+                $short = ($pos = strrpos($name, '\\')) === false ? $name : substr($name, $pos + 1);
+                if (strcasecmp($short, 'FilterBy') !== 0) {
+                    continue;
+                }
+                try {
+                    $args = $attribute->getArguments();
+                } catch (\Throwable) {
+                    continue;
+                }
+                array_walk_recursive($args, static function ($c) use (&$out): void {
+                    if (is_string($c) && trim($c) !== '') {
+                        $out[] = trim($c);
+                    }
+                });
+            }
+        }
+
+        return self::$declaredFilterMemo[$key] = array_values(array_unique($out));
+    }
+
+    /**
      * `{nome}` / `{cliente->nome}` → `nome` / `cliente->nome`. Qualquer outra
      * coisa (template com texto, chaves soltas) volta como veio.
      */
