@@ -47,6 +47,17 @@
     } else {
         $quando = is_scalar($item->{$dateCol} ?? null) ? (string) $item->{$dateCol} : '';
     }
+    // `editor="rich"` (fw#637): o corpo é HTML e sai como HTML, sem escapar de
+    // novo — mas LIMPO aqui também: o que entrou por fora do formulário
+    // (importação, API, outra tela) não chega à página com `<script>`,
+    // atributo de evento ou URL `javascript:`. Comentário antigo, gravado em
+    // texto simples antes da prop, continua escapado e com as quebras.
+    $rich     = !empty($vars['rich']);
+    $corpo    = $item->{$bodyCol} ?? '';
+    $corpoHtml = null;
+    if ($rich && is_string($corpo) && preg_match('/<\/?[a-z][a-z0-9]*(\s[^>]*)?\/?>/i', $corpo)) {
+        $corpoHtml = \Mad\Util\MadHtmlSanitizer::sanitize($corpo);
+    }
     $iniciais = strtoupper(mb_substr(preg_replace('/\s+/u', ' ', trim((string) $autor)), 0, 2));
     $avatarBg = $isInt ? 'var(--mad-color-secondary, #6c757d)' : 'var(--mad-color-primary, #0d6efd)';
 @endphp
@@ -83,5 +94,11 @@
             </button>
         @endif
     </div>
+    @if($corpoHtml !== null)
+        <div class="mad-comment-body mad-comment-rich" style="padding:14px 16px;line-height:1.6;font-size:14px;color:#374151;overflow-wrap:anywhere;">{!! $corpoHtml !!}</div>
+    @elseif($rich)
+        <div class="mad-comment-body" style="padding:14px 16px;white-space:pre-wrap;line-height:1.6;font-size:14px;color:#374151;">{{ $corpo }}</div>
+    @else
     <div style="padding:14px 16px;white-space:pre-wrap;line-height:1.6;font-size:14px;color:#374151;">{{ $item->{$bodyCol} ?? '' }}</div>
+    @endif
 </mad-card>

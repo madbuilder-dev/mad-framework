@@ -300,6 +300,10 @@ return [
         'error' => [
             // Error técnico (base de datos/PHP) capturado en una acción: el detalle va solo al log (Mad\Ui\MadUserError).
             'friendly'      => 'No fue posible completar la operación. Inténtelo de nuevo o avise al administrador.',
+            // Final de la frase del error técnico: el código que está en el log (fw#642).
+            'support_code'  => 'Código para soporte: :code',
+            // Título del diálogo del error con código (el toast de error pasa a ser un diálogo fijo).
+            'title'         => 'Error',
             'delete_failed' => 'No fue posible eliminar el registro. Puede estar en uso en otro registro; si continúa, avise al administrador.',
             // Registro en uso: la frase dice quién lo usa (Mad\Ui\MadRecordInUse).
             'in_use'      => 'No es posible eliminar este registro: está en uso en :where. Elimine o cambie esos registros primero.',
@@ -317,13 +321,16 @@ return [
             'row_gone'       => 'Este registro ya no está en el listado: puede haber sido eliminado o modificado por otra persona. Actualice la pantalla.',
             'delete_gone'    => 'No se eliminó nada: el registro ya no está en el listado. Puede haber sido eliminado por otra persona.',
             'delete_refused' => 'El registro no fue eliminado: la eliminación fue rechazada.',
+            'delete_denied'  => 'El registro no fue eliminado: :reason',
             // Eliminación que se lleva lo que pertenece al registro (on delete cascade): segunda confirmación.
             'delete_along'         => 'Junto con este registro también se eliminarán: :where. No se puede deshacer.',
             'delete_along_title'   => '¿Eliminar el registro y lo que le pertenece?',
             'delete_along_confirm' => 'Eliminar todo',
             'delete_along_cancel'  => 'Cancelar',
+            'delete_along_trash'   => 'También va a la papelera: :where.',
             'action_gone'    => 'La acción no se ejecutó: el registro ya no está en el listado.',
             'action_refused' => 'La acción no se ejecutó: no aplica a este registro.',
+            'action_denied'  => 'La acción no se ejecutó: :reason',
             'cell_not_saved' => 'El cambio no fue guardado.',
             'stale_write'    => 'El cambio no fue guardado: el mismo campo fue modificado después en otra pestaña o ventana. Recargue la pantalla para ver el valor actual.',
             'cell_invalid'   => 'Valor inválido.',
@@ -1137,6 +1144,7 @@ return [
             'doc_bad_pix'               => 'Clave Pix no válida: use CPF, CNPJ, correo, teléfono con +55 o clave aleatoria.',
             'ok' => 'OK',
             'keep_editing' => 'Seguir editando',
+            'save_and_close' => 'Guardar y cerrar',
             'save' => 'Guardar',
             'pin_side_menu'             => 'Fijar menú lateral abierto',
             'collapse_side_menu'        => 'Contraer menú lateral',

@@ -1228,6 +1228,13 @@ a.mad-btn.mad-when-disabled {
 .mad-dg-card-action[data-mad-deny][aria-disabled="true"]:hover {
   background: none;
 }
+/* Ação do cartão do <mad-kanban> recusada pela deny-condition (fw#636): o
+   mesmo esmaecido (a cor da variante fica: o botão do cartão tem fundo). */
+.mad-kanban-card-btn[data-mad-deny][aria-disabled="true"],
+.mad-kanban-card-menu-item[data-mad-deny][aria-disabled="true"] {
+  opacity: .45;
+  cursor: not-allowed;
+}
 
 /* Variantes */
 .mad-btn-default {
@@ -11396,6 +11403,19 @@ textarea.mad-dg-inline-input {
 .mad-confirm-popover-btns {
   display: flex; gap: 6px; justify-content: flex-end;
 }
+/* Ação destrutiva (danger): o Confirmar vermelho fica afastado do Cancelar,
+   um em cada ponta — um clique torto não cai nele (fw#640). */
+.mad-confirm-btns.mad-confirm-btns-danger,
+.mad-confirm-popover-btns.mad-confirm-btns-danger {
+  justify-content: space-between; gap: 24px;
+}
+/* 3ª opção (o "Salvar e fechar" da pergunta de descarte, fw#639): Cancelar e
+   a opção juntos, o Confirmar sozinho na outra ponta. */
+.mad-confirm-btns.mad-confirm-btns-alt {
+  justify-content: flex-start; flex-wrap: wrap; gap: 8px;
+}
+.mad-confirm-btns-alt .mad-confirm-alt { margin-right: auto; }
+.mad-confirm-btns-alt .mad-confirm-alt + .mad-btn { margin-left: 16px; }
 
 /* ── MadDialog (MadMessage.info/error/warning/confirm) ─────────── */
 .mad-dialog-overlay {
@@ -14927,6 +14947,15 @@ textarea.mad-dg-inline-input {
     color: var(--mad-primary, #6366f1);
 }
 .mad-db-blocks-stack .mad-db-blocks-add { align-self: flex-start; }
+/* <mad-comments editor="rich"> (fw#637): o corpo do comentário em HTML —
+   parágrafo e lista com respiro curto, imagem colada na largura do cartão. */
+.mad-comment-rich > :first-child { margin-top: 0; }
+.mad-comment-rich > :last-child { margin-bottom: 0; }
+.mad-comment-rich p { margin: 0 0 .6em; }
+.mad-comment-rich ul, .mad-comment-rich ol { margin: 0 0 .6em; padding-left: 1.4em; }
+.mad-comment-rich ul { list-style: disc; }
+.mad-comment-rich ol { list-style: decimal; }
+.mad-comment-rich img { max-width: 100%; height: auto; }
 .mad-db-blocks-popover {
     position: absolute;
     z-index: 1000;

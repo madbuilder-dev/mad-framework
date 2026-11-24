@@ -65,12 +65,12 @@ class MadSiteWireController
         } catch (\Throwable $e) {
             // JSON de erro (com `_exception` só sob APP_DEBUG) em vez da página
             // HTML do Laravel — o MadErrorModal do front sabe exibir.
-            if (function_exists('report')) {
-                report($e);
-            }
+            // Código para o suporte (fw#642): no log e no fim da frase ao visitante.
+            $errorId = \Mad\Ui\MadErrorPage::errorId($e);
+            \Mad\Ui\MadErrorPage::reportUnhandled($e, $errorId, MadComponentHandler::wireErrorContext($_POST));
 
             return new JsonResponse(
-                MadComponentHandler::exceptionPayload($e, $_POST),
+                MadComponentHandler::exceptionPayload($e, $_POST, $errorId),
                 500,
                 ['X-Mad-Site-Wire' => '1', 'X-Mad-Wire-Error' => '1', 'Cache-Control' => 'no-store, private'],
             );

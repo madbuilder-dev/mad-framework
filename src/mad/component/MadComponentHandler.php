@@ -91,7 +91,10 @@ class MadComponentHandler
         } catch (\Throwable $e) {
             $stray = ob_get_clean();
             http_response_code(500);
-            $payload = self::exceptionPayload($e, $_POST);
+            // Código para o suporte (fw#642), como no MadAppController.
+            $errorId = \Mad\Ui\MadErrorPage::errorId($e);
+            \Mad\Ui\MadErrorPage::reportUnhandled($e, $errorId, self::wireErrorContext($_POST));
+            $payload = self::exceptionPayload($e, $_POST, $errorId);
             if ($stray !== '' && $stray !== false) {
                 $payload['error'] .= "\n\nOutput capturado:\n" . strip_tags($stray);
                 if (isset($payload['_exception'])) {
@@ -113,12 +116,26 @@ class MadComponentHandler
      * Detalhes (arquivo, linha, trace, snippet) SÓ vão com APP_DEBUG ligado —
      * em produção volta apenas a mensagem genérica.
      *
+     * Com `$errorId` (o código que foi para o log, fw#642) a frase genérica
+     * termina com "Código para o suporte: E-7K2Q9" — o front a mostra num
+     * diálogo de erro — e o `_exception` do desenvolvedor leva o `error_id`.
+     *
      * @param array<string,mixed> $post $_POST do request wire (contexto)
-     * @return array{error:string,_exception?:array<string,mixed>}
+     * @return array{error:string,error_id?:string,_exception?:array<string,mixed>}
      */
-    public static function exceptionPayload(\Throwable $e, array $post = []): array
+    public static function exceptionPayload(\Throwable $e, array $post = [], ?string $errorId = null): array
     {
         if (!self::_debugEnabled()) {
+            if ($errorId !== null && $errorId !== '') {
+                $title = mad_t('mad.error.title');
+
+                return [
+                    'error'    => \Mad\Ui\MadUserError::withSupportCode(\Mad\Ui\MadUserError::friendly(), $errorId),
+                    'error_id' => $errorId,
+                    'title'    => ($title === '' || $title === 'mad.error.title') ? 'Erro' : $title,
+                ];
+            }
+
             return ['error' => 'Erro interno no servidor. Consulte o log da aplicação.'];
         }
 
@@ -143,6 +160,9 @@ class MadComponentHandler
             'snippet'   => self::_sourceSnippet($e->getFile(), $e->getLine()),
             'trace'     => self::_traceLines($e),
         ];
+        if ($errorId !== null && $errorId !== '') {
+            $exception['error_id'] = $errorId;
+        }
 
         $prev = $e->getPrevious();
         if ($prev instanceof \Throwable) {
@@ -154,6 +174,33 @@ class MadComponentHandler
             'error'      => get_class($e) . ': ' . $message,
             '_exception' => $exception,
         ];
+    }
+
+    /**
+     * Tela e ação de uma chamada do wire que falhou, para a linha do log do
+     * código de suporte (fw#642). A tela vem do estado já decifrado (a classe
+     * que estava rodando); a ação, do pedido. Nunca lança.
+     *
+     * @param array<string,mixed> $post $_POST do request wire
+     * @return array<string,string>
+     */
+    public static function wireErrorContext(array $post): array
+    {
+        $out = [];
+        try {
+            $class = CurrentControl::get();
+            if (is_string($class) && $class !== '') {
+                $out['component'] = $class;
+            }
+        } catch (\Throwable) {
+            // sem a tela: segue com a ação
+        }
+        $action = $post['mad_action'] ?? '';
+        if (is_string($action) && $action !== '' && strlen($action) <= 120) {
+            $out['action'] = $action;
+        }
+
+        return $out;
     }
 
     /** APP_DEBUG ligado? (config quando há Laravel; env como fallback) */

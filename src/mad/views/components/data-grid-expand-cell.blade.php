@@ -24,7 +24,7 @@
 @if($_rxCard)
 @if($_rx)
 <button type="button" class="mad-dg-card-action mad-dg-expand-btn" {!! $_rx->stateAttrs($row) !!}
-        title="{{ $_rx->tooltip() }}" aria-expanded="false" {!! $_rx->getNavAttr($_rxId, $row) !!}>
+        title="{{ $_rx->tooltip($row) }}" aria-expanded="false" {!! $_rx->getNavAttr($_rxId, $row) !!}>
     <i data-lucide="{{ $_rx->icon }}" style="width:14px;height:14px;"></i><span>{{ $_rx->label }}</span>
 </button>
 @endif
@@ -32,7 +32,7 @@
 <td class="mad-dg-cell mad-dg-expand-cell">
     @if($_rx)
     <button type="button" class="mad-dg-expand-btn" {!! $_rx->stateAttrs($row) !!}
-            title="{{ $_rx->tooltip() }}" aria-label="{{ $_rx->label }}" aria-expanded="false"
+            title="{{ $_rx->tooltip($row) }}" aria-label="{{ $_rx->label }}" aria-expanded="false"
             {!! $_rx->getNavAttr($_rxId, $row) !!}>
         <i data-lucide="{{ $_rx->icon }}" style="width:16px;height:16px;"></i>
     </button>

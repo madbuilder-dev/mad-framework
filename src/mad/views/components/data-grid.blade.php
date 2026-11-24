@@ -1655,8 +1655,9 @@
                             // Estado + dica do perfil (ver GridAction::stateAttrs): o card
                             // recusado não levava title nenhum.
                             $dis = $act->stateAttrs($row);
+                            $_dny = $act->refusalTitle($row);
                             $dis = ($dis !== '' ? ' ' . $dis : '')
-                                 . ($act->denyTitle() !== '' ? ' title="' . e($act->denyTitle()) . '"' : '');
+                                 . ($_dny !== '' ? ' title="' . e($_dny) . '"' : '');
                             $ico = $act->icon ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:14px;height:14px;"></i>' : '';
                             $cls = $act->cardClass();
                         @endphp
@@ -1701,8 +1702,9 @@
                                     $gAct = $gAct->getTransformed($row);
                                     $gCls = $gAct->menuClass();
                                     $gDis = $gAct->stateAttrs($row);
+                                    $_gDny = $gAct->refusalTitle($row);
                                     $gDis = ($gDis !== '' ? ' ' . $gDis : '')
-                                          . ($gAct->denyTitle() !== '' ? ' title="' . e($gAct->denyTitle()) . '"' : '');
+                                          . ($_gDny !== '' ? ' title="' . e($_gDny) . '"' : '');
                                     $gIco = $gAct->icon ? '<i data-lucide="' . htmlspecialchars($gAct->icon, ENT_QUOTES) . '" style="width:13px;height:13px;"></i>' : '';
                                 @endphp
                                 @if($gAct->isNav)

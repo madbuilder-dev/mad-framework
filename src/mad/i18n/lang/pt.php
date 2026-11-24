@@ -300,6 +300,10 @@ return [
         'error' => [
             // Erro técnico (banco/PHP) capturado numa ação: o detalhe vai só pro log (Mad\Ui\MadUserError).
             'friendly'      => 'Não foi possível concluir a operação. Tente de novo ou avise o administrador.',
+            // Fim da frase do erro técnico: o código que está no log (fw#642).
+            'support_code'  => 'Código para o suporte: :code',
+            // Título do diálogo do erro com código (o toast de erro vira diálogo fixo).
+            'title'         => 'Erro',
             'delete_failed' => 'Não foi possível excluir o registro. Ele pode estar em uso em outro cadastro; se continuar, avise o administrador.',
             // Registro em uso: a frase diz quem o usa (Mad\Ui\MadRecordInUse).
             'in_use'      => 'Não é possível excluir este registro: ele está em uso em :where. Exclua ou altere esses registros primeiro.',
@@ -317,13 +321,16 @@ return [
             'row_gone'       => 'Este registro não está mais na listagem: pode ter sido excluído ou alterado por outra pessoa. Atualize a tela.',
             'delete_gone'    => 'Nada foi excluído: o registro não está mais na listagem. Ele pode ter sido excluído por outra pessoa.',
             'delete_refused' => 'O registro não foi excluído: a exclusão foi recusada.',
+            'delete_denied'  => 'O registro não foi excluído: :reason',
             // Exclusão que leva junto o que pertence ao registro (on delete cascade): segunda confirmação.
             'delete_along'         => 'Junto com este registro também serão excluídos: :where. Não dá para desfazer.',
             'delete_along_title'   => 'Excluir o registro e o que pertence a ele?',
             'delete_along_confirm' => 'Excluir tudo',
             'delete_along_cancel'  => 'Cancelar',
+            'delete_along_trash'   => 'Vai junto para a lixeira: :where.',
             'action_gone'    => 'A ação não foi executada: o registro não está mais na listagem.',
             'action_refused' => 'A ação não foi executada: ela não vale para este registro.',
+            'action_denied'  => 'A ação não foi executada: :reason',
             'cell_not_saved' => 'A alteração não foi gravada.',
             'stale_write'    => 'A alteração não foi gravada: o mesmo campo foi alterado depois em outra aba ou janela. Recarregue a tela para ver o valor atual.',
             'cell_invalid'   => 'Valor inválido.',
@@ -1140,6 +1147,7 @@ return [
             'doc_bad_pix'               => 'Chave Pix inválida: use CPF, CNPJ, e-mail, celular com +55 ou chave aleatória.',
             'ok' => 'OK',
             'keep_editing' => 'Continuar editando',
+            'save_and_close' => 'Salvar e fechar',
             'save' => 'Salvar',
             'pin_side_menu'             => 'Fixar menu lateral aberto',
             'collapse_side_menu'        => 'Recolher menu lateral',

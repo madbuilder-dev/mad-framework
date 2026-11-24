@@ -2448,6 +2448,38 @@ class MadForm
     }
 
     /**
+     * Botão da tela com `deny-condition` (fw#636): o motivo que ele mostrou no
+     * último desenho, por método do clique. Fica no estado cifrado (`bd`), e a
+     * tela recusa a chamada desse método enquanto houver motivo — quem tira o
+     * `aria-disabled` pelo DevTools não executa a ação. Motivo vazio solta.
+     *
+     * @internal chamado pela view do framework (btn)
+     */
+    public function declareButtonDeny(string $method, string $reason): void
+    {
+        if ($method === '' || $this->_openedBefore) {
+            return;
+        }
+        if ($reason === '') {
+            if (isset($this->_known[self::DECLARED]['bd'][$method])) {
+                unset($this->_known[self::DECLARED]['bd'][$method]);
+            }
+
+            return;
+        }
+        $this->_openDeclared();
+        $this->_known[self::DECLARED]['bd'][$method] = $reason;
+    }
+
+    /** O motivo da recusa do botão que chama `$method` (declareButtonDeny), ou ''. */
+    public function buttonDenyFor(string $method): string
+    {
+        $reason = $this->_known[self::DECLARED]['bd'][$method] ?? '';
+
+        return is_string($reason) ? $reason : '';
+    }
+
+    /**
      * Os Detail Forms desta tela com ação de linha condicionada que chama
      * `$method` — ver declareDetailActions().
      *

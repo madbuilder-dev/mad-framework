@@ -30,7 +30,9 @@ use Mad\Service\MadUploadStorage;
  *    pede) ou o caminho absoluto que cai dentro de `public/`. Sem `..`, e o
  *    realpath tem de continuar em `public/` (link para fora é recusado);
  *  - `app:logo` — a logo do sistema, a mesma que o app mostra (cabeçalho do
- *    tema → login do tema → logo do projeto), lida de `public/`.
+ *    tema → login do tema → logo do projeto), lida de `public/`. O app pode
+ *    fornecer outra pelo gancho `config('mad.pdf.logo_resolver')` (fw#641),
+ *    que vale antes de todas e também para o `{LOGO}` do PDF da grade.
  *
  * Em todos os casos só passa imagem RASTER reconhecida pelos bytes (PNG, JPEG,
  * GIF, WebP) até `mad.doc.image_max_bytes` (padrão 5 MB). Qualquer outra coisa
@@ -166,12 +168,92 @@ class MadDocImage
     }
 
     /**
-     * A logo do sistema como data URI, a mesma que o app mostra no modo claro
-     * (o papel é branco): logo do cabeçalho do tema da requisição → logo do
-     * login do tema → logo do projeto. Lida só de `public/`, pelo mesmo
-     * caminho de `fromPublic()`. '' quando o app não tem logo raster.
+     * A logo do sistema como data URI (`app:logo`): a do gancho do app
+     * (`resolverLogo()`, fw#641) e, sem ele, a de `systemLogo()`. É a mesma
+     * logo que o `{LOGO}` do PDF da grade usa quando o projeto não configurou
+     * uma — os dois saem iguais. '' quando o app não tem logo raster.
      */
     public static function appLogo(): string
+    {
+        return self::resolverLogo('large') ?: self::systemLogo();
+    }
+
+    /**
+     * Logo que o app fornece pelo gancho `config('mad.pdf.logo_resolver')`
+     * (fw#641), consultado antes de qualquer outra fonte pelo `app:logo` dos
+     * documentos e pelo `{LOGO}`/`{LOGO_SMALL}` do PDF da grade. Serve para a
+     * logo trocada em Configurações sair nos PDFs sem nova versão do app.
+     *
+     * O gancho é um callable que recebe o tamanho (`'large'` ou `'small'`) e
+     * devolve a logo: data URI, arquivo de `public/` (`images/logo.png`),
+     * chave do disco de uploads, URL `http(s)://` (com as travas de `src()`)
+     * ou caminho absoluto de um arquivo do app (dentro da pasta do projeto).
+     * Também aceita o nome de uma classe com `__invoke` (resolvida pelo
+     * container), que sobrevive ao `config:cache` — closure não sobrevive.
+     *
+     * '' (o chamador segue para a próxima fonte) quando não há gancho, quando
+     * ele devolve vazio ou algo que não é imagem raster, ou quando lança — o
+     * erro vai para o log e o PDF não cai. Nunca lança.
+     *
+     * @param 'large'|'small' $type
+     */
+    public static function resolverLogo(string $type = 'large'): string
+    {
+        try {
+            $resolver = config('mad.pdf.logo_resolver');
+            if ($resolver === null || $resolver === '' || $resolver === false) {
+                return '';
+            }
+            if (is_string($resolver) && ! is_callable($resolver) && class_exists($resolver)) {
+                $resolver = app($resolver);
+            }
+            if (! is_callable($resolver)) {
+                return '';
+            }
+
+            $value = $resolver($type === 'small' ? 'small' : 'large');
+        } catch (\Throwable $e) {
+            try {
+                \Illuminate\Support\Facades\Log::warning(
+                    '[MadDocImage] mad.pdf.logo_resolver falhou; o PDF segue com a logo padrão: ' . $e->getMessage(),
+                    ['exception' => $e]
+                );
+            } catch (\Throwable) {
+                // sem log disponível: segue calado
+            }
+
+            return '';
+        }
+
+        try {
+            $value = is_string($value) ? trim($value) : '';
+            // `app:logo` aqui daria volta infinita: vazio = segue para a logo padrão.
+            if ($value === '' || strcasecmp($value, self::APP_LOGO) === 0) {
+                return '';
+            }
+            if (str_starts_with($value, 'data:')) {
+                return self::fromDataUri($value);
+            }
+
+            $uri = self::src($value);
+            if (str_starts_with($uri, 'data:image/')) {
+                return $uri;
+            }
+
+            return self::fromAppFile($value);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * A logo padrão do sistema como data URI, a mesma que o app mostra no
+     * modo claro (o papel é branco): logo do cabeçalho do tema da requisição
+     * → logo do login do tema → logo do projeto. Lida só de `public/`, pelo
+     * mesmo caminho de `fromPublic()`. '' quando o app não tem logo raster.
+     * Não consulta o gancho do app (`appLogo()` consulta).
+     */
+    public static function systemLogo(): string
     {
         foreach (self::appLogoCandidates() as $candidate) {
             $uri = str_starts_with($candidate, 'data:')
@@ -215,6 +297,30 @@ class MadDocImage
             array_merge($out, self::PROJECT_LOGOS),
             static fn ($v): bool => is_string($v) && trim($v) !== ''
         ));
+    }
+
+    /**
+     * Caminho absoluto de um arquivo do próprio app (dentro de `base_path()`:
+     * `storage/app/…`, `app/images/…`) → data URI, só para o valor que o
+     * gancho do app devolveu. Fora da pasta do projeto, por link ou com `..`:
+     * ''. Só raster pelos bytes, com o mesmo teto de tamanho.
+     */
+    private static function fromAppFile(string $path): string
+    {
+        $path = str_replace('\\', '/', $path);
+        if (! ($path !== '' && ($path[0] === '/' || preg_match('#^[a-zA-Z]:/#', $path)))
+            || str_contains($path, "\0") || in_array('..', explode('/', $path), true)
+            || ! function_exists('base_path')) {
+            return '';
+        }
+        $root = realpath(base_path());
+        $file = realpath($path);
+        if ($root === false || $file === false || ! str_starts_with($file, $root . DIRECTORY_SEPARATOR)
+            || ! is_file($file) || (int) filesize($file) > self::maxBytes()) {
+            return '';
+        }
+
+        return self::dataUri((string) file_get_contents($file));
     }
 
     /** Data URI já pronto (logo do login guardada inline) → o mesmo, se for raster. */

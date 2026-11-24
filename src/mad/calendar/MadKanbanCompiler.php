@@ -296,6 +296,7 @@ class MadKanbanCompiler
             'when-field', 'whenField', 'when-value', 'whenValue',
             'when-in', 'whenIn', 'when-nin', 'whenNin',
             'display-condition', 'displayCondition',
+            'deny-condition', 'denyCondition',
         ]);
         if (!empty($actions)) {
             $parts[] = "'actions' => " . self::arrayLiteral($actions);

@@ -470,10 +470,16 @@ abstract class MadKanban extends MadComponent implements MadFilterable
      * Aplica display-condition + when-field/value/in/nin. Retorna null se a
      * action deve ser ocultada para esse item.
      *
+     * `deny-condition` (fw#636): mesmo callable do display-condition, devolve
+     * ?string. Com texto, a ação fica no cartão recusada — `aria-disabled` +
+     * `data-mad-deny` + `title` com o texto no `attrs` (o mad-ui.js barra o
+     * clique e mostra a dica) — e `deny` leva o texto.
+     *
      * Saída:
      *   label, icon, variant   — visual
      *   confirm                — string p/ confirmação client
      *   attrs                  — string com atributos HTML do <button>
+     *   deny                   — motivo da recusa ('' = ação normal)
      */
     protected function _resolveAction(object $item, array $cfg, int|string $id): ?array
     {
@@ -510,6 +516,13 @@ abstract class MadKanban extends MadComponent implements MadFilterable
                 $set = is_array($nin) ? $nin : array_map('trim', explode(',', (string) $nin));
                 if (in_array($val, $set, true)) return null;
             }
+        }
+
+        // deny-condition: no mesmo laço, sobre o mesmo registro (sem consulta).
+        $deny = '';
+        $dn   = \Mad\Grid\GridAction::hostCallable($cfg['denyCondition'] ?? ($cfg['deny-condition'] ?? null), [static::class]);
+        if ($dn && is_callable($dn)) {
+            $deny = \Mad\Grid\GridAction::denyText(self::_callRowCallback($dn, $item, $row));
         }
 
         $label   = (string) ($cfg['label']   ?? '');
@@ -553,12 +566,18 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             }
         }
 
+        if ($deny !== '') {
+            $attrs = 'aria-disabled="true" data-mad-deny title="' . htmlspecialchars($deny, ENT_QUOTES) . '"'
+                . ($attrs !== '' ? ' ' . $attrs : '');
+        }
+
         return [
             'label'   => $label,
             'icon'    => $icon,
             'variant' => $variant,
             'confirm' => $confirm,
             'attrs'   => $attrs,
+            'deny'    => $deny,
         ];
     }
 
@@ -1645,11 +1664,20 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             $scoped = $this->_resolveModelFqcn($this->model)::query();
             $this->_buildBaseCardQuery($scoped);
             $record = $scoped->find($id);
+            $denied = '';
             if ($record !== null) {
                 foreach ($acts as $cfg) {
-                    if ($this->_resolveAction($record, $cfg, $id) !== null) {
-                        return null;
+                    $resolved = $this->_resolveAction($record, $cfg, $id);
+                    if ($resolved === null) {
+                        continue;
                     }
+                    // Aparece, mas recusada pela deny-condition (fw#636).
+                    if (($resolved['deny'] ?? '') !== '') {
+                        $denied = $denied !== '' ? $denied : $resolved['deny'];
+                        continue;
+                    }
+
+                    return null;
                 }
             }
         } catch (\Throwable $e) {
@@ -1665,12 +1693,16 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             . ' o registro ' . self::_logSafe((string) $id)
             . ' (usuario ' . (is_scalar($quem) && $quem !== '' ? (string) $quem : '-') . ').');
 
+        if ($record !== null && $denied !== '') {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => $denied]));
+        }
+
         return \Mad\Ui\MadToast::warning(mad_t($record !== null ? 'mad.error.action_refused' : 'mad.error.action_gone'));
     }
 
     private static function _cardActionHasConditions(array $cfg): bool
     {
-        foreach (['displayCondition', 'display-condition', 'whenField', 'when-field'] as $key) {
+        foreach (['displayCondition', 'display-condition', 'whenField', 'when-field', 'denyCondition', 'deny-condition'] as $key) {
             if (($cfg[$key] ?? '') !== '' && $cfg[$key] !== null) {
                 return true;
             }

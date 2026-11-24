@@ -750,8 +750,11 @@ class MadBladeCompiler extends BladeCompiler
         $extraAttrs   = [];  // atributos HTML passthrough (mad:click etc.) — strings literais
         $rawPhpAttrs  = [];  // atributos com expressões Blade {{ }} — PHP runtime
         $_closeActive = false; // <mad-btn close>: botão só fecha (fórum #317)
-        $hasAttrs     = false;
-        $attrsIndex   = -1;
+        // O `attrs` da tag (literal ou `:attrs`) e o do navigate/target, em
+        // ordem. Viram UMA chave `attrs` no fim do método, junto com os
+        // atributos de passagem (fw#635) — ver attrsEntry().
+        $_attrsOwn    = [];  // [expressão PHP, é string literal?]
+        $_attrsNav    = [];  // expressões MadAction::…->auto() (sempre string)
         $_hasNav      = false; // true se navigate/target foi processado
         // Botão que executa ação: a ação vira chave de permissão (ver ActionGuard).
         $_wantsPerm   = in_array($tag, self::PERM_TAGS, true);
@@ -1028,7 +1031,7 @@ class MadBladeCompiler extends BladeCompiler
                         $compiled[] = '"permClass"=>' . $navClassExpr;
                         $compiled[] = '"permAction"=>' . $navPermExpr;
                     }
-                    $compiled[] = '"attrs"=>\\Mad\\Ui\\MadAction::to(' . $navClassExpr . ',' . $navMethodExpr . ',' . $navParamsExpr . ')->auto()';
+                    $_attrsNav[] = '\\Mad\\Ui\\MadAction::to(' . $navClassExpr . ',' . $navMethodExpr . ',' . $navParamsExpr . ')->auto()';
                     continue;
                 }
                 if ($_hasNav && ($key === 'method' || $key === 'params')) continue;
@@ -1059,9 +1062,12 @@ class MadBladeCompiler extends BladeCompiler
                 $phpKey = self::kebabToCamel($key);
 
                 if ($phpKey === 'attrs') {
-                    $hasAttrs   = true;
-                    $attrsIndex = count($compiled);
-                } elseif ($m[1] === '') {
+                    $_attrsOwn[] = $m[1]
+                        ? [$val, false]
+                        : ['"' . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $val) . '"', true];
+                    continue;
+                }
+                if ($m[1] === '') {
                     $val = self::literalAttrText($val, $phpKey);
                 }
 
@@ -1122,6 +1128,11 @@ class MadBladeCompiler extends BladeCompiler
 
                 // Converte kebab-case → camelCase para PHP
                 $phpKey = self::kebabToCamel($key);
+                // `attrs` nu não tem atributo nenhum a passar (o `true` saía
+                // como "1" no HTML do botão).
+                if ($phpKey === 'attrs') {
+                    continue;
+                }
                 $compiled[] = '"' . $phpKey . '"=>true';
                 continue;
             }
@@ -1167,31 +1178,65 @@ class MadBladeCompiler extends BladeCompiler
             $compiled[] = '"type"=>"button"';
         }
 
-        // Merge atributos HTML passthrough no prop 'attrs'
-        if ($extraAttrs || $rawPhpAttrs) {
-            $parts = [];
-            if ($extraAttrs) {
-                $extra = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], implode(' ', $extraAttrs));
-                $parts[] = '"' . $extra . '"';
-            }
-            foreach ($rawPhpAttrs as $expr) {
-                $parts[] = $expr;
-            }
-            $attrsExpr = count($parts) === 1 ? $parts[0] : implode(' . \' \' . ', $parts);
+        // O `attrs` da tag, o do navigate e os atributos HTML de passagem
+        // (mad:click, atalhos, x-mad-when…) numa chave `attrs` só.
+        $_attrsParts = $_attrsOwn;
+        foreach ($_attrsNav as $expr) {
+            $_attrsParts[] = [$expr, false];
+        }
+        if ($extraAttrs) {
+            $extra = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], implode(' ', $extraAttrs));
+            $_attrsParts[] = ['"' . $extra . '"', true];
+        }
+        foreach ($rawPhpAttrs as $expr) {
+            $_attrsParts[] = [$expr, false];
+        }
+        if ($_attrsParts) {
+            $compiled[] = '"attrs"=>' . self::attrsEntry($_attrsParts, $_attrsOwn);
+        }
 
-            if ($hasAttrs && $attrsIndex >= 0) {
-                // Concatena ao attrs existente
-                $compiled[$attrsIndex] = preg_replace(
-                    '/"$/',
-                    '" . \' \' . ' . $attrsExpr,
-                    $compiled[$attrsIndex]
-                );
-            } else {
-                $compiled[] = '"attrs"=>' . $attrsExpr;
-            }
+        // Uma segunda chave `attrs` no array apagaria a primeira em silêncio
+        // (o PHP fica com a última) — e com ela o clique do botão. Melhor a
+        // tela não compilar.
+        if (count(preg_grep('/^"attrs"=>/', $compiled)) > 1) {
+            throw new \LogicException(
+                'MadBlade: <mad-' . ($tag !== '' ? $tag : '?') . '> montou o atributo `attrs` duas vezes; '
+                . 'os atributos de passagem (mad:click, navigate…) se perderiam.'
+            );
         }
 
         return '[' . implode(',', $compiled) . ']';
+    }
+
+    /**
+     * Valor compilado da chave `attrs` a partir das partes, em ordem: o
+     * `attrs`/`:attrs` da tag, o do navigate/target e os atributos de
+     * passagem. Cada parte é [expressão PHP, é string literal?].
+     *
+     * Parte única sai como estava. Sem `:attrs` dinâmico todas as partes já
+     * são string (literal, MadAction::…->auto(), diretiva com `{{ }}`) e são
+     * concatenadas como antes. Com `:attrs` a expressão do app pode ser
+     * string, null, Stringable ou array: junta em execução (joinAttrs) — a
+     * forma antiga trocava a aspa final por regex, que só casava o `attrs`
+     * literal, e o `mad:click` sumia (fw#635).
+     *
+     * @param list<array{0: string, 1: bool}> $parts
+     * @param list<array{0: string, 1: bool}> $own
+     */
+    private static function attrsEntry(array $parts, array $own): string
+    {
+        $exprs = array_column($parts, 0);
+        if (count($exprs) === 1) {
+            return $exprs[0];
+        }
+        $dynamic = false;
+        foreach ($own as [, $isLiteral]) {
+            $dynamic = $dynamic || ! $isLiteral;
+        }
+
+        return $dynamic
+            ? '\\Mad\\View\\MadBlade::joinAttrs(' . implode(',', $exprs) . ')'
+            : implode(' . \' \' . ', $exprs);
     }
 }
 
@@ -1993,6 +2038,59 @@ HTML;
         ) . ')';
 
         return 'onclick="' . htmlspecialchars($js, ENT_QUOTES, 'UTF-8') . '"';
+    }
+
+    /**
+     * Runtime do `:attrs` dinâmico somado aos atributos que o compilador põe
+     * no `attrs` (mad:click, navigate, atalhos, x-mad-when — fw#635): junta as
+     * partes com espaço, pulando as vazias. Cada parte pode ser string,
+     * Stringable, null/bool (nada) ou array `['data-x' => 'v', 'hidden' => true]`
+     * (vira atributos HTML escapados; `false`/null somem). Outro tipo é
+     * ignorado, como o componente faria com ele sozinho.
+     */
+    public static function joinAttrs(mixed ...$parts): string
+    {
+        $out = [];
+        foreach ($parts as $part) {
+            if (is_array($part)) {
+                $part = self::attrsFromArray($part);
+            } elseif (is_string($part) || is_int($part) || is_float($part) || $part instanceof \Stringable) {
+                $part = (string) $part;
+            } else {
+                continue;
+            }
+            $part = trim($part);
+            if ($part !== '') {
+                $out[] = $part;
+            }
+        }
+
+        return implode(' ', $out);
+    }
+
+    /** `['data-x' => 'v', 'hidden' => true, 0 => 'role="tab"']` → atributos HTML. */
+    private static function attrsFromArray(array $attrs): string
+    {
+        $out = [];
+        foreach ($attrs as $name => $value) {
+            if (is_int($name)) {
+                // Lista: cada item já é um pedaço de atributo pronto.
+                if (is_string($value) || $value instanceof \Stringable) {
+                    $out[] = trim((string) $value);
+                }
+                continue;
+            }
+            if ($value === null || $value === false || ! preg_match('/^[^\s"\'<>\/=]+$/', $name)) {
+                continue;
+            }
+            if ($value === true) {
+                $out[] = $name;
+            } elseif (is_scalar($value) || $value instanceof \Stringable) {
+                $out[] = $name . '="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"';
+            }
+        }
+
+        return implode(' ', array_filter($out, static fn (string $s): bool => $s !== ''));
     }
 
     /**

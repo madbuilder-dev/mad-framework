@@ -24,6 +24,13 @@ namespace Mad\Ui;
  *    detalhe vai SÓ para o log, sem segredo (`MadErrorRedactor`).
  *  • exceção de DOMÍNIO, lançada de propósito com texto para o usuário
  *    ("Pedido faturado não pode ser excluído"), passa como está.
+ *  • CÓDIGO PARA O SUPORTE (fw#642): todo erro técnico ganha um código curto
+ *    (`E-7K2Q9`, sem 0/O, 1/I/L) que abre a linha do log, com o usuário e a
+ *    rota. A frase genérica — e o texto informado pela tela — termina com
+ *    "Código para o suporte: E-7K2Q9"; `MadToast::danger()` com essa frase vira
+ *    diálogo de erro (o usuário precisa ler e anotar o código). Recusa que o
+ *    próprio usuário resolve (duplicado, obrigatório, em uso…) segue sem
+ *    código, em toast. Logs › Laravel Log busca pelo código.
  *
  *     } catch (\Throwable $e) {
  *         return MadMessage::error('Erro ao salvar', MadUserError::message($e, null, static::class . '::onSave'));
@@ -57,10 +64,17 @@ final class MadUserError
             return $friendly ?? MadDbErrorMessage::notFound();
         }
 
-        self::log($e, $context);
+        $code = self::log($e, $context);
+
+        // Recusa conhecida do banco que o próprio usuário resolve (duplicado,
+        // obrigatório, em uso, texto grande…): a frase diz o que corrigir e não
+        // é caso de suporte — segue sem código, e o aviso continua um toast.
+        // O resto (o que o sistema não entende, banco fora do ar) termina com
+        // o código que está no log (fw#642).
+        $userFixable = self::isUserFixable($e);
 
         if ($friendly !== null) {
-            return $friendly;
+            return $userFixable ? $friendly : self::withSupportCode($friendly, $code);
         }
 
         try {
@@ -69,7 +83,86 @@ final class MadUserError
             $specific = null;
         }
 
-        return $specific ?? self::friendly();
+        if ($specific !== null) {
+            return $userFixable ? $specific : self::withSupportCode($specific, $code);
+        }
+
+        return self::withSupportCode(self::friendly(), $code);
+    }
+
+    /** Recusa do banco que a frase específica explica e o usuário corrige sozinho. */
+    private static function isUserFixable(\Throwable $e): bool
+    {
+        try {
+            $kind = MadDbErrorMessage::classify($e)['kind'] ?? null;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $kind !== null && ! in_array($kind, [MadDbErrorMessage::BUSY, MadDbErrorMessage::UNAVAILABLE], true);
+    }
+
+    /**
+     * A frase ao usuário terminada com o código que está no log (fw#642):
+     * "… avise o administrador. Código para o suporte: E-7K2Q9". Texto vazio
+     * ou código vazio: o texto como veio.
+     */
+    public static function withSupportCode(string $text, string $code): string
+    {
+        $text = rtrim($text);
+        if ($code === '' || $text === '') {
+            return $text;
+        }
+        if (! preg_match('/[.!?…:]$/u', $text)) {
+            $text .= '.';
+        }
+
+        try {
+            $suffix = mad_t('mad.error.support_code', ['code' => $code]);
+        } catch (\Throwable) {
+            $suffix = '';
+        }
+        if (! is_string($suffix) || $suffix === '' || $suffix === 'mad.error.support_code' || ! str_contains($suffix, $code)) {
+            $suffix = 'Código para o suporte: ' . $code;
+        }
+
+        return $text . ' ' . $suffix;
+    }
+
+    /**
+     * Código de suporte que ESTE processo gravou no log e que aparece no
+     * texto, ou null. É como o toast de erro sabe que leva um código e vira
+     * diálogo fixo (MadResponse::toast): o usuário precisa de tempo para
+     * anotá-lo. Um texto qualquer com algo parecido com um código não conta.
+     */
+    public static function supportCodeIn(string $text): ?string
+    {
+        if (self::$issued === [] || ! preg_match_all('/\bE-[2-9A-Z]{5}\b/', $text, $m)) {
+            return null;
+        }
+        foreach ($m[0] as $code) {
+            if (in_array($code, self::$issued, true)) {
+                return $code;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Códigos gravados por este processo (os últimos; worker longo não
+     * acumula). Só para supportCodeIn().
+     *
+     * @var list<string>
+     */
+    private static array $issued = [];
+
+    private static function remember(string $code): void
+    {
+        self::$issued[] = $code;
+        if (count(self::$issued) > 32) {
+            array_shift(self::$issued);
+        }
     }
 
     /**
@@ -88,11 +181,12 @@ final class MadUserError
     /**
      * Só registra (sem segredo) uma falha que a tela decidiu NÃO mostrar —
      * envio de e-mail que não desfaz o cadastro, resposta idêntica de uma tela
-     * que não pode revelar se a conta existe.
+     * que não pode revelar se a conta existe. Devolve o código de suporte
+     * gravado na linha do log (fw#642), para quem quiser mostrá-lo.
      */
-    public static function report(\Throwable $e, string $context = ''): void
+    public static function report(\Throwable $e, string $context = ''): string
     {
-        self::log($e, $context);
+        return self::log($e, $context);
     }
 
     /** "Não foi possível concluir a operação. Tente de novo ou avise o administrador." */
@@ -204,13 +298,18 @@ final class MadUserError
         return $labels;
     }
 
-    private static function log(\Throwable $e, string $context): void
+    /** Grava a linha do log e devolve o código de suporte dela (`E-7K2Q9`). */
+    private static function log(\Throwable $e, string $context): string
     {
+        $code = MadErrorPage::errorId($e);
+        self::remember($code);
+
         // Mensagem REMONTADA sem os valores sensíveis e trace SEM argumentos: a
         // exceção em si não vai no contexto do log — o formatador escreveria a
         // mensagem crua (SQL com o hash da senha) e os argumentos de cada
-        // chamada (a senha digitada).
-        $line = '[MadUserError]' . ($context !== '' ? ' ' . $context : '')
+        // chamada (a senha digitada). O código, o usuário e a rota (fw#642)
+        // deixam o suporte achar a linha a partir do que o usuário leu.
+        $line = '[MadUserError] ' . $code . ($context !== '' ? ' ' . $context : '')
             . ' ' . MadErrorRedactor::describe($e)
             . ' @ ' . MadErrorRedactor::relativePath($e->getFile()) . ':' . $e->getLine();
 
@@ -222,15 +321,19 @@ final class MadUserError
             $line .= ' | causa: ' . MadErrorRedactor::describe($prev);
         }
 
+        $where = MadErrorPage::requestContext();
+
         try {
             if (function_exists('app') && app()->bound('log')) {
-                \Illuminate\Support\Facades\Log::error($line, ['trace' => MadErrorRedactor::trace($e)]);
+                \Illuminate\Support\Facades\Log::error($line, ['error_id' => $code] + $where + ['trace' => MadErrorRedactor::trace($e)]);
 
-                return;
+                return $code;
             }
         } catch (\Throwable) {
             // log indisponível: cai no error_log
         }
-        @error_log($line);
+        @error_log($line . ($where !== [] ? ' | ' . implode(' | ', $where) : ''));
+
+        return $code;
     }
 }

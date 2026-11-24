@@ -278,14 +278,16 @@
 
     // ── Ações da linha que só valem em algumas linhas (fw#363) ──────────────
     // `when-*`/`disabled-*` o navegador avalia na linha como ela está (também a
-    // adicionada ali); `display-condition` e `disabled` por método são PHP:
-    // vêm calculados por linha carregada. O servidor reconfere antes de rodar
-    // a ação (MadComponent::_detailRowActionRefusal), pelo que o formulário
-    // anota aqui.
+    // adicionada ali); `display-condition`, `disabled` por método e
+    // `deny-condition` (fw#636) são PHP: vêm calculados por linha carregada —
+    // o motivo da recusa vai em `actDeny` e vira a dica do botão. O servidor
+    // reconfere antes de rodar a ação (MadComponent::_detailRowActionRefusal),
+    // pelo que o formulário anota aqui.
     if ($_dfActConds) {
         $_dfHosts  = array_values(array_filter([$_dfPermOwner]));
         $_dfRules  = [];
         $_dfRowFn  = [];
+        $_dfRowDeny = [];
         $_dfByMeth = [];
         foreach ($_dfActConds as $_dfI => $_dfA) {
             $_dfRule = array_filter([
@@ -297,6 +299,7 @@
                 'method'   => (string) ($_dfA['method'] ?? ''),
                 'when'     => is_string($_dfA['when'] ?? null) ? $_dfA['when'] : null,
                 'disabled' => is_string($_dfA['disabled'] ?? null) ? $_dfA['disabled'] : null,
+                'deny'     => is_string($_dfA['deny'] ?? null) ? $_dfA['deny'] : null,
             ]);
             if (count($_dfFnCfg) > 1 && ($_dfFnAct = \Mad\Grid\MadDataGrid::_actFromConfig($_dfFnCfg)?->resolveIn(...$_dfHosts))) {
                 $_dfRule['f'] = 1;
@@ -304,7 +307,14 @@
                     $_dfRid = (string) ($_dfRow['__id'] ?? '');
                     if ($_dfRid === '') continue;
                     try {
-                        $_dfSt = !$_dfFnAct->isVisible($_dfRow) ? 'hide' : ($_dfFnAct->isDisabled($_dfRow) ? 'off' : '');
+                        $_dfSt = '';
+                        if (!$_dfFnAct->isVisible($_dfRow)) {
+                            $_dfSt = 'hide';
+                        } elseif (($_dfDeny = $_dfFnAct->denyReason($_dfRow)) !== '') {
+                            $_dfRowDeny[$_dfRid][$_dfI] = $_dfDeny;
+                        } elseif ($_dfFnAct->isDisabled($_dfRow)) {
+                            $_dfSt = 'off';
+                        }
                     } catch (\Throwable $e) {
                         $_dfSt = '';
                     }
@@ -312,15 +322,16 @@
                 }
             }
             $_dfRules[$_dfI] = $_dfRule;
-            $_dfByMeth[(string) ($_dfA['method'] ?? '')][] = array_intersect_key($_dfA, array_flip(['when', 'whenField', 'disabled']));
+            $_dfByMeth[(string) ($_dfA['method'] ?? '')][] = array_intersect_key($_dfA, array_flip(['when', 'whenField', 'disabled', 'deny']));
         }
         $alpineCfg['actRules'] = $_dfRules;
         if ($_dfRowFn) $alpineCfg['actFn'] = $_dfRowFn;
+        if ($_dfRowDeny) $alpineCfg['actDeny'] = $_dfRowDeny;
         // Método que também tem ação SEM condição vale em qualquer linha.
         foreach ($actions as $_dfI => $_dfAct) {
             if (!isset($_dfActConds[$_dfI])) unset($_dfByMeth[$_dfAct->method]);
         }
-        unset($_dfHosts, $_dfRules, $_dfRowFn, $_dfI, $_dfA, $_dfRule, $_dfFnCfg, $_dfFnAct, $_dfRow, $_dfRid, $_dfSt, $_dfAct);
+        unset($_dfHosts, $_dfRules, $_dfRowFn, $_dfRowDeny, $_dfDeny, $_dfI, $_dfA, $_dfRule, $_dfFnCfg, $_dfFnAct, $_dfRow, $_dfRid, $_dfSt, $_dfAct);
     }
     \Mad\Component\MadRenderContext::getForm()?->declareDetailActions($name, $_dfByMeth ?? [], (string) $model, (string) $foreignKey);
     unset($_dfByMeth);
@@ -559,7 +570,17 @@
                                          não há linha em PHP para os callbacks por linha. Permissão não
                                          depende da linha — é da ação — e por isso vem de permMode(). --}}
                                     @if(! $_dfActHidden($act))
-                                    @php $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : ''; @endphp
+                                    @php
+                                        $_dfCondAttr = isset($_dfActConds[$loop->index]) ? ' x-show="_actState(row, ' . $loop->index . ') !== \'hide\'" :disabled="_actState(row, ' . $loop->index . ') === \'off\'"' : '';
+                                        // deny-condition (fw#636): na linha recusada, o botão fica
+                                        // como o do perfil (aria-disabled + data-mad-deny) e a dica
+                                        // é o motivo. A recusa do perfil, fixa, vence.
+                                        if (!empty($_dfActConds[$loop->index]['deny']) && $act->permMode() !== 'disable') {
+                                            $_dfDn = '_actDeny(row, ' . $loop->index . ')';
+                                            $_dfCondAttr .= ' :aria-disabled="' . $_dfDn . ' ? \'true\' : null" :data-mad-deny="' . $_dfDn . ' ? \'\' : null"'
+                                                . ' :title="' . $_dfDn . ' || ' . e(json_encode($act->label, JSON_UNESCAPED_UNICODE)) . '"';
+                                        }
+                                    @endphp
                                     <button type="button"
                                             class="mad-dg-action-btn{{ $act->isPrimary ? ' mad-dg-action-primary' : '' }}{{ $act->isDanger ? ' mad-dg-action-danger' : '' }}"
                                             title="{{ $act->denyTitle() ?: $act->label }}"@if($act->permMode() === 'disable') aria-disabled="true" data-mad-deny @endif{!! $_dfCondAttr !!}

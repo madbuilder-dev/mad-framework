@@ -81,7 +81,7 @@ trait MadDbBlocksTrait
                 // o form da tela: `MadForm::getData()` filtra pelo schema do
                 // form HOSPEDEIRO e descartaria `body`/`titulo` do filho — o
                 // insert saía só com a FK (estourando NOT NULL ou gravando vazio).
-                $data = self::_blockPayload($this->form ?? null, $cfg, $pivot);
+                $data = $this->_blockCleanHtml($cfg, self::_blockPayload($this->form ?? null, $cfg, $pivot));
                 $badDate = self::_blockNonexistentDate($cfg, $data);
                 if ($badDate !== null) {
                     return $badDate;
@@ -347,6 +347,7 @@ trait MadDbBlocksTrait
                 // A célula editada no lugar posta como o form do bloco (data
                 // dd/mm/aaaa, vazio): mesma conversão do blockAdd (fw#459).
                 $value = self::_blockNormalize([$field => $value], $cfg, $pivot)[$field];
+                $value = $this->_blockCleanHtml($cfg, [$field => $value])[$field];
                 $badDate = self::_blockNonexistentDate($cfg, [$field => $value]);
                 if ($badDate !== null) {
                     return $badDate;
@@ -408,7 +409,7 @@ trait MadDbBlocksTrait
                     return self::_blockNotHere($cfg, $id, 'editar');
                 }
 
-                $data = self::_blockPayload($this->form ?? null, $cfg, $pivot);
+                $data = $this->_blockCleanHtml($cfg, self::_blockPayload($this->form ?? null, $cfg, $pivot));
                 $badDate = self::_blockNonexistentDate($cfg, $data);
                 if ($badDate !== null) {
                     return $badDate;
@@ -656,6 +657,57 @@ trait MadDbBlocksTrait
         $posted = is_array($posted) ? $posted : [];
 
         return array_merge($base, self::_blockNormalize($posted, $cfg, $pivot));
+    }
+
+    /**
+     * Editor HTML do formulário do bloco (o corpo do `<mad-comments
+     * editor="rich">`, ou um `<mad-html-editor-field>` dentro do
+     * `<mad-db-blocks-form>` — o tipo vem do `formSchema` do estado cifrado):
+     * o HTML é limpo pelo MadHtmlSanitizer antes de gravar, como no formulário
+     * da tela, e a limpeza do app (`sanitize`: `Classe::metodo` ou método da
+     * tela, recebe e devolve o HTML) roda DEPOIS, sobre o que já está limpo
+     * (fw#637). O resultado do app passa de novo pela limpeza: ela é
+     * idempotente e só tira. Os outros campos passam como vieram.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function _blockCleanHtml(array $cfg, array $data): array
+    {
+        foreach ((array) ($cfg['formSchema'] ?? []) as $field => $props) {
+            if (!is_array($props) || ($props['type'] ?? '') !== 'html-editor'
+                || !array_key_exists($field, $data) || !is_string($data[$field])) {
+                continue;
+            }
+            $html = \Mad\Util\MadHtmlSanitizer::sanitize($data[$field]);
+            $appClean = trim((string) ($props['sanitize'] ?? ''));
+            if ($appClean !== '') {
+                $html = \Mad\Util\MadHtmlSanitizer::sanitize($this->_blockAppClean($appClean, $html));
+            }
+            $data[$field] = $html;
+        }
+
+        return $data;
+    }
+
+    /**
+     * A limpeza do app sobre o HTML do campo: `Classe::metodo` (estático) ou
+     * um método da tela. Método que não existe NÃO grava (fail-closed): o app
+     * pediu uma limpeza mais restrita, e gravar sem ela seria o defeito. O
+     * erro vai para o log; o usuário vê o aviso genérico.
+     */
+    private function _blockAppClean(string $appClean, string $html): string
+    {
+        if (str_contains($appClean, '::')) {
+            [$class, $method] = explode('::', ltrim($appClean, '\\'), 2);
+            if (is_callable([$class, $method])) {
+                return (string) call_user_func([$class, $method], $html);
+            }
+        } elseif (method_exists($this, $appClean)) {
+            return (string) $this->{$appClean}($html);
+        }
+
+        throw new \Error('[mad-comments] sanitize="' . $appClean . '": método não encontrado — nada foi gravado.');
     }
 
     /**

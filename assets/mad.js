@@ -571,6 +571,17 @@ const Mad = {
             else          window.MadTabs.navigate(payload);
             return;
         }
+        // Gaveta/modal com rota própria aberta pela navegação interna (menu,
+        // Mad.navigate, link, "Ir para…") com abas abertas: abre por cima da
+        // aba ativa, como pelo botão da lista. Ia para o #mad_main — que, com
+        // as abas ligadas, É o container das abas — e o innerHTML apagava
+        // todas; ao fechar, tela em branco (fw#644). A URL não muda: as abas
+        // continuam como estavam. Sem aba aberta, e no boot pela URL (que não
+        // passa aqui), a camada segue sendo a tela (fw#393/#638).
+        if (this._tabsOn() && this._tabPanesOpen() && this._isOverlayHtml(html)) {
+            this._openOverlay(html);
+            return;
+        }
         // A classe vai junto para o menu do tema achar o módulo da tela
         // quando a rota não está no menu (/app/grupos/novo).
         this._injectFull(html, url, { history: !!opts.history, cls: opts.cls || meta.cls });
@@ -722,6 +733,7 @@ const Mad = {
         if (leave && !(await leave)) return;
         url = this._withAppBase(url);
         MadLoader.show();
+        this._navBusy++;
         try {
             const res  = await fetch(url, { headers: { 'X-Mad-Partial': '1' } });
             if (this._offline(res)) return;
@@ -734,6 +746,7 @@ const Mad = {
         } catch (e) {
             this._onError(e);
         } finally {
+            this._navBusy--;
             MadLoader.hide();
         }
     },
@@ -760,6 +773,7 @@ const Mad = {
         if (opts.history) headers['X-Mad-History'] = '1';
 
         MadLoader.show();
+        this._navBusy++;
         try {
             const res  = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
             if (this._offline(res)) return;
@@ -777,6 +791,7 @@ const Mad = {
         } catch (e) {
             this._onError(e);
         } finally {
+            this._navBusy--;
             MadLoader.hide();
         }
     },
@@ -907,6 +922,18 @@ const Mad = {
                 // Tela aberta por URL/F5 vira aba (a URL ja e a atual: sem pushState).
                 const meta = this._tabMeta(res);
                 window.MadTabs.open({ url, cls: meta.cls, label: meta.label, html });
+                return;
+            }
+            // Gaveta/modal pela URL com abas restauradas (fw#644): a camada
+            // continua sendo a tela (nasce no conteúdo — fw#393/#638), mas num
+            // host próprio — o innerHTML do #mad_main apagava os painéis das
+            // abas, e a aba de destino ficava em branco ao fechar.
+            if (this._tabsOn() && this._tabPanesOpen() && this._isOverlayHtml(html)) {
+                const host = document.createElement('div');
+                host.className = 'mad-route-layer-host';
+                host.hidden = true;
+                document.querySelector(this.contentTarget).appendChild(host);
+                this._injectInto(host, html, null);
                 return;
             }
             // url=null → _injectFull NÃO faz pushState → mantém a URL amigável.
@@ -1552,6 +1579,7 @@ const Mad = {
         const fetchInit = { headers: { 'X-Mad-Partial': '1' } };
 
         MadLoader.show();
+        this._navBusy++;
         try {
             const res  = await fetch(url, fetchInit);
             if (this._offline(res)) return;
@@ -1602,6 +1630,7 @@ const Mad = {
         } catch (e) {
             this._onError(e);
         } finally {
+            this._navBusy--;
             MadLoader.hide();
         }
     },
@@ -1668,6 +1697,79 @@ const Mad = {
     _canGoBack() {
         const s = window.history && window.history.state;
         return !!(s && s.madDepth > 0);
+    },
+
+    // Navegações internas em andamento (navigate/load/go) e a hora em que um
+    // `redirect` mandou a página embora — lidos pelo routeLayerClosed.
+    _navBusy: 0,
+    _leavingAt: 0,
+
+    /**
+     * A gaveta/modal que É a tela fechou (fw#638). Aberta pela URL — link de
+     * e-mail, favorito, F5, "Ir para…" de uma trava — ou pela rota do menu,
+     * ela nasce no conteúdo e sobe para o <body> (fw#393): fechar no Salvar
+     * (`closeDrawer()`), no X, no Esc ou no Cancelar deixava a página vazia.
+     * Chamado pelo script do wrapper ao fechar; `path` é a rota da camada,
+     * `back` o destino assado no servidor (MadComponentWrapper::returnTo) e
+     * `host` o conteúdo onde ela nasceu.
+     *
+     * Espera o lote da resposta terminar (tick seguinte) e só age se ninguém
+     * levou a tela antes: a rota não mudou, nenhuma navegação começou, nenhum
+     * `redirect` mandou a página embora e o conteúdo continua vazio. Fechar
+     * porque a rota mudou (menu, Mad.go, voltar) não chega aqui com a mesma rota.
+     */
+    routeLayerClosed(path, back, host) {
+        if (!path || window.location.pathname !== path) return false;
+        setTimeout(() => {
+            if (window.location.pathname !== path || this._navBusy > 0) return;
+            if (this._leavingAt && Date.now() < this._leavingAt + 5000) return;
+            if (host && (!host.isConnected || !this._routeLayerEmpty(host))) return;
+            this._routeLayerBack(back);
+        }, 0);
+        return true;
+    },
+
+    /** Só restos da tela que subiu (o <script> do wrapper, espaços): nada à vista. */
+    _routeLayerEmpty(host) {
+        return ![...(host.children || [])].some((c) => !/^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(c.tagName));
+    },
+
+    /**
+     * Volta para a tela de origem pela navegação interna — o aviso da resposta
+     * (toast "Enviado para aprovação") continua visível na tela de destino:
+     *   1. entrada anterior do histórico é do app (madDepth) → history.back();
+     *   2. `back` ($returnTo da tela, ou XForm → XList) → abre no lugar da
+     *      entrada da camada (o voltar do navegador não reabre a gaveta);
+     *   3. a tela inicial (o link do logo do casco), idem;
+     *   4. sem nada disso, a base do app (carga completa).
+     * Devolve o caminho tomado: 'back' | 'open' | 'reload'.
+     */
+    _routeLayerBack(back) {
+        if (this._canGoBack()) {
+            // A camada já fechou (e já perguntou, se era o caso): o voltar não
+            // pergunta de novo pela gaveta que ainda some na transição (fw#639).
+            if (typeof MadLeaveGuard !== 'undefined') MadLeaveGuard._passPop = true;
+            history.back();
+            return 'back';
+        }
+        let url = '';
+        if (back && (back.url || back.class)) {
+            url = back.url || this._classMethodUrl(back.class, back.method || 'show', {});
+        }
+        if (!url) {
+            const home = document.querySelector('a.mad-header-home[href]');
+            url = home ? home.getAttribute('href') : '';
+        }
+        if (!url) {
+            window.location.replace(this._appBase() || '/app');
+            return 'reload';
+        }
+        url = this._withAppBase(url);
+        const browserUrl = (typeof window.MadWebRoute === 'function') ? window.MadWebRoute(url) : url;
+        const depth = (history.state && history.state.madDepth) || 0;
+        try { history.replaceState({ url, madDepth: depth }, '', browserUrl); } catch (e) { /* URL de outra origem */ }
+        this.navigate(url, null, { history: true });
+        return 'open';
     },
 
 
@@ -2257,6 +2359,9 @@ const Mad = {
                         else this.openDocument(_dest);
                         break;
                     }
+                    // A página vai sair: a gaveta aberta pela URL que fechar no
+                    // mesmo lote não navega por conta própria (fw#638).
+                    this._leavingAt = Date.now() + (Number(op.delay) || 0);
                     if (op.delay) {
                         setTimeout(() => { window.location.href = _dest; }, op.delay);
                     } else {
@@ -3219,6 +3324,29 @@ const Mad = {
             const madDepth = ((history.state && history.state.madDepth) || 0) + 1;
             history.pushState({ url, madDepth }, '', browserUrl);
         }
+    },
+
+    /** Com as abas ligadas, já há aba aberta (painel) no conteúdo principal? */
+    _tabPanesOpen() {
+        const el = document.querySelector(this.contentTarget);
+        return !!(el && el.querySelector('.mad-tab-pane'));
+    },
+
+    /**
+     * Gaveta/modal por cima da tela atual: num container próprio no <body>,
+     * com scripts, Alpine, ícones, campos e o JS da tela — o mesmo caminho
+     * do botão que abre o formulário da lista (Mad.go). A tela de baixo fica.
+     */
+    _openOverlay(html) {
+        const container = document.createElement('div');
+        container.innerHTML = html;
+        document.body.appendChild(container);
+        this._rerunScripts(container);
+        if (window.Alpine) try { Alpine.initTree(container); } catch {}
+        if (typeof _madLucide === 'function') _madLucide();
+        if (typeof _madEnergizeFields === 'function') _madEnergizeFields(container);
+        this.initScreenJs(document);
+        return container;
     },
 
     /**
@@ -4288,6 +4416,16 @@ const MadDialog = {
      * por cima dos demais).
      */
     _stack: [],
+
+    /**
+     * Para onde o foco volta quando o diálogo abre com o foco no <body>
+     * (fw#639c): função que acha o botão cuja ação do MadWire está em voo (ou
+     * o equivalente no wrapper redesenhado). O carregando desabilita o botão
+     * e o navegador tira o foco dele — o aviso de erro da resposta abria com
+     * o foco no <body> e, ao fechar, ficava lá. O mad-livewire.js marca e
+     * desmarca durante o pedido.
+     */
+    _focusHome: null,
     _baseZ: 99998,
 
     /**
@@ -4345,6 +4483,24 @@ const MadDialog = {
         if (idx === -1) return;
         this._stack.splice(idx, 1);
         if (el.parentNode) el.parentNode.removeChild(el);
+        // O foco volta para quem o tinha antes do diálogo (fw#639b) — sem isto
+        // ficava no <body>. Só se ninguém o levou para outro lugar (o callback
+        // do botão pode abrir outra tela); depois do Enter que fechou.
+        const saved = el._madBefore;
+        el._madBefore = null;
+        if (!saved) return;
+        setTimeout(() => {
+            const now = document.activeElement;
+            if (now && now !== document.body && now.isConnected) return;
+            // Botão de uma ação do MadWire (fw#639c): achado agora — o
+            // redesenho pode ter trocado o nó.
+            const before = typeof saved === 'function' ? saved() : saved;
+            if (!before) return;
+            if (before !== document.body && before.isConnected && typeof before.focus === 'function'
+                && !before.disabled && before.getClientRects().length) {
+                try { before.focus({ preventScroll: true }); } catch (e) {}
+            }
+        }, 150);
     },
 
     /**
@@ -4360,7 +4516,10 @@ const MadDialog = {
     },
 
     show({ type = 'info', title = '', message = '', buttons = null, icon = '', fields = null } = {}) {
+        const before = document.activeElement;
         const el = this._createOverlay();
+        el._madBefore = (!before || before === document.body) && typeof this._focusHome === 'function'
+            ? this._focusHome : before;
 
         const icons  = { info: 'info', success: 'check-circle', warning: 'alert-triangle', error: 'x-circle' };
         const colors = { info: 'var(--mad-info,#3b82f6)', success: 'var(--mad-success,#22c55e)',
@@ -4379,8 +4538,19 @@ const MadDialog = {
         const footer = el.querySelector('.mad-dialog-footer');
         footer.innerHTML = '';
         const btns = buttons || [{ label: madT('ok', 'OK'), type: 'primary', callback: null }];
+        // Confirmação: foco inicial no botão que só fecha (o Cancelar do
+        // MadMessage::confirm, o Não do __mad_question) — Enter logo depois do
+        // clique não confirma a ação (fw#640). `cancel: true` marca o botão;
+        // sem a marca, vale o que não tem callback quando outro tem. Diálogo
+        // com campos: foco no 1º campo. Diálogo de um botão só (o OK do aviso
+        // de erro): foco nele, para o Enter fechar (fw#639b).
+        const hasAction = btns.some(b => typeof b.callback === 'function');
+        const cancelOf  = btns.find(b => b.cancel === true)
+            || (hasAction ? btns.find(b => typeof b.callback !== 'function' && !b.submit) : null);
+        let startBtn = null;
         btns.forEach(b => {
             const btn = document.createElement('button');
+            if (b === cancelOf || btns.length === 1) startBtn = btn;
             btn.className = `mad-btn mad-btn-${b.type || 'secondary'}`;
             btn.textContent = b.label;
             btn.onclick = () => {
@@ -4397,6 +4567,7 @@ const MadDialog = {
 
         if (window.lucide) window.lucide.createIcons();
         if (inputs.length && typeof inputs[0].control.focus === 'function') inputs[0].control.focus();
+        else if (startBtn && typeof startBtn.focus === 'function') startBtn.focus();
 
         return el; // permite close programatico: MadDialog.close(el)
     },
@@ -4507,7 +4678,7 @@ const MadDialog = {
         return this.show({
             type: 'warning', title, message,
             buttons: [
-                { label: labelNo,  type: 'secondary',  callback: onNo },
+                { label: labelNo,  type: 'secondary',  callback: onNo, cancel: true },
                 { label: labelYes, type: typeYes,       callback: onYes },
             ],
         });
@@ -4699,6 +4870,80 @@ const MadOverlayEsc = {
         return !!el && typeof el._madBaseline === 'string' && this.snapshot(el) !== el._madBaseline;
     },
 
+    /** Camada com `confirm-close` visível e alterada (beforeunload, fw#639). */
+    dirtyOpen(doc) {
+        return [...(doc || document).querySelectorAll('[data-mad-confirm-close="1"]')]
+            .some((el) => this._visible(el) && this.isDirty(el));
+    },
+
+    /**
+     * O formulário que o "Salvar e fechar" envia (fw#639): o ÚNICO
+     * <form data-mad-submit> visível da camada, com um botão de envio visível e
+     * habilitado (sem ele — tela só de leitura, perfil sem Salvar — a
+     * pergunta fica com as duas opções de sempre). null = sem a opção.
+     */
+    saveForm(el) {
+        const forms = [...el.querySelectorAll('form[data-mad-submit]')].filter((f) => this._visible(f));
+        if (forms.length !== 1) return null;
+        const form = forms[0];
+        const own  = [...form.querySelectorAll('button[type="submit"], input[type="submit"]')];
+        const ext  = form.id ? [...document.querySelectorAll('[form="' + form.id + '"]')] : [];
+        const ok   = own.concat(ext).some((b) => !b.disabled && this._visible(b)
+            && (b.tagName !== 'BUTTON' || (b.getAttribute('type') || 'submit') === 'submit'));
+        return ok ? form : null;
+    },
+
+    /**
+     * A pergunta de descarte. Promise<true | false | 'alt'>: "Descartar",
+     * "Continuar editando" (também Esc e clique fora) e "Salvar e fechar".
+     * O foco abre em "Continuar editando" (madConfirm, fw#640): Enter só
+     * descarta com o foco no "Descartar". `form` (o de saveForm) põe a 3ª
+     * opção; null = só as duas.
+     */
+    ask(el, form) {
+        const msg  = el.getAttribute('data-mad-confirm-close-msg') || madT('discard_confirm', 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?');
+        const yes  = el.getAttribute('data-mad-confirm-close-yes') || madT('discard', 'Descartar');
+        const no   = el.getAttribute('data-mad-confirm-close-no') || madT('keep_editing', 'Continuar editando');
+        // "Continuar editando" devolve o foco a quem o tinha (madConfirm);
+        // se ele sumiu, ao 1º campo do formulário da camada (fw#639b).
+        const opts = { danger: true, confirmText: yes, cancelText: no, focusBack: () => this.firstField(el) };
+        if (form) opts.altText = madT('save_and_close', 'Salvar e fechar');
+        el._madAsking = true;
+        const ask = typeof window.madConfirm === 'function'
+            ? window.madConfirm(msg, opts)
+            : Promise.resolve(window.confirm(msg));
+        return Promise.resolve(ask).then((r) => {
+            el._madAsking = false;
+            return r === 'alt' && form ? 'alt' : !!r && r !== 'alt';
+        });
+    },
+
+    /** 1º campo visível e habilitado do formulário da camada (senão, da camada), ou null. */
+    firstField(el) {
+        const sel = 'input:not([type=hidden]):not([type=button]):not([type=submit]):not([disabled]), select:not([disabled]), textarea:not([disabled])';
+        const pick = (root) => root ? [...root.querySelectorAll(sel)].find((f) => this._visible(f)) || null : null;
+        return pick(el.querySelector('form')) || pick(el);
+    },
+
+    /**
+     * "Salvar e fechar": envia o formulário pelo caminho do botão de envio
+     * (MadWire.submit — obrigatório vazio é barrado e marcado no campo). A
+     * resposta que gravou (sem erro de campo nem aviso de erro, e sem outra
+     * pergunta do servidor) fecha a camada; com erro ela fica aberta, com os
+     * campos marcados. O veredito chega pelo MadLeaveGuard.saved.
+     */
+    saveAndClose(el, form) {
+        if (!form || typeof MadWire === 'undefined' || typeof MadWire.submit !== 'function') return Promise.resolve(false);
+        const job = { form, ok: null };
+        el._madSaving = job;
+        return Promise.resolve(MadWire.submit(form)).catch(() => {}).then(() => {
+            if (el._madSaving === job) el._madSaving = null;
+            if (job.ok !== true) return false;
+            if (this._visible(el)) this.close(el);
+            return true;
+        });
+    },
+
     /**
      * Fechamento pedido pelo USUÁRIO (Esc, X, clique fora): com
      * `confirm-close` e alteração não salva, pergunta antes de fechar.
@@ -4706,20 +4951,15 @@ const MadOverlayEsc = {
     dismiss(el) {
         if (!el) return;
         if (el.getAttribute('data-mad-confirm-close') !== '1' || !this.isDirty(el)) { this.close(el); return; }
-        if (el._madAsking) return;   // Esc repetido com a pergunta aberta
+        if (el._madAsking || el._madSaving) return;   // Esc repetido com a pergunta aberta / salvando
         el._madAsking = true;
-        const msg = el.getAttribute('data-mad-confirm-close-msg') || madT('discard_confirm', 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?');
-        const yes = el.getAttribute('data-mad-confirm-close-yes') || madT('discard', 'Descartar');
-        const no  = el.getAttribute('data-mad-confirm-close-no') || madT('keep_editing', 'Continuar editando');
         // Depois do despacho do Esc: o madConfirm escuta o Esc no document e o
         // MESMO keydown ainda vai chegar lá — cancelaria a pergunta na hora.
         setTimeout(() => {
-            const ask = typeof window.madConfirm === 'function'
-                ? window.madConfirm(msg, { danger: true, confirmText: yes, cancelText: no })
-                : Promise.resolve(window.confirm(msg));
-            Promise.resolve(ask).then((ok) => {
-                el._madAsking = false;
-                if (ok) MadOverlayEsc.close(el);
+            const form = this.saveForm(el);
+            this.ask(el, form).then((r) => {
+                if (r === 'alt') return this.saveAndClose(el, form);
+                if (r) MadOverlayEsc.close(el);
             });
         }, 0);
     },
@@ -4730,6 +4970,9 @@ const MadOverlayEsc = {
         const el = e.target.closest('[data-mad-overlay]');
         if (!el || el.getAttribute('data-mad-confirm-close') !== '1' || typeof el._madBaseline === 'string') return;
         el._madBaseline = MadOverlayEsc.snapshot(el);
+        // Voltar do navegador e fechar/recarregar a aba (fw#639): liga o gancho
+        // do histórico e o beforeunload do MadLeaveGuard (só agora, no toque).
+        if (typeof MadLeaveGuard !== 'undefined') MadLeaveGuard._wake();
     },
 
     /** <mad-drawer>/<mad-modal> reaberto (o DOM fica): retrato novo no próximo toque. */
@@ -4863,6 +5106,7 @@ const MadLeaveGuard = {
         // Troca a tela: a entrada do mad.js (state.url) ou a aba de um
         // <mad-dashboard-tabs> que já saiu da tela (Mad._dbTabsGone, fw#633).
         const gone = !!dest && !dest.url && typeof Mad !== 'undefined' && typeof Mad._dbTabsGone === 'function' && Mad._dbTabsGone(dest);
+        if (dest && (dest.url || gone) && this._here && this._layerPopstate(dest)) return true;
         if (!dest || !(dest.url || gone) || !this._here || !this.dirtyIn(this.contentRoot())) { this._note(); return false; }
         const here = this._here;
         const fwd  = (dest.madDepth || 0) > ((here.state && here.state.madDepth) || 0);
@@ -4883,8 +5127,44 @@ const MadLeaveGuard = {
         return true;
     },
 
+    /**
+     * Voltar/avançar com uma gaveta/modal de `confirm-close` alterada por cima
+     * (fw#639): a URL volta na hora para a da tela e a pergunta de descarte
+     * abre (sem o "Salvar e fechar": o voltar é para sair). "Continuar
+     * editando" fica onde está; "Descartar" fecha a camada e refaz o
+     * movimento — passando antes pelo aviso da ficha de baixo, se ela também
+     * mudou (confirm-leave). true = segurou.
+     */
+    _layerPopstate(dest) {
+        const el = MadOverlayEsc.top();
+        if (!el || el.getAttribute('data-mad-confirm-close') !== '1' || !MadOverlayEsc.isDirty(el)) return false;
+        const here = this._here;
+        const fwd  = (dest.madDepth || 0) > ((here.state && here.state.madDepth) || 0);
+        const destUrl  = location.href;
+        const destLoad = dest.url || (location.pathname + location.search);
+        try { history.pushState(here.state, '', here.url); } catch (err) { this._note(); return false; }
+        if (el._madAsking || el._madSaving) return true;   // voltar repetido com a pergunta aberta
+        MadOverlayEsc.ask(el, null).then((ok) => {
+            if (!ok) return;
+            MadOverlayEsc.close(el);
+            return Promise.resolve(this.check()).then((go) => {
+                if (go === false) return;
+                if (fwd) {
+                    history.replaceState(dest, '', destUrl);
+                    Mad.load(destLoad, null, { history: true });
+                    return;
+                }
+                this._passPop = true;
+                history.back();
+            });
+        });
+        return true;
+    },
+
     onBeforeUnload(e) {
-        if (!MadLeaveGuard.dirtyIn(document)) return;
+        // Ficha com confirm-leave (fw#632) ou gaveta/modal de confirm-close
+        // aberta (fw#639) com alteração não salva.
+        if (!MadLeaveGuard.dirtyIn(document) && !MadOverlayEsc.dirtyOpen()) return;
         e.preventDefault();
         e.returnValue = '';
         return '';
@@ -4898,12 +5178,24 @@ const MadLeaveGuard = {
      * e o retrato novo fica para o próximo toque. true = limpou.
      */
     saved(wrapper, sourceForm, ops) {
-        if (!this._on) return false;
         const list = Array.isArray(ops) ? ops : [];
         const notice = (o) => o.op === 'toast' || o.op === 'alert';
         const bad = list.some((o) => o && (
             (o.op === 'addClass' && o.content === 'mad-error') || o.op === 'df_field_error'
             || (notice(o) && /^(error|danger|warning)$/i.test(String(o.type || '')))));
+        // Envio de um formulário de gaveta/modal com confirm-close (fw#639):
+        // gravou = o que está nela é o salvo (retrato novo no próximo toque —
+        // fechar depois não pergunta, recarregar a aba não avisa) e o
+        // "Salvar e fechar" pode fechar. Outra pergunta do servidor na
+        // resposta (MadMessage::confirm) ainda não é "gravou".
+        const layer = sourceForm && sourceForm.closest ? sourceForm.closest('[data-mad-confirm-close="1"]') : null;
+        if (layer) {
+            const asks = list.some((o) => o && o.op === 'script' && /\b(MadDialog\.|madConfirm\(|__mad_question\()/.test(String(o.content || '')));
+            const ok = !bad && !asks;
+            if (ok) delete layer._madBaseline;
+            if (layer._madSaving && layer._madSaving.form === sourceForm) layer._madSaving.ok = ok;
+        }
+        if (!this._on) return false;
         if (bad) return false;
         if (!sourceForm && !list.some((o) => o && notice(o) && String(o.type || '') === 'success')) return false;
         let scopes = [];

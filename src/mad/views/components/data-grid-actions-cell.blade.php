@@ -39,20 +39,20 @@
         @foreach($_rowActs as $act)
         @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $_over=($loop->index >= $_overAt ? ' data-act-over' : '') . ($loop->index === $_rcAt ? ' data-row-act' : ''); @endphp
         @if($act->isNav)
-        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
+        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip($row) }}"
                 {!! $act->getNavAttr($aId, $row) !!}>
             @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
             @if($act->label&&!$act->icon){{ $act->label }}@elseif($act->label&&$act->showLabel)<span class="mad-dg-action-btn-label">{{ $act->label }}</span>@endif
         </button>
         @elseif($act->confirm || $act->confirmPopover)
         @php $_cMsg = $act->confirmText($row); $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
-        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
+        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip($row) }}"
                 @click="confirmAction({{ json_encode($_cMsg) }}, () => $dispatch('mad-dg-call',{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]}), $event, {{ $_cType }})">
             @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
             @if($act->label&&!$act->icon){{ $act->label }}@elseif($act->label&&$act->showLabel)<span class="mad-dg-action-btn-label">{{ $act->label }}</span>@endif
         </button>
         @else
-        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip() }}"
+        <button type="button" class="{{ $act->btnClass() }}"{{ $_over }} {!! $act->stateAttrs($row) !!} title="{{ $act->tooltip($row) }}"
                 mad:click="{{ $act->method }}({{ $aIdJs }}{{ $ep }})">
             @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:14px;height:14px;"></i>@endif
             @if($act->label&&!$act->icon){{ $act->label }}@elseif($act->label&&$act->showLabel)<span class="mad-dg-action-btn-label">{{ $act->label }}</span>@endif
@@ -74,20 +74,20 @@
                 @foreach($_menu['acts'] as $act)
                 @php $aId=$row[$act->idField]??$rowId; $aIdJs=\Mad\Grid\MadDataGrid::rowIdJs($aId); $ep=!empty($act->params)?', '.json_encode($act->rowParams($row)):''; $act=$act->getTransformed($row); $diCls=$act->menuClass(); @endphp
                 @if($act->isNav)
-                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
+                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($_dny = $act->refusalTitle($row)) title="{{ $_dny }}"@endif
                         @click="open=false" {!! $act->getNavAttr($aId, $row) !!}>
                     @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:13px;height:13px;"></i>@endif
                     {{ $act->label }}
                 </button>
                 @elseif($act->confirm || $act->confirmPopover)
                 @php $_cMsg = $act->confirmText($row); $_cType = $act->confirmPopover ? "'popover'" : "null"; @endphp
-                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
+                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($_dny = $act->refusalTitle($row)) title="{{ $_dny }}"@endif
                         @click="open=false; confirmAction({{ json_encode($_cMsg) }}, () => $root.dispatchEvent(new CustomEvent('mad-dg-call',{detail:{method:{{ json_encode($act->method) }},params:[{{ $aIdJs }}{{ $ep }}]},bubbles:true})), $event, {{ $_cType }})">
                     @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:13px;height:13px;"></i>@endif
                     {{ $act->label }}
                 </button>
                 @else
-                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($act->denyTitle()) title="{{ $act->denyTitle() }}"@endif
+                <button type="button" class="{{ $diCls }}" {!! $act->stateAttrs($row) !!}@if($_dny = $act->refusalTitle($row)) title="{{ $_dny }}"@endif
                         @click="open=false; $root.dispatchEvent(new CustomEvent('mad-dg-call',{detail:{method:'{{ $act->method }}',params:[{{ $aIdJs }}{{ $ep }}]},bubbles:true}))">
                     @if($act->icon)<i data-lucide="{{ $act->icon }}" style="width:13px;height:13px;"></i>@endif
                     {{ $act->label }}

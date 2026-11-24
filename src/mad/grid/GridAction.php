@@ -22,6 +22,12 @@ class GridAction
      */
     public         $whenFieldFn = null;  // callable ($row) => bool
     public         $disabledFn = null;  // callable ($row) => bool
+    /**
+     * `deny-condition` (fw#636): callable ($row) => ?string. Texto = a ação
+     * fica na linha, esmaecida e recusada, com o texto como dica; null/'' =
+     * normal. Ver {@see denyReason()}.
+     */
+    public         $denyFn     = null;
     public         $transformFn = null; // callable ($row) => array de overrides
     public array   $params    = [];
     public string  $idField   = 'id';
@@ -167,7 +173,73 @@ class GridAction
     /** A ação depende da linha para aparecer ou ficar habilitada? */
     public function hasRowConditions(): bool
     {
-        return $this->whenFn !== null || $this->whenFieldFn !== null || $this->disabledFn !== null;
+        return $this->whenFn !== null || $this->whenFieldFn !== null || $this->disabledFn !== null
+            || $this->denyFn !== null;
+    }
+
+    /**
+     * Recusa com motivo por linha (`deny-condition="Classe::metodo"`, fw#636):
+     * callable, 'Classe::metodo' ou só o nome do método da tela, que recebe a
+     * linha (como o `display-condition`) e devolve `?string`. Com texto, a
+     * ação continua na linha, esmaecida e focável (`aria-disabled` +
+     * `data-mad-deny`), com o texto como dica; o clique mostra a dica sem
+     * executar, e o servidor recusa a chamada com o mesmo texto.
+     */
+    public function deny($condition): self
+    {
+        $this->denyFn = $condition;
+        $this->denyMemo = null;
+        return $this;
+    }
+
+    /** @var array{0: array, 1: string}|null a última linha avaliada e o motivo */
+    private ?array $denyMemo = null;
+
+    /**
+     * O motivo da recusa da `deny-condition` nesta linha, ou '' (sem regra, ou
+     * a regra devolveu null/vazio). Uma chamada por linha: o desenho pergunta
+     * no estado, na dica e no desabilitado, e a regra roda uma vez só.
+     */
+    public function denyReason(array $row): string
+    {
+        if ($this->denyFn === null) {
+            return '';
+        }
+        if ($this->denyMemo !== null && $this->denyMemo[0] === $row) {
+            return $this->denyMemo[1];
+        }
+        $reason = '';
+        if (is_callable($this->denyFn)) {
+            $reason = self::denyText(self::_callRowCallback($this->denyFn, $row));
+        } else {
+            self::warnUncallable('deny-condition', $this->denyFn, $this->label ?: $this->method);
+        }
+        $this->denyMemo = [$row, $reason];
+
+        return $reason;
+    }
+
+    /**
+     * O que a `deny-condition` devolveu, como texto da dica: string (ou
+     * Stringable) não vazia; qualquer outra coisa (null, '', bool) = sem
+     * recusa.
+     */
+    public static function denyText(mixed $value): string
+    {
+        if ($value instanceof \Stringable) {
+            $value = (string) $value;
+        }
+
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * A dica da recusa desta ação na linha: a do perfil ("Sem permissão para
+     * excluir"), senão o motivo da `deny-condition`; '' quando nenhuma recusa.
+     */
+    public function refusalTitle(array $row): string
+    {
+        return $this->denyTitle() ?: $this->denyReason($row);
     }
 
     /** Callable ou string 'Classe::metodo' que recebe (array $row) e retorna bool. */
@@ -205,6 +277,7 @@ class GridAction
     {
         $this->whenFn      = self::hostCallable($this->whenFn, $hosts);
         $this->disabledFn  = self::hostCallable($this->disabledFn, $hosts);
+        $this->denyFn      = self::hostCallable($this->denyFn, $hosts);
         $this->transformFn = self::hostCallable($this->transformFn, $hosts);
 
         return $this;
@@ -324,12 +397,15 @@ class GridAction
     }
 
     /**
-     * O `title` do botão da linha: o motivo da recusa do perfil, senão a dica
-     * declarada, senão o rótulo (o histórico).
+     * O `title` do botão da linha: o motivo da recusa do perfil, senão o da
+     * `deny-condition` na linha (quando ela vem), senão a dica declarada,
+     * senão o rótulo (o histórico).
      */
-    public function tooltip(): string
+    public function tooltip(?array $row = null): string
     {
-        return $this->denyTitle() ?: ($this->title !== '' ? $this->title : $this->label);
+        return $this->denyTitle()
+            ?: ($row !== null ? $this->denyReason($row) : '')
+            ?: ($this->title !== '' ? $this->title : $this->label);
     }
 
     public function idField(string $field): self
@@ -536,6 +612,10 @@ class GridAction
         if ($this->permDecision()['mode'] === 'disable') {
             return true;
         }
+        // Recusada pela `deny-condition` da linha: o servidor também barra.
+        if ($this->denyReason($row) !== '') {
+            return true;
+        }
         if ($this->disabledFn !== null && is_callable($this->disabledFn)) {
             return (bool) self::_callRowCallback($this->disabledFn, $row);
         }
@@ -578,12 +658,15 @@ class GridAction
      *    botão, a dica (o `title` = denyTitle()) nunca aparecia e o teclado nem
      *    chegava nele. Assim ele segue focável, o leitor de tela anuncia
      *    "indisponível" e o mad-ui.js barra o clique e mostra a dica;
+     *  - `deny-condition` com motivo nesta linha (fw#636): o mesmo
+     *    `aria-disabled="true" data-mad-deny` — a dica é o motivo
+     *    ({@see tooltip()}/{@see refusalTitle()} com a linha);
      *  - regra da linha (`disabled()` do desenvolvedor): `disabled`, como sempre;
      *  - senão, nada.
      */
     public function stateAttrs(array $row): string
     {
-        if ($this->permDecision()['mode'] === 'disable') {
+        if ($this->permDecision()['mode'] === 'disable' || $this->denyReason($row) !== '') {
             return 'aria-disabled="true" data-mad-deny';
         }
         if ($this->isDisabled($row)) {

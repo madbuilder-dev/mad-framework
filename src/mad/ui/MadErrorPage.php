@@ -32,20 +32,116 @@ namespace Mad\Ui;
 class MadErrorPage
 {
     /**
-     * Identificador curto e estável de UMA ocorrência.
+     * Letras e números do código, sem os que se confundem ao ler em voz alta
+     * ou ao digitar (0/O, 1/I/L, U/V).
+     */
+    private const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTWXYZ';
+
+    /**
+     * Identificador curto de UMA ocorrência: `E-7K2Q9` (fw#642).
      *
      * Curto de propósito: ele vai ser lido em voz alta no telefone com o
-     * suporte. 12 hex dão colisão irrelevante para esse uso.
+     * suporte, que o acha no log (Logs › Laravel Log, busca) junto com a hora
+     * e o usuário. O mesmo formato na tela de erro, no diálogo do erro técnico
+     * e no erro não tratado de uma ação.
      */
     public static function errorId(?\Throwable $e = null): string
     {
+        $max = strlen(self::CODE_ALPHABET) - 1;
         try {
-            return substr(bin2hex(random_bytes(6)), 0, 12);
+            $code = '';
+            for ($i = 0; $i < 5; $i++) {
+                $code .= self::CODE_ALPHABET[random_int(0, $max)];
+            }
         } catch (\Throwable $ignored) {
             // Sem fonte de aleatoriedade: deriva do erro + horário. Pior
             // identificador, ainda melhor do que nenhum.
-            return substr(md5(($e ? $e->getFile() . $e->getLine() : '') . microtime()), 0, 12);
+            $hash = md5(($e ? $e->getFile() . $e->getLine() : '') . microtime());
+            $code = '';
+            for ($i = 0; $i < 5; $i++) {
+                $code .= self::CODE_ALPHABET[hexdec(substr($hash, $i * 2, 2)) % ($max + 1)];
+            }
         }
+
+        return 'E-' . $code;
+    }
+
+    /**
+     * Quem e onde, para a linha do log do erro (fw#642): o usuário da sessão
+     * (login e id) e a rota (método, caminho e, numa ação do wire, a ação
+     * pedida). Vazio fora de uma requisição. Nunca lança.
+     *
+     * @return array{user?: string, route?: string}
+     */
+    public static function requestContext(): array
+    {
+        $out = [];
+        try {
+            if (function_exists('app') && app()->bound('session') && app('session')->isStarted()) {
+                $login = trim((string) session('login'));
+                $id    = session('userid');
+                if ($login !== '' || ($id !== null && $id !== '')) {
+                    $out['user'] = trim($login . ($id !== null && $id !== '' ? ' (id ' . $id . ')' : ''));
+                }
+            }
+        } catch (\Throwable $ignored) {
+            // sem sessão: o log sai sem o usuário
+        }
+        try {
+            if (function_exists('app') && app()->bound('request')) {
+                $request = app('request');
+                $route   = $request->getMethod() . ' /' . ltrim($request->path(), '/');
+                $action  = $request->input('mad_action');
+                if (is_string($action) && $action !== '' && strlen($action) <= 120) {
+                    $route .= ' → ' . $action;
+                }
+                $out['route'] = $route;
+            }
+        } catch (\Throwable $ignored) {
+            // fora de requisição: o log sai sem a rota
+        }
+
+        return $out;
+    }
+
+    /**
+     * Erro NÃO TRATADO de uma ação (o catch do wire, fw#642): o caminho de
+     * sempre (`report()` do Laravel — log, Mad Trace e os `report` do app) e,
+     * por cima, a linha do código `[mad-error E-…]` com o usuário e a rota,
+     * sem segredo. O evento do Mad Trace que o `report()` criou ganha o mesmo
+     * código (o Mad Trace junta o mesmo erro da mesma requisição). Nunca lança.
+     */
+    public static function reportUnhandled(\Throwable $e, string $errorId, array $context = []): void
+    {
+        try {
+            if (function_exists('report')) {
+                report($e);
+            }
+        } catch (\Throwable $ignored) {
+            // segue: a linha do código ainda vai para o log
+        }
+
+        $context = self::cleanContext($context);
+        self::log($e, $errorId, $context);
+
+        try {
+            if (class_exists('MadTrace') && \MadTrace::isInstalled()) {
+                // Sem trocar a mensagem: é o que casa com o evento do report().
+                \MadTrace::captureException($e, $context + ['error_id' => $errorId]);
+            }
+        } catch (\Throwable $ignored) {
+            // silêncio deliberado
+        }
+    }
+
+    /** Nome de classe anônima sem o byte NUL (ver report()). */
+    private static function cleanContext(array $context): array
+    {
+        if (isset($context['component']) && is_string($context['component'])) {
+            $context['component'] = explode("\0", $context['component'])[0];
+        }
+
+        return $context;
     }
 
     /**
@@ -65,9 +161,7 @@ class MadErrorPage
     {
         // O nome de uma classe anônima do PHP leva um byte NUL (`Classe@anonymous\0/caminho`):
         // o jsonb do PostgreSQL recusa e o log fica ilegível. Fica só o que vem antes.
-        if (isset($context['component']) && is_string($context['component'])) {
-            $context['component'] = explode("\0", $context['component'])[0];
-        }
+        $context = self::cleanContext($context);
 
         self::log($e, $errorId, $context);
         self::trace($e, $errorId, $context);
@@ -81,7 +175,9 @@ class MadErrorPage
                 // traz o SQL com os valores — o hash da senha, num INSERT de
                 // usuário — e `getTraceAsString()` escreve os argumentos de
                 // cada chamada.
-                logger()->error('[mad-error ' . $errorId . '] ' . MadErrorRedactor::describe($e), $context + [
+                // Usuário e rota (fw#642): o suporte acha a linha pelo código e
+                // vê quem, onde e — pela data do log — quando.
+                logger()->error('[mad-error ' . $errorId . '] ' . MadErrorRedactor::describe($e), $context + self::requestContext() + [
                     'error_id' => $errorId,
                     'file'     => $e->getFile(),
                     'line'     => $e->getLine(),

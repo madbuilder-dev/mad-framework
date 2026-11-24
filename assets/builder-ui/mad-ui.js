@@ -9222,6 +9222,8 @@ window.madDeletePopover = function(event, onConfirm, message) {
         '</div>';
 
     document.body.appendChild(pop);
+    // Foco no Cancelar (fw#640): Enter logo depois do clique não remove a linha.
+    pop.querySelector('[data-action="cancel"]').focus();
 
     // Mostra com delay para posicionar antes
     setTimeout(function() {
@@ -9232,8 +9234,18 @@ window.madDeletePopover = function(event, onConfirm, message) {
     // Handlers
     function close() {
         pop.style.opacity = '0';
-        setTimeout(function() { pop.remove(); }, 150);
+        setTimeout(function() { pop.remove(); focusBack(); }, 150);
         document.removeEventListener('click', outsideHandler, true);
+    }
+    // O foco volta ao botão que abriu (fw#639c): Cancelar ou clique fora — o
+    // foco estava no popover, que sai, e ficava no <body>. No Excluir a linha
+    // (e o botão) sai da página: nada a fazer.
+    function focusBack() {
+        var now = document.activeElement;
+        if (now && now !== document.body && now.isConnected !== false && !pop.contains(now)) return;
+        if (btn && btn.isConnected !== false && typeof btn.focus === 'function' && !btn.disabled) {
+            try { btn.focus({ preventScroll: true }); } catch (e) {}
+        }
     }
 
     pop.querySelector('[data-action="confirm"]').addEventListener('click', function() {
@@ -9297,10 +9309,24 @@ window.madUserText = function (text) {
  *   madConfirm('Tem certeza?').then(ok => { if (ok) ... });
  *   madConfirm('Excluir?', { danger: true, confirmText: 'Excluir' });
  *   madConfirm('…', { user: false })   // sem o nome do usuário, mesmo com a opção ligada
+ *   madConfirm('Enviar?', { focus: 'confirm' })  // foco no Confirmar (fw#640)
+ *   madConfirm('Descartar?', { danger: true, altText: 'Salvar e fechar' })
+ *       // 3ª opção (fw#639): resolve 'alt' no clique nela
+ *   madConfirm('Sair?', { focusBack: campo })
+ *       // ao fechar, o foco volta para quem o tinha antes da pergunta; se ele
+ *       // sumiu, vai para `focusBack` (elemento ou função — fw#639b)
+ *
+ * O foco inicial fica no Cancelar (fw#640): um Enter logo depois do clique
+ * cancela, em vez de confirmar a ação. `focus: 'confirm'` é para os casos raros
+ * em que confirmar é o normal. Com `danger`, o Confirmar sai vermelho e
+ * afastado do Cancelar.
  */
 window.madConfirm = function (message, options) {
     options = options || {};
     if (options.user !== false && typeof window.madUserText === 'function') message = window.madUserText(message);
+    // Quem tinha o foco antes da pergunta (o campo que estava sendo editado):
+    // recebe o foco de volta ao fechar (fw#639b).
+    var before = document.activeElement;
     return new Promise(function(resolve) {
         var overlay = document.createElement('div');
         overlay.className = 'mad-confirm-overlay';
@@ -9322,7 +9348,8 @@ window.madConfirm = function (message, options) {
         msg.textContent = message;
 
         var btns = document.createElement('div');
-        btns.className = 'mad-confirm-btns';
+        btns.className = 'mad-confirm-btns' + (options.danger ? ' mad-confirm-btns-danger' : '')
+            + (options.altText ? ' mad-confirm-btns-alt' : '');
 
         var cancelBtn = document.createElement('button');
         cancelBtn.className = 'mad-btn mad-btn-secondary mad-btn-sm';
@@ -9332,7 +9359,17 @@ window.madConfirm = function (message, options) {
         confirmBtn.className = 'mad-btn mad-btn-sm ' + (options.danger ? 'mad-btn-danger' : 'mad-btn-primary');
         confirmBtn.textContent = options.confirmText || madT('confirm', 'Confirmar');
 
+        // 3ª opção (`altText`, fw#639 — o "Salvar e fechar" da pergunta de
+        // descarte): fica junto do Cancelar; o Confirmar vai para a outra ponta.
+        var altBtn = null;
+        if (options.altText) {
+            altBtn = document.createElement('button');
+            altBtn.className = 'mad-btn mad-btn-primary mad-btn-sm mad-confirm-alt';
+            altBtn.textContent = options.altText;
+        }
+
         btns.appendChild(cancelBtn);
+        if (altBtn) btns.appendChild(altBtn);
         btns.appendChild(confirmBtn);
         modal.appendChild(iconWrap);
         modal.appendChild(msg);
@@ -9345,17 +9382,37 @@ window.madConfirm = function (message, options) {
 
         function close(result) {
             overlay.classList.remove('mad-confirm-visible');
-            setTimeout(function() { overlay.remove(); }, 150);
+            setTimeout(function() { overlay.remove(); focusBack(); }, 150);
             document.removeEventListener('keydown', onEsc);
             resolve(result);
+        }
+
+        // Foco de volta (fw#639b): fechar a pergunta deixava o foco no <body>
+        // — "Continuar editando" e o Cancelar não voltavam ao campo. Volta para
+        // quem tinha o foco antes; se ele sumiu, para `options.focusBack`
+        // (elemento ou função; a cortina passa o 1º campo do formulário). Só
+        // quando ninguém levou o foco para outro lugar enquanto isso. Depois
+        // da saída (150 ms): o Enter que fechou não chega ao campo.
+        function focusBack() {
+            var now = document.activeElement;
+            if (now && now !== document.body && now.isConnected) return;
+            var target = focusable(before) ? before
+                : (typeof options.focusBack === 'function' ? options.focusBack() : options.focusBack);
+            if (focusable(target)) { try { target.focus({ preventScroll: true }); } catch (e) {} }
+        }
+        // Na página, visível e habilitado.
+        function focusable(el) {
+            return !!(el && el !== document.body && el.isConnected && typeof el.focus === 'function'
+                && !el.disabled && el.getClientRects && el.getClientRects().length);
         }
 
         function onEsc(e) { if (e.key === 'Escape') close(false); }
         confirmBtn.onclick = function() { close(true); };
         cancelBtn.onclick = function() { close(false); };
+        if (altBtn) altBtn.onclick = function() { close('alt'); };
         overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
         document.addEventListener('keydown', onEsc);
-        confirmBtn.focus();
+        (options.focus === 'confirm' ? confirmBtn : cancelBtn).focus();
     });
 };
 
@@ -9365,6 +9422,9 @@ window.madConfirm = function (message, options) {
  *
  * Uso:
  *   madConfirmPopover(btnElement, 'Excluir?', { danger: true });
+ *
+ * Mesmo foco do madConfirm (fw#640): Cancelar, ou Confirmar com
+ * `focus: 'confirm'`.
  */
 window.madConfirmPopover = function (btn, message, options) {
     options = options || {};
@@ -9381,7 +9441,7 @@ window.madConfirmPopover = function (btn, message, options) {
         msg.textContent = message;
 
         var btns = document.createElement('div');
-        btns.className = 'mad-confirm-popover-btns';
+        btns.className = 'mad-confirm-popover-btns' + (options.danger ? ' mad-confirm-btns-danger' : '');
 
         var cancelBtn = document.createElement('button');
         cancelBtn.className = 'mad-btn mad-btn-ghost mad-btn-sm';
@@ -9413,10 +9473,20 @@ window.madConfirmPopover = function (btn, message, options) {
             if (closed) return;
             closed = true;
             pop.classList.remove('mad-confirm-popover-visible');
-            setTimeout(function() { pop.remove(); }, 150);
+            setTimeout(function() { pop.remove(); focusBack(); }, 150);
             document.removeEventListener('click', outside, true);
             document.removeEventListener('keydown', onEsc);
             resolve(result);
+        }
+        // O foco volta ao botão que abriu (fw#639c): Cancelar, Esc ou clique
+        // fora — o foco estava no popover, que sai, e ficava no <body>. Só se
+        // ele se perdeu (o Confirmar pode levar o foco a outra tela).
+        function focusBack() {
+            var now = document.activeElement;
+            if (now && now !== document.body && now.isConnected !== false && !pop.contains(now)) return;
+            if (btn && btn.isConnected !== false && typeof btn.focus === 'function' && !btn.disabled) {
+                try { btn.focus({ preventScroll: true }); } catch (e) {}
+            }
         }
 
         function outside(e) { if (!pop.contains(e.target) && !btn.contains(e.target)) close(false); }
@@ -9424,6 +9494,7 @@ window.madConfirmPopover = function (btn, message, options) {
 
         confirmBtn.onclick = function(e) { e.stopPropagation(); close(true); };
         cancelBtn.onclick = function(e) { e.stopPropagation(); close(false); };
+        (options.focus === 'confirm' ? confirmBtn : cancelBtn).focus();
 
         setTimeout(function() {
             document.addEventListener('click', outside, true);
@@ -15047,6 +15118,14 @@ document.addEventListener('alpine:init', () => {
                 if ((r.w && !_dfActCond(row, r.w)) || (r.wf && !_dfActCond(row, r.wf))) return 'hide';
                 if (pre === 'off' || (r.d && _dfActCond(row, r.d))) return 'off';
                 return 'show';
+            },
+
+            // `deny-condition` (fw#636): o motivo da recusa da ação `i` nesta
+            // linha, calculado no servidor por linha carregada (actDeny); '' =
+            // ação normal. Vira aria-disabled + data-mad-deny + title.
+            _actDeny(row, i) {
+                const d = (row && cfg.actDeny) ? (cfg.actDeny[row.__id] || {})[i] : '';
+                return typeof d === 'string' ? d : '';
             },
         };
     });

@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => ''])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'confirmVariant' => '', 'confirmFocus' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => '', 'denyCondition' => ''])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -64,14 +64,24 @@
     }
     if ($confirm !== '') {
         $_cMsg  = json_encode($confirm, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $_cOpts = $variant === 'danger' ? ', {danger:true}' : '';
+        // Confirmar vermelho e afastado do Cancelar: ação destrutiva
+        // (`variant="danger"`) ou `confirm-variant="danger"` num botão de
+        // outra cor (fw#640). O foco abre no Cancelar; `confirm-focus="confirm"`
+        // devolve o foco ao Confirmar, para quando confirmar é o normal.
+        $_cVar    = strtolower(trim(is_scalar($confirmVariant) ? (string) $confirmVariant : ''));
+        $_cDanger = in_array($_cVar !== '' ? $_cVar : strtolower((string) $variant), ['danger', 'destructive'], true);
+        $_cFocus  = strtolower(trim(is_scalar($confirmFocus) ? (string) $confirmFocus : '')) === 'confirm';
+        $_cParts  = array_merge($_cDanger ? ['danger:true'] : [], $_cFocus ? ['focus:"confirm"'] : []);
+        $_cOpts   = $_cParts ? ', {' . implode(',', $_cParts) . '}' : '';
         if (preg_match('/\bonclick\s*=\s*"([^"]*)"/i', $attrs, $_cm)) {
             $_cJs  = 'Mad.confirm(' . $_cMsg . $_cOpts . ').then(ok => { if (ok) { '
                    . htmlspecialchars_decode($_cm[1], ENT_QUOTES) . ' } })';
             $attrs = str_replace($_cm[0], 'onclick="' . htmlspecialchars($_cJs, ENT_QUOTES) . '"', $attrs);
         } elseif (strpos($attrs, 'data-mad-click') !== false) {
             // MadWire já honra data-mad-confirm no handler de data-mad-click
-            $attrs .= ' data-mad-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"';
+            $attrs .= ' data-mad-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"'
+                    . ($_cDanger ? ' data-mad-confirm-variant="danger"' : '')
+                    . ($_cFocus ? ' data-mad-confirm-focus="confirm"' : '');
         } else {
             // submit / reset / <a href> — gate cancela o evento e re-dispara
             $attrs .= ' onclick="' . htmlspecialchars(
@@ -149,6 +159,28 @@
     if ($_permDeny) {
         $disabled = false;
         $title    = '';   // a dica do perfil vai na tag e vence o title do chamador
+    }
+    // `deny-condition="Classe::metodo"` (fw#636): regra do app sobre o registro
+    // aberto na tela (o Excluir do formulário/ficha). Devolve o motivo ou null;
+    // com motivo o botão fica no mesmo modo da recusa do perfil — focável,
+    // `aria-disabled` + `data-mad-deny`, a dica é o motivo — e a tela anota o
+    // motivo para recusar a chamada forjada. A recusa do perfil vence; botão
+    // escondido não pergunta. Sem a prop, nada muda.
+    $_denyCond = is_string($denyCondition) ? trim($denyCondition) : '';
+    if ($_denyCond !== '' && ! $_permDeny && $_permMode !== 'hide' && ! $_isHidden) {
+        // O método que o servidor vai receber é o do `data-mad-click` (o
+        // navigate não passa pela tela: fica só no navegador).
+        $_denyMeth = preg_match('/\bdata-mad-click\s*=\s*"\s*([A-Za-z_][A-Za-z0-9_]*)/', $attrs, $_dm) ? $_dm[1] : '';
+        $_denyComp = \Mad\Component\MadRenderContext::getComponent();
+        $_denyText = $_denyComp instanceof \Mad\Component\MadComponent
+            ? $_denyComp->_buttonDenyReason($_denyCond, $_denyMeth)
+            : '';
+        if ($_denyText !== '') {
+            $_permDeny  = true;
+            $_permTitle = $_denyText;
+            $disabled   = false;
+            $title      = '';
+        }
     }
     // `disabled-hint`: botão desabilitado que diz POR QUÊ ("Limite do plano:
     // 2 unidades…"). Mesmo modo da ação sem permissão, acima: focável, clique

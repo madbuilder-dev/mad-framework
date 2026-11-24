@@ -227,6 +227,8 @@ class MadServiceProvider extends ServiceProvider
         $this->bootRoutines();
         // Arquivos das colunas `$madFiles` saem com o registro excluído de verdade (fórum #274).
         \Mad\Database\MadRecordFiles::listen($this->app['events']);
+        // Restaurar (SoftDeletes do Laravel) traz as filhas da mesma exclusão (fw#643).
+        \Mad\Ui\MadRecordInUse::listen($this->app['events']);
         $this->bootVibePreview();
         $this->bootApiRequestLog();
         self::applyTrustedProxies(config('mad.trusted_proxies', env('TRUSTED_PROXIES')));

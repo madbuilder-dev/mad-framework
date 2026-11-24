@@ -10,9 +10,12 @@
     // Fórum #245: opt-in por tela com protected static bool $draggable = true.
     $draggable = (bool) ($draggable ?? false);
     $help    = $help    ?? '';
+    // Para onde a camada que É a tela volta ao fechar (fw#638):
+    // {class, method, url} ou null (MadComponentWrapper::returnTo).
+    $back    = $back    ?? null;
     $wrapId  = 'madwrap-' . preg_replace('/[^a-z0-9]/', '-', strtolower($id));
 @endphp
-<div id="{{ $wrapId }}" data-mad-wrapper="modal">
+<div id="{{ $wrapId }}" data-mad-wrapper="modal"@if($back) data-mad-back="{{ json_encode($back, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}"@endif>
     <mad-modal :name="$id" :title="$title" :size="$size" :close-on-backdrop="$closeOnBackdrop" :confirm-close="$confirmClose" :draggable="$draggable" :help="$help">
         {!! $content !!}
     </mad-modal>
@@ -32,6 +35,8 @@
     // e ela ficava por cima da tela seguinte (fw#393). Fecha quando a rota muda.
     var host = wrap.parentNode;
     var routeLayer = !!(host && host.closest && host.closest('#mad_main, .mad-tab-pane, .mad-tab-panes'));
+    var back = null;
+    try { back = JSON.parse(wrap.getAttribute('data-mad-back') || 'null'); } catch (e) { back = null; }
 
     // Move para o body — ignora onde o framework inseriu
     document.body.appendChild(wrap);
@@ -49,6 +54,12 @@
             window.removeEventListener('mad:tab-activated', onRouteChange);
             window._madOverlayDepth = Math.max(1000, (window._madOverlayDepth || 1010) - 10);
             setTimeout(function () { wrap.remove(); }, 300);
+            // Fechou sem trocar de rota (Salvar com close, X, Esc, Cancelar):
+            // sem tela por trás, a página ficava vazia (fw#638). O mad.js
+            // volta para a tela de origem.
+            if (routeLayer && window.Mad && typeof Mad.routeLayerClosed === 'function') {
+                Mad.routeLayerClosed(routePath, back, host);
+            }
         }
     }
     window.addEventListener('madmodal', onClose);

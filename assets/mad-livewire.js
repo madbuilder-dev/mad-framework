@@ -70,6 +70,7 @@ if (typeof window.madT !== 'function') {
     let _el   = null;   // backdrop atual
     let _info = null;   // info do erro atual
     let _prevOverflow = '';
+    let _back = null;   // foco ao fechar (fw#639c): elemento, ou função que o acha
 
     // ── CSS (injetado uma vez; usa tokens --mad-* → dark automático) ─────────
 
@@ -322,6 +323,19 @@ textarea.mad-errm-pane{outline:0}
         _el = null;
         document.body.style.overflow = _prevOverflow;
         document.removeEventListener('keydown', _onKey, true);
+        // O foco volta para quem o tinha ao abrir, ou para o botão da ação
+        // (fw#639c) — sem isto ficava no <body>. Só se ninguém o levou.
+        const back = _back;
+        _back = null;
+        if (!back) return;
+        setTimeout(() => {
+            const now = document.activeElement;
+            if (now && now !== document.body && now.isConnected) return;
+            const t = typeof back === 'function' ? back() : back;
+            if (t && t.isConnected && typeof t.focus === 'function' && !t.disabled && t.getClientRects().length) {
+                try { t.focus({ preventScroll: true }); } catch (e) {}
+            }
+        }, 0);
     }
 
     function _onKey(e) {
@@ -342,6 +356,9 @@ textarea.mad-errm-pane{outline:0}
         info = info || {};
         _injectCss();
         close();
+        const ae = document.activeElement;
+        _back = (ae && ae !== document.body) ? ae
+            : (typeof MadDialog !== 'undefined' && typeof MadDialog._focusHome === 'function' ? MadDialog._focusHome : null);
 
         const html   = info.body || '';
         const parsed = info.parsed || (typeof html === 'string' && html ? _extractFromHtml(html) : {});
@@ -1810,7 +1827,8 @@ const MadWire = (() => {
                         __mad_warning(data.title || madT('no_permission', 'Sem permissão'), data.error);
                     }
                 } else if (typeof __mad_error === 'function') {
-                    __mad_error(madT('exception', 'Exceção'), data.error);
+                    // Erro com código para o suporte (fw#642): o servidor manda o título ("Erro").
+                    __mad_error(data.title || madT('exception', 'Exceção'), data.error);
                 } else {
                     alert(madT('error_prefix', 'Erro: ') + data.error);
                 }
@@ -2356,14 +2374,22 @@ const MadWire = (() => {
 
         // data-mad-confirm="msg" → confirma antes de disparar (usa madConfirm
         // se disponivel; fallback nativo). Re-click após ok evita loop pelo flag.
+        let confirmedAt = 0;
         const confirmMsg = el.getAttribute('data-mad-confirm');
         if (confirmMsg && !el.dataset.madConfirmed) {
+            // `confirm-variant="danger"` / `variant="danger"` do <mad-btn> e
+            // `confirm-focus="confirm"` chegam por data-* (fw#640). Sem eles,
+            // o diálogo padrão: Confirmar azul e foco no Cancelar.
+            const confirmOpts = {};
+            if (/^(danger|destructive)$/.test(el.getAttribute('data-mad-confirm-variant') || '')) confirmOpts.danger = true;
+            if (el.getAttribute('data-mad-confirm-focus') === 'confirm') confirmOpts.focus = 'confirm';
             const ok = typeof window.madConfirm === 'function'
-                ? await window.madConfirm(confirmMsg)
+                ? await window.madConfirm(confirmMsg, confirmOpts)
                 : window.confirm(confirmMsg);
             if (!ok) return;
             el.dataset.madConfirmed = '1';
             setTimeout(() => { delete el.dataset.madConfirmed; }, 0);
+            confirmedAt = Date.now();
         }
 
         const raw = (el.dataset.madClick || '').trim();
@@ -2397,8 +2423,74 @@ const MadWire = (() => {
         if (_queuedOnce(el)) return;
         const onStart = _heldOpen.has(el) ? _queuedOnce.hold(el) : null;
         _heldOpen.delete(el);
-        await _markBusy(el, _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el), onStart }));
+        // Foco (fw#639c): o diálogo que a resposta abrir volta para este botão
+        // (MadDialog._focusHome); sem diálogo, o foco perdido volta a ele.
+        const home   = _focusHome(el, wrapper);
+        const layers = _openLayers();
+        const dlg    = typeof MadDialog !== 'undefined' ? MadDialog : null;
+        if (dlg) dlg._focusHome = home;
+        try {
+            await _markBusy(el, _request(wrapper, action, params, {}, null, { tokenForm, dfScope: _dfEditScope(el), onStart }));
+        } finally {
+            if (dlg && dlg._focusHome === home) dlg._focusHome = null;
+        }
+        _refocus(home, confirmedAt, layers);
     });
+
+    /**
+     * Onde o foco volta depois da ação de um botão `mad:click` (fw#639c). O
+     * carregando desabilita o botão (fw#314) e o navegador manda o foco para
+     * o <body>; o redesenho completo troca o wrapper e o botão junto.
+     * Devolve uma função que acha, na hora: o próprio botão, se ainda está na
+     * página; senão o equivalente no wrapper novo (mesmo `id`, ou o mesmo
+     * `mad:click` na mesma posição); senão null.
+     */
+    function _focusHome(el, wrapper) {
+        const id   = el.id || '';
+        const raw  = el.getAttribute('data-mad-click') || '';
+        const wid  = wrapper && wrapper.getAttribute ? wrapper.getAttribute('mad-id') : null;
+        const same = (root) => (root && root.querySelectorAll)
+            ? Array.from(root.querySelectorAll('[data-mad-click]')).filter((b) => b.getAttribute('data-mad-click') === raw)
+            : [];
+        const old  = same(wrapper);
+        const pos  = old.indexOf(el);
+        return () => {
+            if (el.isConnected) return el;
+            if (id) {
+                const byId = document.getElementById(id);
+                if (byId) return byId;
+            }
+            if (!wid || !raw || pos < 0) return null;
+            const esc  = (window.CSS && CSS.escape) ? CSS.escape(wid) : wid;
+            const list = same(document.querySelector('[mad-id="' + esc + '"]'));
+            // Mesma quantidade: a posição aponta o mesmo botão (linha da grade).
+            return list.length === old.length ? list[pos] : null;
+        };
+    }
+
+    /** Camadas (cortina/modal) abertas — as marcas que o Esc usa. */
+    function _openLayers() {
+        return Array.from(document.querySelectorAll('[data-mad-overlay]')).filter((l) => l.getClientRects().length).length;
+    }
+
+    /**
+     * Depois da resposta, o foco perdido (no <body>) volta ao botão da ação
+     * (fw#639c). Não rouba o foco: se a resposta o levou (campo, diálogo) ou
+     * abriu uma camada, fica como está. Depois do `confirm=`, espera o
+     * diálogo de confirmação terminar de sair (ele devolve o foco no fim).
+     */
+    function _refocus(home, since, layers) {
+        const wait = since ? Math.max(0, since + 200 - Date.now()) : 0;
+        setTimeout(() => {
+            const now = document.activeElement;
+            if (now && now !== document.body && now.isConnected) return;
+            if (_openLayers() > layers) return;
+            const t = home();
+            if (t && t.isConnected && typeof t.focus === 'function' && !t.disabled && t.getClientRects().length) {
+                try { t.focus({ preventScroll: true }); } catch (e) {}
+            }
+        }, wait);
+    }
 
     document.addEventListener('submit', async (e) => {
         const form = e.target;

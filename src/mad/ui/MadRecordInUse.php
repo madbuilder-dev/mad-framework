@@ -32,6 +32,16 @@ use Illuminate\Support\Str;
  * entra na lista — até {@see MAX_DEPTH} níveis. Filha que fica sem o vínculo
  * (`on delete set null`) não conta em nenhuma das duas.
  *
+ * Registro com lixeira (SoftDeletes, HasMadSoftDeletes com a coluna): a
+ * exclusão só o marca, e o banco não leva nada. Vai junto para a lixeira a
+ * filha `on delete cascade` que TAMBÉM tem lixeira (e as dela, até
+ * {@see MAX_DEPTH} níveis), sem contar as que já estão lá — {@see alongWith()}
+ * conta, {@see trashAlong()} marca (fw#643). Filha sem lixeira fica onde está
+ * (fórum #274): marcar o pai não a apaga. O par: restaurar o pai traz de volta
+ * as filhas que foram junto NA MESMA exclusão (mesma marca: `deleted_at` e,
+ * quando os dois têm, `deleted_by`) — {@see restoreAlong()}, chamado pelo
+ * `restore()` do HasMadSoftDeletes e pelos listeners de {@see listen()}.
+ *
  * O NOME mostrado é o do Model filho: a constante `MAD_LABEL`, quando ele a
  * declara, senão o nome da classe por extenso (`ItemPedido` → "Item pedido").
  *
@@ -65,6 +75,12 @@ final class MadRecordInUse
 
     /** `on_delete` das chaves estrangeiras lidas na chamada, por conexão e tabela filha. */
     private static array $foreignKeys = [];
+
+    /** Profundidade do {@see restoreAlong()} em curso (o cache de FKs se limpa ao sair do último). */
+    private static int $restoreDepth = 0;
+
+    /** @var \WeakMap<Model, array{at:\Carbon\CarbonInterface,by:array<string,mixed>}>|null marca lida no `restoring` */
+    private static ?\WeakMap $restoring = null;
 
     /**
      * A frase com quem usa o registro, ou null quando o erro não é "registro em
@@ -118,8 +134,14 @@ final class MadRecordInUse
      *
      * @param list<array{label:string,count:int|null}> $along {@see alongWith()}
      */
-    public static function alongMessage(array $along): string
+    public static function alongMessage(array $along, bool $trash = false): string
     {
+        // Lixeira (fw#643): vai junto para a lixeira, e dá para desfazer —
+        // "Não dá para desfazer" só na exclusão de verdade.
+        if ($trash) {
+            return self::text('delete_along_trash', 'Vai junto para a lixeira: :where.', ['where' => self::where($along)]);
+        }
+
         return self::text(
             'delete_along',
             'Junto com este registro também serão excluídos: :where. Não dá para desfazer.',
@@ -146,20 +168,191 @@ final class MadRecordInUse
     }
 
     /**
-     * O que o banco exclui JUNTO com o registro (`on delete cascade`), com a
-     * quantidade — para quem exclui saber antes. Registro com lixeira
-     * (SoftDeletes, ou HasMadSoftDeletes com a coluna configurada) não leva
-     * nada: a exclusão só o marca, e as filhas ficam como estão (fórum #274).
+     * O que vai JUNTO com o registro, com a quantidade — para quem exclui saber
+     * antes. Exclusão de verdade: o que o banco exclui junto (`on delete
+     * cascade`). Registro com lixeira (SoftDeletes, ou HasMadSoftDeletes com a
+     * coluna configurada): as filhas `on delete cascade` que também têm
+     * lixeira, sem as que já estão nela — vão para a lixeira com ele
+     * ({@see trashAlong()}, fw#643). Filha sem lixeira fica como está
+     * (fórum #274) e não entra.
      *
      * @return list<array{label:string,count:int}>
      */
     public static function alongWith(Model $record): array
     {
         if (self::goesToTrash($record)) {
-            return [];
+            $byLabel = [];
+            foreach (self::trashTargets($record) as [$label, $query]) {
+                try {
+                    $count = (int) (clone $query)->count();
+                } catch (\Throwable) {
+                    continue;
+                }
+                if ($count > 0) {
+                    $byLabel[$label] = ($byLabel[$label] ?? 0) + $count;
+                }
+            }
+            $out = [];
+            foreach ($byLabel as $label => $count) {
+                $out[] = ['label' => (string) $label, 'count' => $count];
+            }
+
+            return $out;
         }
 
         return self::scan($record)[1];
+    }
+
+    /**
+     * Manda para a lixeira o que {@see alongWith()} contou para um registro com
+     * lixeira: as filhas `on delete cascade` que também têm lixeira, da mais
+     * funda para cima, uma a uma pelo Model (eventos e "excluído por" valem).
+     * Chame depois de marcar o registro, na mesma transação. Registro sem
+     * lixeira: nada (o banco leva as filhas).
+     *
+     * @return int quantas filhas foram para a lixeira
+     */
+    public static function trashAlong(Model $record): int
+    {
+        if (! self::goesToTrash($record)) {
+            return 0;
+        }
+
+        // A filha leva a MESMA marca do pai (o laço pode virar o segundo): é
+        // por ela que restaurar o pai sabe o que foi junto ({@see restoreAlong()}).
+        $at   = self::trashMark($record)['at'] ?? null;
+        $done = 0;
+        foreach (array_reverse(self::trashTargets($record)) as [, $query]) {
+            foreach ((clone $query)->get() as $child) {
+                if ($child instanceof Model && $child->delete() !== false) {
+                    $done++;
+                    if ($at !== null) {
+                        self::stampLike($child, $at);
+                    }
+                }
+            }
+        }
+
+        return $done;
+    }
+
+    /**
+     * Restaurar `$record` traz de volta as filhas que foram junto para a
+     * lixeira NA MESMA exclusão (fw#643, o par de {@see trashAlong()}): relação
+     * `on delete cascade`, filha com lixeira e com a mesma marca do pai
+     * (`deleted_at` no mesmo segundo e, quando os dois têm a coluna,
+     * `deleted_by`/`deleted_by_user_id` iguais). A que já estava na lixeira
+     * antes fica. Cada filha volta pelo próprio `restore()` — que traz as dela
+     * —, do nível mais raso para o mais fundo. `$mark` é a de
+     * {@see trashMark()}, lida ANTES do `restore()` do pai apagar a coluna.
+     *
+     * @internal chamado pelo `restore()` do HasMadSoftDeletes e por {@see onRestored()}
+     * @param array{at:\Carbon\CarbonInterface,by:array<string,mixed>}|null $mark
+     * @return int quantas filhas voltaram (diretas)
+     */
+    public static function restoreAlong(Model $record, ?array $mark): int
+    {
+        if ($mark === null) {
+            return 0;
+        }
+
+        $done = 0;
+        self::$restoreDepth++;
+        try {
+            foreach (self::relations($record, true) as $relation) {
+                try {
+                    $child = $relation->getRelated();
+                    if (! self::goesToTrash($child) || self::onDelete($relation, $record) !== 'cascade') {
+                        continue;
+                    }
+                    $col  = $child->getDeletedAtColumn();
+                    $rows = $relation->getQuery()
+                        ->withoutGlobalScopes([\Illuminate\Database\Eloquent\SoftDeletingScope::class, 'madSoftDelete'])
+                        ->whereNotNull($child->qualifyColumn($col))
+                        ->get();
+                } catch (\Throwable) {
+                    continue;
+                }
+                foreach ($rows as $row) {
+                    if ($row instanceof Model && self::sameMark(self::trashMark($row), $mark)) {
+                        $row->restore();
+                        $done++;
+                    }
+                }
+            }
+        } finally {
+            if (--self::$restoreDepth === 0) {
+                self::$foreignKeys = [];
+            }
+        }
+
+        return $done;
+    }
+
+    /**
+     * A marca da lixeira de `$model`: quando foi (`deleted_at`) e por quem
+     * (`deleted_by`, `deleted_by_user_id` do HasMadSoftDeletes, quando tem).
+     * Null: sem lixeira ou fora dela.
+     *
+     * @internal
+     * @return array{at:\Carbon\CarbonInterface,by:array<string,mixed>}|null
+     */
+    public static function trashMark(Model $model): ?array
+    {
+        if (! self::goesToTrash($model)) {
+            return null;
+        }
+        $at = self::moment($model->getAttribute($model->getDeletedAtColumn()));
+        if ($at === null) {
+            return null;
+        }
+        $by = [];
+        foreach (['deleted_by' => 'getDeletedByColumn', 'deleted_by_user_id' => 'getDeletedByUserIdColumn'] as $key => $getter) {
+            $col = method_exists($model, $getter) ? $model->{$getter}() : null;
+            if (is_string($col) && $col !== '') {
+                $by[$key] = $model->getAttribute($col);
+            }
+        }
+
+        return ['at' => $at, 'by' => $by];
+    }
+
+    /** Liga os listeners do restaurar do SoftDeletes do Laravel (MadServiceProvider). */
+    public static function listen(\Illuminate\Contracts\Events\Dispatcher $events): void
+    {
+        $events->listen('eloquent.restoring: *', [self::class, 'onRestoring']);
+        $events->listen('eloquent.restored: *', [self::class, 'onRestored']);
+    }
+
+    /**
+     * @internal Listener de `eloquent.restoring: *` (SoftDeletes do Laravel —
+     * o HasMadSoftDeletes cuida disso no próprio `restore()`): guarda a marca
+     * antes de o `restore()` apagar a coluna. Não devolve nada (devolver
+     * `false` cancelaria o restaurar).
+     */
+    public static function onRestoring(string $event, array $payload): void
+    {
+        $model = $payload[0] ?? null;
+        if (! $model instanceof Model || ! in_array(SoftDeletes::class, class_uses_recursive($model), true)) {
+            return;
+        }
+        $mark = self::trashMark($model);
+        if ($mark !== null) {
+            self::$restoring ??= new \WeakMap();
+            self::$restoring[$model] = $mark;
+        }
+    }
+
+    /** @internal Listener de `eloquent.restored: *`: as filhas da mesma exclusão voltam, numa transação. */
+    public static function onRestored(string $event, array $payload): void
+    {
+        $model = $payload[0] ?? null;
+        if (! $model instanceof Model || self::$restoring === null || ! isset(self::$restoring[$model])) {
+            return;
+        }
+        $mark = self::$restoring[$model];
+        unset(self::$restoring[$model]);
+        $model->getConnection()->transaction(fn () => self::restoreAlong($model, $mark));
     }
 
     /** Como a tabela do Model se chama para quem usa o app. */
@@ -219,6 +412,101 @@ final class MadRecordInUse
         }
 
         return false;
+    }
+
+    /** Mesma exclusão: mesmo segundo e, onde os dois têm a coluna, o mesmo autor. */
+    private static function sameMark(?array $child, array $parent): bool
+    {
+        if ($child === null || $child['at']->format('Y-m-d H:i:s') !== $parent['at']->format('Y-m-d H:i:s')) {
+            return false;
+        }
+        foreach (array_intersect_key($child['by'], $parent['by']) as $key => $value) {
+            if ((string) $value !== (string) $parent['by'][$key]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Valor da coluna da lixeira (Carbon do cast, ou o texto gravado) → momento; null se vazio. */
+    private static function moment(mixed $value): ?\Carbon\CarbonInterface
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return \Illuminate\Support\Carbon::instance($value);
+        }
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** Grava em `$child` (já na lixeira) a marca de tempo `$at`, se ela caiu noutro segundo. */
+    private static function stampLike(Model $child, \Carbon\CarbonInterface $at): void
+    {
+        $col = $child->getDeletedAtColumn();
+        $cur = self::moment($child->getAttribute($col));
+        if ($cur !== null && $cur->format('Y-m-d H:i:s') === $at->format('Y-m-d H:i:s')) {
+            return;
+        }
+        $value = $child->fromDateTime($at);
+        $child->newQueryWithoutScopes()->whereKey($child->getKey())->update([$col => $value]);
+        $child->setAttribute($col, $value);
+        $child->syncOriginalAttribute($col);
+    }
+
+    /**
+     * As filhas que vão junto para a lixeira com `$record` (fw#643): relação
+     * `on delete cascade` cujo Model também tem lixeira, e as dela, até
+     * {@see MAX_DEPTH} níveis — `[rótulo, consulta]`, de cima para baixo. A
+     * consulta usa o escopo da lixeira da filha: as já excluídas ficam de fora.
+     *
+     * @return list<array{0:string,1:Builder}>
+     */
+    private static function trashTargets(Model $record): array
+    {
+        self::$foreignKeys = [];
+        $out = [];
+        try {
+            self::trashWalk($record, null, 1, $out);
+        } finally {
+            self::$foreignKeys = [];
+        }
+
+        return $out;
+    }
+
+    /** @param list<array{0:string,1:Builder}> $out */
+    private static function trashWalk(Model $model, ?Builder $parents, int $depth, array &$out): void
+    {
+        foreach (self::relations($model, $parents === null) as $relation) {
+            try {
+                $child = $relation->getRelated();
+                if (! self::goesToTrash($child) || self::onDelete($relation, $model) !== 'cascade') {
+                    continue;
+                }
+                $query = $relation->getQuery();
+                if ($parents !== null) {
+                    $query->whereIn(
+                        $relation->getQualifiedForeignKeyName(),
+                        (clone $parents)->select($model->qualifyColumn($relation->getLocalKeyName()))
+                    );
+                    if ($relation instanceof MorphOneOrMany) {
+                        $query->where($relation->getQualifiedMorphType(), $relation->getMorphClass());
+                    }
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+            $out[] = [self::label($child), $query];
+            if ($depth < self::MAX_DEPTH) {
+                self::trashWalk($child, $query, $depth + 1, $out);
+            }
+        }
     }
 
     /**

@@ -307,6 +307,10 @@ return [
         'error' => [
             // Technical error (database/PHP) caught in an action: details go only to the log (Mad\Ui\MadUserError).
             'friendly'      => 'The operation could not be completed. Try again or contact the administrator.',
+            // End of the technical error sentence: the code that is in the log (fw#642).
+            'support_code'  => 'Support code: :code',
+            // Title of the dialog for an error with a code (the error toast becomes a fixed dialog).
+            'title'         => 'Error',
             'delete_failed' => 'The record could not be deleted. It may be in use elsewhere; if this continues, contact the administrator.',
             // Record in use: the sentence says who uses it (Mad\Ui\MadRecordInUse).
             'in_use'      => 'This record cannot be deleted: it is in use in :where. Delete or change those records first.',
@@ -324,13 +328,16 @@ return [
             'row_gone'       => 'This record is no longer in the list: it may have been deleted or changed by someone else. Refresh the page.',
             'delete_gone'    => 'Nothing was deleted: the record is no longer in the list. It may have been deleted by someone else.',
             'delete_refused' => 'The record was not deleted: the deletion was refused.',
+            'delete_denied'  => 'The record was not deleted: :reason',
             // Deletion that takes along what belongs to the record (on delete cascade): second confirmation.
             'delete_along'         => 'Along with this record, these will also be deleted: :where. This cannot be undone.',
             'delete_along_title'   => 'Delete the record and what belongs to it?',
             'delete_along_confirm' => 'Delete all',
             'delete_along_cancel'  => 'Cancel',
+            'delete_along_trash'   => 'Also going to the trash: :where.',
             'action_gone'    => 'The action was not run: the record is no longer in the list.',
             'action_refused' => 'The action was not run: it does not apply to this record.',
+            'action_denied'  => 'The action was not run: :reason',
             'cell_not_saved' => 'The change was not saved.',
             'stale_write'    => 'The change was not saved: the same field was changed later in another tab or window. Reload the screen to see the current value.',
             'cell_invalid'   => 'Invalid value.',
@@ -1149,6 +1156,7 @@ return [
             'doc_bad_pix'               => 'Invalid Pix key: use a CPF, CNPJ, e-mail, phone with +55 or random key.',
             'ok' => 'OK',
             'keep_editing' => 'Keep editing',
+            'save_and_close' => 'Save and close',
             'save' => 'Save',
             'pin_side_menu'             => 'Keep side menu open',
             'collapse_side_menu'        => 'Collapse side menu',

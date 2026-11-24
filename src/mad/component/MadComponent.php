@@ -2799,6 +2799,12 @@ abstract class MadComponent
      */
     public function _resolveAndCall(string $method, array $data = []): mixed
     {
+        // Botão da tela recusado pela deny-condition no último desenho (fw#636).
+        $denied = $this->_buttonDenyRefusal($method);
+        if ($denied !== null) {
+            return $denied;
+        }
+
         // Ação da linha de um Detail Form (`callAction(método, linha, índice)`).
         if ($data !== [] && array_is_list($data) && is_array($data[0])) {
             $refused = $this->_detailRowActionRefusal($method, $data[0]);
@@ -2953,15 +2959,64 @@ abstract class MadComponent
      *
      * @return mixed null = pode chamar; senão, a resposta da recusa
      */
+    /**
+     * `deny-condition` do `<mad-btn>` (fw#636): o motivo de o botão que chama
+     * `$method` ficar recusado com o registro aberto na tela. A regra
+     * (`Classe::metodo` ou o nome de um método `public static` da tela) recebe
+     * o registro como a ação de linha recebe a linha: os campos do formulário
+     * da tela em array (com `__record` quando o registro veio do banco neste
+     * pedido), ou o objeto, se ela pedir um só parâmetro tipado. Devolve
+     * ?string; texto = recusado. O motivo fica anotado no estado do formulário
+     * (MadForm::declareButtonDeny) para o servidor recusar a chamada forjada.
+     *
+     * @internal chamado pela view do framework (btn)
+     */
+    public function _buttonDenyReason(string $condition, string $method): string
+    {
+        $form   = $this->_primaryForm();
+        $record = $form?->getSourceRecord();
+        $row    = $form !== null ? $form->fields : [];
+        if ($record !== null) {
+            $row['__record'] = $record;
+        }
+        $fn     = \Mad\Grid\GridAction::hostCallable($condition, [static::class]);
+        $reason = '';
+        if (is_callable($fn)) {
+            $reason = \Mad\Grid\GridAction::denyText(\Mad\Grid\GridAction::callRowCallback($fn, $record, $row));
+        } else {
+            \Illuminate\Support\Facades\Log::warning('MadComponent: ' . static::class . " — deny-condition \"{$condition}\" do botão de {$method} não é um método que dá para chamar; o botão fica normal.");
+        }
+        $form?->declareButtonDeny($method, $reason);
+
+        return $reason;
+    }
+
+    /** Recusa a chamada de `$method` quando o botão dele saiu recusado pela deny-condition (fw#636). */
+    protected function _buttonDenyRefusal(string $method): mixed
+    {
+        foreach (get_object_vars($this) as $form) {
+            if (!$form instanceof \Mad\Form\MadForm) {
+                continue;
+            }
+            $reason = $form->buttonDenyFor($method);
+            if ($reason !== '') {
+                return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => $reason]));
+            }
+        }
+
+        return null;
+    }
+
     protected function _detailRowActionRefusal(string $method, array $row): mixed
     {
         $verdict = null;
+        $denied  = '';   // motivo da deny-condition, quando foi ela que recusou (fw#636)
         foreach (get_object_vars($this) as $form) {
             if (!$form instanceof \Mad\Form\MadForm) {
                 continue;
             }
             foreach ($form->detailActionsCalling($method) as $name => $entry) {
-                $v = $this->_detailRowActionVerdict($form, $name, $entry, $method, $row);
+                $v = $this->_detailRowActionVerdict($form, $name, $entry, $method, $row, $denied);
                 if ($v === '') {
                     return null;
                 }
@@ -2980,14 +3035,20 @@ abstract class MadComponent
             . ' (usuario ' . self::_logUser() . ').'
         );
 
+        if ($verdict === 'refused' && $denied !== '') {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => $denied]));
+        }
+
         return \Mad\Ui\MadToast::warning(mad_t($verdict === 'refused' ? 'mad.error.action_refused' : 'mad.error.action_gone'));
     }
 
     /**
      * @param array{a: list<array<string,mixed>>, m: string, f: string} $entry
+     * @param string $denied recebe o motivo da `deny-condition` da ação que
+     *                       apareceu recusada na linha (fw#636), se ainda vazio
      * @return string '' = vale; 'refused' = a condição não vale; 'gone' = linha que o detalhe não mostra
      */
-    private function _detailRowActionVerdict(\Mad\Form\MadForm $form, string $name, array $entry, string $method, array $row): string
+    private function _detailRowActionVerdict(\Mad\Form\MadForm $form, string $name, array $entry, string $method, array $row, string &$denied = ''): string
     {
         $hosts = [static::class];
         $acts  = [];
@@ -2996,10 +3057,16 @@ abstract class MadComponent
                 $acts[] = \Mad\Grid\MadDataGrid::_actFromConfig(['method' => $method] + $cfg)?->resolveIn(...$hosts);
             }
         }
-        $allows = static function (array $data) use ($acts): bool {
+        $allows = static function (array $data) use ($acts, &$denied): bool {
             foreach ($acts as $act) {
-                if ($act !== null && $act->isVisible($data) && !$act->isDisabled($data)) {
+                if ($act === null || !$act->isVisible($data)) {
+                    continue;
+                }
+                if (!$act->isDisabled($data)) {
                     return true;
+                }
+                if ($denied === '') {
+                    $denied = $act->denyReason($data);
                 }
             }
 

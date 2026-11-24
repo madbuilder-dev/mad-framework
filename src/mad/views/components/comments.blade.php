@@ -37,6 +37,21 @@
      * recente como "há 5 min" / "ontem" / "há 3 dias", com a data completa na
      * dica; pelado vale para os últimos 7 dias, `date-relative="3"` para 3
      * (fw#484). Mais antigo que isso, a data completa.
+     *
+     * Editor com formatação (fw#637): `editor="rich"` troca a caixa de texto
+     * pelo <mad-html-editor-field> (TinyMCE) com a barra enxuta — `toolbar`
+     * (padrão "bold italic underline | bullist numlist"), sem menu nem barra
+     * de status, altura pelo `rows`. Imagem colada/arrastada vai ao servidor
+     * com `upload-url`/`upload-accept`/`upload-max-mb` e `paste="clean"`,
+     * como no editor (fw#629). O comentário grava e aparece como HTML: o
+     * framework o limpa ao GRAVAR (MadHtmlSanitizer) e de novo ao EXIBIR (o
+     * que entrou por fora — importação, API — também sai limpo). A limpeza do
+     * app roda depois da do framework: `sanitize="Classe::metodo"` (estático)
+     * ou `sanitize="metodo"` da tela (pode ser protected), recebe o HTML e
+     * devolve o HTML; método que não existe não grava. O `saving` do Model do
+     * comentário também vale.
+     * Comentário antigo em texto simples continua com as quebras de linha.
+     * Sem a prop, nada muda: caixa de texto e texto escapado.
      */
     $name        = $name        ?? 'comentarios';
     $model       = $model       ?? '';
@@ -85,6 +100,9 @@
     $deletable       = isset($deletable) ? !empty($deletable) : true;
     $editable        = !empty($editable);
     $rows            = (int) ($rows ?? 3);
+    $editor          = strtolower(trim((string) ($editor ?? '')));
+    $rich            = in_array($editor, ['rich', 'html'], true);
+    $sanitize        = trim((string) ($sanitize ?? ''));
     $itemTemplate    = $itemTemplate ?? '';
     $onAdd           = $onAdd    ?? '';
     $onRemove        = $onRemove ?? '';
@@ -108,13 +126,45 @@
         'deletable'     => $deletable,
         'confirmRemove' => $confirmRemove,
     ];
+    // Editor com formatação (fw#637): só com a prop — sem ela o estado do
+    // bloco sai igual ao de antes (nenhuma chave nova).
+    $formSchema = [];
+    if ($rich) {
+        $presetVars['rich'] = true;
+        // Tipo do corpo no estado cifrado: o blockAdd/blockEdit/blockUpdate
+        // limpam o HTML antes de gravar e rodam a limpeza do app depois.
+        $formSchema[$bodyField] = array_filter([
+            'type'     => 'html-editor',
+            'sanitize' => $sanitize,
+        ], fn ($v) => $v !== '');
+    }
 
     // Template do item: partial dedicada (components.partials.comment-row).
     // NÃO usar heredoc aqui — o Blade compila o conteúdo do arquivo inteiro,
     // inclusive dentro da string, e um `@php` no template quebraria a view.
     // `item-template` (string Blade) segue disponível como override.
     // Caixa de inclusão (form fixo abaixo da lista).
-    $formTpl = '<mad-textarea-field name="' . e($bodyField) . '" :rows="' . $rows . '" placeholder="' . e($placeholder) . '" />';
+    $formVars = [];
+    if ($rich) {
+        // Barra enxuta, sem menu nem barra de status; os plugins cobrem o que
+        // a barra do comentário pode pedir (listas, link, imagem) e a colagem.
+        // Os valores vão como VARIÁVEIS do template (nada de montar atributo
+        // com o texto da tag: `&` e aspas no endereço chegam inteiros).
+        $formVars = [
+            '__mcPlaceholder' => (string) $placeholder,
+            '__mcToolbar'     => trim((string) ($toolbar ?? '')) !== '' ? trim((string) $toolbar) : 'bold italic underline | bullist numlist',
+            '__mcHeight'      => 90 + 30 * max(1, $rows),
+            '__mcUploadUrl'   => (string) ($uploadUrl ?? ''),
+            '__mcUploadAccept'=> (string) ($uploadAccept ?? ''),
+            '__mcUploadMaxMb' => (string) ($uploadMaxMb ?? ''),
+            '__mcPaste'       => (string) ($paste ?? ''),
+        ];
+        $formTpl = '<mad-html-editor-field name="' . e($bodyField) . '" :placeholder="$__mcPlaceholder" :toolbar="$__mcToolbar" '
+            . 'plugins="lists link image paste autolink" menubar="false" statusbar="false" :height="$__mcHeight" '
+            . ':upload-url="$__mcUploadUrl" :upload-accept="$__mcUploadAccept" :upload-max-mb="$__mcUploadMaxMb" :paste="$__mcPaste" />';
+    } else {
+        $formTpl = '<mad-textarea-field name="' . e($bodyField) . '" :rows="' . $rows . '" placeholder="' . e($placeholder) . '" />';
+    }
     if ($internalFlag !== '' && !$hideInternal) {
         $formTpl .= '<mad-switch-field name="' . e($internalFlag) . '" label="' . e(mad_t('mad.ui.internal_comment')) . '" />';
     }
@@ -122,7 +172,7 @@
     // ⚠️ O slot é injetado com {!! !!} — string crua NÃO passa pelo compilador,
     // então as tags <mad-*> precisam ser compiladas AQUI (senão o form sai
     // vazio e o bloco fica sem caixa de inclusão).
-    $formTpl = \Mad\View\MadBlade::renderString($formTpl);
+    $formTpl = \Mad\View\MadBlade::renderString($formTpl, $formVars);
 @endphp
 
 <mad-db-blocks
@@ -138,6 +188,7 @@
     :row-view="$itemTemplate === '' ? 'components.partials.comment-row' : ''"
     :row-slot="$itemTemplate"
     :form-slot="$formTpl"
+    :form-schema="$formSchema"
     :preset-vars="$presetVars"
     :user-field="$authorField"
     order-by="id"

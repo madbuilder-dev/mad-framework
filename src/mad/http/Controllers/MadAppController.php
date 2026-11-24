@@ -70,12 +70,13 @@ class MadAppController
             // JSON — o mad-livewire.js engolia o corpo e o usuário via NADA.
             // Agora volta JSON com `_exception` (só com APP_DEBUG) e o
             // MadErrorModal abre o relatório completo na tela.
-            if (function_exists('report')) {
-                report($e);
-            }
+            // Código para o suporte (fw#642): vai para o log com o usuário e a
+            // rota, e o usuário o lê no fim da frase do diálogo de erro.
+            $errorId = \Mad\Ui\MadErrorPage::errorId($e);
+            \Mad\Ui\MadErrorPage::reportUnhandled($e, $errorId, MadComponentHandler::wireErrorContext($_POST));
 
             return new JsonResponse(
-                MadComponentHandler::exceptionPayload($e, $_POST),
+                MadComponentHandler::exceptionPayload($e, $_POST, $errorId),
                 500,
                 ['X-Mad-App-Wire' => '1', 'X-Mad-Wire-Error' => '1', 'Cache-Control' => 'no-store, private'],
                 JsonResponse::DEFAULT_ENCODING_OPTIONS | JSON_UNESCAPED_UNICODE

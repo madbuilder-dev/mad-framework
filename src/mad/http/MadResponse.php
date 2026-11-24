@@ -582,8 +582,21 @@ class MadResponse
     {
         // Erro cru do banco no toast (`$e->getMessage()`): frase genérica, detalhe no log (fw#403).
         if (str_contains($message, 'SQLSTATE[')) {
-            \Mad\Ui\MadUserError::report(new \RuntimeException($message), 'MadResponse::toast');
-            $message = \Mad\Ui\MadUserError::friendly();
+            $code    = \Mad\Ui\MadUserError::report(new \RuntimeException($message), 'MadResponse::toast');
+            $message = \Mad\Ui\MadUserError::withSupportCode(\Mad\Ui\MadUserError::friendly(), $code);
+        }
+        // Erro com código para o suporte (MadUserError::message, fw#642): diálogo
+        // fixo em vez do toast que some — o usuário precisa de tempo para anotar
+        // o código. Toast sem código segue como sempre.
+        if (\Mad\Ui\MadUserError::supportCodeIn($message) !== null) {
+            if ($title === '') {
+                $title = mad_t('mad.error.title');
+                if ($title === '' || $title === 'mad.error.title') {
+                    $title = 'Erro';
+                }
+            }
+
+            return $this->alert($message, 'error', $title);
         }
         // Nome do usuário logado na frente da mensagem (fórum #235): opção do
         // projeto, desligada por padrão. Desligada — ou sem usuário logado —

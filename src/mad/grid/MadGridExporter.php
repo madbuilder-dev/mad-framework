@@ -803,12 +803,13 @@ class MadGridExporter
         // recebe só o data-URI — o strtr abaixo injetaria uma tag <img>
         // inteira dentro do atributo e mutilaria o markup. Sem logo
         // configurado, a tag <img> inteira sai (regex quote-aware — valores
-        // de atributo carregam ';' e ':' à vontade).
+        // de atributo carregam ';' e ':' à vontade). Logo = gancho do app →
+        // pdf-export.json → logo do sistema (MadGridPdfBranding::logo, fw#641).
         foreach ([['{LOGO}', 'large'], ['{LOGO_SMALL}', 'small']] as [$tok, $type]) {
             if (strpos($html, 'src="' . $tok . '"') === false) {
                 continue;
             }
-            $uri = MadGridPdfBranding::image($type);
+            $uri = MadGridPdfBranding::logo($type);
             if ($uri === '') {
                 $html = (string) preg_replace(
                     '/<img\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*?src="' . preg_quote($tok, '/') . '"(?:[^>"\']|"[^"]*"|\'[^\']*\')*?>/',
@@ -832,8 +833,9 @@ class MadGridExporter
             '{TOTAL_REGISTER}' => (string) $totalRows,
             '{TOTAL}'          => (string) $totalRows,
             '{APP_NAME}'   => htmlspecialchars((string) config('app.name', '')),
-            '{LOGO}'       => self::pdfLogoImg('large'),
-            '{LOGO_SMALL}' => self::pdfLogoImg('small'),
+            // Só lê a logo quando o token aparece (a do sistema vem do disco).
+            '{LOGO}'       => strpos($html, '{LOGO}') !== false ? self::pdfLogoImg('large') : '',
+            '{LOGO_SMALL}' => strpos($html, '{LOGO_SMALL}') !== false ? self::pdfLogoImg('small') : '',
             // counter(page) existe no Dompdf; o total não — 2ª passada injeta o literal.
             '{PAGE_NUM}'   => self::PDF_PAGE_NUM_HTML,
             '{PAGE_COUNT}' => $pageCount === null ? '<span class="mad-pages"></span>' : (string) $pageCount,
@@ -851,10 +853,10 @@ class MadGridExporter
         return strtr($html, $map);
     }
 
-    /** <img> do logo do projeto (branding global) ou '' quando não configurado. */
+    /** <img> da logo (gancho do app → branding global → logo do sistema) ou '' quando não há nenhuma. */
     private static function pdfLogoImg(string $type): string
     {
-        $uri = MadGridPdfBranding::image($type);
+        $uri = MadGridPdfBranding::logo($type);
         if ($uri === '') {
             return '';
         }

@@ -1503,9 +1503,22 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         foreach ($what as $label => $n) {
             $txt[] = $n > 0 ? $label . ' (' . $n . ')' : $label;
         }
+        $n    = count($along);
+        $repl = ['count' => $n, 'what' => implode(', ', $txt)];
+        $msg  = trans_choice('grid.bulk_along', $n, $repl);
+        // Lixeira (fw#643): o que vai junto vai para a lixeira, não some. App
+        // com o `lang/` de antes (sem a chave nova) cai no texto do pacote.
+        if (!empty($out['trash'])) {
+            $msg = trans_choice('grid.bulk_along_trash', $n, $repl);
+            if ($msg === 'grid.bulk_along_trash') {
+                $msg = $n === 1
+                    ? "1 registro leva junto para a lixeira o que pertence a ele ({$repl['what']}). Excluir também?"
+                    : "{$n} registros levam junto para a lixeira o que pertence a eles ({$repl['what']}). Excluir também?";
+            }
+        }
         $ask = \Mad\Ui\MadMessage::confirm(
             mad_t('mad.error.delete_along_title'),
-            e(trans_choice('grid.bulk_along', count($along), ['count' => count($along), 'what' => implode(', ', $txt)])),
+            e($msg),
             $this,
             'trash-2'
         )
@@ -1599,6 +1612,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $done  = 0;
         $fail  = [];   // id => motivo
         $along = [];   // id => o que vai junto (falta a confirmação)
+        $trash = false; // os marcados vão para a lixeira (fw#643: muda a pergunta)
         foreach ($ids as $id) {
             $id     = (string) $id;
             $record = $records[$id] ?? null;
@@ -1613,10 +1627,14 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 continue;
             }
             try {
+                // Lixeira: marcar não esbarra em quem usa o registro (a chave
+                // estrangeira não reclama), e o que vai junto vai para a lixeira.
+                $toTrash = \Mad\Ui\MadRecordInUse::isTrashDelete($record);
+                $trash   = $trash || $toTrash;
                 if (!$confirmedAlong) {
                     $with = \Mad\Ui\MadRecordInUse::alongWith($record);
                     if ($with !== []) {
-                        if (\Mad\Ui\MadRecordInUse::message($record) !== null) {
+                        if (!$toTrash && \Mad\Ui\MadRecordInUse::message($record) !== null) {
                             $fail[$id] = 'in_use';
                         } else {
                             $along[$id] = $with;
@@ -1624,14 +1642,20 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                         continue;
                     }
                 }
-                $deleted = $record->getConnection()->transaction(function () use ($record): bool {
+                $deleted = $record->getConnection()->transaction(function () use ($record, $confirmedAlong, $toTrash): bool {
                     // delete() devolve false quando um `deleting` cancela; o
                     // estado do registro confirma (saiu do banco ou foi para a
                     // lixeira).
                     $result = $record->delete();
-
-                    return $result !== false
+                    $ok     = $result !== false
                         && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
+                    // "Excluir tudo" confirmado num registro com lixeira: as
+                    // filhas com lixeira vão junto (fw#643).
+                    if ($ok && $confirmedAlong && $toTrash) {
+                        \Mad\Ui\MadRecordInUse::trashAlong($record);
+                    }
+
+                    return $ok;
                 });
                 if ($deleted) {
                     $done++;
@@ -1643,7 +1667,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
         }
 
-        return ['done' => $done, 'fail' => $fail, 'along' => $along];
+        return ['done' => $done, 'fail' => $fail, 'along' => $along, 'trash' => $trash];
     }
 
     /** preset="set": grava `$column` = `$value` nos marcados, um por um pelo Model. */
@@ -3942,6 +3966,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $id      = $data[0];
         $found   = false;
         $checked = false;
+        $denied  = '';
         foreach ($acts as $act) {
             try {
                 [$known, $record] = $this->_actionRowRecord($act->idField ?: 'id', $id);
@@ -3961,7 +3986,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 continue;
             }
             $found = true;
-            if (static::_rowActionsAllow([$act], $this->_actionRowData($record))) {
+            if (static::_rowActionsAllow([$act], $this->_actionRowData($record), $denied)) {
                 return null;
             }
         }
@@ -3975,6 +4000,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             . ' o registro ' . static::_logSafe((string) $id) . ' (usuario ' . static::_logUser() . ').'
         );
         $this->loadData();
+
+        // Recusada pela deny-condition (fw#636): o aviso diz o motivo da regra.
+        if ($found && $denied !== '') {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => $denied]));
+        }
 
         return \Mad\Ui\MadToast::warning(mad_t($found ? 'mad.error.action_refused' : 'mad.error.action_gone'));
     }
@@ -4063,12 +4093,22 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return $row;
     }
 
-    /** Alguma das ações aparece habilitada nesta linha? */
-    private static function _rowActionsAllow(array $acts, array $row): bool
+    /**
+     * Alguma das ações aparece habilitada nesta linha? Quando não, `$denied`
+     * recebe o motivo da `deny-condition` da primeira que aparece recusada
+     * (fw#636) — o aviso da recusa diz o porquê.
+     */
+    private static function _rowActionsAllow(array $acts, array $row, ?string &$denied = null): bool
     {
         foreach ($acts as $act) {
-            if ($act instanceof GridAction && $act->isVisible($row) && !$act->isDisabled($row)) {
+            if (!$act instanceof GridAction || !$act->isVisible($row)) {
+                continue;
+            }
+            if (!$act->isDisabled($row)) {
                 return true;
+            }
+            if ((string) $denied === '') {
+                $denied = $act->denyReason($row);
             }
         }
 
@@ -4870,24 +4910,32 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $found   = false;
         $deleted = false;
         $blocked = false;   // a linha não tem o Excluir: escondido ou desabilitado pela condição
+        $denied  = '';      // o motivo da deny-condition do <mad-del>, quando foi ela (fw#636)
         $target  = null;    // o registro que se tentou excluir: a recusa "em uso" diz quem o usa
         $ask     = null;    // o que vai junto, ainda sem a confirmação
         try {
-            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, $confirmedAlong, &$found, &$deleted, &$blocked, &$target, &$ask) {
+            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, $confirmedAlong, &$found, &$deleted, &$blocked, &$denied, &$target, &$ask) {
                 $record = $this->_visibleRecord($id);
                 if (!$record) {
                     return;
                 }
                 $found = true;
-                if (!$this->_gridDeleteAllowedFor($record)) {
+                if (!$this->_gridDeleteAllowedFor($record, $denied)) {
                     $blocked = true;
                     return;
                 }
                 $target = $record;
+                // Lixeira (fw#643): marcar não esbarra em quem usa o registro, e
+                // o que vai junto vai para a lixeira — a pergunta diz isso.
+                $toTrash = \Mad\Ui\MadRecordInUse::isTrashDelete($record);
                 if (!$confirmedAlong) {
                     $along = \Mad\Ui\MadRecordInUse::alongWith($record);
                     if ($along !== []) {
-                        $ask = ['along' => $along, 'inUse' => \Mad\Ui\MadRecordInUse::message($record)];
+                        $ask = [
+                            'along' => $along,
+                            'inUse' => $toTrash ? null : \Mad\Ui\MadRecordInUse::message($record),
+                            'trash' => $toTrash,
+                        ];
                         return;
                     }
                 }
@@ -4897,6 +4945,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $result  = $record->delete();
                 $deleted = $result !== false
                     && (!$record->exists || (method_exists($record, 'trashed') && $record->trashed()));
+                // "Excluir tudo" confirmado num registro com lixeira: as filhas
+                // com lixeira vão junto para a lixeira (fw#643).
+                if ($deleted && $confirmedAlong && $toTrash) {
+                    \Mad\Ui\MadRecordInUse::trashAlong($record);
+                }
             });
         } catch (\Throwable $e) {
             // Erro técnico (ex.: registro em uso — violação de FK) não vai cru
@@ -4916,7 +4969,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
             return \Mad\Ui\MadMessage::confirm(
                 mad_t('mad.error.delete_along_title'),
-                e(\Mad\Ui\MadRecordInUse::alongMessage($ask['along'])),
+                e(\Mad\Ui\MadRecordInUse::alongMessage($ask['along'], !empty($ask['trash']))),
                 $this,
                 'trash-2'
             )
@@ -4934,6 +4987,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 'MadDataGrid: onMadGridDelete recusado — a condição do <mad-del> não vale para o registro '
                 . static::_logSafe((string) $id) . ' (' . static::class . ', usuario ' . static::_logUser() . ').'
             );
+        }
+        if ($blocked && $denied !== '') {
+            return \Mad\Ui\MadToast::warning(mad_t('mad.error.delete_denied', ['reason' => $denied]));
         }
         if ($blocked || !$deleted) {
             return \Mad\Ui\MadToast::warning(mad_t('mad.error.delete_refused'));
@@ -4997,7 +5053,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * `<mad-del>` nele — `actions()` escrito à mão, config fora de alcance —
      * nada muda aqui.
      */
-    protected function _gridDeleteAllowedFor(object $record): bool
+    protected function _gridDeleteAllowedFor(object $record, ?string &$denied = null): bool
     {
         $config = $this->_bladeGridConfig();
         if ($config === []) {
@@ -5015,6 +5071,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         return static::_rowActionsAllow(
             array_map(fn (array $a) => static::_actFromConfig($a, $dono)?->resolveIn(...$hosts), $dels),
             $this->_actionRowData($record),
+            $denied,
         );
     }
 
@@ -7818,6 +7875,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             } else {
                 $act->disabled(fn($row) => static::_evalCond($row, $cond));
             }
+        }
+        // `deny-condition` (fw#636): 'Classe::metodo' (ou só o nome) que recebe
+        // a linha e devolve ?string — o motivo da recusa.
+        if (!empty($a['deny']) && (is_string($a['deny']) || is_callable($a['deny']))) {
+            $act->deny($a['deny']);
         }
 
         // Transform estático: string callable 'Classe::metodo' ou closure
@@ -11791,6 +11853,24 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     }
 
     /**
+     * Estado do botão da ação no HTML montado em PHP (linha re-renderizada):
+     * recusada pela `deny-condition` (fw#636) sai como no Blade —
+     * `aria-disabled` + `data-mad-deny`, nunca `disabled` (a dica tem de
+     * aparecer) —, com o motivo no `title` quando `$withTitle`; senão
+     * `disabled` pela regra da linha/perfil, como antes.
+     */
+    protected static function _actDisabledHtml(GridAction $act, array $row, bool $withTitle): string
+    {
+        $deny = $act->denyReason($row);
+        if ($deny !== '') {
+            return ' aria-disabled="true" data-mad-deny'
+                . ($withTitle ? ' title="' . htmlspecialchars($deny, ENT_QUOTES) . '"' : '');
+        }
+
+        return $act->isDisabled($row) ? ' disabled' : '';
+    }
+
+    /**
      * Gera o HTML dos botões de ação de um card.
      */
     protected static function _buildCardActionsHtml(
@@ -11806,7 +11886,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $aId = $row[$act->idField] ?? $rowId;
             $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
             $act = $act->getTransformed($row);
-            $dis = $act->isDisabled($row) ? ' disabled' : '';
+            $dis = static::_actDisabledHtml($act, $row, true);
             $ico = $act->icon
                 ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:14px;height:14px;"></i>'
                 : '';
@@ -11847,7 +11927,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
                 $act = $act->getTransformed($row);
                 $cls = 'mad-dg-dropdown-item' . ($act->isDanger ? ' mad-dg-dropdown-danger' : '');
-                $dis = $act->isDisabled($row) ? ' disabled' : '';
+                $dis = static::_actDisabledHtml($act, $row, true);
                 $ico = $act->icon
                     ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:13px;height:13px;"></i>'
                     : '';
@@ -12321,11 +12401,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $aId = $row[$act->idField] ?? $rowId;
             $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
             $act = $act->getTransformed($row);
-            $dis = $act->isDisabled($row) ? ' disabled' : '';
+            $dis = static::_actDisabledHtml($act, $row, false);
             // Botão recusado pelo perfil explica o porquê no lugar do rótulo —
             // .mad-dg-action-btn:disabled não tem pointer-events:none, o title
-            // do próprio botão aparece.
-            $ttl = ' title="' . htmlspecialchars($act->tooltip(), ENT_QUOTES) . '"';
+            // do próprio botão aparece. Idem o motivo da deny-condition (fw#636).
+            $ttl = ' title="' . htmlspecialchars($act->tooltip($row), ENT_QUOTES) . '"';
             $ico = $act->icon
                 ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:14px;height:14px;"></i>'
                 : '';
@@ -12366,10 +12446,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 $ep  = !empty($act->params) ? ', ' . json_encode($act->rowParams($row)) : '';
                 $act = $act->getTransformed($row);
                 $cls = 'mad-dg-dropdown-item' . ($act->isDanger ? ' mad-dg-dropdown-danger' : '');
-                $dis = $act->isDisabled($row) ? ' disabled' : '';
-                // Item recusado pelo perfil ganha a dica do porquê (item de menu
-                // não tem rótulo em title — só o texto ao lado).
-                $den = $act->denyTitle();
+                $dis = static::_actDisabledHtml($act, $row, false);
+                // Item recusado pelo perfil (ou pela deny-condition) ganha a dica
+                // do porquê (item de menu não tem rótulo em title — só o texto ao lado).
+                $den = $act->refusalTitle($row);
                 if ($den !== '') $dis .= ' title="' . htmlspecialchars($den, ENT_QUOTES) . '"';
                 $ico = $act->icon
                     ? '<i data-lucide="' . htmlspecialchars($act->icon, ENT_QUOTES) . '" style="width:13px;height:13px;"></i>'

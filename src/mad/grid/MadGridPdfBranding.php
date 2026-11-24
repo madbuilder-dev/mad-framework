@@ -12,6 +12,7 @@ namespace Mad\Grid;
  *     "header": { "mode": "inherit|custom|none", "html": "...", "heightMm": 28 },
  *     "footer": { "mode": "inherit|custom|none", "html": "...", "heightMm": 14, "showPagination": true },
  *     "images": { "large": "data:image/png;base64,...", "small": "data:..." },
+ *       (sem imagem aqui, o {LOGO} usa a logo do sistema — ver logo())
  *     "placeholders": { "CNPJ": "12.345.678/0001-90" },
  *     "orientation": "portrait|landscape",
  *     "palette": { "headerRule": "#e3e8ef" } }
@@ -146,6 +147,22 @@ final class MadGridPdfBranding
     {
         $img = self::config()['images'][$type] ?? '';
         return (is_string($img) && str_starts_with($img, 'data:image/')) ? $img : '';
+    }
+
+    /**
+     * Data-URI da logo que o `{LOGO}`/`{LOGO_SMALL}` imprime (fw#641), na
+     * ordem: gancho do app (`config('mad.pdf.logo_resolver')`) → logo do
+     * pdf-export.json (`image()`) → logo do sistema, a mesma do `app:logo`
+     * dos documentos (tema → login → `app/images/logo.png`). '' quando
+     * nenhuma das três existe (a tag sai do cabeçalho, como antes).
+     *
+     * @param 'large'|'small' $type
+     */
+    public static function logo(string $type): string
+    {
+        return \Mad\Doc\MadDocImage::resolverLogo($type)
+            ?: self::image($type)
+            ?: \Mad\Doc\MadDocImage::systemLogo();
     }
 
     /**

@@ -12,6 +12,43 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.353.0] — 2026-11-24
+
+### Novidades
+
+- **PDF:** o `{LOGO}` do cabeçalho do PDF da listagem passa a sair com a logo do sistema (a mesma de `<mad-doc-image src="app:logo">`) quando as propriedades do PDF não têm uma logo. Antes o cabeçalho saía sem logo.
+- **PDF:** o app pode fornecer a logo dos PDFs por `config('mad.pdf.logo_resolver')`, que vale antes de qualquer outra para o `{LOGO}` e o `{LOGO_SMALL}` da listagem e para o `app:logo` dos documentos, e os dois saem com a mesma logo. Serve, por exemplo, para a logo trocada numa tela de Configurações valer em todos os PDFs sem nova versão do app.
+- **Comentários:** com `editor="rich"`, o `<mad-comments>` troca a caixa de texto por um editor com negrito, itálico, sublinhado e listas (os botões vêm de `toolbar`). A imagem colada ou arrastada vai para o servidor com `upload-url`, `upload-accept` e `upload-max-mb`, como no Editor HTML. O comentário aparece formatado e sem `<script>`, atributos de evento ou links `javascript:`: o framework limpa o HTML ao gravar e de novo ao exibir, inclusive o que entrou na tabela por fora da tela. A limpeza do próprio app entra por `sanitize` (`Classe::metodo` ou um método da tela) ou pelo `saving` do Model do comentário. Comentário antigo em texto simples continua com as quebras de linha. Sem a prop, nada muda.
+- **Erro técnico:** quando uma ação falha por um erro que o sistema não sabe explicar, a mensagem ao usuário passa a terminar com um código curto, como "Código para o suporte: E-7K2Q9", e aparece num diálogo que fica na tela até o usuário fechar, não mais num aviso que some sozinho. O mesmo código vai para o log junto com o erro, o usuário, a tela e a hora, e o suporte acha a ocorrência certa. Vale também para o erro que escapa de uma ação, que antes dizia "Erro interno no servidor. Consulte o log da aplicação.", e para a tela de erro, que passa a mostrar o código nesse formato. Recusa que o próprio usuário resolve (valor repetido, campo obrigatório, registro em uso) continua como antes, sem código.
+- **Logs:** a tela Laravel Log ganhou busca: o código lido no diálogo de erro, ou qualquer texto, é procurado em todos os arquivos de log, inclusive os de dias anteriores.
+- **Cortina lateral e modal:** a tela pode dizer para onde voltar quando foi aberta pelo endereço, com `protected static ?string $returnTo = 'ClienteList';`.
+- **Ações da listagem, do quadro e do formulário:** uma ação pode ficar cinza explicando por quê, em vez de sumir: na linha da listagem (`<mad-act>`, `<mad-nav>`, `<mad-del>`), na linha do `<mad-detail-form>` (`<mad-act>`), no cartão do `<mad-kanban>` e no botão do formulário ou da ficha (`<mad-btn>`, como o Excluir). Use `deny-condition="Classe::metodo"`: o método recebe a linha (no botão do formulário, o registro aberto) e devolve o motivo ("Etapa travada pelo financeiro") ou `null`. Com motivo, a ação continua no lugar, esmaecida; passar o mouse, focar ou tocar mostra o motivo, e o clique não executa.
+
+### Melhorias
+
+- **Confirmação:** toda pergunta de confirmação abre com o foco no **Cancelar**: a do `confirm` do `<mad-btn>`, a de `madConfirm()`, o popover, a de remover linha e a que a tela monta com `MadMessage::confirm()`. Um Enter logo depois do clique cancela, em vez de confirmar a ação. Na ação destrutiva (`variant="danger"`), o Confirmar sai vermelho e afastado do Cancelar, agora também no botão com `mad:click`.
+- **Confirmação:** duas props novas no `<mad-btn>`: `confirm-variant="danger"` deixa o Confirmar vermelho num botão de outra cor, e `confirm-focus="confirm"` abre a pergunta com o foco no Confirmar, para os casos em que confirmar é o normal. Em JavaScript: `madConfirm('…', { focus: 'confirm' })`.
+- **Formulário:** na cortina lateral ou no modal com `$confirmDiscard` (ou `confirm-close`), a pergunta de descarte ganhou a opção **Salvar e fechar**: salva como o botão Salvar e fecha; com erro de validação, a cortina fica aberta com os campos marcados. Ela aparece quando a cortina tem um formulário com o botão Salvar disponível. O foco abre em "Continuar editando", e Esc ou Enter nela continuam editando.
+- **Formulário:** com a cortina lateral ou o modal alterado, o voltar do navegador agora pergunta antes de sair: "Continuar editando" mantém a tela e o endereço, e "Descartar" fecha e volta. Recarregar ou fechar a aba mostra o aviso do navegador.
+- **Excluir com lixeira:** ao mandar para a lixeira um registro cujas filhas também têm lixeira (uma entrega e suas atividades), a confirmação agora diz o que vai junto, com a quantidade ("Vai junto para a lixeira: Atividades (3 registros) e Anexos (2 registros)."), sem contar as que já estavam na lixeira, e "Excluir tudo" manda as filhas para a lixeira junto. Vale para o Excluir da linha e para o Excluir em lote da listagem. Restaurar o registro traz de volta as filhas que foram junto com ele; as que já estavam na lixeira antes continuam lá. "Não dá para desfazer" agora só aparece quando a exclusão é de verdade. Filhas sem lixeira continuam onde estão.
+
+### Correções
+
+- **Botões e ações:** um `<mad-btn>` (ou outra tag `<mad-*>`) com `:attrs` calculado perdia o `mad:click`, o `navigate`, os atalhos de cortina e as condições `*-when` da mesma tag: o botão aparecia, mas o clique não fazia nada. Agora os atributos de `:attrs` e os da tag valem juntos. O `navigate` também deixou de apagar o `attrs` escrito na mesma tag (e vice-versa).
+- **Comentários e anexos:** o `<mad-html-editor-field>` dentro do formulário de um `<mad-db-blocks>` gravava o conteúdo como chegava do navegador. Agora o HTML é limpo antes de gravar, como no formulário da tela.
+- **Cortina lateral e modal:** aberta pelo endereço (link de e-mail, favorito, F5), a tela ficava vazia depois de salvar ou de fechar no X, no Esc ou no Cancelar. Agora o app volta para a tela de onde a pessoa veio. Se ela abriu direto, vai para a listagem do formulário (de `ClienteForm` para `ClienteList`) ou para a tela inicial. A volta não recarrega a página e o aviso do salvar continua visível.
+- **Diálogos:** depois de "Continuar editando", do Cancelar ou do OK de um aviso, o foco ia para o início da página em vez de voltar ao campo que estava sendo editado. Agora ele volta para o campo. O aviso que só tem o botão OK abre com o foco nele, e o Enter fecha.
+- **Abas:** com as abas ligadas, abrir pelo menu ou por um link uma tela em cortina lateral ou modal apagava o conteúdo de todas as abas, e ao fechar a tela ficava em branco. Agora a cortina abre por cima da aba atual, e as abas ficam como estavam. Abrir essa tela pelo endereço também não apaga mais as abas restauradas.
+- **Foco:** depois de cancelar uma confirmação em balão, fechar o aviso de erro de uma ação ou confirmar uma ação que roda no servidor, o cursor se perdia na página. Agora ele volta ao botão que você usou.
+
+### Atenção
+
+- **Confirmação:** o foco inicial de toda pergunta de confirmação passou para o **Cancelar**, inclusive nas telas que já existem. Onde confirmar é o normal, use `confirm-focus="confirm"` no `<mad-btn>` ou `madConfirm('…', { focus: 'confirm' })`.
+- **PDF:** o PDF da listagem com `{LOGO}` no cabeçalho e sem logo no `pdf-export.json` passa a imprimir a logo do sistema. Para continuar sem logo, tire o `{LOGO}` do cabeçalho.
+- **Erro técnico:** o erro que o sistema não sabe explicar agora aparece num diálogo, com o código para o suporte, em vez do aviso que some sozinho. Teste automatizado do app que esperava o aviso ou comparava a frase exata precisa aceitar o diálogo e o código.
+- **Excluir com lixeira:** excluir pela listagem, com "Excluir tudo", um registro que tem lixeira leva junto para a lixeira as filhas que também têm lixeira e seriam apagadas em cascata. Restaurar o registro traz essas filhas de volta.
+- **Editor HTML em blocos:** o `<mad-html-editor-field>` dentro de um `<mad-db-blocks>` passa a limpar o HTML ao gravar, como no formulário da tela: iframe e vídeo incorporado deixam de ser gravados ali.
+
 ## [5.344.1] — 2026-11-24
 
 ### Correções

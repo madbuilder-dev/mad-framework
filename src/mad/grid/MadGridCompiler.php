@@ -256,6 +256,8 @@ use Mad\View\MadBlade;
  * │  method="onEdit"          Método no destino (default: show)                 │
  * │  confirm="Tem certeza?"   Confirmação antes de navegar                      │
  * │  display-condition="Cls::metodo"  Exibição condicional                      │
+ * │  deny-condition="Cls::metodo"     Recusa com motivo ($row => ?string):      │
+ * │                           texto = esmaecida, a dica diz o porquê           │
  * │                                                                              │
  * │  Parâmetros do registro — duas sintaxes:                                    │
  * │                                                                              │
@@ -335,6 +337,10 @@ use Mad\View\MadBlade;
  * │  when-value="P"           Exibe se campo = valor                            │
  * │  when-in="1,2,3"          Exibe se campo está na lista                      │
  * │  when-nin="8,9,10"        Exibe se campo NÃO está na lista                 │
+ * │  deny-condition="Cls::metodo"  Recusa com motivo ($row => ?string): com     │
+ * │                           texto, a ação fica esmaecida na linha, a dica e  │
+ * │                           o clique mostram o texto e nada executa (o       │
+ * │                           servidor também recusa); null = normal           │
  * │  transform="Cls::metodo"  Muda label/icon dinamicamente ($row => array)     │
  * │                                                                              │
  * │  Exemplos:                                                                  │
@@ -356,9 +362,10 @@ use Mad\View\MadBlade;
  * │  <mad-del> — Atalho para exclusão embutida (sem método na tela)             │
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  <mad-del confirm="Excluir este registro?" />                               │
- * │  Aceita as mesmas condições do <mad-act>: display-condition, when-* e       │
- * │  disabled-*. Vale no <mad-grid model="…"> e no <mad-grid self> (só exclui   │
- * │  linha que a listagem mostra). Excluir com regra própria: <mad-act          │
+ * │  Aceita as mesmas condições do <mad-act>: display-condition, when-*,        │
+ * │  disabled-* e deny-condition. Vale no <mad-grid model="…"> e no             │
+ * │  <mad-grid self> (só exclui linha que a listagem mostra).                   │
+ * │  Excluir com regra própria: <mad-act                                        │
  * │  method="onDelete" … danger /> com o método na tela.                        │
  * │                                                                              │
  * │  <mad-row-highlights> — Destaque da linha (ou da célula) por condição       │
@@ -3319,8 +3326,9 @@ class MadGridCompiler
     /**
      * Condições de uma ação de linha — iguais em `<mad-act>`, `<mad-nav>` e
      * `<mad-del>`: `display-condition="Classe::metodo"`, `when-field` +
-     * `when-value`/`when-in`/`when-nin`/`when-op` (exibir) e `disabled-field` +
-     * `disabled-value`/`disabled-in`/`disabled-nin`/`disabled-op` (desabilitar).
+     * `when-value`/`when-in`/`when-nin`/`when-op` (exibir), `disabled-field` +
+     * `disabled-value`/`disabled-in`/`disabled-nin`/`disabled-op` (desabilitar)
+     * e `deny-condition="Classe::metodo"` (recusar com motivo, fw#636).
      *
      * @return list<string>
      */
@@ -3354,6 +3362,12 @@ class MadGridCompiler
                      . ", 'op' => " . static::qs($whenOp)
                      . ", 'value' => " . static::qs($whenVal) . "]";
             }
+        }
+
+        // Recusa com motivo (fw#636): deny-condition="Classe::metodo" recebe a
+        // linha e devolve ?string — texto = ação esmaecida, com o texto de dica.
+        if (isset($a['deny-condition']) && trim(static::str($a, 'deny-condition')) !== '') {
+            $c[] = static::kv('deny', static::qs(trim(static::str($a, 'deny-condition'))));
         }
 
         // Condição de desabilitado: disabled-field + disabled-value/disabled-in/disabled-nin

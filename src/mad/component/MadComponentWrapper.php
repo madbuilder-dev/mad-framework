@@ -39,6 +39,7 @@ class MadComponentWrapper
             'confirmClose'    => self::confirmDiscard($component),
             'draggable'       => self::staticFlag($component, 'draggable'),
             'help'            => \Mad\Help\ManualRepository::headerButtonScreen($component),
+            'back'            => self::returnTo($component),
         ]);
     }
 
@@ -53,7 +54,83 @@ class MadComponentWrapper
             'closeOnBackdrop' => $component::getCloseOnBackdrop(),
             'confirmClose'    => self::confirmDiscard($component),
             'help'            => \Mad\Help\ManualRepository::headerButtonScreen($component),
+            'back'            => self::returnTo($component),
         ]);
+    }
+
+    /**
+     * Para onde volta a gaveta/modal que É a tela quando fecha sem trocar de
+     * rota (fw#638): aberta pela URL — link de e-mail, favorito, F5, "Ir
+     * para…" de uma trava — ela não tem tela por trás, e fechar no Salvar
+     * (`closeDrawer()`), no X ou no Esc deixava a página vazia. O mad.js tenta
+     * antes o voltar do histórico, quando a entrada anterior é do app; este é
+     * o destino seguinte:
+     *
+     *   1. a tela declarada na classe (aceita `'Tela::metodo'`):
+     *          protected static ?string $returnTo = 'ClienteList';
+     *   2. por convenção, a listagem de onde o formulário herda a permissão
+     *      (rota de resource) ou, pelo nome, `ClienteForm` → `ClienteList`,
+     *      quando a classe existe;
+     *   3. nenhuma (null): o mad.js vai para a tela inicial.
+     *
+     * Destino que a pessoa não pode abrir também cai na tela inicial.
+     * Devolve `{class, method, url}` — a URL amigável assada aqui, como a do
+     * `close="Tela"` do <mad-btn>.
+     *
+     * @return array{class:string, method:string, url:string}|null
+     */
+    private static function returnTo(MadComponent $component): ?array
+    {
+        try {
+            $target = self::staticString($component, 'returnTo');
+            if ($target === '') {
+                $target = self::conventionalReturn($component);
+            }
+            if ($target === '') {
+                return null;
+            }
+            [$class, $method] = array_pad(explode('::', $target, 2), 2, '');
+            $class  = trim($class);
+            $method = trim($method) !== '' ? trim($method) : 'show';
+            if ($class === '' || !\Mad\Security\PermissionGate::canAccess($class)) {
+                return null;
+            }
+            $url = '';
+            try {
+                $url = \Mad\Ui\MadAction::to($class, $method)->url();
+            } catch (\Throwable) {
+                $url = '';
+            }
+
+            return ['class' => $class, 'method' => $method, 'url' => $url];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** `XForm` → a listagem do resource (herança de permissão) ou `XList`, se existe; senão ''. */
+    private static function conventionalReturn(MadComponent $component): string
+    {
+        $fqcn = get_class($component);
+        $id   = \Mad\Registry\ControlRegistry::idFor($fqcn);
+        $pos  = strrpos($id, '\\');
+        $id   = $pos === false ? $id : substr($id, $pos + 1);
+
+        $resourceList = \Mad\Routing\MadRoutes::resourceFormList($id);
+        if ($resourceList !== null && $resourceList !== '' && $resourceList !== $id) {
+            return $resourceList;
+        }
+        if (!str_ends_with($id, 'Form') || strlen($id) <= 4) {
+            return '';
+        }
+        $list = substr($id, 0, -4) . 'List';
+        $sibling = substr($fqcn, 0, -4) . 'List';
+        if (str_ends_with($fqcn, 'Form') && class_exists($sibling) && is_subclass_of($sibling, MadComponent::class)) {
+            return $list;
+        }
+        $resolved = \Mad\Registry\ControlRegistry::resolve($list);
+
+        return ($resolved !== null && is_subclass_of($resolved, MadComponent::class)) ? $list : '';
     }
 
     /**
@@ -93,5 +170,28 @@ class MadComponentWrapper
         }
         $prop->setAccessible(true);
         return filter_var($prop->getValue(), FILTER_VALIDATE_BOOL);
+    }
+
+    /**
+     * Texto declarado na classe da tela (`protected static ?string $<nome> =
+     * '...';`), lido por reflexão como o {@see staticFlag()}: sem declaração
+     * na base. Ausente, de instância, null ou não-texto: ''.
+     *
+     *   $returnTo — tela para onde a gaveta/modal aberta pela URL volta ao fechar (fw#638).
+     */
+    private static function staticString(MadComponent $component, string $name): string
+    {
+        try {
+            $prop = new \ReflectionProperty($component, $name);
+        } catch (\ReflectionException) {
+            return '';
+        }
+        if (!$prop->isStatic()) {
+            return '';
+        }
+        $prop->setAccessible(true);
+        $value = $prop->getValue();
+
+        return is_string($value) ? trim($value) : '';
     }
 }

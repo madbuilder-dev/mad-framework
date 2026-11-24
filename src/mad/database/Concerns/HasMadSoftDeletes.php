@@ -21,6 +21,8 @@ namespace Mad\Database\Concerns;
  *   protected ?string $deletedAtColumn = 'deleted_at'; // ...deletedByColumn, etc.
  *
  * Exclusão de verdade, com a lixeira configurada: `$registro->forceDelete()`.
+ * `restore()` traz de volta junto as filhas (com lixeira, `on delete cascade`)
+ * que foram para a lixeira na mesma exclusão (fw#643).
  *
  * Constantes legadas (DELETEDAT, DELETED_BY, DELETED_BY_USER_ID) têm
  * precedência (compat). Nome do scope idêntico ao legado ('madSoftDelete')
@@ -119,7 +121,14 @@ trait HasMadSoftDeletes
             throw new \RuntimeException('Soft delete não está ativo em ' . static::class);
         }
 
-        $this->setKeysForSaveQuery($this->newModelQuery())->update([$col => null]);
+        // As filhas que foram junto para a lixeira na MESMA exclusão voltam
+        // junto, na mesma transação (fw#643). A marca é lida antes de a
+        // coluna ser apagada.
+        $mark = \Mad\Ui\MadRecordInUse::trashMark($this);
+        $this->getConnection()->transaction(function () use ($col, $mark) {
+            $this->setKeysForSaveQuery($this->newModelQuery())->update([$col => null]);
+            \Mad\Ui\MadRecordInUse::restoreAlong($this, $mark);
+        });
         $this->setAttribute($col, null);
         $this->syncOriginal();
 
