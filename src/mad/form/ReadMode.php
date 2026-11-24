@@ -16,7 +16,9 @@ use Mad\Component\MadRenderContext;
  *   $this->form->readMode('filled')
  *
  * Cada campo que conhece o modo (input, textarea, select, dbcombo, date,
- * datetime, money, number, switch, checkbox, radio, dbradio) chama field() no
+ * datetime, money, number, switch, checkbox, radio, dbradio e, desde o fórum
+ * #394, numeric, cep, cnpj, time, spinner, range, color, password, daterange,
+ * checkbox-group, select-check, dbcheckbox-group, dbselect-check) chama field() no
  * lugar do controle: rótulo e valor no visual do <mad-display-field> e o
  * valor num <input type="hidden">, para a ação da tela que lê o formulário
  * continuar recebendo o mesmo dado. Os outros campos ficam travados pelo CSS
@@ -247,6 +249,70 @@ final class ReadMode
         $num = is_numeric($raw) ? (float) $raw : (float) str_replace([$thou, $dec], ['', '.'], $raw);
 
         return trim(($prefix !== '' ? $prefix . ' ' : '') . number_format($num, $decimals, $dec, $thou) . ($suffix !== '' ? ' ' . $suffix : ''));
+    }
+
+    /**
+     * Número cru com o separador decimal do idioma, sem separador de milhar
+     * (fórum #394): "0.00" → "0,00", "2026" → "2026". O `<mad-number-field>`
+     * guarda o que foi digitado — código e ano não ganham ponto de milhar.
+     */
+    public static function decimal(string $raw): string
+    {
+        $raw = trim($raw);
+        if (! preg_match('/^-?\d+(\.\d+)?$/', $raw)) {
+            return $raw;
+        }
+
+        return str_replace('.', \Mad\Support\ValueFormatter::separators()[0], $raw);
+    }
+
+    /**
+     * Número com as casas e os separadores do idioma ("2.5" → "2,50"), com
+     * prefixo/sufixo — o `<mad-numeric-field>` em leitura (fórum #394).
+     */
+    public static function numeric(string $raw, int $decimals = 2, string $prefix = '', string $suffix = ''): string
+    {
+        [$dec, $thou] = \Mad\Support\ValueFormatter::separators();
+
+        return self::money($raw, $prefix, $decimals, $dec, $thou, $suffix);
+    }
+
+    /**
+     * Data gravada ("2026-03-01", "2026-03-01 10:00:00") na máscara de exibição
+     * do campo (`dd/mm/yyyy`). Valor que não é data volta como veio.
+     */
+    public static function dateText(string $raw, string $displayMask = 'dd/mm/yyyy'): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        $dt = \DateTime::createFromFormat('!Y-m-d', substr($raw, 0, 10));
+        if (! $dt || $dt->format('Y-m-d') !== substr($raw, 0, 10)) {
+            return $raw;
+        }
+        $php = strtr($displayMask !== '' ? $displayMask : 'dd/mm/yyyy', ['yyyy' => 'Y', 'yy' => 'y', 'mm' => 'm', 'dd' => 'd']);
+
+        return $dt->format($php);
+    }
+
+    /**
+     * Dígitos do valor na máscara (`00000-000`, `00.000.000/0000-00`) quando a
+     * quantidade bate; senão o valor como veio (já formatado ou fora do padrão).
+     */
+    public static function digitsMask(string $raw, string $mask): string
+    {
+        $digits = preg_replace('/\D/', '', $raw);
+        if ($digits === '' || strlen($digits) !== substr_count($mask, '0')) {
+            return trim($raw);
+        }
+        $out = '';
+        $i = 0;
+        foreach (str_split($mask) as $ch) {
+            $out .= $ch === '0' ? $digits[$i++] : $ch;
+        }
+
+        return $out;
     }
 
     public static function truthy($v): bool

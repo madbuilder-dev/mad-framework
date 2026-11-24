@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.336.1] — 2026-11-24
+
+### Correções
+
+- **Formulário:** no modo Visualizar, o Numérico, o CEP, o CNPJ, a Hora, o Período, as escolhas múltiplas e outros campos apareciam como caixa de digitar. Agora mostram rótulo e valor no formato do idioma; vazio sai como "—".
+
 ## [5.336.0] — 2026-11-24
 
 ### Novidades

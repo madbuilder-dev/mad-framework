@@ -110,6 +110,16 @@
     \Mad\Form\MadFormRegistry::register($name_end,   'date', ['label' => strip_tags($label) . mad_t('mad.ui.range_end_suffix'),   'required' => false,      'display_mask' => $display_mask, 'database_mask' => $database_mask]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
+{{-- Formulário em leitura (fw#498, fórum #394): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+@php
+    $__ds = \Mad\Form\ReadMode::dateText((string) $valueStart, (string) $display_mask);
+    $__de = \Mad\Form\ReadMode::dateText((string) $valueEnd, (string) $display_mask);
+@endphp
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name_start, 'label' => $label, 'raw' => (string) $valueStart, 'text' => ($__ds === '' && $__de === '') ? '' : trim($__ds . ' – ' . $__de), 'style' => $_dimStyle]) !!}
+@if($name_end)<input type="hidden" name="{{ $name_end }}" value="{{ $valueEnd }}">@endif
+@else
 <div class="mad-field" style="position:relative;{{ $_dimStyle }}" x-data="madDateRangePicker({{ $alpineCfg }})">
     @if($label)
         <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
@@ -244,3 +254,4 @@
 
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name_start }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

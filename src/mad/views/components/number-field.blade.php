@@ -28,7 +28,7 @@
 {{-- Formulário em leitura (fw#498): rótulo e valor no lugar do controle. --}}
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
 @if($__rm !== '')
-{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => ($__rv = \Mad\Support\MadFieldValue::resolve((string) $name, $value ?? '')), 'text' => ($__rv === '' ? '' : trim(($prefix ?? '') . ' ' . $__rv . ' ' . ($suffix ?? ''))), 'style' => $_dimStyle]) !!}
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => ($__rv = \Mad\Support\MadFieldValue::resolve((string) $name, $value ?? '')), 'text' => ($__rv === '' ? '' : trim(($prefix ?? '') . ' ' . \Mad\Form\ReadMode::decimal((string) $__rv) . ' ' . ($suffix ?? ''))), 'style' => $_dimStyle]) !!}
 @else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)

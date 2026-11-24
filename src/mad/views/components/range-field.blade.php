@@ -20,6 +20,11 @@
     ]);
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false); @endphp
+{{-- Formulário em leitura (fw#498, fórum #394): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'raw' => (string) $value, 'text' => trim((string) $value) === '' ? '' : trim(\Mad\Form\ReadMode::decimal((string) $value) . ' ' . $suffix), 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field" x-data="{ {{ $alpineId }}: {{ $value }} }" @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
@@ -46,3 +51,4 @@
     </div>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

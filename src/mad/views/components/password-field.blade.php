@@ -62,6 +62,11 @@
     $maxWidth = $maxWidth ?? '';
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
+{{-- Formulário em leitura (fw#498, fórum #394): rótulo e valor no lugar do controle. --}}
+@php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'text' => trim((string) \Mad\Support\MadFieldValue::resolve((string) $name, $value ?? '')) !== '' ? '••••••' : '', 'noHidden' => true, 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field{{ $_isHidden ? ' mad-hidden' : '' }} mad-password-field"
      @if($name) data-mad-field="{{ $name }}" @endif
      x-data="madPasswordField({{ $_jsonConfig }})"
@@ -113,3 +118,4 @@
 
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif
