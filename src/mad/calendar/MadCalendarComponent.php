@@ -339,8 +339,9 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         try {
             ($this->searchQuery)($q);
         } catch (\Throwable $e) {
-            // Mesma política do _applyOnSearch: loga e segue (a tela não cai).
-            error_log('[MadCalendarComponent::searchQuery] ' . static::class . ': ' . $e->getMessage());
+            // Mesma política do _applyOnSearch: a tela não cai, mas a agenda
+            // também não mostra evento sem o recorte da busca (fw#628).
+            $this->_failClosedOnSearch($q, $e);
         }
     }
 
@@ -1200,8 +1201,31 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
             }
         }
 
-        $this->calendar = $toolbarHtml . $html;
+        $this->calendar = $this->_searchFailedProbe() . $toolbarHtml . $html;
         return $this->calendar;
+    }
+
+    /**
+     * Os eventos chegam depois, pelo `getEvents()`: quem desenha a agenda não
+     * vê a consulta falhar. Aqui o `onSearch` roda sobre a consulta do model
+     * (nada é executado) e, se falhar, a agenda abre com o aviso — o feed
+     * devolve a lista vazia pelo mesmo motivo (fw#628).
+     */
+    private function _searchFailedProbe(): string
+    {
+        if ($this->model === '' || (!method_exists($this, 'onSearch') && !is_callable($this->searchQuery))) {
+            return '';
+        }
+        try {
+            $modelClass = $this->_resolveModelClass($this->model);
+            $q = $modelClass::query();
+            $this->_applyOnSearch($q, $modelClass);
+            $this->_applySearchQuery($q);
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $this->_onSearchFailedNotice();
     }
 
     /** Fabrica URL pro endpoint static getEvents() do proprio componente. */

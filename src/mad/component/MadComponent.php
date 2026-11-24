@@ -1406,13 +1406,18 @@ abstract class MadComponent
         // primeiro nome, já limpo pelo toastUserName(), e escapado.
         $who = MadResponse::toastUserName();
 
+        // Aviso ao sair com alteração não salva na tela inteira (fw#632):
+        // `protected static bool $confirmLeave = true;` na tela.
+        $leave = \Mad\Support\FormConfirmLeave::forScreen($this) ? \Mad\Support\FormConfirmLeave::attrs() : '';
+
         $component = sprintf(
-            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s"%s>%s</div>',
+            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s"%s%s>%s</div>',
             htmlspecialchars($class,    ENT_QUOTES),
             htmlspecialchars($id,       ENT_QUOTES),
             htmlspecialchars($state,    ENT_QUOTES),
             htmlspecialchars($endpoint, ENT_QUOTES),
             $who !== '' ? ' data-mad-user="' . htmlspecialchars($who, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"' : '',
+            $leave,
             $html
         );
 

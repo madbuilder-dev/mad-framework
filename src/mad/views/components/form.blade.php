@@ -27,6 +27,12 @@
     if ($_read !== '') {
         $class = trim($class . ' mad-form-read');
     }
+    // confirm-leave (fw#632): aviso ao sair com alteração não salva — menu,
+    // links, `navigate=`, voltar do navegador e fechar a aba. Prop, ou a opção
+    // global MAD_CONFIRM_LEAVE para todo form com `submit`. Formulário só de
+    // leitura não tem o que perder.
+    $_leaveAttrs = ($_read === '' && \Mad\Support\FormConfirmLeave::forForm($confirmLeave ?? null, (string) $submit))
+        ? \Mad\Support\FormConfirmLeave::attrs() : '';
     // token() é chamado APÓS o slot renderizar → todos os fields já foram registrados
     $token  = \Mad\Form\MadFormRegistry::token();
     // Combos de chave de relação (fórum #291 r4): troca o marcador só se houver campo `rel->campo` aqui.
@@ -36,7 +42,7 @@
     @if($id)     id="{{ $id }}"                       @endif
     @if($class)  class="{{ $class }}"                 @endif
     @if($submit) data-mad-submit="{{ $submit }}"      @endif
-    @if($_read)  data-read="{{ $_read }}"             @endif
+    @if($_read)  data-read="{{ $_read }}"             @endif{!! $_leaveAttrs !!}
     {{-- $_gapStyle DEPOIS de $attrs: atributo duplicado → o HTML fica com o primeiro, então um style cru em attrs continua mandando --}}
     {!! $attrs !!}{!! $_gapStyle !!}
 >

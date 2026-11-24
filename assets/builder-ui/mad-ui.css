@@ -9437,10 +9437,10 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 .mad-dg-expand-row .mad-page-embed-bar {
   margin-bottom: 8px;
 }
-/* Sem o painel de filtros (modo `row`), o layout de coluna lateral do
-   <mad-grid-filters style="sidebar-*"> ficaria com a grade espremida na
+/* Sem o painel de filtros (modos `row` e `body`), o layout de coluna lateral
+   do <mad-grid-filters style="sidebar-*"> ficaria com a grade espremida na
    coluna de 260px. */
-.mad-transporter[data-mad-embed-header="row"] :is(.mad-gridf-layout-left, .mad-gridf-layout-right, .mad-dashf-layout-left, .mad-dashf-layout-right) {
+.mad-transporter:is([data-mad-embed-header="row"], [data-mad-embed-header="body"]) :is(.mad-gridf-layout-left, .mad-gridf-layout-right, .mad-dashf-layout-left, .mad-dashf-layout-right) {
   display: block;
 }
 

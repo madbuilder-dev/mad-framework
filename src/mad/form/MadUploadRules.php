@@ -265,6 +265,38 @@ final class MadUploadRules
         return $known ? (int) min($known) : 0;
     }
 
+    /**
+     * Compressão da foto no navegador (`compress`, `max-dimension`, `quality`
+     * do `<mad-multi-file-field>` e do `<mad-file-field>`, fw#630): o que o
+     * mad-ui.js recebe, ou null quando a prop está desligada — aí a
+     * configuração do campo sai sem chave nova.
+     *
+     * `max-dimension` em px (padrão 1600); `quality` de 0 a 1 (padrão 0.8) —
+     * 1 a 100 também vale, como porcentagem. Valor inválido vira o padrão.
+     *
+     * @return array{maxDimension: int, quality: float}|null
+     */
+    public static function compressConfig(mixed $compress, mixed $maxDimension = '', mixed $quality = ''): ?array
+    {
+        $on = is_bool($compress)
+            ? $compress
+            : ! in_array(strtolower(trim((string) $compress)), ['', '0', 'false', 'no', 'off', 'nao', 'não'], true);
+        if (! $on) {
+            return null;
+        }
+
+        $dim = is_numeric($maxDimension) ? (int) $maxDimension : 0;
+        $q   = is_numeric($quality) ? (float) $quality : 0.0;
+        if ($q > 1 && $q <= 100) {
+            $q /= 100;
+        }
+
+        return [
+            'maxDimension' => $dim > 0 ? $dim : 1600,
+            'quality'      => $q > 0 && $q <= 1 ? round($q, 2) : 0.8,
+        ];
+    }
+
     /** Maior requisição que o PHP recebe (`post_max_size`); 0 = sem limite. */
     public static function serverPostBytes(): int
     {

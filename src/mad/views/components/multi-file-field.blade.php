@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
 @php
     $required   = !empty($required);
     $disabled   = !empty($disabled);
@@ -103,7 +103,7 @@
             }
         }
     }
-    $fileCfg    = json_encode([
+    $fileCfgArr = [
         'maxFiles'        => $maxFiles,
         'maxSize'         => $maxSize,
         'fieldName'       => $name,
@@ -112,7 +112,15 @@
         'accept'          => (string) $accept,
         'serverMax'       => \Mad\Form\MadUploadRules::serverFileBytes(),
         'stored'          => $storage !== '',
-    ]);
+    ];
+    // `compress` (fw#630): a foto é reduzida no navegador antes do envio
+    // (`max-dimension` px, `quality` 0 a 1). O EXIF (data, GPS) não vai junto.
+    // Sem a prop, a configuração sai sem chave nova.
+    $_compress = \Mad\Form\MadUploadRules::compressConfig($compress ?? false, ($maxDimension ?? '') !== '' ? $maxDimension : ($max_dimension ?? ''), $quality ?? '');
+    if ($_compress !== null) {
+        $fileCfgArr['compress'] = $_compress;
+    }
+    $fileCfg    = json_encode($fileCfgArr);
     // `public` (#244): grava em _public/ com endereço fixo e sem login
     // (mad_public_url). Sem ela, o arquivo segue privado.
     $public = !empty($public ?? false) && $public !== 'false';

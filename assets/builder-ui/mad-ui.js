@@ -6227,6 +6227,93 @@ function _madUploadWarn(message) {
     if (message && typeof madToast === 'function') madToast(message, 'warning');
 }
 
+// ── Compressão da foto no navegador (prop `compress`, fw#630) ──────────────
+// A foto da câmera do celular tem de 3 a 8 MB; com `compress` o campo manda uma
+// versão JPEG com o lado maior em `maxDimension` px (padrão 1600) e qualidade
+// `quality` (0 a 1, padrão 0.8). Respeita a rotação do EXIF; o resto do EXIF
+// (data, GPS) não vai junto — o canvas não o carrega.
+//
+// Fica o ORIGINAL quando: não é JPEG/PNG/WebP (PDF, GIF, HEIC…), é PNG/WebP com
+// transparência, o navegador não decodifica a imagem, ou o resultado não sai
+// menor que o original. Devolve sempre uma Promise<File>, nunca rejeita.
+var _MAD_COMPRESSIBLE = ['image/jpeg', 'image/png', 'image/webp'];
+
+function _madCompressible(file) {
+    var type = String((file && file.type) || '').toLowerCase();
+    type = _MAD_UPLOAD_ALIASES[type] || type || _MAD_UPLOAD_TYPES[_madUploadExt(file && file.name)] || '';
+    return _MAD_COMPRESSIBLE.indexOf(type) !== -1 ? type : '';
+}
+
+// Imagem decodificada, já na orientação do EXIF. createImageBitmap com
+// `imageOrientation: 'from-image'`; sem ele (Safari antigo recusa a opção), o
+// <img>, que os navegadores atuais desenham na orientação do EXIF.
+function _madDecodeImage(file) {
+    var viaImg = function () {
+        return new Promise(function (resolve, reject) {
+            if (typeof Image === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) { reject(new Error('sem Image')); return; }
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload  = function () { resolve({ src: img, width: img.naturalWidth, height: img.naturalHeight, done: function () { URL.revokeObjectURL(url); } }); };
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('não decodifica')); };
+            img.src = url;
+        });
+    };
+    if (typeof createImageBitmap !== 'function') return viaImg();
+    var bitmap;
+    try {
+        bitmap = createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (_) {
+        return viaImg();
+    }
+    return Promise.resolve(bitmap).then(function (bmp) {
+        return { src: bmp, width: bmp.width, height: bmp.height, done: function () { if (bmp.close) bmp.close(); } };
+    }, viaImg);
+}
+
+function _madCompressImage(file, opts) {
+    opts = opts || {};
+    var type = _madCompressible(file);
+    if (!type || typeof document === 'undefined') return Promise.resolve(file);
+    var max = Number(opts.maxDimension) > 0 ? Number(opts.maxDimension) : 1600;
+    var q   = Number(opts.quality);
+    if (!(q > 0 && q <= 1)) q = 0.8;
+
+    return _madDecodeImage(file).then(function (img) {
+        var scale = Math.min(1, max / Math.max(img.width, img.height));
+        var w = Math.max(1, Math.round(img.width * scale));
+        var h = Math.max(1, Math.round(img.height * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img.src, 0, 0, w, h);
+        img.done();
+        // PNG/WebP com transparência: em JPEG o fundo viraria preto.
+        if (type !== 'image/jpeg') {
+            var px = ctx.getImageData(0, 0, w, h).data;
+            for (var i = 3; i < px.length; i += 4) {
+                if (px[i] < 255) return file;
+            }
+        }
+        return new Promise(function (resolve) {
+            canvas.toBlob(function (blob) {
+                if (!blob || !blob.size || blob.size >= file.size) { resolve(file); return; }
+                var base = String(file.name || 'foto').replace(/\.[^./\\]*$/, '') || 'foto';
+                resolve(new File([blob], base + '.jpg', { type: 'image/jpeg', lastModified: file.lastModified || Date.now() }));
+            }, 'image/jpeg', q);
+        });
+    }).catch(function () { return file; });
+}
+
+// O campo comprime este arquivo? Só imagem que vira JPEG E que o `accept` do
+// campo continua aceitando depois de virar `.jpg` (um campo só de PNG fica com
+// o PNG: o servidor confere o tipo pelo nome no Salvar).
+function _madWillCompress(cfg, file) {
+    if (!cfg || !cfg.compress || !_madCompressible(file)) return false;
+    return !cfg.accept || String(cfg.accept).trim() === '*'
+        || _madUploadAccepts(cfg.accept, { name: 'foto.jpg', type: 'image/jpeg' });
+}
+
 // O arquivo recusado não some calado (fw#297). Antes só havia o toast, que
 // some sozinho: quem olhava a tela segundos depois não via nada, salvava, e a
 // tela dizia "salvo" com a foto antiga. Agora o aviso fica embaixo do campo até
@@ -7094,11 +7181,12 @@ document.addEventListener('alpine:init', () => {
         },
         onSelect(e) {
             var f = e.target.files[0];
-            if (f && this._refuse(f, e.target)) return;
+            var shrink = !!f && e.target.files.length === 1 && _madWillCompress(cfg, f);
+            if (f && this._refuse(f, e.target, shrink)) return;
             if (f) _madUploadCleared(this.$root || this.$el, this.fieldName);
             this.file    = f ? this._newFile(f) : null;
             this.removed = false;
-            if (f) { this._autoFillName(f); this._fireMadChange(); }
+            if (f) { this._autoFillName(f); shrink ? this._compress(f, e.target) : this._fireMadChange(); }
         },
         // "Tirar foto" no celular (fw#495): a foto vem da entrada da câmera e
         // passa para a entrada do campo, que é a que vai no POST.
@@ -7117,22 +7205,71 @@ document.addEventListener('alpine:init', () => {
             this.dragOver = false;
             var dt = e.dataTransfer;
             if (dt && dt.files && dt.files.length) {
+                var f0 = dt.files[0];
+                var shrink = dt.files.length === 1 && _madWillCompress(cfg, f0);
                 // Arrastar e soltar não passa pelo `accept` do <input>: confere aqui.
-                if (this._refuse(dt.files[0], null)) return;
+                if (this._refuse(f0, null, shrink)) return;
                 _madUploadCleared(this.$root || this.$el, this.fieldName);
                 input.files = dt.files;
-                this.file    = this._newFile(dt.files[0]);
+                this.file    = this._newFile(f0);
                 this.removed = false;
-                this._autoFillName(dt.files[0]);
-                this._fireMadChange();
+                this._autoFillName(f0);
+                shrink ? this._compress(f0, input) : this._fireMadChange();
             }
+        },
+        // fw#630 — `compress`: o arquivo entra no campo na hora, como veio, e é
+        // trocado (no <input>, que é o que vai no POST) pela versão reduzida
+        // quando ela fica pronta. Salvar no meio do caminho manda o original.
+        // O tamanho máximo é conferido depois de reduzir; o `mad:change` sai
+        // com a foto já reduzida.
+        _compress(original, input) {
+            var self = this;
+            if (!this.file || !input) return;
+            var keep = this.file.sizeText;
+            this.file.sizeText = madT('upload_compressing', 'reduzindo…');
+            return _madCompressImage(original, cfg.compress).then(function (out) {
+                var f = self.file;
+                // Trocado, removido ou gravado pelo Salvar enquanto era reduzido: fica como está.
+                if (!f || f.existing || f.raw !== original) return;
+                if (out !== original) {
+                    try {
+                        var dt = new DataTransfer();
+                        dt.items.add(out);
+                        input.files = dt.files;
+                    } catch (_) { out = original; }
+                }
+                if (out !== original) {
+                    var info = _madFileInfo(out);
+                    if (f.thumb && typeof URL !== 'undefined') { try { URL.revokeObjectURL(f.thumb); } catch (e) {} }
+                    f.raw      = out;
+                    f.name     = info.name;
+                    f.ext      = info.ext;
+                    f.thumb    = info.thumb;
+                    f.sizeText = info.sizeText;
+                } else {
+                    f.sizeText = keep;
+                }
+                var problem = _madUploadProblem(f.raw, { accept: cfg.accept, maxBytes: cfg.maxBytes, serverMax: cfg.serverMax, stored: cfg.stored });
+                if (problem) {
+                    if (f.thumb && typeof URL !== 'undefined') { try { URL.revokeObjectURL(f.thumb); } catch (e) {} }
+                    self.file = null;
+                    input.value = '';
+                    _madUploadRefused(self.$root || self.$el, self.fieldName, out, problem);
+                    return;
+                }
+                self._fireMadChange();
+            });
         },
         // Tamanho máximo e Tipos aceitos do campo (e o limite do servidor): o
         // arquivo que não passa não entra, e o campo fica como estava. `input`
         // é o <input type="file"> que já recebeu o arquivo recusado (escolha
         // pela janela): volta a ter o arquivo novo anterior, ou nenhum.
-        _refuse(f, input) {
-            var problem = _madUploadProblem(f, { accept: cfg.accept, maxBytes: cfg.maxBytes, serverMax: cfg.serverMax, stored: cfg.stored });
+        _refuse(f, input, shrink) {
+            // `shrink` (fw#630): a foto vai ser comprimida — o tamanho é
+            // conferido depois, na versão reduzida (_compress).
+            var problem = _madUploadProblem(f, shrink
+                ? { accept: cfg.accept, stored: cfg.stored }
+                : { accept: cfg.accept, maxBytes: cfg.maxBytes, serverMax: cfg.serverMax, stored: cfg.stored });
             if (!problem) return false;
             _madUploadRefused(this.$root || this.$el, this.fieldName, f, problem);
             if (input) {
@@ -7235,6 +7372,7 @@ document.addEventListener('alpine:init', () => {
         maxFiles:      cfg.maxFiles  || 0,
         maxSize:       cfg.maxSize   || 0, // KB
         fieldName:     cfg.fieldName || '',
+        _compressQueue: null,   // fw#630: fotos sendo reduzidas, uma de cada vez
 
         init() {
             // Carrega arquivos existentes (edição)
@@ -7307,14 +7445,20 @@ document.addEventListener('alpine:init', () => {
             var left  = [];   // o que ficou de fora, com o motivo
             var over  = 0;    // quantos passaram do Máximo de arquivos
             var rules = { accept: cfg.accept, maxBytes: this.maxSize > 0 ? this.maxSize * 1024 : 0, serverMax: cfg.serverMax, stored: cfg.stored };
+            var shrink = [];   // fotos que serão comprimidas (prop `compress`)
             Array.from(list).forEach(f => {
-                var problem = _madUploadProblem(f, rules);
+                // Com `compress`, o tamanho da foto é conferido depois de
+                // reduzida (_compress): a de 6 MB num campo de 2 MB entra se
+                // ficar menor. Tipo e extensão bloqueada valem já.
+                var willShrink = _madWillCompress(cfg, f);
+                var problem = _madUploadProblem(f, willShrink ? { accept: rules.accept, stored: rules.stored } : rules);
                 if (problem) { left.push(problem); return; }
                 if (this.maxFiles > 0 && this.files.length >= this.maxFiles) { over++; return; }
                 var info = _madFileInfo(f);
                 info.uid = _madUploadUid();
                 this.files.push(info);
                 added = true;
+                if (willShrink) shrink.push(info.uid);
             });
             if (over > 0) {
                 left.push((over === 1 ? madT('files_over_one', '1 arquivo não foi incluído') : madT('files_over_many', ':n arquivos não foram incluídos', { n: over }))
@@ -7326,9 +7470,62 @@ document.addEventListener('alpine:init', () => {
             // O <input> sempre volta a ter só os arquivos aceitos — inclusive
             // quando nenhum entrou (a janela de escolha já tinha posto os recusados lá).
             this.syncInput();
-            if (added) {
+            if (shrink.length) {
+                this._compress(shrink, rules, added);
+            } else if (added) {
                 this._fireMadChange();
             }
+        },
+        // fw#630 — `compress`: cada foto entra na lista na hora, como veio, e é
+        // trocada pela versão reduzida quando ela fica pronta (uma de cada vez:
+        // dez fotos de 12 MP decodificadas juntas derrubam o navegador do
+        // celular). Salvar no meio do caminho manda o original — nada se perde.
+        // O `mad:change` do campo sai depois, com as fotos já reduzidas.
+        _compress(uids, rules, fire) {
+            var self = this;
+            var find = function (uid) { return self.files.find(function (x) { return x && x.uid === uid && !x.existing; }); };
+            uids.forEach(function (uid) {
+                var f = find(uid);
+                if (f) { f._sizeText = f.sizeText; f.sizeText = madT('upload_compressing', 'reduzindo…'); }
+            });
+            var left = [];
+            var chain = this._compressQueue || Promise.resolve();
+            uids.forEach(function (uid) {
+                chain = chain.then(function () {
+                    var f = find(uid);
+                    if (!f || !f.raw) return;
+                    var original = f.raw;
+                    return _madCompressImage(original, cfg.compress).then(function (out) {
+                        var g = find(uid);
+                        // Removida, gravada pelo Salvar ou trocada enquanto era reduzida: fica como está.
+                        if (!g || g.raw !== original) return;
+                        if (out !== original) {
+                            var info = _madFileInfo(out);
+                            if (g.thumb && typeof URL !== 'undefined') { try { URL.revokeObjectURL(g.thumb); } catch (e) {} }
+                            g.raw      = out;
+                            g.name     = info.name;
+                            g.ext      = info.ext;
+                            g.thumb    = info.thumb;
+                            g.sizeText = info.sizeText;
+                        } else {
+                            g.sizeText = g._sizeText;
+                        }
+                        var problem = _madUploadProblem(g.raw, rules);
+                        if (problem) {
+                            left.push(problem);
+                            var i = self.files.indexOf(g);
+                            if (i !== -1) self.removeFile(i);
+                        }
+                        self.syncInput();
+                    });
+                }).catch(function () { /* um arquivo que falhou não trava a fila */ });
+            });
+            this._compressQueue = chain = chain.then(function () {
+                if (left.length) _madUploadWarn(left.join(' '));
+                var kept = uids.some(function (uid) { return self.files.some(function (x) { return x && x.uid === uid; }); });
+                if (fire && kept) self._fireMadChange();
+            });
+            return chain;
         },
         // Os arquivos NOVOS (ainda não gravados), na ordem em que vão no POST: o
         // <input type="file"> (syncInput) e os identificadores
@@ -7464,6 +7661,115 @@ document.addEventListener('alpine:init', () => {
             if (typeof tinymce === 'undefined') return;
             const textarea = this.$refs.textarea;
             const self     = this;
+            let sync       = null;
+
+            // ── fw#629: imagem colada/arrastada vai para `upload-url` ─────
+            // POST multipart (`file`) com o CSRF da sessão; a resposta
+            // `{"location": "..."}` vira o `src`. Tipo ou tamanho fora do
+            // combinado não sai do navegador: o TinyMCE avisa e tira a imagem.
+            const uploadRule = function () {
+                const types = cfg.uploadAcceptLabel || '';
+                const mb    = cfg.uploadMaxMb ? String(cfg.uploadMaxMb) : '';
+                if (types && mb) return madT('html_upload_rule_types_size', 'Só :types, até :mb MB.', { types: types, mb: mb });
+                if (types) return madT('html_upload_rule_types', 'Só :types.', { types: types });
+                return madT('html_upload_rule_size', 'Até :mb MB.', { mb: mb });
+            };
+            const uploadRefusal = function (blob) {
+                const type   = String((blob && blob.type) || '').toLowerCase();
+                const accept = Array.isArray(cfg.uploadAccept) ? cfg.uploadAccept : [];
+                if (accept.length && accept.indexOf(type === 'image/jpg' ? 'image/jpeg' : type) === -1) return uploadRule();
+                const max = Number(cfg.uploadMaxMb) || 0;
+                if (max > 0 && blob && blob.size > max * 1024 * 1024) return uploadRule();
+                return '';
+            };
+            const uploadImage = function (blobInfo, success, failure, progress) {
+                // Depois do envio (ou da recusa) o TinyMCE troca/tira a imagem
+                // fora dos eventos que o campo escuta: copia de novo para o
+                // textarea, senão o Salvar levaria a imagem em base64.
+                const settle = function () { setTimeout(function () { if (sync) sync(); }, 0); };
+                const fail = function (msg) { failure(msg, { remove: true }); settle(); };
+                const why = uploadRefusal(blobInfo.blob());
+                if (why) { fail(why); return; }
+
+                const fd = new FormData();
+                fd.append('file', blobInfo.blob(), blobInfo.filename());
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', cfg.uploadUrl);
+                const headers = typeof _madWireHeaders === 'function'
+                    ? _madWireHeaders({ Accept: 'application/json' })
+                    : { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' };
+                Object.keys(headers).forEach(function (k) { xhr.setRequestHeader(k, headers[k]); });
+                if (xhr.upload && progress) {
+                    xhr.upload.onprogress = function (e) {
+                        if (e.lengthComputable && e.total) progress(e.loaded / e.total * 100);
+                    };
+                }
+                xhr.onerror = function () {
+                    fail(madT('html_upload_network', 'Sem conexão com o servidor.'));
+                };
+                xhr.onload = function () {
+                    let json = null;
+                    try { json = JSON.parse(xhr.responseText); } catch (_) { json = null; }
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        const msg = json && typeof json.message === 'string' && json.message
+                            ? json.message
+                            : (json && typeof json.error === 'string' && json.error ? json.error : '');
+                        fail(msg || madT('html_upload_failed', 'O servidor não aceitou a imagem (:status).', { status: 'HTTP ' + xhr.status }));
+                        return;
+                    }
+                    const loc = json && (typeof json.location === 'string' ? json.location : (typeof json.url === 'string' ? json.url : ''));
+                    if (!loc) {
+                        fail(madT('html_upload_no_location', 'O servidor não devolveu o endereço da imagem.'));
+                        return;
+                    }
+                    success(loc);
+                    settle();
+                };
+                xhr.send(fd);
+            };
+
+            // ── fw#629: `paste="clean"` ──────────────────────────────────
+            // Colar de fora traz só os destaques. O destaque escrito como
+            // estilo vira tag (o Google Docs marca o negrito com
+            // `font-weight:700` e embrulha tudo num `<b style="font-weight:
+            // normal">`); depois saem estilo, classe, fonte e cor.
+            const cleanPasted = function (html) {
+                const tpl = document.createElement('template');
+                tpl.innerHTML = html;
+                const root = tpl.content;
+                const unwrap = function (el) {
+                    while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+                    el.parentNode.removeChild(el);
+                };
+                const wrapInside = function (el, tag) {
+                    if (!el.firstChild) return;
+                    const w = document.createElement(tag);
+                    while (el.firstChild) w.appendChild(el.firstChild);
+                    el.appendChild(w);
+                };
+                const drop = [];
+                root.querySelectorAll('[style]').forEach(function (el) {
+                    const tag    = el.tagName;
+                    const weight = String(el.style.fontWeight || '').toLowerCase();
+                    const num    = parseInt(weight, 10);
+                    const bold   = weight === 'bold' || weight === 'bolder' || num >= 600;
+                    const plain  = weight === 'normal' || weight === 'lighter' || (num > 0 && num < 600);
+                    const italic = /italic|oblique/i.test(el.style.fontStyle || '');
+                    const under  = /underline/i.test((el.style.textDecorationLine || '') + ' ' + (el.style.textDecoration || ''));
+                    if ((tag === 'B' || tag === 'STRONG') && plain) { drop.push(el); return; }
+                    if (under && tag !== 'U' && !el.closest('a')) wrapInside(el, 'u');
+                    if (italic && tag !== 'I' && tag !== 'EM') wrapInside(el, 'em');
+                    if (bold && !/^(B|STRONG|H[1-6]|TH)$/.test(tag)) wrapInside(el, 'strong');
+                });
+                drop.forEach(unwrap);
+                root.querySelectorAll('*').forEach(function (el) {
+                    ['style', 'class', 'id', 'face', 'color', 'size', 'bgcolor', 'background'].forEach(function (a) {
+                        el.removeAttribute(a);
+                    });
+                });
+                root.querySelectorAll('font, span').forEach(unwrap);
+                return tpl.innerHTML;
+            };
 
             const opts = {
                 target:      textarea,
@@ -7488,8 +7794,17 @@ document.addEventListener('alpine:init', () => {
                         if (cfg.initVal) ed.setContent(cfg.initVal);
                         textarea.value = ed.getContent();
                     });
+                    // `paste="clean"` (fw#629): registrado aqui, antes dos
+                    // filtros do plugin paste, para ver o estilo ainda inteiro
+                    // e converter o destaque escrito como estilo (Google Docs,
+                    // e-mail) em tag antes de o estilo sair.
+                    if (cfg.paste === 'clean') {
+                        ed.on('PastePreProcess', function (e) {
+                            if (!e.internal) e.content = cleanPasted(e.content);
+                        });
+                    }
                     let syncing = false;
-                    const sync = function () {
+                    sync = function () {
                         syncing = true;
                         try {
                             textarea.value = ed.getContent();
@@ -7517,6 +7832,30 @@ document.addEventListener('alpine:init', () => {
             if (cfg.locale && cfg.locale !== 'en') {
                 opts.language     = cfg.locale;
                 opts.language_url = (tinymce.baseURL || '') + '/langs/' + cfg.locale + '.js';
+            }
+
+            // fw#629 — props opt-in. Sem elas `opts` sai igual ao de antes.
+            if (cfg.paste === 'clean') {
+                // Do Word: negrito, itálico, sublinhado, parágrafo, quebra e
+                // lista (`b`/`i` viram `strong`/`em`); nenhum estilo. O `span`
+                // passa só até o filtro abaixo: é nele que o Google Docs (que o
+                // TinyMCE trata como Word) marca o negrito (`font-weight:700`).
+                opts.paste_word_valid_elements     = '-strong/b,-em/i,-u,-span,-p,br,-ul,-ol,-li';
+                opts.paste_retain_style_properties = '';
+                opts.paste_webkit_styles           = 'none';
+                opts.paste_remove_styles_if_webkit = true;
+            }
+            if (cfg.uploadUrl) {
+                opts.automatic_uploads     = true;
+                opts.images_upload_handler = uploadImage;
+            }
+            // `:options` — saída para o que as props não cobrem. Vence o resto,
+            // menos o alvo e o `setup` (é deles que o campo depende).
+            if (cfg.options && typeof cfg.options === 'object' && !Array.isArray(cfg.options)) {
+                Object.keys(cfg.options).forEach(function (k) {
+                    if (k === 'target' || k === 'selector' || k === 'setup') return;
+                    opts[k] = cfg.options[k];
+                });
             }
 
             tinymce.init(opts);

@@ -42,6 +42,9 @@ use Mad\Util\MadTempo;
  *   declared a `(Builder $q [, ?string])` version.
  *   The 0-arg `(): void` MadDataGrid version is invoked separately by the grid
  *   itself when building its query.
+ *   Falha fechada (fw#628): onSearch (ou o closure searchQuery) que lança deixa
+ *   a consulta sem linha nenhuma, registra no log com a pilha e a tela avisa
+ *   (_onSearchFailedMessage/_onSearchFailedNotice). A exportação não gera arquivo.
  */
 trait MadFiltersTrait
 {
@@ -1309,10 +1312,83 @@ trait MadFiltersTrait
                 $this->onSearch();
             }
         } catch (\Throwable $e) {
-            // Falha no onSearch do host nao pode passar muda: a query seguiria
-            // SEM o refinamento custom (linhas a mais expostas). Loga e segue.
-            error_log('[MadFilters::_applyOnSearch] ' . static::class . ': ' . $e->getMessage());
+            // O recorte por permissão de muitas telas mora no onSearch. Antes a
+            // falha ia para o log e a consulta seguia SEM ele: grade, exportação,
+            // kanban e calendário mostravam todas as linhas (fw#628).
+            $this->_failClosedOnSearch($q, $e);
         }
+    }
+
+    /**
+     * O `onSearch` (ou o closure `searchQuery` que ele montou) falhou NESTA
+     * requisição: a consulta saiu fechada e a tela avisa. Não é estado
+     * serializado — cada requisição decide de novo.
+     */
+    protected bool $_onSearchFailed = false;
+
+    /** Detalhe técnico (sem segredo) da falha, só com APP_DEBUG ligado. */
+    protected string $_onSearchFailedDetail = '';
+
+    /**
+     * Falha fechada: a consulta não devolve linha nenhuma, a falha vai para o
+     * log com a pilha e a tela fica sabendo ($_onSearchFailed).
+     *
+     * Fechar no fim, e não só aqui: o gancho pode ter posto um `orWhere` no
+     * topo da consulta antes de lançar, e camadas seguintes (o closure do
+     * `onSearch()` sem argumento) ainda acrescentam condições. Na hora de
+     * executar, tudo o que a consulta tiver vira `1 = 0 and (…)`.
+     */
+    protected function _failClosedOnSearch($q, \Throwable $e): void
+    {
+        $b = $this->_queryBuilder($q);
+        $b->whereRaw('1 = 0');
+        $b->beforeQuery(static function ($query): void {
+            $nested = $query->forNestedWhere();
+            $nested->wheres = $query->wheres;
+            $nested->bindings['where'] = $query->bindings['where'];
+            $query->wheres = [];
+            $query->bindings['where'] = [];
+            $query->whereRaw('1 = 0');
+            $query->addNestedWhereQuery($nested);
+        });
+
+        if (! $this->_onSearchFailed) {
+            \Mad\Ui\MadUserError::report($e, static::class . '::onSearch');
+            if (filter_var(config('app.debug', false), FILTER_VALIDATE_BOOL)) {
+                $this->_onSearchFailedDetail = \Mad\Ui\MadErrorRedactor::describe($e);
+            }
+        }
+        $this->_onSearchFailed = true;
+    }
+
+    /**
+     * Aviso da tela quando o `onSearch` falhou: nenhuma linha aparece porque
+     * os filtros da tela não puderam ser aplicados. '' quando não falhou.
+     */
+    protected function _onSearchFailedMessage(): string
+    {
+        if (! $this->_onSearchFailed) {
+            return '';
+        }
+        $msg = mad_t('mad.filters.search_failed');
+        if ($msg === 'mad.filters.search_failed') {
+            $msg = 'Não foi possível aplicar os filtros desta tela, por isso nenhum registro é mostrado. Avise o administrador.';
+        }
+
+        return $this->_onSearchFailedDetail !== '' ? $msg . ' (' . $this->_onSearchFailedDetail . ')' : $msg;
+    }
+
+    /** O aviso acima pronto para a tela (caixa de alerta), '' quando não falhou. */
+    protected function _onSearchFailedNotice(): string
+    {
+        $msg = $this->_onSearchFailedMessage();
+        if ($msg === '') {
+            return '';
+        }
+
+        return '<div class="mad-alert mad-alert-danger mad-search-failed" role="alert" style="margin-bottom:var(--mad-s3);">'
+            . '<i data-lucide="circle-alert" style="flex-shrink:0;width:16px;height:16px;margin-top:1px;"></i>'
+            . '<div style="flex:1;font-size:var(--mad-text-sm);">' . e($msg) . '</div></div>';
     }
 
     /**

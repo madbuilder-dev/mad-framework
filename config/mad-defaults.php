@@ -31,4 +31,12 @@ return [
         'skip_superseded_revisions' => filter_var(env('MAD_MIGRATIONS_SKIP_SUPERSEDED', true), FILTER_VALIDATE_BOOL),
         'superseded_archive' => env('MAD_MIGRATIONS_SUPERSEDED_ARCHIVE'),
     ],
+    // Ver a doc completa no config/mad.php do template (seção 'export').
+    'export' => [
+        'meta' => [
+            'xlsx' => filter_var(env('MAD_EXPORT_META_XLSX', false), FILTER_VALIDATE_BOOL),
+            'csv'  => filter_var(env('MAD_EXPORT_META_CSV', false), FILTER_VALIDATE_BOOL),
+            'pdf'  => filter_var(env('MAD_EXPORT_META_PDF', false), FILTER_VALIDATE_BOOL),
+        ],
+    ],
 ];

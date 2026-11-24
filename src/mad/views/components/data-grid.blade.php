@@ -1253,6 +1253,10 @@
                                 {{ __('grid.load_records') }}
                             </button>
                             @endif
+                            @elseif(($searchFailed ?? '') !== '')
+                            {{-- onSearch da tela falhou: nenhuma linha, e o porquê (fw#628). --}}
+                            <i data-lucide="circle-alert" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
+                            <span class="mad-dg-filter-required mad-search-failed" role="alert">{{ $searchFailed }}</span>
                             @elseif($tooManyRows !== '')
                             <i data-lucide="filter" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
                             <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>
@@ -1564,6 +1568,9 @@
                     {{ __('grid.load_records') }}
                 </button>
                 @endif
+                @elseif(($searchFailed ?? '') !== '')
+                <i data-lucide="circle-alert" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
+                <span class="mad-dg-filter-required mad-search-failed" role="alert">{{ $searchFailed }}</span>
                 @elseif($tooManyRows !== '')
                 <i data-lucide="filter" style="width:32px;height:32px;opacity:.3;display:block;margin:0 auto 8px;"></i>
                 <span class="mad-dg-filter-required" role="alert">{{ $tooManyRows }}</span>

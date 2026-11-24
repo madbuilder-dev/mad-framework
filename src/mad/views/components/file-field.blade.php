@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'auto-fill-name' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'auto-fill-name' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
 @php
     $multiple   = !empty($multiple);
     $required   = !empty($required);
@@ -107,7 +107,7 @@
     if ($existingPath) {
         $existingUrl = mad_download_url($existingPath, $existingName ?: null, \Mad\Component\MadRenderContext::getForm()?->fileOwnerFor((string) $name, $existingPath));
     }
-    $fileCfg = json_encode([
+    $fileCfgArr = [
         'existingName'    => $existingName,
         'existingUrl'     => $existingUrl,
         'fieldName'       => $name,
@@ -117,7 +117,15 @@
         'maxBytes'        => $maxBytes,
         'serverMax'       => \Mad\Form\MadUploadRules::serverFileBytes(),
         'stored'          => $storage !== '',
-    ]);
+    ];
+    // `compress` (fw#630): a foto é reduzida no navegador antes do envio
+    // (`max-dimension` px, `quality` 0 a 1). O EXIF (data, GPS) não vai junto.
+    // Sem a prop, a configuração sai sem chave nova.
+    $_compress = \Mad\Form\MadUploadRules::compressConfig($compress ?? false, ($maxDimension ?? '') !== '' ? $maxDimension : ($max_dimension ?? ''), $quality ?? '');
+    if ($_compress !== null) {
+        $fileCfgArr['compress'] = $_compress;
+    }
+    $fileCfg = json_encode($fileCfgArr);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
 @endphp
 @php $__rm = \Mad\Form\ReadMode::mode($__env); @endphp

@@ -27,6 +27,21 @@ return [
         // Rótulo de filtro com vários valores escolhidos (acima de 2 nomes).
         'filters' => [
             'selected' => ':n seleccionados',
+            // onSearch da tela falhou: a consulta sai vazia (fw#628).
+            'search_failed'        => 'No fue posible aplicar los filtros de esta pantalla, por eso no se muestra ningún registro. Avise al administrador.',
+            'search_failed_export' => 'No fue posible aplicar los filtros de esta pantalla. No se exportó nada; avise al administrador.',
+        ],
+
+        // Metadados acima da tabela no XLSX/CSV exportado (fw#631).
+        'export' => [
+            'generated_at' => 'Generado el :date',
+            'generated_by' => 'Generado el :date por :name',
+            'filters'      => 'Filtros: :filters',
+            'filters_none' => 'Filtros: ninguno',
+            'search'       => 'Búsqueda: :term',
+            'sort'         => 'Orden: :column (:dir)',
+            'sort_asc'     => 'ascendente',
+            'sort_desc'    => 'descendente',
         ],
 
         // Calendário com `event-form` apontando para uma classe que não existe.
@@ -1163,6 +1178,13 @@ return [
             'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fix_fields'                => 'Corrija :fields.',
             'fix_n_fields'              => 'Corrija los :n campos marcados en rojo, empezando por :first.',
+            // fw#629 — Editor HTML: envio da imagem colada/arrastada (upload-url)
+            'html_upload_failed'          => 'El servidor no aceptó la imagen (:status).',
+            'html_upload_network'         => 'Sin conexión con el servidor.',
+            'html_upload_no_location'     => 'El servidor no devolvió la dirección de la imagen.',
+            'html_upload_rule_size'       => 'Hasta :mb MB.',
+            'html_upload_rule_types'      => 'Solo :types.',
+            'html_upload_rule_types_size' => 'Solo :types, hasta :mb MB.',
             'image_too_big'             => 'La imagen editada supera el límite de este campo (:max) y no se modificó.',
             'invalid_response'          => 'Respuesta inválida del servidor.',
             'loading'                   => 'Cargando…',
@@ -1224,6 +1246,7 @@ return [
             'unexpected_response_dot'   => 'Respuesta inesperada del servidor.',
             'upload_audio'              => 'audio',
             'upload_blocked'            => 'El archivo ":name" no se puede enviar: los archivos .:ext no se aceptan por seguridad.',
+            'upload_compressing'        => 'reduciendo…', // fw#630: foto sendo reduzida (compress)
             'upload_file'               => 'archivo',
             'upload_images'             => 'imágenes',
             'upload_post_too_big'       => 'El envío superó el límite que el servidor acepta de una vez. No se guardó nada: envíe archivos más pequeños o menos archivos a la vez.',

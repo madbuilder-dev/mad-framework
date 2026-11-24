@@ -16,6 +16,11 @@ use Mad\Service\MadScratchStorage;
  *   $w->dataRow($row) | $w->groupItems($items) …
  *   $w->grandTotalRow($grandTotals);
  *   $key = $w->finish();              // chave output/<uniqid>.csv no scratch
+ *
+ * Metadados (fw#631, opt-in): `open($columns, ';', $meta)` escreve cada linha
+ * de `$meta` (título, "Gerado em…", filtros, ordenação) numa linha própria e
+ * uma linha em branco antes do cabeçalho. Sem `$meta` o arquivo sai byte a
+ * byte como antes — quem importa o CSV em outro sistema não é afetado.
  */
 final class GridCsvWriter
 {
@@ -38,10 +43,13 @@ final class GridCsvWriter
     private string $key;
     private string $delimiter;
 
-    /** @param GridColumn[] $columns */
-    public static function open(array $columns, string $delimiter = self::DEFAULT_DELIMITER): self
+    /**
+     * @param GridColumn[] $columns
+     * @param list<string> $meta linhas acima do cabeçalho; [] = sem
+     */
+    public static function open(array $columns, string $delimiter = self::DEFAULT_DELIMITER, array $meta = []): self
     {
-        return new self($columns, self::delimiter($delimiter));
+        return new self($columns, self::delimiter($delimiter), $meta);
     }
 
     /**
@@ -78,7 +86,7 @@ final class GridCsvWriter
     }
 
     /** @param GridColumn[] $columns */
-    private function __construct(array $columns, string $delimiter)
+    private function __construct(array $columns, string $delimiter, array $meta = [])
     {
         $this->columns   = array_values($columns);
         $this->key       = GridExportAccess::newKey('csv');
@@ -92,6 +100,13 @@ final class GridCsvWriter
         $this->fp = $fp;
 
         fwrite($this->fp, "\xEF\xBB\xBF"); // BOM UTF-8
+        $meta = array_values(array_filter(array_map(fn ($l) => GridExportCell::plainText((string) $l), $meta), fn ($l) => $l !== ''));
+        if ($meta !== []) {
+            foreach ($meta as $line) {
+                fputcsv($this->fp, [$line], $this->delimiter);
+            }
+            fwrite($this->fp, "\n");
+        }
         fputcsv($this->fp, array_map(fn ($c) => $c->label, $this->columns), $this->delimiter);
     }
 

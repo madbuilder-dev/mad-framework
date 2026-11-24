@@ -223,6 +223,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     protected string $csvDelimiter = GridCsvWriter::DEFAULT_DELIMITER;
 
     /**
+     * Metadados acima da tabela exportada (fw#631): título, "Gerado em … por
+     * …", filtros (com a busca rápida) e ordenação no XLSX/CSV, e a busca
+     * rápida no `{FILTERS}` do PDF. '' = segue `mad.export.meta.{xlsx,csv,pdf}`
+     * do app (todos desligados por padrão); 'true' = XLSX e PDF (o CSV, que
+     * costuma ir para importação em outro sistema, só se pedido); 'all' = os
+     * três; 'false' = nenhum; ou a lista: 'xlsx', 'xlsx,csv', 'csv'… No Blade:
+     * `<mad-grid export-meta>` ou `export-meta="xlsx,csv"`, que vence esta prop.
+     */
+    protected string $exportMetaFormats = '';
+
+    /**
      * Texto ao lado do ícone do botão Exportar. '' = só o ícone (padrão, com
      * "Exportar" na dica). No Blade: `<mad-grid export-label="Exportar">`, ou
      * `export-label` nu para o texto traduzido — o atributo vence esta prop.
@@ -5717,6 +5728,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'noExport'      => !$this->exportable,
             // csv-delimiter do Blade: mesmo motivo (o AJAX não re-renderiza).
             'csvDelimiter'  => $this->csvDelimiter,
+            // export-meta do Blade: idem.
+            'metaFormats'   => $this->exportMetaFormats,
         ]);
     }
 
@@ -5851,9 +5864,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * respeitado nas linhas mas não aparecia no texto — o leitor do PDF não
      * sabia que o relatório estava filtrado (#81).
      *
+     * Com `$withSearch` a busca rápida (searchbar) entra no fim — ela também
+     * recorta as linhas exportadas (fw#631).
+     *
      * @param list<GridColumn> $columns
      */
-    protected function _exportFiltersText(string $barText, array $columns): string
+    protected function _exportFiltersText(string $barText, array $columns, bool $withSearch = false): string
     {
         $parts = trim($barText) !== '' ? [trim($barText)] : [];
         foreach ($this->colFilters as $key => $f) {
@@ -5881,8 +5897,115 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
             $parts[] = ($label !== '' ? $label : $field) . ': ' . $display;
         }
+        $term = trim($this->search);
+        if ($withSearch && $term !== '') {
+            $parts[] = static::_exportText('search', ['term' => $term], 'Busca: :term');
+        }
 
         return implode('  ·  ', $parts);
+    }
+
+    /**
+     * `export-meta` do Blade / `$exportMetaFormats` normalizado: bool vira
+     * 'true'/'false' (o `(string) false` seria '' = "segue o app").
+     */
+    protected static function _exportMetaDecl(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return strtolower(trim((string) $value));
+    }
+
+    /**
+     * Os metadados valem para este formato ('xlsx', 'csv', 'pdf')? O que a
+     * tela declarou (congelado no render) vence a config do app; sem nada
+     * declarado, `mad.export.meta.<formato>` (desligado por padrão).
+     */
+    protected function _exportMetaOn(string $format): bool
+    {
+        $decl = static::_exportMetaDecl($this->exportMeta['metaFormats'] ?? $this->exportMetaFormats);
+        if ($decl === '') {
+            return filter_var(config('mad.export.meta.' . $format, false), FILTER_VALIDATE_BOOL);
+        }
+        if (in_array($decl, ['all', '*'], true)) {
+            return true;
+        }
+        // Ligado sem dizer o formato: o CSV fica de fora — quem importa o
+        // arquivo em outro sistema não pode receber linhas a mais sem pedir.
+        if (in_array($decl, ['true', '1', 'yes', 'on'], true)) {
+            return $format !== 'csv';
+        }
+        if (in_array($decl, ['false', '0', 'no', 'none', 'off'], true)) {
+            return false;
+        }
+
+        return in_array($format, array_map('trim', explode(',', $decl)), true);
+    }
+
+    /**
+     * Linhas acima da tabela no XLSX/CSV: título, "Gerado em dd/mm/aaaa hh:mm
+     * por <usuário>" (fuso do app), "Filtros: …" (barra, funil das colunas e
+     * busca rápida; "nenhum" sem filtro) e "Ordenação: <coluna> (<sentido>)"
+     * quando o usuário escolheu uma. [] = metadados desligados neste formato.
+     *
+     * @param list<GridColumn> $columns
+     * @return list<string>
+     */
+    protected function _exportMetaLines(string $format, array $columns): array
+    {
+        if (!$this->_exportMetaOn($format)) {
+            return [];
+        }
+
+        $date  = \Illuminate\Support\Carbon::now()->format('d/m/Y H:i');
+        $who   = '';
+        try {
+            $who = trim((string) session('username', ''));
+        } catch (\Throwable) {
+        }
+        $lines = [
+            $this->_exportNames()[0],
+            $who !== ''
+                ? static::_exportText('generated_by', ['date' => $date, 'name' => $who], 'Gerado em :date por :name')
+                : static::_exportText('generated_at', ['date' => $date], 'Gerado em :date'),
+        ];
+
+        $filters = $this->_exportFiltersText((string) ($this->exportMeta['filters'] ?? ''), $columns, true);
+        $lines[] = $filters !== ''
+            ? static::_exportText('filters', ['filters' => $filters], 'Filtros: :filters')
+            : static::_exportText('filters_none', [], 'Filtros: nenhum');
+
+        if ($this->sortBy !== '') {
+            $label = $this->sortBy;
+            foreach ($columns as $col) {
+                if ($col instanceof GridColumn && ($col->field === $this->sortBy || $col->fieldKey === $this->sortBy)) {
+                    $label = trim(strip_tags((string) $col->label)) ?: $this->sortBy;
+                    break;
+                }
+            }
+            $dir = strtolower($this->sortDir) === 'desc'
+                ? static::_exportText('sort_desc', [], 'decrescente')
+                : static::_exportText('sort_asc', [], 'crescente');
+            $lines[] = static::_exportText('sort', ['column' => $label, 'dir' => $dir], 'Ordenação: :column (:dir)');
+        }
+
+        return $lines;
+    }
+
+    /** Texto do catálogo `mad.export.*`, com reserva em português. */
+    private static function _exportText(string $key, array $replace, string $fallback): string
+    {
+        $text = mad_t('mad.export.' . $key, $replace);
+        if ($text === 'mad.export.' . $key) {
+            $text = $fallback;
+            foreach ($replace as $k => $v) {
+                $text = str_replace(':' . $k, (string) $v, $text);
+            }
+        }
+
+        return $text;
     }
 
     /**
@@ -5964,7 +6087,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // declara os campos.
         $meta = $this->exportMeta;
         // Funil do cabeçalho da coluna entra no `{FILTERS}` junto da barra (#81).
-        $meta['filters']   = $this->_exportFiltersText((string) ($meta['filters'] ?? ''), $columns);
+        $meta['filters']   = $this->_exportFiltersText((string) ($meta['filters'] ?? ''), $columns, $this->_exportMetaOn('pdf'));
         $meta['period']    = $this->reportPeriodLabel();
         $meta['groupBand'] = $this->groupBand;
         $meta['rowDetail'] = $this->rowDetail !== '';
@@ -5980,6 +6103,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'report'         => $meta,
             // > 0 = não coube na memória: nenhuma linha, o chamador avisa.
             'tooMany'        => $tooMany,
+            // Todas as colunas (com as escondidas): rótulo da ordenação e do
+            // funil nos metadados do XLSX/CSV.
+            'allColumns'     => $columns,
         ];
 
         // Agrupamento
@@ -6002,6 +6128,27 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $this->_rowsBatched = false;
 
         return $result;
+    }
+
+    /**
+     * O `onSearch` da tela falhou ao montar a exportação: a consulta saiu
+     * fechada (nenhuma linha), e um arquivo vazio pareceria "não há
+     * registros". Descarta o arquivo e avisa (fw#628). null = seguiu normal.
+     */
+    private function _exportSearchFailed(?string $file = null): ?\Mad\Http\MadResponse
+    {
+        if (!$this->_onSearchFailed) {
+            return null;
+        }
+        if ($file !== null && $file !== '' && is_file($file)) {
+            @unlink($file);
+        }
+        $this->skipFullRender();
+        $msg = mad_t('mad.filters.search_failed_export');
+
+        return \Mad\Ui\MadToast::danger($msg === 'mad.filters.search_failed_export'
+            ? 'Não foi possível aplicar os filtros desta tela. Nada foi exportado; avise o administrador.'
+            : $msg);
     }
 
     /** Aviso "listagem grande demais para exportar de uma vez" — sem redesenhar a grid. */
@@ -6047,6 +6194,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if ($this->_exportBlocked()) return $this->_exportBlockedToast();
         if ($this->_isDeferred()) return $this->_deferredExportToast();
         $out = $this->_streamExport('csv', $hiddenColumns) ?? $this->_loadedExport('csv', $hiddenColumns);
+        if ($failed = $this->_exportSearchFailed($out['file'] ?? null)) return $failed;
         if (isset($out['refused'])) return $out['refused'];
         return $this->_exportDialog($out['file'], __('grid.export_csv'), $out['filename']);
     }
@@ -6062,6 +6210,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return \Mad\Ui\MadToast::danger(GridXlsxWriter::unavailableMessage());
         }
         $out = $this->_streamExport('xlsx', $hiddenColumns) ?? $this->_loadedExport('xlsx', $hiddenColumns);
+        if ($failed = $this->_exportSearchFailed($out['file'] ?? null)) return $failed;
         if (isset($out['refused'])) return $out['refused'];
         return $this->_exportDialog($out['file'], __('grid.export_xlsx'), $out['filename']);
     }
@@ -6074,11 +6223,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return ['refused' => $this->_exportTooManyToast($data['tooMany'])];
         }
         $args = [$data['columns'], $data['rows'], $data['exportTitle'], $data['groupData'] ?? [], $data['grandTotals'] ?? []];
+        $meta = $this->_exportMetaLines($format, $data['allColumns'] ?? $data['columns']);
 
         return [
             'file'     => $format === 'xlsx'
-                ? MadGridExporter::xlsx(...$args)
-                : MadGridExporter::csv(...[...$args, $this->_csvDelimiter()]),
+                ? MadGridExporter::xlsx(...[...$args, $meta])
+                : MadGridExporter::csv(...[...$args, $this->_csvDelimiter(), $meta]),
             'filename' => $data['exportFilename'],
         ];
     }
@@ -6137,9 +6287,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             GridExportSourceTypes::resolve(get_class($q->getModel()), $visibleCols);
 
             [$title, $filename] = $this->_exportNames();
+            $meta   = $this->_exportMetaLines($format, $columns);
             $writer = $format === 'xlsx'
-                ? GridXlsxWriter::open($visibleCols, $title)
-                : GridCsvWriter::open($visibleCols, $this->_csvDelimiter());
+                ? GridXlsxWriter::open($visibleCols, $title, $meta)
+                : GridCsvWriter::open($visibleCols, $this->_csvDelimiter(), $meta);
 
             try {
                 $totals = $this->_streamExportRows($q, $columns, $visibleCols, $writer);
@@ -6358,6 +6509,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         $data = $this->_loadAllForExport($hiddenColumns);
+        if ($failed = $this->_exportSearchFailed()) {
+            return $failed;
+        }
         if ($data['tooMany'] > 0) {
             return $this->_exportTooManyToast($data['tooMany']);
         }
@@ -6723,6 +6877,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'filterMissing' => $this->_filterMissing,
             // Relatório que não coube na memória: o texto que pede filtro.
             'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
+            // onSearch da tela falhou: nenhuma linha, e o porquê (fw#628).
+            'searchFailed' => $this->_onSearchFailedMessage(),
             'loadButton'   => $this->_showLoadButton(),
             'loadHint'     => $this->_loadHint(),
             'emptyText'    => $this->_emptyText(),
@@ -6849,6 +7005,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($config['exportFilename'])) $this->exportFilename = (string)$config['exportFilename'];
         if (!empty($config['exportSubtitle'])) $this->exportSubtitle = (string)$config['exportSubtitle'];
         if (isset($config['csvDelimiter']) && $config['csvDelimiter'] !== '') $this->csvDelimiter = (string)$config['csvDelimiter'];
+        if (array_key_exists('exportMetaFormats', $config)) {
+            $this->exportMetaFormats = static::_exportMetaDecl($config['exportMetaFormats']);
+        }
 
         // Persiste a config de quebra pro AJAX de export (props de grupo são
         // protegidas e o handler de export não re-renderiza o Blade).
@@ -7011,6 +7170,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'filterMissing' => $this->_filterMissing,
             // Relatório que não coube na memória: o texto que pede filtro.
             'tooManyRows'  => $this->_tooManyRows > 0 ? $this->reportTooManyMessage() : '',
+            // onSearch da tela falhou: nenhuma linha, e o porquê (fw#628).
+            'searchFailed'  => $this->_onSearchFailedMessage(),
             'loadButton'    => $this->_showLoadButton(),
             'loadHint'      => $this->_loadHint(),
             'emptyText'     => $this->_emptyText(),

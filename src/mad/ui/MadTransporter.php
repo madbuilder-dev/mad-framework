@@ -25,9 +25,10 @@ class MadTransporter
     /**
      * Modos do `header` do <mad-transporter>. `row` é o do `<mad-row-expand>`
      * (tela aberta dentro da linha da listagem): `compact` sem o painel de
-     * filtros.
+     * filtros. `body` (fw#633, aba do `<mad-dashboard-tabs embed="body">`): só
+     * o conteúdo — sem cabeçalho, sem barra de ações, sem painel de filtros.
      */
-    public const EMBED_MODES = ['compact', 'title', 'full', 'row'];
+    public const EMBED_MODES = ['compact', 'title', 'full', 'row', 'body'];
 
     /**
      * Recarrega um transporter por nome.
@@ -48,7 +49,10 @@ class MadTransporter
      *   'full'    embutida, mas com o cabeçalho completo (como antes);
      *   'row'     aberta dentro da linha da listagem (`<mad-row-expand>`): igual
      *             a 'compact' e sem o bloco `<mad-*-filters>` — a linha já é o
-     *             filtro. Ver {@see compactShell()} e {@see hidesFilters()}.
+     *             filtro. Ver {@see compactShell()} e {@see hidesFilters()};
+     *   'body'    só o conteúdo (aba do `<mad-dashboard-tabs embed="body">`,
+     *             cuja página de fora tem a barra de filtros): como 'row' e
+     *             sem a barra de ações. Ver {@see hidesActions()}.
      *
      * Lido por page-container.blade.php e page-header.blade.php. O modo vem do
      * header da requisição, e não do estado do componente, para valer também
@@ -78,23 +82,36 @@ class MadTransporter
 
     /**
      * A tela embutida desenha o casco enxuto (sem cartão de página, sem
-     * título/breadcrumb, só a barra de ações)? `compact`, `title` e `row`.
+     * título/breadcrumb, só a barra de ações)? `compact`, `title`, `row` e
+     * `body` (este sem a barra de ações também).
      */
     public static function compactShell(?string $mode = null): bool
     {
         $mode ??= self::embedHeader();
 
-        return in_array($mode, ['compact', 'title', 'row'], true);
+        return in_array($mode, ['compact', 'title', 'row', 'body'], true);
     }
 
     /**
-     * O bloco `<mad-*-filters>` da tela some? Só no modo `row`: a tela aberta
-     * na linha da listagem já chega filtrada pelo registro, e uma barra de
-     * filtros dentro de cada linha aberta só ocupa espaço.
+     * A barra de ações do cabeçalho (o "Novo" da lista) some? Só no modo
+     * `body`: a aba mostra só o conteúdo da tela.
+     */
+    public static function hidesActions(?string $mode = null): bool
+    {
+        $mode ??= self::embedHeader();
+
+        return $mode === 'body';
+    }
+
+    /**
+     * O bloco `<mad-*-filters>` da tela some? Nos modos `row` e `body`: a tela
+     * aberta na linha da listagem já chega filtrada pelo registro, e a aba do
+     * `<mad-dashboard-tabs embed>` recebe os filtros da página de fora (que
+     * tem a barra); uma segunda barra de filtros só ocupa espaço.
      */
     public static function hidesFilters(): bool
     {
-        return self::embedHeader() === 'row';
+        return in_array(self::embedHeader(), ['row', 'body'], true);
     }
 
     /**

@@ -55,6 +55,21 @@ return [
         // Rótulo de filtro com vários valores escolhidos (acima de 2 nomes).
         'filters' => [
             'selected' => ':n selecionados',
+            // onSearch da tela falhou: a consulta sai vazia (fw#628).
+            'search_failed'        => 'Não foi possível aplicar os filtros deste ecrã, por isso nenhum registo é mostrado. Avise o administrador.',
+            'search_failed_export' => 'Não foi possível aplicar os filtros deste ecrã. Nada foi exportado; avise o administrador.',
+        ],
+
+        // Metadados acima da tabela no XLSX/CSV exportado (fw#631).
+        'export' => [
+            'generated_at' => 'Gerado em :date',
+            'generated_by' => 'Gerado em :date por :name',
+            'filters'      => 'Filtros: :filters',
+            'filters_none' => 'Filtros: nenhum',
+            'search'       => 'Pesquisa: :term',
+            'sort'         => 'Ordenação: :column (:dir)',
+            'sort_asc'     => 'crescente',
+            'sort_desc'    => 'decrescente',
         ],
 
         // Calendário com `event-form` apontando para uma classe que não existe.

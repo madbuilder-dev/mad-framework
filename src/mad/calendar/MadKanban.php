@@ -1583,8 +1583,9 @@ abstract class MadKanban extends MadComponent implements MadFilterable
         try {
             ($this->searchQuery)($q);
         } catch (\Throwable $e) {
-            // Mesma política do _applyOnSearch: loga e segue (a tela não cai).
-            error_log('[MadKanban::searchQuery] ' . static::class . ': ' . $e->getMessage());
+            // Mesma política do _applyOnSearch: a tela não cai, mas o quadro
+            // também não mostra cartão sem o recorte da busca (fw#628).
+            $this->_failClosedOnSearch($q, $e);
         }
     }
 
@@ -2466,7 +2467,8 @@ abstract class MadKanban extends MadComponent implements MadFilterable
             $this->loadData();
         }
 
-        return \Mad\View\MadBlade::render('components.kanban', ['__component' => $this]);
+        // onSearch da tela falhou: o quadro sai vazio, e o aviso diz por quê (fw#628).
+        return $this->_onSearchFailedNotice() . \Mad\View\MadBlade::render('components.kanban', ['__component' => $this]);
     }
 
     /**

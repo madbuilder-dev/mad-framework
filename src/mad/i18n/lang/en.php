@@ -32,6 +32,21 @@ return [
         // Rótulo de filtro com vários valores escolhidos (acima de 2 nomes).
         'filters' => [
             'selected' => ':n selected',
+            // onSearch da tela falhou: a consulta sai vazia (fw#628).
+            'search_failed'        => 'The filters of this screen could not be applied, so no records are shown. Contact the administrator.',
+            'search_failed_export' => 'The filters of this screen could not be applied. Nothing was exported; contact the administrator.',
+        ],
+
+        // Metadados acima da tabela no XLSX/CSV exportado (fw#631).
+        'export' => [
+            'generated_at' => 'Generated on :date',
+            'generated_by' => 'Generated on :date by :name',
+            'filters'      => 'Filters: :filters',
+            'filters_none' => 'Filters: none',
+            'search'       => 'Search: :term',
+            'sort'         => 'Sort: :column (:dir)',
+            'sort_asc'     => 'ascending',
+            'sort_desc'    => 'descending',
         ],
 
         // Calendário com `event-form` apontando para uma classe que não existe.
@@ -1175,6 +1190,13 @@ return [
             'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fix_fields'                => 'Fix :fields.',
             'fix_n_fields'              => 'Fix the :n fields marked in red, starting with :first.',
+            // fw#629 — Editor HTML: envio da imagem colada/arrastada (upload-url)
+            'html_upload_failed'          => 'The server did not accept the image (:status).',
+            'html_upload_network'         => 'No connection to the server.',
+            'html_upload_no_location'     => 'The server did not return the image address.',
+            'html_upload_rule_size'       => 'Up to :mb MB.',
+            'html_upload_rule_types'      => 'Only :types.',
+            'html_upload_rule_types_size' => 'Only :types, up to :mb MB.',
             'image_too_big'             => 'The edited image exceeds the limit for this field (:max) and was not changed.',
             'invalid_response'          => 'Invalid server response.',
             'loading'                   => 'Loading…',
@@ -1236,6 +1258,7 @@ return [
             'unexpected_response_dot'   => 'Unexpected server response.',
             'upload_audio'              => 'audio',
             'upload_blocked'            => 'The file ":name" cannot be uploaded: .:ext files are not accepted for security reasons.',
+            'upload_compressing'        => 'reducing…', // fw#630: foto sendo reduzida (compress)
             'upload_file'               => 'file',
             'upload_images'             => 'images',
             'upload_post_too_big'       => 'The upload exceeded what the server accepts at once. Nothing was saved: send smaller files or fewer files at a time.',

@@ -47,8 +47,9 @@ class MadGridExporter
     public static function csv(
         array $columns, array $rows, string $title = 'export', array $groupData = [], array $grandTotals = [],
         string $delimiter = GridCsvWriter::DEFAULT_DELIMITER,
+        array $meta = [],
     ): string {
-        $w = GridCsvWriter::open($columns, $delimiter);
+        $w = GridCsvWriter::open($columns, $delimiter, $meta);
         try {
             if (!empty($groupData)) {
                 $w->groupItems($groupData);
@@ -77,12 +78,12 @@ class MadGridExporter
      * @param array $groupData Array achatado de _computeGroupData() (opcional)
      * @return string chave output/<uniqid>.xlsx no scratch (MadScratchStorage)
      */
-    public static function xlsx(array $columns, array $rows, string $title = 'export', array $groupData = [], array $grandTotals = []): string
+    public static function xlsx(array $columns, array $rows, string $title = 'export', array $groupData = [], array $grandTotals = [], array $meta = []): string
     {
         $columns = array_values($columns);
         self::inferSourceTypes($columns, $rows, $groupData);
 
-        $w = GridXlsxWriter::open($columns, $title);
+        $w = GridXlsxWriter::open($columns, $title, $meta);
         try {
             if (!empty($groupData)) {
                 $w->groupItems($groupData);

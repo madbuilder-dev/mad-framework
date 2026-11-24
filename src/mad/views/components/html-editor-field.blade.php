@@ -17,6 +17,11 @@
     'statusbar'   => true,    // barra inferior
     'skin'        => '',      // '' = oxide. Aceita 'oxide-dark'
     'content_css' => '',      // '' = default. Aceita 'dark'
+    'uploadUrl'    => '',     // endereço que recebe a imagem colada/arrastada (POST multipart `file`, devolve {"location": "..."})
+    'uploadAccept' => '',     // tipos aceitos no envio: 'png,jpg' ou 'image/png,image/jpeg' ('' = qualquer imagem)
+    'uploadMaxMb'  => '',     // tamanho máximo da imagem enviada, em MB ('' = sem limite no navegador)
+    'paste'        => '',     // 'clean' = colar de fora traz só os destaques (sem fonte, cor e estilo)
+    'options'      => [],     // opções extras do TinyMCE (array), mescladas por último
 ])
 @php
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
@@ -69,7 +74,7 @@
     $effSkin    = $skin    !== '' ? $skin    : 'oxide';
     $effContent = $content_css !== '' ? $content_css : 'default';
 
-    $edCfg = json_encode([
+    $edCfgArr = [
         'height'      => $height,
         'placeholder' => $placeholder,
         'disabled'    => $disabled,
@@ -81,7 +86,63 @@
         'locale'      => $effLocale,
         'skin'        => $effSkin,
         'content_css' => $effContent,
-    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    ];
+
+    // fw#629 — imagem colada/arrastada enviada ao servidor, colagem limpa e
+    // opções extras do TinyMCE. Tudo opt-in: sem estas props a configuração
+    // do editor sai exatamente como antes (nenhuma chave nova).
+    $uploadUrl    = (string) (($uploadUrl ?? '') !== '' ? $uploadUrl : ($upload_url ?? ''));
+    $uploadAccept = (string) (($uploadAccept ?? '') !== '' ? $uploadAccept : ($upload_accept ?? ''));
+    $uploadMaxMb  = ($uploadMaxMb ?? '') !== '' ? $uploadMaxMb : ($upload_max_mb ?? '');
+    if (trim($uploadUrl) !== '') {
+        $edCfgArr['uploadUrl'] = trim($uploadUrl);
+
+        // Tipos: extensão (png, .jpg) ou MIME de imagem (image/webp). `image/*`
+        // ou nenhum tipo reconhecido = qualquer imagem.
+        $extMime = [
+            'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'jpe' => 'image/jpeg', 'png' => 'image/png',
+            'gif' => 'image/gif', 'webp' => 'image/webp', 'bmp' => 'image/bmp', 'avif' => 'image/avif',
+        ];
+        $acceptMime = [];
+        $acceptLabel = [];
+        foreach (preg_split('/[\s,;|]+/', strtolower($uploadAccept), -1, PREG_SPLIT_NO_EMPTY) as $tok) {
+            $tok = ltrim($tok, '.');
+            if ($tok === 'image/*' || $tok === 'image') {
+                $acceptMime = [];
+                break;
+            }
+            $mime = str_starts_with($tok, 'image/') ? $tok : ($extMime[$tok] ?? null);
+            if ($mime === null || in_array($mime, $acceptMime, true)) {
+                continue;
+            }
+            $acceptMime[]  = $mime;
+            $acceptLabel[] = $mime === 'image/jpeg' ? 'JPG' : strtoupper(preg_replace('/\+.*$/', '', substr($mime, 6)));
+        }
+        if ($acceptMime) {
+            $edCfgArr['uploadAccept']      = $acceptMime;
+            $edCfgArr['uploadAcceptLabel'] = implode(', ', $acceptLabel);
+        }
+
+        if (is_numeric($uploadMaxMb) && (float) $uploadMaxMb > 0) {
+            $mb = (float) $uploadMaxMb;
+            $edCfgArr['uploadMaxMb'] = floor($mb) == $mb ? (int) $mb : $mb;
+        }
+    }
+
+    if (strtolower(trim((string) $paste)) === 'clean') {
+        $edCfgArr['paste'] = 'clean';
+    }
+
+    // `:options="[...]"` (ou JSON em texto): saída para o que as props não cobrem.
+    $extraOpts = $options;
+    if (is_string($extraOpts) && trim($extraOpts) !== '') {
+        $extraOpts = json_decode($extraOpts, true);
+    }
+    if (is_array($extraOpts) && $extraOpts !== [] && ! array_is_list($extraOpts)) {
+        $edCfgArr['options'] = $extraOpts;
+    }
+
+    $edCfg = json_encode($edCfgArr, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     \Mad\Form\MadFormRegistry::register($name, 'html-editor', [
         'label'    => strip_tags($label),

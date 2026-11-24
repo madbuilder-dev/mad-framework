@@ -501,6 +501,20 @@ const Mad = {
         return !!(window.MadTabs && window.MadTabs.enabled);
     },
 
+    /**
+     * Entrada do histórico de uma aba do <mad-dashboard-tabs> (state.madTab,
+     * sem `url`) cuja tela já saiu da página: o usuário foi para outra tela e
+     * voltou. true = o voltar tem que carregar a tela da casca (a URL da
+     * entrada traz a aba); false = não é entrada de aba, ou a casca está na
+     * tela e troca a aba sozinha (fw#633).
+     */
+    _dbTabsGone(state) {
+        const t = state && !state.url ? state.madTab : null;
+        if (!t || !t.name) return false;
+        const live = (window.__madDbTabsRoot || {})[t.name];
+        return !(live && live.root && live.root.isConnected !== false && (!t.path || t.path === live.path));
+    },
+
     /** Fragmento e um overlay (drawer/modal)? Esses nunca viram aba. */
     _isOverlayHtml(html) {
         if (!html || html.indexOf('data-mad-wrapper') === -1) return false;
@@ -703,6 +717,9 @@ const Mad = {
     },
 
     async navigate(url, callback, opts) {
+        // Aviso ao sair com alteração não salva (fw#632, MadLeaveGuard).
+        const leave = typeof MadLeaveGuard !== 'undefined' ? MadLeaveGuard.beforeNavigate(opts) : null;
+        if (leave && !(await leave)) return;
         url = this._withAppBase(url);
         MadLoader.show();
         try {
@@ -728,8 +745,12 @@ const Mad = {
      * URL não é empilhada de novo: o navegador já está nessa entrada.
      */
     async load(url, callback, opts) {
-        url = this._withAppBase(url);
         opts = opts || {};
+        // Clique de menu: com as abas ligadas vira aba nova (tab: true). O
+        // voltar do navegador (history) já passou pelo MadLeaveGuard.onPopstate.
+        const leave = (opts.history || typeof MadLeaveGuard === 'undefined') ? null : MadLeaveGuard.beforeNavigate({ tab: true });
+        if (leave && !(await leave)) return;
+        url = this._withAppBase(url);
         // Rota amigável (/app/...) vai direto com X-Mad-Partial (senão o
         // resolver devolve o casco). URL em formato de query (?class=) é
         // reescrita pra /app/* pelo shim de fetch (mad-web-routing.js).
@@ -1560,6 +1581,15 @@ const Mad = {
                 // (mad_tab_name explicito = aba propria, compat legado); sem abas,
                 // substitui o conteudo principal (comportamento original).
                 const tabName = params && params.mad_tab_name && params.mad_tab_name !== '*' ? params.mad_tab_name : null;
+                // Aviso ao sair (fw#632): só agora se sabe que é tela inteira
+                // (gaveta/modal abre por cima e não troca nada).
+                const leave = typeof MadLeaveGuard !== 'undefined' ? MadLeaveGuard.beforeNavigate({ tab: !!tabName }) : null;
+                if (leave) {
+                    MadLoader.hide();
+                    const ok = await leave;
+                    MadLoader.show();
+                    if (!ok) return;
+                }
                 if (tabName && this._tabsOn()) {
                     window.MadTabs.open({ url: friendlyUrl || url, cls, method, params, label: tabName, html });
                 } else {
@@ -4638,6 +4668,207 @@ const MadOverlayEsc = {
     },
 };
 MadOverlayEsc.bind();
+
+// ── Aviso ao sair com alteração não salva (fw#632) ──────────────────────────
+// Opt-in: `confirm-leave` no <mad-form>, `protected static bool $confirmLeave
+// = true;` na tela (vale para a tela inteira) ou a opção global
+// `mad.confirm_leave.enabled` (todo <mad-form> com `submit`) marcam o escopo
+// com data-mad-confirm-leave="1". Com algo mudado no escopo:
+//   - navegação do mad.js que TROCA a tela (menu, links, `navigate=`,
+//     Mad.go/navigate/load): o diálogo do confirm-close, com os mesmos
+//     textos. "Descartar" segue; "Continuar editando" fica;
+//   - voltar/avançar do navegador: a URL volta na hora para a da tela e o
+//     diálogo pergunta. "Descartar" refaz o movimento;
+//   - fechar ou recarregar a aba: o aviso nativo do navegador (beforeunload).
+// "Mudado" é a regra do confirm-close: os campos diferem do retrato tirado no
+// PRIMEIRO toque do usuário no escopo. O Salvar que deu certo (resposta sem
+// erro de campo) devolve o escopo a "limpo" — e a navegação que vem na mesma
+// resposta (o redirect do Após salvar) não pergunta.
+// Sem escopo marcado nada disto entra em jogo: o gancho do histórico e o
+// beforeunload só se ligam no primeiro toque num escopo.
+const MadLeaveGuard = {
+    SEL: '[data-mad-confirm-leave="1"]',
+    _on: false,        // algum escopo já foi tocado: ganchos ligados
+    _here: null,       // { url, state } da entrada do histórico em que a tela está
+    _passPop: false,   // o próximo popstate é o "Descartar" de um voltar
+    _asking: null,     // pergunta aberta (Promise<boolean>)
+
+    /** Escopos marcados em `root` (ele mesmo incluído). */
+    scopes(root) {
+        const r = root || document;
+        const out = r.querySelectorAll ? [...r.querySelectorAll(this.SEL)] : [];
+        if (r.matches && r.matches(this.SEL)) out.unshift(r);
+        return out;
+    },
+
+    isDirty(el) {
+        return !!el && typeof el._madLeaveBase === 'string'
+            && MadOverlayEsc.snapshot(el) !== el._madLeaveBase;
+    },
+
+    /** Primeiro escopo alterado em `root`, ou null. */
+    dirtyIn(root) {
+        if (!this._on) return null;
+        return this.scopes(root).find((el) => this.isDirty(el)) || null;
+    },
+
+    /** O que a navegação de dentro do app troca: a aba ativa ou o #mad_main. */
+    contentRoot() {
+        if (typeof Mad !== 'undefined' && Mad._tabsOn() && typeof window.MadTabs.activePane === 'function') {
+            return window.MadTabs.activePane() || document;
+        }
+        return (typeof Mad !== 'undefined' && document.querySelector(Mad.contentTarget)) || document;
+    },
+
+    /**
+     * A navegação pode trocar o conteúdo de `root` (padrão: contentRoot())?
+     * null = nada alterado ali, siga já — sem await, a navegação corre como
+     * sempre; Promise<boolean> = a resposta do usuário (true = "Descartar").
+     */
+    check(root) {
+        root = root || this.contentRoot();
+        const el = this.dirtyIn(root);
+        if (!el) return null;
+        // Outro clique com a pergunta aberta: fica com a primeira.
+        if (this._asking) return this._asking.then(() => false);
+        const msg = el.getAttribute('data-mad-confirm-leave-msg') || madT('discard_confirm', 'Há alterações que não foram salvas. Fechar e descartar o que foi digitado?');
+        const yes = el.getAttribute('data-mad-confirm-leave-yes') || madT('discard', 'Descartar');
+        const no  = el.getAttribute('data-mad-confirm-leave-no') || madT('keep_editing', 'Continuar editando');
+        const ask = typeof window.madConfirm === 'function'
+            ? window.madConfirm(msg, { danger: true, confirmText: yes, cancelText: no })
+            : Promise.resolve(window.confirm(msg));
+        this._asking = Promise.resolve(ask).then((ok) => {
+            this._asking = null;
+            // Descartado: a saída em curso não pergunta de novo (beforeunload).
+            if (ok) this.scopes(root).forEach((s) => { delete s._madLeaveBase; });
+            return !!ok;
+        });
+        return this._asking;
+    },
+
+    /**
+     * Navegação do mad.js (Mad.navigate/load/go) que vai TROCAR a tela em que
+     * o usuário está — o #mad_main, ou a aba ativa com as abas ligadas.
+     * `opts.tab` com as abas ligadas abre aba nova: a tela fica na dela, nada
+     * a perguntar. null = siga já; Promise<boolean> = a resposta.
+     */
+    beforeNavigate(opts) {
+        if (opts && opts.tab && typeof Mad !== 'undefined' && Mad._tabsOn()) return null;
+        return this.check();
+    },
+
+    /**
+     * Voltar/avançar do navegador (handler global de popstate). Só a entrada
+     * que o mad.js carrega (state.url) troca a tela; a de uma aba do
+     * <mad-dashboard-tabs> não. true = o guarda segurou: a URL voltou para a
+     * da tela e a pergunta está aberta.
+     */
+    onPopstate(e) {
+        const dest = e && e.state;
+        if (this._passPop) { this._passPop = false; this._note(); return false; }
+        // Troca a tela: a entrada do mad.js (state.url) ou a aba de um
+        // <mad-dashboard-tabs> que já saiu da tela (Mad._dbTabsGone, fw#633).
+        const gone = !!dest && !dest.url && typeof Mad !== 'undefined' && typeof Mad._dbTabsGone === 'function' && Mad._dbTabsGone(dest);
+        if (!dest || !(dest.url || gone) || !this._here || !this.dirtyIn(this.contentRoot())) { this._note(); return false; }
+        const here = this._here;
+        const fwd  = (dest.madDepth || 0) > ((here.state && here.state.madDepth) || 0);
+        const destUrl = location.href;
+        const destLoad = dest.url || (location.pathname + location.search);
+        try { history.pushState(here.state, '', here.url); } catch (err) { this._note(); return false; }
+        Promise.resolve(this.check()).then((ok) => {
+            if (!ok) return;
+            if (fwd) {
+                // O avançar perdeu a entrada da frente no pushState: esta vira ela.
+                history.replaceState(dest, '', destUrl);
+                Mad.load(destLoad, null, { history: true });
+                return;
+            }
+            this._passPop = true;
+            history.back();
+        });
+        return true;
+    },
+
+    onBeforeUnload(e) {
+        if (!MadLeaveGuard.dirtyIn(document)) return;
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+    },
+
+    /**
+     * Resposta do wire a um pedido do componente (MadWire._requestNow), ANTES
+     * de aplicar os ops. Gravou? — envio do formulário (`sourceForm`) ou aviso
+     * de sucesso, e nenhum erro de campo nem aviso de erro. Então os escopos
+     * do formulário viram "limpos" já (a navegação do mesmo lote não pergunta)
+     * e o retrato novo fica para o próximo toque. true = limpou.
+     */
+    saved(wrapper, sourceForm, ops) {
+        if (!this._on) return false;
+        const list = Array.isArray(ops) ? ops : [];
+        const notice = (o) => o.op === 'toast' || o.op === 'alert';
+        const bad = list.some((o) => o && (
+            (o.op === 'addClass' && o.content === 'mad-error') || o.op === 'df_field_error'
+            || (notice(o) && /^(error|danger|warning)$/i.test(String(o.type || '')))));
+        if (bad) return false;
+        if (!sourceForm && !list.some((o) => o && notice(o) && String(o.type || '') === 'success')) return false;
+        let scopes = [];
+        if (sourceForm && sourceForm.closest) {
+            for (let el = sourceForm.closest(this.SEL); el; el = el.parentElement ? el.parentElement.closest(this.SEL) : null) scopes.push(el);
+        } else if (wrapper) {
+            scopes = this.scopes(wrapper);
+        }
+        scopes.forEach((el) => { delete el._madLeaveBase; });
+        return scopes.length > 0;
+    },
+
+    _note() {
+        try { this._here = { url: location.href, state: history.state }; } catch (e) {}
+    },
+
+    /** Primeiro toque num escopo: liga o histórico e o beforeunload. */
+    _wake() {
+        if (this._on) return;
+        this._on = true;
+        this._note();
+        // A entrada em que a tela está, para devolver a URL no voltar: toda
+        // troca de URL (Mad, abas, <mad-dashboard-tabs>) passa por aqui.
+        ['pushState', 'replaceState'].forEach((fn) => {
+            const orig = history[fn];
+            if (typeof orig !== 'function' || orig.__madLeave) return;
+            const wrapped = function () {
+                const r = orig.apply(this, arguments);
+                MadLeaveGuard._note();
+                return r;
+            };
+            wrapped.__madLeave = true;
+            try { history[fn] = wrapped; } catch (e) {}
+        });
+        window.addEventListener('beforeunload', MadLeaveGuard.onBeforeUnload);
+    },
+
+    /** Primeiro toque do usuário num escopo: retrato dos campos dele. */
+    onTouch(e) {
+        if (!e.isTrusted || !e.target || !e.target.closest) return;
+        let el = e.target.closest(MadLeaveGuard.SEL);
+        while (el) {
+            if (typeof el._madLeaveBase !== 'string') {
+                MadLeaveGuard._wake();
+                el._madLeaveBase = MadOverlayEsc.snapshot(el);
+            }
+            el = el.parentElement ? el.parentElement.closest(MadLeaveGuard.SEL) : null;
+        }
+    },
+
+    bind() {
+        if (window.__madLeaveGuardBound) return;
+        window.__madLeaveGuardBound = true;
+        window.addEventListener('keydown', MadLeaveGuard.onTouch, true);
+        window.addEventListener('pointerdown', MadLeaveGuard.onTouch, true);
+    },
+};
+MadLeaveGuard.bind();
+window.MadLeaveGuard = MadLeaveGuard;
 // ── fim Esc ──
 
 // ── Clique fora fecha a gaveta / modal (só onde é permitido) ─────────────────
@@ -4997,7 +5228,13 @@ else Mad._syncFrameless();
 // ── Navegação via popstate (browser back/forward) ─────────────────────────────
 
 window.addEventListener('popstate', (e) => {
+    // Formulário com aviso ao sair alterado (fw#632): o guarda devolve a URL
+    // e pergunta; "Descartar" refaz o voltar, que chega aqui de novo.
+    if (typeof MadLeaveGuard !== 'undefined' && MadLeaveGuard.onPopstate(e)) return;
     if (e.state?.url) Mad.load(e.state.url, null, { history: true });
+    // Aba de um <mad-dashboard-tabs> cuja tela já saiu (foi para outra tela e
+    // voltou): carrega a casca na URL da entrada, que traz a aba (fw#633).
+    else if (typeof Mad._dbTabsGone === 'function' && Mad._dbTabsGone(e.state)) Mad.load(location.pathname + location.search, null, { history: true });
 });
 
 // ── Event listeners globais ───────────────────────────────────────────────────

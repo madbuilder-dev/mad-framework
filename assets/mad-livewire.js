@@ -1802,6 +1802,11 @@ const MadWire = (() => {
                 return { ok: false, reason: 'error' };
             }
 
+            // Formulário com aviso ao sair (confirm-leave, fw#632): o Salvar que
+            // deu certo deixa a tela "limpa" ANTES dos ops — o redirect do Após
+            // salvar, no mesmo lote, não pergunta.
+            if (typeof MadLeaveGuard !== 'undefined') MadLeaveGuard.saved(wrapper, sourceForm, data.ops);
+
             if (data.partial) {
                 // Atualiza o estado encriptado no wrapper (para a próxima ação)
                 wrapper.setAttribute('mad-state', data.mad_state);

@@ -15,6 +15,8 @@ use OpenSpout\Common\Entity\Style\BorderWidth;
 use OpenSpout\Common\Entity\Style\CellAlignment;
 use OpenSpout\Common\Entity\Style\CellVerticalAlignment;
 use OpenSpout\Common\Entity\Style\Style;
+use OpenSpout\Writer\AutoFilter;
+use OpenSpout\Writer\XLSX\Entity\SheetView;
 use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 
@@ -36,6 +38,12 @@ use OpenSpout\Writer\XLSX\Writer;
  *   $w->dataRow($row) | $w->groupItems($items) …
  *   $w->grandTotalRow($grandTotals, $raw);
  *   $key = $w->finish();              // chave output/<uniqid>.xlsx no scratch
+ *
+ * Metadados (fw#631, opt-in): `open($columns, $title, $meta)` com linhas de
+ * texto — a 1ª é o título — escreve-as acima da tabela (negrito/cinza,
+ * mescladas na largura da tabela), uma linha em branco, e só então o
+ * cabeçalho; o painel fica congelado abaixo do cabeçalho e o autofiltro vale
+ * nele. Sem `$meta` o arquivo sai como sempre.
  */
 final class GridXlsxWriter
 {
@@ -56,6 +64,12 @@ final class GridXlsxWriter
     /** Linhas de cada grupo aberto, por nível — o número cru do sub-total sai delas. */
     private array $openGroups = [];
     private bool $closed = false;
+    /** Linha do cabeçalho das colunas (1-based) — 1 sem metadados. */
+    private int $headerRow = 1;
+    /** Com metadados: congela e filtra a partir do cabeçalho real. */
+    private bool $withMeta = false;
+    /** Última linha antes do total geral (o autofiltro não o inclui). */
+    private ?int $bodyEnd = null;
 
     /** O app tem a biblioteca? Um app atualizado só pelo canal do framework pode não ter. */
     public static function available(): bool
@@ -63,8 +77,11 @@ final class GridXlsxWriter
         return class_exists(Writer::class);
     }
 
-    /** @param GridColumn[] $columns */
-    public static function open(array $columns, string $title = 'export'): self
+    /**
+     * @param GridColumn[] $columns
+     * @param list<string> $meta linhas acima da tabela (a 1ª é o título); [] = sem
+     */
+    public static function open(array $columns, string $title = 'export', array $meta = []): self
     {
         if (!self::available()) {
             throw new \RuntimeException(self::unavailableMessage());
@@ -75,7 +92,7 @@ final class GridXlsxWriter
         $disk->makeDirectory('export-tmp');
         $key = GridExportAccess::newKey('xlsx');
 
-        return new self($key, $disk->path($key), $disk->path('export-tmp'), $columns, $title);
+        return new self($key, $disk->path($key), $disk->path('export-tmp'), $columns, $title, $meta);
     }
 
     public static function unavailableMessage(): string
@@ -94,6 +111,7 @@ final class GridXlsxWriter
         string $tempFolder,
         array $columns,
         string $title,
+        array $meta = [],
     ) {
         $this->columns  = array_values($columns);
         $this->colCount = count($this->columns);
@@ -119,6 +137,12 @@ final class GridXlsxWriter
             };
         }
 
+        $meta = array_values(array_filter(array_map(
+            fn ($l) => GridExportCell::plainText((string) $l), $meta), fn ($l) => $l !== ''));
+        if ($meta !== []) {
+            $this->metaRows($sheet, $meta);
+        }
+
         // Cabeçalho — texto explícito (rótulo "2026" não vira número).
         $cells = [];
         foreach ($this->columns as $i => $col) {
@@ -130,7 +154,8 @@ final class GridXlsxWriter
     /** Linha de dados; zebra nas linhas pares da planilha. */
     public function dataRow(array $row): void
     {
-        $kind  = (($this->rowNum + 1) % 2) === 0 ? 'z' : 'd';
+        // Zebra conta a partir do cabeçalho (com metadados ele não é a linha 1).
+        $kind  = (($this->rowNum - $this->headerRow) % 2) === 0 ? 'z' : 'd';
         $cells = [];
         foreach ($this->columns as $i => $col) {
             $spec      = GridExportCell::forXlsx($col, $row[$col->field] ?? '', $row);
@@ -192,6 +217,7 @@ final class GridXlsxWriter
         if (empty($grandTotals)) {
             return;
         }
+        $this->bodyEnd = $this->rowNum;
         $this->totalRow('tt', MadGridExporter::grandTotalCells($this->columns, $grandTotals), $raw);
     }
 
@@ -220,7 +246,52 @@ final class GridXlsxWriter
     {
         if (!$this->closed) {
             $this->closed = true;
+            $this->autoFilter();
             $this->writer->close();
+        }
+    }
+
+    /**
+     * Título + linhas de metadados, mescladas na largura da tabela, e a linha
+     * em branco antes do cabeçalho. O painel congela abaixo do cabeçalho.
+     *
+     * @param list<string> $meta
+     */
+    private function metaRows(object $sheet, array $meta): void
+    {
+        foreach ($meta as $i => $line) {
+            $this->add([new StringCell($line, $this->style($i === 0 ? 'mt' : 'mm', 0, ''))]);
+            if ($this->colCount > 1) {
+                $this->options->mergeCells(0, $this->rowNum, $this->colCount - 1, $this->rowNum);
+            }
+        }
+        $this->add([]);
+        $this->headerRow = $this->rowNum + 1;
+        $this->withMeta  = true;
+
+        // OpenSpout antigo (o composer aceita ^5.3) sem a vista: só não congela.
+        if (class_exists(SheetView::class) && method_exists($sheet, 'setSheetView')) {
+            try {
+                $sheet->setSheetView(new SheetView(freezeRow: $this->headerRow + 1));
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    /** Autofiltro do cabeçalho real até a última linha antes do total geral. */
+    private function autoFilter(): void
+    {
+        if (!$this->withMeta || $this->colCount < 1 || !class_exists(AutoFilter::class)) {
+            return;
+        }
+        $sheet = $this->writer->getCurrentSheet();
+        if (!method_exists($sheet, 'setAutoFilter')) {
+            return;
+        }
+        $last = max($this->headerRow, $this->bodyEnd ?? $this->rowNum);
+        try {
+            $sheet->setAutoFilter(new AutoFilter(0, $this->headerRow, $this->colCount - 1, $last));
+        } catch (\Throwable) {
         }
     }
 
@@ -306,7 +377,7 @@ final class GridXlsxWriter
     /**
      * Estilo por (tipo de linha, coluna, formato), criado uma vez e reusado.
      * hdr = cabeçalho · d = dado · z = dado zebrado · g0/g1 = quebra ·
-     * gt = sub-total · tt = total geral. Cores de fundo/borda em ARGB: com
+     * gt = sub-total · tt = total geral · mt/mm = título/linha de metadados. Cores de fundo/borda em ARGB: com
      * 6 dígitos os leitores enxergam alfa 00.
      */
     private function style(string $kind, int $i, string $format): Style
@@ -320,6 +391,8 @@ final class GridXlsxWriter
         $fmt   = $format !== '' ? $format : null;
 
         return $this->styles[$key] = match ($kind) {
+            'mt'  => new Style(fontBold: true, fontSize: 13, fontColor: 'FF111827', fontName: self::FONT),
+            'mm'  => new Style(fontBold: true, fontSize: 10, fontColor: 'FF6B7280', fontName: self::FONT),
             'hdr' => new Style(fontBold: true, fontSize: 10, fontColor: 'FFFFFF', fontName: self::FONT,
                 cellAlignment: $align, cellVerticalAlignment: CellVerticalAlignment::CENTER,
                 border: new Border(new BorderPart(BorderName::BOTTOM, 'FF000000', BorderWidth::THIN, BorderStyle::SOLID)),

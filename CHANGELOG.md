@@ -12,6 +12,23 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.342.0] — 2026-11-24
+
+### Novidades
+
+- **Editor HTML:** com `upload-url`, a imagem colada (Ctrl+V) ou arrastada para o `<mad-html-editor-field>` é enviada ao endereço do app e o texto guarda só o link, sem a imagem inteira dentro do campo. `upload-accept` e `upload-max-mb` conferem tipo e tamanho antes do envio e avisam quando a imagem não serve.
+- **Editor HTML:** `paste="clean"` faz o texto colado do Word, do Google Docs ou de um e-mail chegar só com negrito, itálico, sublinhado, parágrafos e listas, sem fonte, cor e estilo de fora. Para o que as props não cobrem, `:options` passa opções extras ao editor. Sem as props novas, nada muda.
+- **Formulário:** um formulário em página cheia pode avisar antes de sair com alteração não salva. Ligue com `confirm-leave` no `<mad-form>`, com `protected static bool $confirmLeave = true;` na tela ou com `MAD_CONFIRM_LEAVE=true` para todo `<mad-form>` com `submit` do app. Com algo alterado, o menu, os links, os botões `navigate` e o voltar do navegador mostram a mesma pergunta da cortina lateral ("Descartar" ou "Continuar editando"; no voltar, a URL fica onde estava), e fechar ou recarregar a aba mostra o aviso do navegador. Depois de salvar não pergunta, nem na ida para outra tela que o próprio salvar faz. Sem a opção, nada muda.
+- **Arquivos:** com `compress`, o `<mad-multi-file-field>` e o `<mad-file-field>` reduzem a foto no navegador antes do envio. A foto de 6 MB da câmera do celular chega ao servidor com o lado maior em 1600 px, menos de 1 MB e na orientação certa, e cabe no limite de tamanho do campo. `max-dimension` e `quality` ajustam o tamanho e a qualidade. PDF, GIF e PNG com transparência vão como vieram. A foto reduzida não leva a data nem a localização gravadas pela câmera. Sem `compress`, nada muda.
+- **Exportação da grade:** com `<mad-grid export-meta>` a planilha do Excel sai com o título da tela, a data e a hora de geração com quem gerou, os filtros aplicados (inclusive a busca rápida) e a ordenação acima da tabela, com o cabeçalho congelado e com filtro; no PDF a busca rápida passa a aparecer junto dos filtros. O CSV só ganha essas linhas quando pedido (`export-meta="all"` ou `export-meta="xlsx,csv"`), para não atrapalhar quem importa o arquivo em outro sistema. Para ligar em todas as telas do app, use `MAD_EXPORT_META_XLSX`, `MAD_EXPORT_META_CSV` e `MAD_EXPORT_META_PDF` no `.env`. Sem a opção, os arquivos saem como antes.
+- **Dashboards:** o `<mad-dashboard-tabs>` pode ser a casca de telas que já existem, com uma barra de filtros só. Com `embed="body"`, cada aba mostra só o conteúdo da tela, sem título, sem os botões do cabeçalho e sem a barra de filtros dela (`embed="row"` mantém os botões). Com `forward-query`, a aba recebe os filtros que estão no endereço da página, e trocar de aba não os perde. O evento `mad-dashboard-tabs:reload` recarrega a aba aberta quando a casca muda os filtros, sem trocar de aba. `storage-key` escolhe onde fica guardada a última aba aberta, por exemplo uma por usuário. O `<mad-transporter header="body">` também mostra só o conteúdo. Sem essas props, nada muda.
+
+### Correções
+
+- **Filtros:** quando o `onSearch` da tela dava erro, a listagem, o kanban e o calendário mostravam todos os registros, sem o filtro da tela — e a exportação levava tudo junto. Agora nenhum registro aparece, a tela avisa que não foi possível aplicar os filtros e a exportação não gera arquivo.
+- **Dashboards:** desde a versão 5.249.0, o `<mad-dashboard-tabs>` não abria nenhuma aba: a tela ficava só com a barra de abas, sem conteúdo. Voltou a funcionar.
+- **Dashboards:** voltar do navegador de outra tela para uma tela com `<mad-dashboard-tabs>` mudava o endereço, mas a tela continuava a outra. Agora a tela com as abas volta, na aba em que estava; se a outra tela tinha alteração não salva com `confirm-leave`, o aviso aparece antes.
+
 ## [5.337.1] — 2026-11-24
 
 ### Correções

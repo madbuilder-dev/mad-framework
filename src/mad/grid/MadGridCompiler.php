@@ -1933,6 +1933,12 @@ class MadGridCompiler
         if (isset($a['csv-delimiter']) && $a['csv-delimiter']['type'] !== 'bool') {
             $c[] = static::kv('csvDelimiter', static::emit($a['csv-delimiter']));
         }
+        // Metadados na exportação (fw#631): nu = XLSX e PDF; "all" = também o
+        // CSV; ou a lista ("xlsx", "xlsx,csv"…); "false" desliga mesmo com a
+        // config do app.
+        if (isset($a['export-meta'])) {
+            $c[] = static::kv('exportMetaFormats', $a['export-meta']['type'] === 'bool' ? "'true'" : static::emit($a['export-meta']));
+        }
         // Texto ao lado do ícone do botão Exportar (fórum #74). Sem a prop o
         // botão é só o ícone, como sempre foi. Nua (ou "true") = texto
         // traduzido de grid.export; `export-label="false"` = só o ícone.

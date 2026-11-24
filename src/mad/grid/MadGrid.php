@@ -63,6 +63,8 @@ class MadGrid extends MadDataGrid
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
         // csv-delimiter: protegida no MadDataGrid; o render a congela no exportMeta.
         if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
+        // export-meta: idem (fw#631).
+        if (array_key_exists('exportMetaFormats', $cfg)) $this->exportMetaFormats = static::_exportMetaDecl($cfg['exportMetaFormats']);
         // Seleção de linhas + ações em lote (<mad-grid model=... selectable>).
         if (!empty($cfg['selectable'])) $this->selectable = true;
         // remember-filters: protegida no MadDataGrid; antes do parent::mount(),
@@ -119,6 +121,7 @@ class MadGrid extends MadDataGrid
         // este mapeamento o atributo seria compilado e nunca lido.
         if (!empty($cfg['rowDetail']))  $this->rowDetail  = (string) $cfg['rowDetail'];
         if (isset($cfg['csvDelimiter']) && $cfg['csvDelimiter'] !== '') $this->csvDelimiter = (string) $cfg['csvDelimiter'];
+        if (array_key_exists('exportMetaFormats', $cfg)) $this->exportMetaFormats = static::_exportMetaDecl($cfg['exportMetaFormats']);
         if (!empty($cfg['rowClick']))   $this->rowClick   = true;
         if (array_key_exists('rememberFilters', $cfg)) $this->rememberFilters = (bool) $cfg['rememberFilters'];
         if (!empty($cfg['orderBy'])) $this->baseOrder = (string) $cfg['orderBy'];
@@ -486,6 +489,18 @@ class GridBuilder
     {
         $this->_flush();
         $this->options['csvDelimiter'] = $delimiter;
+        return $this;
+    }
+
+    /**
+     * Metadados na exportação — equivalente ao `export-meta` do Blade: true =
+     * XLSX e PDF; 'all' = também o CSV; false = nenhum; ou a lista ('xlsx',
+     * 'xlsx,csv'…).
+     */
+    public function exportMeta(bool|string $formats = true): static
+    {
+        $this->_flush();
+        $this->options['exportMetaFormats'] = is_bool($formats) ? ($formats ? 'true' : 'false') : $formats;
         return $this;
     }
 
