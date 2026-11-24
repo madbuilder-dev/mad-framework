@@ -44,6 +44,27 @@ class MadBladeCompiler extends BladeCompiler
             : $compiled;
     }
 
+    /**
+     * Compilado com data no futuro não vale (fórum #407). O Laravel carimba o
+     * compilado com a data da view + 1 s; se a view chegou com a data adiantada
+     * (zip extraído noutro fuso, cópia que preserva a hora), o compilado fica
+     * no futuro e uma view nova publicada depois, com a hora certa, parece mais
+     * velha que ele: a tela antiga continuava no ar. Folga de 1 min para
+     * relógio e arredondamento.
+     */
+    public function isExpired($path)
+    {
+        if (parent::isExpired($path)) {
+            return true;
+        }
+
+        try {
+            return $this->files->lastModified($this->getCompiledPath($path)) > time() + 60;
+        } catch (\ErrorException) {
+            return true;
+        }
+    }
+
     public function compileString($value)
     {
         // 0. Marcadores de origem do Modo Vibe (MAD_SOURCE_MARKERS=1, só no

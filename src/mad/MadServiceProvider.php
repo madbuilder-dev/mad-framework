@@ -781,6 +781,13 @@ class MadServiceProvider extends ServiceProvider
 
             return new \Mad\Console\MadMigrateCommand($app['migrator'], $app[\Illuminate\Contracts\Events\Dispatcher::class]);
         });
+
+        // `view:clear` (e o `optimize:clear`) limpam também o cache do MadBlade (fórum #407).
+        $this->app->extend(\Illuminate\Foundation\Console\ViewClearCommand::class, function ($command, $app) {
+            return $command instanceof \Mad\Console\MadViewClearCommand
+                ? $command
+                : new \Mad\Console\MadViewClearCommand($app['files']);
+        });
     }
 
     private function registerMigrator(): void

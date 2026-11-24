@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.344.1] — 2026-11-24
+
+### Correções
+
+- **App gerado:** uma tela publicada depois de um pacote completo podia continuar aparecendo na versão antiga no servidor (pacote extraído com a hora adiantada). Agora a tela nova sempre vale.
+- **App gerado:** `php artisan view:clear` e `optimize:clear` agora limpam também o cache das telas `<mad-*>`, inclusive o de versões antigas do framework. Antes era preciso apagar `storage/framework/mad-blade` à mão.
+
 ## [5.344.0] — 2026-11-24
 
 ### Novidades
