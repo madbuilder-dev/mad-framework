@@ -1243,6 +1243,13 @@ const MadWire = (() => {
         // As ops vão uma a uma para o Mad.applyOps: o lote inteiro (toast +
         // redirect do Após salvar) só é visto aqui.
         if (typeof Mad !== 'undefined' && Mad._flashBeforeLeaving) Mad._flashBeforeLeaving(ops);
+        // Erro de validação (fórum #399): as marcas dos campos e o aviso chegam
+        // em pedaços separados ao Mad.applyOps. Sem saber que a resposta
+        // marcou campo, o aviso não nomeava nenhum ("Corrija os erros antes de
+        // continuar.") e cada pedaço tentava levar ao campo por conta própria.
+        // Vai o `marked` da resposta inteira; levar ao 1º campo, uma vez, no fim.
+        const marked = (ops || []).some(o => o && o.op === 'addClass' && o.content === 'mad-error');
+        const applied = [];
         (ops || []).forEach(op => {
             if (op.op === 'bind') {
                 // Atualiza só o span gerado por @madBind('prop')
@@ -1309,9 +1316,14 @@ const MadWire = (() => {
             } else if (typeof Mad !== 'undefined' && Mad.applyOps) {
                 // Escopo = este componente: erro de campo e set() acham o
                 // campo DELE antes de um homônimo da página (ver _opTarget).
-                Mad.applyOps([op], wrapper);
+                applied.push(Promise.resolve(Mad.applyOps([op], wrapper, { marked, reveal: false })).catch((e) => { console.error('[MadWire] ops error:', e); }));
             }
         });
+        if (marked && applied.length && typeof Mad !== 'undefined' && typeof Mad._madRevealFirstError === 'function') {
+            Promise.all(applied).then(() => {
+                try { Mad._madRevealFirstError(wrapper); } catch (e) { console.warn('[MadWire] reveal error', e); }
+            });
+        }
     }
 
     // ── Loading ──────────────────────────────────────────────────────────────

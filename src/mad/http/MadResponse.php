@@ -647,7 +647,9 @@ class MadResponse
     /**
      * "Luciano, registro salvo." — o nome na frente e a 1ª letra da mensagem
      * em minúscula (a não ser em sigla: "Luciano, CPF inválido."). Mensagem
-     * vazia ou que já começa pelo nome fica como está.
+     * vazia ou que já começa pelo nome fica como está. Sigla é a 2ª letra
+     * também maiúscula: palavra de uma letra ("O campo Nome…") não é sigla —
+     * antes saía "Luciano, O campo Nome…" (fórum #399).
      */
     public static function withUserName(string $who, string $message): string
     {
@@ -657,7 +659,8 @@ class MadResponse
         }
         $first  = mb_substr($msg, 0, 1);
         $second = mb_substr($msg, 1, 1);
-        if ($first !== mb_strtolower($first) && ($second === '' || $second !== mb_strtoupper($second))) {
+        $acronym = $second !== '' && mb_strtolower($second) !== mb_strtoupper($second) && $second === mb_strtoupper($second);
+        if ($first !== mb_strtolower($first) && ! $acronym) {
             $msg = mb_strtolower($first) . mb_substr($msg, 1);
         }
         $out = mad_t('mad.ui.toast_user', ['name' => $who, 'message' => $msg]);

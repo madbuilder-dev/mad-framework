@@ -940,10 +940,15 @@ document.addEventListener('alpine:init', () => {
             this.add(detail);
         },
 
-        add({ message = '', type = 'info', title = '', duration = _SONNER_LIFETIME }) {
+        // `items` [{label, message, go}] + `more` ("e mais N"): a lista de campos
+        // do Salvar recusado (fórum #399); `go` leva ao campo, sem `go` o item
+        // só aparece (campo escondido por condição).
+        // No template, `!!it.go`: expressão do Alpine que dá função é CHAMADA.
+        add({ message = '', type = 'info', title = '', duration = _SONNER_LIFETIME, items = null, more = '' }) {
             const id = Date.now() + Math.random();
             this.toasts.unshift({
                 id, message, title, type, duration,
+                items: Array.isArray(items) ? items : [], more: more || '',
                 mounted: false, removed: false,
                 swiping: false, swipeOut: false, swipeDir: null,
                 swipeAmountX: 0, swipeAmountY: 0,
@@ -3858,6 +3863,7 @@ var _madWhen = (function () {
     api.disabledByWhen = disabledByWhen;
     api.pending = pending;
     api.blockSubmit = blockSubmit;
+    api.hiddenByCondition = hiddenByCondition;
     api.blockEditor = blockEditor;
     api.clear = clear;
     // api.onBlocked(list, form, editor): aviso, aba e foco — ligado fora do núcleo.
@@ -3890,16 +3896,28 @@ _madWhen.onBlocked = function (list, form, editor) {
     } else if (typeof first.control.focus === 'function') {
         try { first.control.focus(); } catch (e) { /* controle escondido */ }
     }
-    // O aviso nomeia os campos que faltam (um campo: a mensagem dele).
+    // O aviso nomeia os campos que faltam (um campo: a mensagem dele; mais:
+    // a lista, cada item levando ao campo — fórum #399).
     var msg = madT('fix_errors', 'Corrija os erros antes de continuar.');
-    if (M && typeof M._madErrorSummary === 'function') {
-        var items = list.map(function (it) {
-            var box = it.field.closest('.mad-field') || it.field;
-            return { slot: it.field.querySelector('[data-field-error]'), name: it.name, box: box };
+    var items = list.map(function (it) {
+        var box = it.field.closest('.mad-field') || it.field;
+        return { slot: it.field.querySelector('[data-field-error]'), name: it.name, box: box, control: it.control };
+    });
+    var detail = null;
+    if (M && typeof M._madErrorToast === 'function' && typeof M._madErrorItems === 'function') {
+        detail = M._madErrorToast(M._madErrorItems(scope, items), '', function (it) {
+            if (!editor) { M._madRevealFirstError(scope, it); return; }
+            if (typeof M._revealFieldError === 'function') M._revealFieldError(it.slot || it.box);
+            if (it.control && typeof it.control.focus === 'function') {
+                try { it.control.focus(); } catch (e) { /* controle escondido */ }
+            }
         });
+    } else if (M && typeof M._madErrorSummary === 'function') {
         msg = M._madErrorSummary(scope, items) || msg;
     }
-    if (typeof window.madToast === 'function') window.madToast(msg, 'warning');
+    if (typeof window.madToast === 'function') {
+        window.madToast(detail ? Object.assign({ type: 'warning' }, detail) : msg, 'warning');
+    }
 };
 
 // Liga uma condição a um elemento. `onCleanup` recebe o teardown (o `cleanup`
@@ -5519,6 +5537,9 @@ function _madToastMount(position = 'bottom-right') {
     ol.setAttribute('@mouseleave', 'if (!interacting) expanded = false');
     ol.setAttribute('@pointerdown', 'interacting = true');
     ol.setAttribute('@pointerup', 'interacting = false');
+    // Foco no aviso (Tab até um item da lista de erros) segura o tempo, como o ponteiro.
+    ol.setAttribute('@focusin', 'expanded = true');
+    ol.setAttribute('@focusout', 'if (!$el.contains($event.relatedTarget)) expanded = false');
     ol.setAttribute(':data-expanded', 'expanded');
     ol.setAttribute(':style', `'--front-toast-height:' + frontHeight + 'px; --gap: ${_SONNER_GAP}px'`);
     ol.innerHTML = `<template x-for="(toast, idx) in toasts" :key="toast.id">
@@ -5548,6 +5569,20 @@ function _madToastMount(position = 'bottom-right') {
             <div class="mad-toast-content">
                 <div class="mad-toast-title" x-show="toast.title" x-text="toast.title"></div>
                 <div class="mad-toast-desc" x-text="toast.message"></div>
+                <ul class="mad-toast-items" x-show="toast.items.length" @pointerdown.stop
+                    x-init="$nextTick(() => measureHeight(toast, $el.closest('.mad-toast')))">
+                    <template x-for="(it, i) in toast.items" :key="i">
+                        <li>
+                            <template x-if="!!it.go">
+                                <button type="button" class="mad-toast-item" @click.stop.prevent="it.go()"><strong x-text="it.label"></strong><span x-show="it.label && it.message"> — </span><span x-text="it.message"></span></button>
+                            </template>
+                            <template x-if="!it.go">
+                                <span class="mad-toast-item mad-toast-item-off"><strong x-text="it.label"></strong><span x-show="it.label && it.message"> — </span><span x-text="it.message"></span></span>
+                            </template>
+                        </li>
+                    </template>
+                    <li class="mad-toast-more" x-show="toast.more" x-text="toast.more"></li>
+                </ul>
             </div>
         </li>
     </template>`;
@@ -9179,8 +9214,10 @@ window.madUserText = function (text) {
     var t = msg.trim();
     if (!who || !t || t.toLowerCase().indexOf(who.toLowerCase()) === 0) return msg;
     var a = t.charAt(0), b = t.charAt(1);
-    // 1ª letra em minúscula, a não ser em sigla ("Luciano, CPF inválido").
-    if (a !== a.toLowerCase() && (b === '' || b !== b.toUpperCase())) t = a.toLowerCase() + t.slice(1);
+    // 1ª letra em minúscula, a não ser em sigla ("Luciano, CPF inválido"):
+    // 2ª letra também maiúscula. "O campo…" não é sigla (fórum #399).
+    var acronym = b !== '' && b.toLowerCase() !== b.toUpperCase() && b === b.toUpperCase();
+    if (a !== a.toLowerCase() && !acronym) t = a.toLowerCase() + t.slice(1);
     var out = (typeof madT === 'function')
         ? madT('toast_user', ':name, :message', { name: who, message: t })
         : who + ', ' + t;

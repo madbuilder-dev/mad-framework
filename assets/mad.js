@@ -2043,7 +2043,7 @@ const Mad = {
      * o MadWire sempre passa. Com ele, o alvo do op é procurado primeiro no
      * componente (ver _opTarget).
      */
-    async applyOps(ops, scope = null) {
+    async applyOps(ops, scope = null, opts = null) {
         // HTML que vem nos ops (html/append/replace…) usa os assets dele já
         // carregados (fw#603).
         try { await this.ensureAssets(JSON.stringify(ops)); } catch (e) {}
@@ -2051,7 +2051,7 @@ const Mad = {
         // Calculado ANTES do loop: fechar a camada tira o `scope` do DOM.
         const gridsBehind = this._gridsBehindToRefresh(ops, scope);
         try {
-            await this._applyOpsLoop(ops, scope);
+            await this._applyOpsLoop(ops, scope, opts);
         } finally {
             if (gridsBehind.length && typeof MadWire !== 'undefined' && MadWire && typeof MadWire.refresh === 'function') {
                 gridsBehind.forEach((el) => {
@@ -2084,9 +2084,17 @@ const Mad = {
         return found;
     },
 
-    async _applyOpsLoop(ops, scope = null) {
+    /**
+     * `opts` (opcional), de quem aplica a resposta em pedaços — o MadWire manda op por op (fórum #399):
+     *   marked  a resposta INTEIRA marca erro de campo (o aviso de validação vem num pedaço e as marcas
+     *           em outros; sem isso o aviso não via campo nenhum e ficava o genérico);
+     *   reveal  false: não leva ao 1º campo aqui — quem chama faz isso uma vez, no fim da resposta.
+     */
+    async _applyOpsLoop(ops, scope = null, opts = null) {
         // Esta resposta marca erro de validação em algum campo (MadResponse::fieldError)?
-        const marked = Array.isArray(ops) && ops.some((o) => o && o.op === 'addClass' && o.content === 'mad-error');
+        const marked = (opts && typeof opts.marked === 'boolean')
+            ? opts.marked
+            : Array.isArray(ops) && ops.some((o) => o && o.op === 'addClass' && o.content === 'mad-error');
         for (const op of ops) {
             const el = op.target ? this._opTarget(op.target, scope) : null;
 
@@ -2109,7 +2117,10 @@ const Mad = {
                         this._reinit(el);
                         // fieldError() em campo dentro de aba inativa (x-show):
                         // o slot existe no DOM mas fica invisível — ativa a aba.
-                        if (op.content && op.target && op.target.indexOf('data-field-error') !== -1) {
+                        // Resposta de validação (`marked`) não: no fim ela leva ao
+                        // 1º campo NA ORDEM DA TELA; abrir aqui a aba do 1º erro da
+                        // lista do servidor travava as abas nela (fórum #399).
+                        if (!marked && op.content && op.target && op.target.indexOf('data-field-error') !== -1) {
                             this._revealFieldError(el);
                         }
                     }
@@ -2206,12 +2217,14 @@ const Mad = {
                 case 'toast':
                     if (window.madToast) {
                         // "Corrija os erros antes de continuar." sozinho não dizia QUAIS: com os campos já
-                        // marcados por esta resposta, o aviso nomeia os campos (ver _madErrorSummary).
-                        // Com o nome do usuário na frente (fórum #235) o op traz o texto original em `plain`.
+                        // marcados por esta resposta, o aviso diz o que corrigir e lista os campos, cada
+                        // um levando ao campo (ver _madErrorToast). Com o nome do usuário na frente
+                        // (fórum #235) o op traz o texto original em `plain`.
                         const isValidation = (op.plain ?? op.message) === this.VALIDATION_TOAST && marked;
-                        const summary = isValidation ? this._madErrorSummary(scope) : '';
-                        const msg = summary ? (op.who ? this._madToastWho(op.who, summary) : summary) : op.message;
-                        madToast({ message: msg, type: op.type || 'info', title: op.title || '', position: op.position || 'top-right' });
+                        const detail = isValidation
+                            ? this._madErrorToast(this._madErrorItems(scope), op.who || '', (it) => this._madRevealFirstError(scope, it))
+                            : null;
+                        madToast(Object.assign({ message: op.message, type: op.type || 'info', title: op.title || '', position: op.position || 'top-right' }, detail || {}));
                     }
                     break;
 
@@ -3004,7 +3017,7 @@ const Mad = {
         // O erro do servidor só pintava o campo: num formulário comprido (cortina) ele ficava fora da
         // vista e o usuário via só o aviso. Agora a tela rola até o 1º campo com erro e ele pisca.
         // Enfeite: falhar aqui nunca pode impedir a resposta de ser aplicada.
-        if (marked) { try { this._madRevealFirstError(scope); } catch (e) { console.warn('[MadWire] reveal error', e); } }
+        if (marked && !(opts && opts.reveal === false)) { try { this._madRevealFirstError(scope); } catch (e) { console.warn('[MadWire] reveal error', e); } }
     },
 
     /** Texto do aviso padrão de validação (MadValidationException::DEFAULT_TOAST). */
@@ -3017,11 +3030,19 @@ const Mad = {
     _madToastWho(who, text) {
         const t = String(text || '').trim();
         if (!who || !t || t.toLowerCase().startsWith(String(who).toLowerCase())) return text;
+        return madT('toast_user', ':name, :message', { name: who, message: this._madLcFirst(t) });
+    },
+
+    /**
+     * 1ª letra em minúscula para a frase continuar outra ("Nome: selecione…"), a não ser em sigla ("CPF
+     * inválido": a 2ª letra também maiúscula). "O campo…" não é sigla: o espaço não é letra (fórum #399).
+     */
+    _madLcFirst(text) {
+        const t = String(text || '');
         const first = t.charAt(0);
         const second = t.charAt(1);
-        const msg = (first !== first.toLowerCase() && (second === '' || second !== second.toUpperCase()))
-            ? first.toLowerCase() + t.slice(1) : t;
-        return madT('toast_user', ':name, :message', { name: who, message: msg });
+        const acronym = second !== '' && second.toLowerCase() !== second.toUpperCase() && second === second.toUpperCase();
+        return (first !== first.toLowerCase() && !acronym) ? first.toLowerCase() + t.slice(1) : t;
     },
 
     /** Campos com erro marcado agora (slot `[data-field-error]` com `.mad-error` e texto), na ordem da tela. */
@@ -3061,24 +3082,86 @@ const Mad = {
         return madT('fix_n_fields', 'Corrija os :n campos marcados em vermelho, a começar por :first.', { n: items.length, first: labels[0] });
     },
 
+    /** Itens que o aviso com lista mostra (fórum #399); o resto vira "e mais N". */
+    TOAST_ITEMS_MAX: 5,
+
+    /** Quanto o aviso com lista fica na tela (ms): dá tempo de ler e clicar; com o ponteiro ou o foco nele, espera. */
+    TOAST_ITEMS_DURATION: 12000,
+
+    /**
+     * Campos com erro para o aviso (fórum #399): rótulo, mensagem e se o campo some da tela por condição
+     * (`visible-when` dele, da seção ou da aba; `.mad-hidden`). Esse continua no aviso, pelo nome — o
+     * usuário precisa saber que ele existe —, mas sem levar até ele. Aba fechada não conta: o Salvar a abre.
+     */
+    _madErrorItems(scope = null, list = null) {
+        const W = (typeof window !== 'undefined' && window._madWhen) || null;
+        return (list || this._madErrorFields(scope)).map((i) => {
+            let hidden = false;
+            try { hidden = !!(W && typeof W.hiddenByCondition === 'function' && i.box && W.hiddenByCondition(i.box, null)); } catch (e) { hidden = false; }
+            return Object.assign({}, i, {
+                label: i.label || this._madFieldLabel(i.box),
+                message: i.message || String((i.slot && i.slot.textContent) || '').replace(/\s+/g, ' ').trim(),
+                hidden,
+            });
+        });
+    },
+
+    /**
+     * Aviso do Salvar recusado que diz o que corrigir (fórum #399), como `madToast(detail)`:
+     *   • um campo  → a mensagem dele; quando ela não cita o campo, o rótulo na frente
+     *                 ("Este cadastro é de um convênio: selecione uma opção válida.");
+     *   • dois ou + → "Corrija os N campos:" e a lista "Rótulo — mensagem", cada item um botão que abre a aba,
+     *                 rola e põe o cursor no campo (`go(item)`); campo escondido por condição fica na lista
+     *                 sem botão; passou de TOAST_ITEMS_MAX, "e mais N".
+     * Sem item com texto, null: fica o aviso que veio.
+     */
+    _madErrorToast(items, who = '', go = null) {
+        const list = (items || []).filter((it) => it && (it.label || it.message));
+        if (!list.length) return null;
+        const withWho = (t) => (who ? this._madToastWho(who, t) : t);
+        if (list.length === 1) {
+            const it = list[0];
+            const cites = it.label && it.message && it.message.toLowerCase().indexOf(it.label.toLowerCase()) !== -1;
+            const text = (!it.label || cites) ? it.message : (it.message ? it.label + ': ' + this._madLcFirst(it.message) : it.label);
+            return { message: withWho(text) };
+        }
+        const shown = list.slice(0, this.TOAST_ITEMS_MAX).map((it) => ({
+            label: it.label || '',
+            message: it.message || '',
+            go: (!it.hidden && typeof go === 'function') ? () => go(it) : null,
+        }));
+        const rest = list.length - shown.length;
+        return {
+            message: withWho(madT('fix_n_fields_list', 'Corrija os :n campos:', { n: list.length })),
+            items: shown,
+            more: rest > 0 ? madT('and_n_more', 'e mais :n', { n: rest }) : '',
+            duration: this.TOAST_ITEMS_DURATION,
+        };
+    },
+
     /**
      * Leva o usuário ao 1º campo com erro: abre a aba dele, rola até o meio da tela (a cortina rola
      * junto), põe o cursor SEM abrir a lista do combo (a lista cobria a mensagem) e o campo pisca.
      */
     _madRevealFirstError(scope = null, first = null) {
-        const item = first || this._madErrorFields(scope)[0];
+        // O 1º campo que dá para mostrar: um escondido por condição antes dele não segura o resto (fórum #399).
+        const item = first || this._madErrorItems(scope).find((i) => !i.hidden);
         if (!item || !item.box) return;
-        this._revealFieldError(item.slot);
-        setTimeout(() => {
+        this._revealFieldError(item.slot || item.box);
+        // Aba dentro de aba abre num tique do Alpine cada: espera a caixa do campo aparecer.
+        let tries = 0;
+        const go = () => {
             const box = item.box;
-            if (!box.getClientRects().length) return;
+            if (!box.isConnected) return;
+            if (!box.getClientRects().length) { if (tries++ < 10) setTimeout(go, 50); return; }
             try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { box.scrollIntoView(); }
             if (item.name) this._madFocusField(item.name, scope, { open: false });
             box.classList.remove('mad-error-flash');
             void box.offsetWidth;
             box.classList.add('mad-error-flash');
             setTimeout(() => box.classList.remove('mad-error-flash'), 1200);
-        }, 60);
+        };
+        setTimeout(go, 60);
     },
 
     // ── Field binding (data-mad-action) ──────────────────────────────────────
@@ -3626,22 +3709,33 @@ const Mad = {
     /**
      * Erro de campo dentro de <mad-tab-panel> inativa fica invisível
      * (x-show="activeTab===…" esconde via display:none) — o usuário só vê o
-     * toast. Ativa a aba que contém o slot do erro. Primeira aba com erro
-     * vence: um lock curto no root das tabs impede que erros seguintes (na
-     * mesma resposta) fiquem trocando de aba.
+     * toast. Ativa a aba que contém o slot do erro e, numa aba dentro de
+     * outra, todas as de fora, de fora para dentro (fórum #399: só a de
+     * dentro abria e o campo seguia escondido na de fora). Primeira aba com
+     * erro vence: um lock curto no root das tabs impede que erros seguintes
+     * (na mesma resposta) fiquem trocando de aba. Campo escondido por
+     * condição não abre aba nenhuma: abrir não o mostraria, e a aba dele pode
+     * ser uma que a condição tirou da tela.
      */
     _revealFieldError(el) {
-        const panel = el.closest('[data-mad-tab]');
-        if (!panel || panel.offsetParent !== null) return; // sem aba, ou já visível
-        const tabs = panel.closest('.mad-tabs');
-        if (!tabs || !window.Alpine) return;
-        if (tabs._madErrTabLock) return;
-        tabs._madErrTabLock = true;
-        setTimeout(() => { tabs._madErrTabLock = false; }, 100);
-        try {
-            const ad = Alpine.$data(tabs);
-            if (ad && 'activeTab' in ad) ad.activeTab = panel.getAttribute('data-mad-tab');
-        } catch (e) { /* tabs sem Alpine init — ignora */ }
+        if (!el || !el.closest || !window.Alpine) return;
+        const W = window._madWhen;
+        try { if (W && typeof W.hiddenByCondition === 'function' && W.hiddenByCondition(el, null)) return; } catch (e) { /* segue */ }
+        const chain = [];
+        for (let p = el.closest('[data-mad-tab]'); p; p = p.parentElement ? p.parentElement.closest('[data-mad-tab]') : null) chain.unshift(p);
+        for (const panel of chain) {
+            const tabs = panel.closest('.mad-tabs');
+            if (!tabs) continue;
+            let ad = null;
+            try { ad = Alpine.$data(tabs); } catch (e) { ad = null; } // tabs sem Alpine init — ignora
+            if (!ad || !('activeTab' in ad)) continue;
+            const name = panel.getAttribute('data-mad-tab');
+            if (ad.activeTab === name) continue; // já aberta
+            if (tabs._madErrTabLock) return;
+            tabs._madErrTabLock = true;
+            setTimeout(() => { tabs._madErrTabLock = false; }, 100);
+            ad.activeTab = name;
+        }
     },
 
     _onError(e) {

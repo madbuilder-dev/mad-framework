@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.342.1] — 2026-11-24
+
+### Melhorias
+
+- **Formulário:** com dois ou mais campos com erro, o aviso do Salvar lista cada campo com a mensagem dele. Clicar num item (ou Tab e Enter) abre a aba do campo, rola até ele e põe o cursor. Com muitos erros, mostra os cinco primeiros e "e mais N".
+
+### Correções
+
+- **Formulário:** em telas de componente, o Salvar recusado mostrava só "Corrija os erros antes de continuar.", sem dizer o campo. Agora o aviso nomeia o campo, abre a aba dele — também aba dentro de aba — e põe o cursor nele.
+- **Formulário:** campo com erro que não está à vista (escondido por condição ou numa aba escondida) agora aparece pelo nome no aviso do Salvar.
+- **Formulário:** com o nome do usuário nas mensagens, o aviso saía "Luciano, O campo Nome é obrigatório."; agora sai "Luciano, o campo Nome é obrigatório.".
+
 ## [5.342.0] — 2026-11-24
 
 ### Novidades

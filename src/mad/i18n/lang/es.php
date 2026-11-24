@@ -1178,6 +1178,8 @@ return [
             'toast_user'                => ':name, :message', // "Luciano, registro salvo." (fórum #235)
             'fix_fields'                => 'Corrija :fields.',
             'fix_n_fields'              => 'Corrija los :n campos marcados en rojo, empezando por :first.',
+            'fix_n_fields_list'         => 'Corrija estos :n campos:', // aviso com a lista de campos (fórum #399)
+            'and_n_more'                => 'y :n más',
             // fw#629 — Editor HTML: envio da imagem colada/arrastada (upload-url)
             'html_upload_failed'          => 'El servidor no aceptó la imagen (:status).',
             'html_upload_network'         => 'Sin conexión con el servidor.',
