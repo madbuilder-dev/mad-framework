@@ -89,6 +89,7 @@ class MadServiceProvider extends ServiceProvider
         $this->registerTrace();
         $this->registerDatabaseDrivers();
         $this->registerMigrator();
+        $this->registerDestructiveMigrate();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -767,6 +768,21 @@ class MadServiceProvider extends ServiceProvider
      * trava o migrate — ver MadMigrator. Os caminhos já registrados
      * (loadMigrationsFrom de outros pacotes) passam para o novo.
      */
+    /**
+     * `php artisan migrate --allow-destructive` (decisão do dono, 24/11/2026):
+     * o `migrate` do app passa a ser o MadMigrateCommand, com a opção a mais.
+     */
+    private function registerDestructiveMigrate(): void
+    {
+        $this->app->extend(\Illuminate\Database\Console\Migrations\MigrateCommand::class, function ($command, $app) {
+            if ($command instanceof \Mad\Console\MadMigrateCommand) {
+                return $command;
+            }
+
+            return new \Mad\Console\MadMigrateCommand($app['migrator'], $app[\Illuminate\Contracts\Events\Dispatcher::class]);
+        });
+    }
+
     private function registerMigrator(): void
     {
         $this->app->extend('migrator', function ($migrator, $app) {

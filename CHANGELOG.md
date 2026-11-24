@@ -12,6 +12,17 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.344.0] — 2026-11-24
+
+### Novidades
+
+- **App gerado:** migration que apaga tabela ou coluna, ou troca o tipo perdendo dado, só roda com confirmação. Em **Central de Comando › Migrations**, **Migrar pendentes** mostra o que será apagado, com as linhas de hoje, e só apaga com **Apagar e migrar**; sem confirmar, só o que não apaga é aplicado.
+- **App gerado:** `php artisan migrate --allow-destructive` aplica também os passos que apagam dado e confirma os que ficaram pendentes. Sem a opção, eles não rodam e o comando avisa.
+
+### Atenção
+
+- **App gerado:** para ter a confirmação na Central de Comando, atualize o framework e aplique o **Código Fonte** pela própria Central. Até lá, a migration que apaga dado fica pendente e não roda.
+
 ## [5.343.4] — 2026-11-24
 
 ### Correções
