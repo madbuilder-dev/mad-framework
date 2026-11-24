@@ -2372,6 +2372,12 @@ const MadWire = (() => {
         if (!wrapper) return;
         e.preventDefault();
 
+        // `<mad-btn validate>` (fw#645): antes de enviar — e antes do confirm=,
+        // que perguntaria à toa —, a mesma trava do Salvar no formulário do
+        // botão. Obrigatório e required-when vazios seguram o clique e marcam
+        // o campo. Sem o atributo nada muda (botão de rascunho vai vazio).
+        if (el.dataset.madValidate !== undefined && _clickBlocked(el, wrapper)) return;
+
         // data-mad-confirm="msg" → confirma antes de disparar (usa madConfirm
         // se disponivel; fallback nativo). Re-click após ok evita loop pelo flag.
         let confirmedAt = 0;
@@ -2436,6 +2442,34 @@ const MadWire = (() => {
         }
         _refocus(home, confirmedAt, layers);
     });
+
+    /**
+     * Formulário que o `<mad-btn validate>` confere (fw#645): o do botão — o
+     * editor do Detail Form, se ele está entre os campos da linha; senão o
+     * `<form>` (ou o formulário do `<mad-db-blocks>`) em volta. Botão fora de
+     * formulário (cabeçalho da tela): o formulário da tela, se ela tem um só
+     * com envio — ou um só no total. Mais que isso, nenhum: não dá para saber
+     * qual, e o clique segue como sem o atributo.
+     */
+    function _validateTarget(el, wrapper) {
+        const editor = el.closest('[data-df-fields]');
+        if (editor) return { scope: editor, editor: true };
+        const own = el.closest('form, [data-mad-block-form]');
+        if (own) return { scope: own, editor: false };
+        const forms = _componentNodes(wrapper, 'form').filter((f) => _closestAcross(f, '[mad-component]') === wrapper);
+        const sending = forms.filter((f) => f.hasAttribute('data-mad-submit'));
+        const pick = sending.length === 1 ? sending[0] : (forms.length === 1 ? forms[0] : null);
+        return pick ? { scope: pick, editor: false } : null;
+    }
+
+    /** O `validate` do botão segurou o clique? (trava do `_madWhen`, mad-ui.js) */
+    function _clickBlocked(el, wrapper) {
+        const W = window._madWhen;
+        const t = W ? _validateTarget(el, wrapper) : null;
+        if (!t) return false;
+        const gate = t.editor ? W.blockEditor : W.blockSubmit;
+        return typeof gate === 'function' && !!gate(t.scope);
+    }
 
     /**
      * Onde o foco volta depois da ação de um botão `mad:click` (fw#639c). O

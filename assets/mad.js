@@ -2317,6 +2317,11 @@ const Mad = {
                     break;
 
                 case 'toast':
+                    // Com os campos marcados por esta resposta, o resumo vai para a faixa fixa no topo
+                    // do formulário, com um link para cada campo (fw#645): o toast sumia sozinho. Sem
+                    // formulário em volta dos campos, o toast de sempre.
+                    if ((op.plain ?? op.message) === this.VALIDATION_TOAST && marked
+                        && this._madErrorBanner(this._madErrorBannerHost(scope), { who: op.who || '' })) break;
                     if (window.madToast) {
                         // "Corrija os erros antes de continuar." sozinho não dizia QUAIS: com os campos já
                         // marcados por esta resposta, o aviso diz o que corrigir e lista os campos, cada
@@ -3242,6 +3247,143 @@ const Mad = {
             more: rest > 0 ? madT('and_n_more', 'e mais :n', { n: rest }) : '',
             duration: this.TOAST_ITEMS_DURATION,
         };
+    },
+
+    /**
+     * Faixa fixa com o resumo do erro no topo do formulário (fw#645). O aviso em toast sumia sozinho e
+     * ficavam só os campos marcados. A faixa entra no `host` — o <form>, ou o editor do Detail Form — com
+     * o mesmo texto do aviso (_madErrorToast) e um link para cada campo; acompanha as marcas sozinha (erro
+     * que entra, muda ou sai — do servidor, do Salvar ou de quem limpa à mão) e some com a última.
+     *   opts.who       nome do usuário na frente (fórum #235);
+     *   opts.go(item)  o que o link faz (padrão: leva ao campo, _madRevealFirstError).
+     * true = a faixa está na tela (quem chama não abre o toast); false = nada marcado no host.
+     */
+    _madErrorBanner(host, opts = {}) {
+        if (!host || !host.querySelectorAll || typeof document === 'undefined') return false;
+        const st = host._madErrBanner || (host._madErrBanner = { who: '', go: null, sig: '', el: null, obs: null });
+        if (typeof opts.who === 'string') st.who = opts.who;
+        if (typeof opts.go === 'function') st.go = opts.go;
+        return this._madErrorBannerSync(host);
+    },
+
+    /** Onde entra a faixa de uma resposta de validação: o <form> do 1º campo marcado no escopo. */
+    _madErrorBannerHost(scope = null) {
+        const first = this._madErrorFields(scope)[0];
+        return (first && first.slot.closest && first.slot.closest('form')) || null;
+    },
+
+    /** Campos com erro marcado no host, na ordem da tela. O editor do Detail Form tem a faixa dele. */
+    _madErrorBannerFields(host) {
+        const ED = '[data-df-fields]';
+        const own = host.matches && host.matches(ED) ? host : null;
+        const comp = host.closest ? host.closest('[mad-component]') : null;
+        return [...host.querySelectorAll('[data-field-error]')]
+            .filter((n) => n.classList && n.classList.contains('mad-error') && (n.textContent || '').trim() !== '')
+            .filter((n) => (n.closest(ED) || null) === own && (!comp || n.closest('[mad-component]') === comp))
+            .map((n) => ({ slot: n, name: n.getAttribute('data-field-error'), box: n.closest('.mad-field') || n.parentElement }));
+    },
+
+    /** Redesenha a faixa do host pelas marcas de agora; sem marca, tira a faixa. */
+    _madErrorBannerSync(host) {
+        const st = host && host._madErrBanner;
+        if (!st) return false;
+        const read = () => this._madErrorItems(null, this._madErrorBannerFields(host));
+        const items = read();
+        // O link procura o campo na hora: a faixa só redesenha quando o texto muda.
+        const go = (it) => {
+            const cur = read().find((x) => x.name === it.name) || it;
+            return st.go ? st.go(cur) : this._madRevealFirstError(host, cur);
+        };
+        const detail = this._madErrorToast(items, st.who, go);
+        if (!detail) { this._madErrorBannerDrop(host); return false; }
+        // Um campo: a própria mensagem é o link (o aviso de um campo não tem lista).
+        const one = detail.items ? null : items.find((it) => it && (it.label || it.message));
+        const single = one && !one.hidden ? () => go(one) : null;
+        let message = detail.message;
+        if (!st.who && typeof window !== 'undefined' && typeof window.madUserText === 'function') message = window.madUserText(message);
+        const sig = JSON.stringify([message, !!single, (detail.items || []).map((i) => [i.label, i.message, !!i.go]), detail.more || '']);
+        let el = st.el;
+        if (!el || el.parentNode !== host) {
+            el = st.el = document.createElement('div');
+            el.className = 'mad-alert mad-alert-warning mad-form-errors';
+            el.setAttribute('role', 'alert');
+            el.setAttribute('data-mad-form-errors', '');
+            host.insertBefore(el, host.firstChild);
+            st.sig = '';
+        }
+        if (st.sig !== sig) { this._madErrorBannerPaint(el, message, single, detail); st.sig = sig; }
+        this._madErrorBannerWatch(host);
+        return true;
+    },
+
+    /** Conteúdo da faixa: o resumo e, com dois ou mais campos, a lista "Rótulo — mensagem" (cada item um link). */
+    _madErrorBannerPaint(el, message, single, detail) {
+        const mk = (tag, cls, text) => {
+            const n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text != null) n.textContent = text;
+            return n;
+        };
+        const link = (go) => {
+            const b = mk(go ? 'button' : 'span', go ? 'mad-form-errors-link' : 'mad-form-errors-link mad-form-errors-link-off');
+            if (go) {
+                b.type = 'button';
+                b.addEventListener('click', (e) => { e.preventDefault(); go(); });
+            }
+            return b;
+        };
+        el.textContent = '';
+        const icon = mk('i', 'mad-form-errors-icon');
+        icon.setAttribute('data-lucide', 'alert-triangle');
+        icon.setAttribute('aria-hidden', 'true');
+        const body = mk('div', 'mad-form-errors-body');
+        if (detail.items) {
+            body.appendChild(mk('p', 'mad-form-errors-title', message));
+            const ul = mk('ul', 'mad-form-errors-list');
+            detail.items.forEach((it) => {
+                const li = mk('li');
+                const b = link(it.go);
+                if (it.label) b.appendChild(mk('strong', '', it.label));
+                if (it.label && it.message) b.appendChild(document.createTextNode(' — '));
+                if (it.message) b.appendChild(mk('span', '', it.message));
+                li.appendChild(b);
+                ul.appendChild(li);
+            });
+            if (detail.more) ul.appendChild(mk('li', 'mad-form-errors-more', detail.more));
+            body.appendChild(ul);
+        } else {
+            const b = link(single);
+            b.textContent = message;
+            body.appendChild(b);
+        }
+        el.appendChild(icon);
+        el.appendChild(body);
+        if (typeof _madLucide === 'function') { try { _madLucide([icon]); } catch (e) { /* sem ícone: o texto basta */ } }
+    },
+
+    /**
+     * Marcas que mudam no host refazem a faixa. As de uma resposta chegam op a op: um tique junta todas
+     * numa leitura só. A própria faixa redesenhando não conta.
+     */
+    _madErrorBannerWatch(host) {
+        const st = host._madErrBanner;
+        if (!st || st.obs || typeof MutationObserver === 'undefined') return;
+        let queued = false;
+        st.obs = new MutationObserver((records) => {
+            if (queued || !records.some((r) => !(st.el && st.el.contains(r.target)))) return;
+            queued = true;
+            setTimeout(() => { queued = false; if (host._madErrBanner === st) this._madErrorBannerSync(host); }, 0);
+        });
+        st.obs.observe(host, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+    },
+
+    /** Tira a faixa do host (último erro corrigido). */
+    _madErrorBannerDrop(host) {
+        const st = host && host._madErrBanner;
+        if (!st) return;
+        if (st.obs) { try { st.obs.disconnect(); } catch (e) { /* já solto */ } }
+        if (st.el && st.el.parentNode) st.el.parentNode.removeChild(st.el);
+        delete host._madErrBanner;
     },
 
     /**

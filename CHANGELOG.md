@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.356.0] — 2026-11-24
+
+### Novidades
+
+- **Fluxos de aprovação:** o app pode deixar outras pessoas decidirem uma pendência no lugar de quem foi designado, por exemplo a liderança aprovando no lugar do responsável. Basta indicar em `MAD_WF_ACTOR_AUTHORIZER` a classe que diz quem pode decidir cada passo. A decisão fica no histórico do fluxo como tomada "no lugar de" quem foi designado ou do perfil do passo, e quem foi designado recebe um aviso. A fila de cada um continua só com as próprias pendências, e quem já decide pelo perfil, pela atribuição ou como substituto continua decidindo como antes. Sem a variável, nada muda.
+- **Botão:** `<mad-btn mad:click="…" validate>` confere os campos obrigatórios do formulário (inclusive os de `required-when`) antes de enviar, como o Salvar: com algum vazio, o clique não vai ao servidor e os campos ficam marcados. Sem `validate`, o botão segue enviando como sempre (bom para "Guardar rascunho").
+- **Formulário:** o resumo do erro de validação ("Corrija os 2 campos:" e a lista) agora fica numa faixa fixa no topo do formulário, com um link para cada campo, e some quando o último erro é corrigido. Antes ele aparecia num aviso que sumia sozinho. **Mudou o padrão:** o resumo não sai mais em aviso flutuante; o aviso só aparece quando o campo com erro não tem onde mostrar a mensagem.
+- **Seleção com busca:** o campo fechado agora recebe o cursor pelo Tab e quando um erro de validação leva até ele. Com o cursor nele, Enter, as setas ou uma letra abrem a busca, e a letra digitada já entra na caixa.
+
+### Atenção
+
+- **Formulário:** o resumo do erro de validação saiu do aviso flutuante e virou uma faixa fixa no topo do formulário, em todas as telas. Teste automatizado do app que esperava o aviso com "Corrija…" precisa procurar a faixa no formulário.
+
 ## [5.353.0] — 2026-11-24
 
 ### Novidades

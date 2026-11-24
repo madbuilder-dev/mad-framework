@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'confirmVariant' => '', 'confirmFocus' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => '', 'denyCondition' => ''])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'confirmVariant' => '', 'confirmFocus' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => '', 'denyCondition' => '', 'validate' => false])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -186,6 +186,12 @@
     // 2 unidades…"). Mesmo modo da ação sem permissão, acima: focável, clique
     // barrado pelo mad-ui.js e a dica aparece no hover, no foco e no toque.
     // Com `disabled` puro a dica nunca aparecia (o mouse atravessa o botão).
+    // `validate` (fw#645): o `mad:click` confere antes de enviar os obrigatórios
+    // (`required` e `required-when`) do formulário do botão, como o Salvar —
+    // vazio segura o clique e marca o campo. Opt-in: botão que grava rascunho
+    // de propósito continua indo com o campo vazio.
+    $_validate = $validate === true
+        || (is_scalar($validate) && ! in_array(strtolower(trim((string) $validate)), ['', 'false', '0', 'no'], true));
     $_disabledHint = is_scalar($disabledHint) ? trim((string) $disabledHint) : '';
     if ($disabled && $_disabledHint !== '' && ! $_permDeny) {
         $_permDeny  = true;
@@ -292,6 +298,7 @@
         @if($disabled) disabled @endif
         @if($_styleOut !== '') style="{!! htmlspecialchars($_styleOut, ENT_QUOTES, 'UTF-8', false) !!}" @endif
         @if($_permDeny) aria-disabled="true" data-mad-deny title="{{ $_permTitle }}" @endif
+        @if($_validate) data-mad-validate @endif
         {!! $_extraAttrs !!} {!! $attrs !!}>
     @if($loading)<div class="mad-spinner mad-spinner-sm"></div>
     @elseif($icon)<i data-lucide="{{ $icon }}" style="{{ $iconStyle }}"></i>@endif

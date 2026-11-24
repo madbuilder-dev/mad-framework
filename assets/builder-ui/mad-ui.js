@@ -2267,7 +2267,7 @@ function _madSelectFactory() {
         _v: 0, _posV: 0, _locked: false, _debounce: null, _labelMap: {}, _hlMap: {}, _imgMap: {},
         _listeners: {}, _outside: null, _onScroll: null, _ctrlRect: null,
         _isTouch: false, _uid: '', _native: null, _taBuf: '', _taTimer: null,
-        _kbPick: false, _onFocusOut: null,
+        _kbPick: false, _onFocusOut: null, _dis: 0, _disObs: null,
 
         init() {
             // Resolve o <select> via $root (NÃO via $refs): o select pode já ter sido
@@ -2278,6 +2278,18 @@ function _madSelectFactory() {
             this._uid = 'ms' + (window._madSelUid = (window._madSelUid || 0) + 1);
             this._parseConfig(el);
             this._seedLabels();
+            // O controle é a parada do Tab (fw#645): o <select> escondido sai
+            // da ordem, senão o campo teria duas. Desabilitado (servidor,
+            // disabled-when, lock()) também sai, como o <select> desabilitado
+            // saía: o tabindex do controle relê o `disabled` a cada troca.
+            if (this._ctlStop()) {
+                el.setAttribute('tabindex', '-1');
+                if (typeof MutationObserver === 'function') {
+                    var me = this;
+                    this._disObs = new MutationObserver(function () { me._dis++; });
+                    this._disObs.observe(el, { attributes: true, attributeFilter: ['disabled'] });
+                }
+            }
             el._madSelect = this;
             el.classList.add('mad-select-init');
             // Foco saiu do campo por qualquer caminho (Tab, clique em outro
@@ -2328,6 +2340,7 @@ function _madSelectFactory() {
             clearTimeout(this._taTimer);
             this._detachOutside();
             if (this._onFocusOut) { this.$root.removeEventListener('focusout', this._onFocusOut); this._onFocusOut = null; }
+            if (this._disObs) { this._disObs.disconnect(); this._disObs = null; }
             if (this._native) { try { delete this._native._madSelect; } catch (e) {} }
         },
 
@@ -2530,6 +2543,21 @@ function _madSelectFactory() {
             return this.noResultsMsg;
         },
 
+        // Parada do Tab do campo (fw#645). Com busca, o controle fechado recebe
+        // o cursor — Tab, o foco do erro de validação: a caixa de digitação só
+        // aparece com a lista aberta. Nos chips (várias, com busca) a caixa
+        // fica à vista e é ela a parada. Sem busca, a parada segue sendo o
+        // <select> escondido e o controle só recebe foco por script.
+        _ctlStop() {
+            return !!this.searchable && !(this.multiple && !this.checkbox);
+        },
+        _ctlTab() {
+            void this._dis;
+            if (!this.searchable) return -1;
+            if (!this._ctlStop()) return null;
+            return (this._locked || (this._native && this._native.disabled)) ? -1 : 0;
+        },
+
         // ── interações ──
         // Campo só de leitura: `readonly` da tag, `$this->form->readonly()` ou
         // readonly-when desenham `.mad-readonly-select` no select. O CSS só
@@ -2602,13 +2630,14 @@ function _madSelectFactory() {
         },
         // A caixa de busca some com a lista fechada (exceto nos chips): com o
         // cursor nela, o foco ia para o <body> e o Tab seguinte recomeçava do
-        // topo da página. Devolve o foco ao <select> do próprio campo, que é o
-        // ponto do campo na ordem do Tab.
+        // topo da página. Devolve o foco ao ponto do campo na ordem do Tab: o
+        // controle, com busca (fw#645); o <select> do próprio campo, sem.
         _keepFocus() {
             var i = this.$refs.input, el = this._native;
             // Toque: focar o <select> abriria a roda nativa do iOS.
             if (this._isTouch || !i || document.activeElement !== i) return;
             if (this.multiple && !this.checkbox && this.searchable) return;
+            if (this._ctlStop() && this.control) el = this.control;
             try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
         },
         // Tab / Shift+Tab: fecha a lista e deixa o navegador levar o foco ao
@@ -2736,17 +2765,18 @@ function _madSelectFactory() {
                 else if (!this.open) this.openDropdown();
                 return;
             }
-            // Com busca, digitar com o foco no <select> escondido (chegou de Tab)
-            // abre a lista e escreve na busca — inclusive as letras que chegam
-            // antes de o cursor passar para ela. Antes a letra ia pro <select>
-            // nativo, que trocava de valor calado, sem a tela acompanhar.
-            if (this.searchable && e.target === this._native && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
+            // Com busca, digitar com o foco no controle fechado (chegou de Tab,
+            // do erro de validação — fw#645) ou no <select> escondido abre a
+            // lista e escreve na busca — inclusive as letras que chegam antes de
+            // o cursor passar para ela. Antes a letra ia pro <select> nativo,
+            // que trocava de valor calado, sem a tela acompanhar.
+            if (this.searchable && (e.target === this._native || e.target === this.control) && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
                 e.preventDefault();
                 if (!this.open) this.openDropdown();
                 if (e.key !== ' ' || this.query) { this.query += e.key; this.onSearchInput(); }
                 this._focusControl(); return;
             }
-            if (!this.open && (e.key === 'ArrowDown' || e.key === 'Enter')) { if (e.key === 'ArrowDown') e.preventDefault(); this.openDropdown(); if (this.searchable) this._focusControl(); return; }
+            if (!this.open && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) { if (e.key !== 'Enter') e.preventDefault(); this.openDropdown(); if (this.searchable) this._focusControl(); return; }
             if (!this.open) return;
             var opts = this.visibleOptions;
             if (e.key === 'ArrowDown') { e.preventDefault(); this.activeIndex = Math.min(opts.length - 1, this.activeIndex + 1); this._kbPick = true; this._scrollActive(); }
@@ -2948,7 +2978,7 @@ function _madSelectFactory() {
 /* Markup do wrapper (control + dropdown teleportado). O <select> nativo é
    movido pra dentro como x-ref="native" pelo _madCreateSelect. */
 var _MAD_SEL_CONTROL_TPL =
-'<div class="mad-sel-control" :class="{\'has-clear\':clearable}" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="searchable?null:-1">' +
+'<div class="mad-sel-control" :class="{\'has-clear\':clearable}" @click="onControlClick($event)" role="combobox" :aria-expanded="open" :tabindex="_ctlTab()">' +
   '<template x-if="!multiple && !checkbox && singleHl">' +
     '<span class="mad-sel-dot" aria-hidden="true" x-show="!open || !searchable" x-effect="paintHl($el, singleHl)"></span>' +
   '</template>' +
@@ -3880,13 +3910,20 @@ _madWhen.onBlocked = function (list, form, editor) {
     var slot = first.field.querySelector('[data-field-error]') || first.field;
     var M = window.Mad;
     var scope = form.closest('[mad-component]') || form;
+    // Cursor no controle do campo; no combo, no controle visível — o <select>
+    // dele é escondido (fw#645).
+    var focusIn = function (it) {
+        var ctl = it.control || (M && typeof M._madFocusable === 'function' && it.box ? M._madFocusable(it.slot || it.box) : null);
+        if (ctl && ctl._madSelect && ctl._madSelect.control) ctl = ctl._madSelect.control;
+        if (ctl && typeof ctl.focus === 'function') {
+            try { ctl.focus(); } catch (e) { /* controle escondido */ }
+        }
+    };
     // Editor de Detail Form: o cursor vai ao controle do modal. Procurar pelo
     // nome no componente acharia o campo homônimo do formulário principal.
     if (editor) {
         if (M && typeof M._revealFieldError === 'function') M._revealFieldError(slot);
-        if (typeof first.control.focus === 'function') {
-            try { first.control.focus(); } catch (e) { /* controle escondido */ }
-        }
+        focusIn(first);
     } else if (M && typeof M._madRevealFirstError === 'function') {
         // Rola até o campo, cursor nele sem abrir a lista do combo, e o campo pisca.
         M._madRevealFirstError(scope, { slot: slot, name: first.name, box: first.field.closest('.mad-field') || first.field });
@@ -3903,15 +3940,18 @@ _madWhen.onBlocked = function (list, form, editor) {
         var box = it.field.closest('.mad-field') || it.field;
         return { slot: it.field.querySelector('[data-field-error]'), name: it.name, box: box, control: it.control };
     });
+    var go = function (it) {
+        if (!editor) { M._madRevealFirstError(scope, it); return; }
+        if (typeof M._revealFieldError === 'function') M._revealFieldError(it.slot || it.box);
+        focusIn(it);
+    };
+    // O resumo fica numa faixa no topo do formulário (do editor, no Detail
+    // Form), com um link para cada campo, até o último erro sair (fw#645).
+    // Nada em toast; o toast fica só para campo sem lugar de mensagem.
+    if (M && typeof M._madErrorBanner === 'function' && M._madErrorBanner(form, { go: go })) return;
     var detail = null;
     if (M && typeof M._madErrorToast === 'function' && typeof M._madErrorItems === 'function') {
-        detail = M._madErrorToast(M._madErrorItems(scope, items), '', function (it) {
-            if (!editor) { M._madRevealFirstError(scope, it); return; }
-            if (typeof M._revealFieldError === 'function') M._revealFieldError(it.slot || it.box);
-            if (it.control && typeof it.control.focus === 'function') {
-                try { it.control.focus(); } catch (e) { /* controle escondido */ }
-            }
-        });
+        detail = M._madErrorToast(M._madErrorItems(scope, items), '', go);
     } else if (M && typeof M._madErrorSummary === 'function') {
         msg = M._madErrorSummary(scope, items) || msg;
     }

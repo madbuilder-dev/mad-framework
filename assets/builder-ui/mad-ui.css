@@ -2060,6 +2060,37 @@ html[data-theme="dark"] .mad-sel-option[data-mad-hl="row"].is-active {
 .mad-alert-warning { border-color: rgba(217,119,6,.22);  background: var(--mad-warning-subtle); color: var(--mad-alert-warning-text, #78350f); }
 .mad-alert-danger  { border-color: rgba(220,38,38,.35);  background: var(--mad-danger-subtle);  color: var(--mad-alert-danger-text, #7f1d1d); }
 
+/* Resumo do erro no topo do formulário (fw#645): a mesma caixa do <mad-alert>
+   de aviso, no lugar do toast que sumia sozinho. Fica até o último erro sair;
+   cada item leva ao campo. */
+.mad-form-errors { margin: 0 0 var(--mad-s4); align-items: flex-start; }
+.mad-form-errors-icon { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; }
+.mad-form-errors-body { flex: 1; min-width: 0; }
+.mad-form-errors-title { margin: 0; font-weight: 600; }
+.mad-form-errors-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.mad-form-errors-link {
+  display: block;
+  width: calc(100% + 12px);
+  margin: 0 -6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mad-form-errors-link strong { font-weight: 600; }
+button.mad-form-errors-link:hover,
+button.mad-form-errors-link:focus-visible { background: color-mix(in srgb, currentColor 10%, transparent); }
+button.mad-form-errors-link:focus-visible { outline: 2px solid currentColor; outline-offset: 0; }
+.mad-form-errors-link-off { cursor: default; text-decoration: none; opacity: 0.85; }
+.mad-form-errors-more { padding: 2px 0 0; opacity: 0.8; }
+
 
 /* ═══════════════════════════════════════════════════════════════════
    16. COMPONENTE — TOGGLE (switch)
