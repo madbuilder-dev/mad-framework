@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.343.3] — 2026-11-24
+
+### Correções
+
+- **Detalhe:** um campo da tela com máscara e "Remover máscara ao salvar" perdia a máscara quando um Detail Form da mesma tela tinha um campo de mesmo nome (ex.: o "Celular" da pessoa e o "Celular" do contato). O Salvar recusava com "não pode ter mais que 11 caracteres". Agora cada um mantém a sua configuração.
+
 ## [5.343.2] — 2026-11-24
 
 ### Melhorias

@@ -74,6 +74,17 @@ class MadFormRegistry
      */
     private static array $guards = [];
 
+    /**
+     * Fórum #403: quantos `<mad-detail-fields>` estão abertos agora, e os
+     * nomes que só os campos de LINHA (de dentro deles) registraram. Um campo
+     * da linha com o mesmo nome de um campo da tela (o "Celular" do contato e
+     * o "Celular" da pessoa) não troca as props do da tela.
+     */
+    private static int $editorDepth = 0;
+
+    /** @var array<string, true> */
+    private static array $editorOnly = [];
+
     /** @var string Chave secreta para AES-256-CBC */
     private static string $secret = '';
 
@@ -205,6 +216,8 @@ class MadFormRegistry
         self::$captures          = [];
         self::$labelSources      = [];
         self::$guards            = [];
+        self::$editorDepth       = 0;
+        self::$editorOnly        = [];
     }
 
     /**
@@ -281,9 +294,26 @@ class MadFormRegistry
         // Remove props sem valor para manter o token enxuto
         $props = array_filter($props, fn($v) => $v !== '' && $v !== null && $v !== false);
 
-        self::$fields[$name] = array_merge(['type' => $type], $props);
+        $entry = array_merge(['type' => $type], $props);
+        // Fórum #403: campo da LINHA de um detalhe (dentro de
+        // `<mad-detail-fields>`) com o mesmo nome de um campo da tela não troca
+        // as props do campo da tela. O "Celular" do contato (sem máscara)
+        // apagava a máscara e o "Remover máscara ao salvar" do "Celular" da
+        // pessoa: o Salvar conferia "(11) 3456-7890" (14) contra a coluna de
+        // 11 e recusava. A linha do detalhe tem as colunas dela à parte
+        // (registerDetailForm). Campo da tela desenhado DEPOIS continua
+        // trocando o da linha, como sempre.
+        if (self::$editorDepth > 0) {
+            if (!isset(self::$fields[$name]) || isset(self::$editorOnly[$name])) {
+                self::$fields[$name]     = $entry;
+                self::$editorOnly[$name] = true;
+            }
+        } else {
+            self::$fields[$name] = $entry;
+            unset(self::$editorOnly[$name]);
+        }
         foreach (array_keys(self::$captures) as $i) {
-            self::$captures[$i][$name] = self::$fields[$name];
+            self::$captures[$i][$name] = $entry;
         }
 
         // O formulário da tela fica sabendo que TEM este campo: é o que ele
@@ -299,8 +329,8 @@ class MadFormRegistry
         // marca nova é conferida nessa consulta (MadForm::declareOptionsSource).
         foreach (self::screenForms() as $form) {
             $form->declareField($name, $type);
-            $form->declareWrites($name, self::$fields[$name]);
-            $form->declareOptionsSource($name, $optionsSource, (string) (self::$fields[$name]['separator'] ?? ''));
+            $form->declareWrites($name, $entry);
+            $form->declareOptionsSource($name, $optionsSource, (string) ($entry['separator'] ?? ''));
         }
 
         // Registra no VarRegistry para auto-bind de escalares
@@ -516,6 +546,7 @@ class MadFormRegistry
      */
     public static function beginDetailEditor(string $name): void
     {
+        self::$editorDepth++;
         foreach (self::screenForms() as $form) {
             $form->beginDetailEditor($name);
         }
@@ -524,6 +555,7 @@ class MadFormRegistry
     /** @internal fim do `<mad-detail-fields>` — `$html` é o que ele desenhou */
     public static function endDetailEditor(string $html): void
     {
+        self::$editorDepth = max(0, self::$editorDepth - 1);
         foreach (self::screenForms() as $form) {
             $form->endDetailEditor($html);
         }
