@@ -26,6 +26,8 @@ return [
     'toast_user_name' => [
         'enabled' => filter_var(env('MAD_TOAST_USER_NAME', false), FILTER_VALIDATE_BOOL),
     ],
+    // Ver a doc completa no config/mad.php do template (seção 'toast_position').
+    'toast_position' => env('MAD_TOAST_POSITION', ''),
     // Ver a doc completa no config/mad.php do template (seção 'migrations').
     'migrations' => [
         'skip_superseded_revisions' => filter_var(env('MAD_MIGRATIONS_SKIP_SUPERSEDED', true), FILTER_VALIDATE_BOOL),

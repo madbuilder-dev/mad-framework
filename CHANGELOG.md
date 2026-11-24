@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.343.0] — 2026-11-24
+
+### Novidades
+
+- **Layout:** nova opção **Posição dos avisos** (no alto ou embaixo; à esquerda, no centro ou à direita), em Sistema › Preferências › Navegação e nas Propriedades do projeto no Studio. Vale para todos os avisos, inclusive o do Salvar com a lista de campos. Aviso com posição definida no código mantém a dele. Sem a opção, nada muda.
+
 ## [5.342.1] — 2026-11-24
 
 ### Melhorias

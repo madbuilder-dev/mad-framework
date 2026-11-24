@@ -17,27 +17,28 @@ use Mad\Http\MadResponse;
  *       ->fieldError('nome', 'Nome é obrigatório.')
  *       ->fieldError('email', 'E-mail inválido.');
  *
- * Posições: top-left | top-center | top-right (padrão)
+ * Posições: top-left | top-center | top-right
  *           bottom-left | bottom-center | bottom-right
+ * Sem posição: a "Posição dos avisos" do app; sem ela, top-right (MadToastPosition).
  */
 class MadToast
 {
-    public static function success(string $message, string $title = '', string $position = 'top-right'): MadResponse
+    public static function success(string $message, string $title = '', string $position = ''): MadResponse
     {
         return (new MadResponse)->toast($message, 'success', $title, $position);
     }
 
-    public static function danger(string $message, string $title = '', string $position = 'top-right'): MadResponse
+    public static function danger(string $message, string $title = '', string $position = ''): MadResponse
     {
         return (new MadResponse)->toast($message, 'danger', $title, $position);
     }
 
-    public static function warning(string $message, string $title = '', string $position = 'top-right'): MadResponse
+    public static function warning(string $message, string $title = '', string $position = ''): MadResponse
     {
         return (new MadResponse)->toast($message, 'warning', $title, $position);
     }
 
-    public static function info(string $message, string $title = '', string $position = 'top-right'): MadResponse
+    public static function info(string $message, string $title = '', string $position = ''): MadResponse
     {
         return (new MadResponse)->toast($message, 'info', $title, $position);
     }

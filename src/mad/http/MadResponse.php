@@ -574,9 +574,11 @@ class MadResponse
 
     /**
      * Exibe um toast no cliente.
-     * @param string $type  info | success | warning | danger
+     * @param string $type      info | success | warning | danger
+     * @param string $position  top-left | top-center | top-right | bottom-left | bottom-center | bottom-right;
+     *                          vazio = a "Posição dos avisos" do app, senão top-right (MadToastPosition, fórum #400)
      */
-    public function toast(string $message, string $type = 'info', string $title = '', string $position = 'top-right'): static
+    public function toast(string $message, string $type = 'info', string $title = '', string $position = ''): static
     {
         // Erro cru do banco no toast (`$e->getMessage()`): frase genérica, detalhe no log (fw#403).
         if (str_contains($message, 'SQLSTATE[')) {
@@ -596,7 +598,7 @@ class MadResponse
             'message'  => $message,
             'type'     => $type,
             'title'    => $title,
-            'position' => $position,
+            'position' => \Mad\Ui\MadToastPosition::for($position, 'top-right'),
         ];
         if ($who !== '' && $message !== $plain) {
             // O JS troca o aviso genérico de validação pelo resumo com os

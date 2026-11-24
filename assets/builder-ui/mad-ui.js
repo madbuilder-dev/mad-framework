@@ -6099,6 +6099,18 @@ if (!window._madFocusSourceBound) {
  *   madToast.warning('Atenção')
  *   madToast.info('Info')
  */
+/**
+ * "Posição dos avisos" do app (fórum #400): o servidor grava no componente
+ * (`data-mad-toast-position`, só quando o app escolheu). '' = cada aviso na
+ * posição de sempre.
+ */
+window.madToastPosition = function () {
+    var POS = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+    var els = document.querySelectorAll('[mad-component][data-mad-toast-position]');
+    var v = els.length ? String(els[els.length - 1].getAttribute('data-mad-toast-position') || '') : '';
+    return POS.indexOf(v) !== -1 ? v : '';
+};
+
 window.madToast = function (messageOrObj, type, title, duration) {
     let detail;
     if (typeof messageOrObj === 'object' && messageOrObj !== null) {
@@ -6117,7 +6129,8 @@ window.madToast = function (messageOrObj, type, title, duration) {
     if (detail.user !== false && typeof window.madUserText === 'function' && detail.message) {
         detail = { ...detail, message: window.madUserText(detail.message) };
     }
-    const position = detail.position || 'bottom-right';
+    // Sem posição na chamada: a "Posição dos avisos" do app (fórum #400); sem ela, embaixo à direita.
+    const position = detail.position || window.madToastPosition() || 'bottom-right';
     _madToastMount(position);
     setTimeout(() => window.dispatchEvent(new CustomEvent('mad-toast', { detail: { ...detail, position } })), 0);
 };

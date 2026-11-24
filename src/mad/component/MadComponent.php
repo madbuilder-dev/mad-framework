@@ -1410,13 +1410,19 @@ abstract class MadComponent
         // `protected static bool $confirmLeave = true;` na tela.
         $leave = \Mad\Support\FormConfirmLeave::forScreen($this) ? \Mad\Support\FormConfirmLeave::attrs() : '';
 
+        // "Posição dos avisos" do app (fórum #400): os avisos que o navegador
+        // monta sozinho (madToast sem posição) vão para lá. Sem a opção, o
+        // HTML é o mesmo de antes.
+        $toastAt = \Mad\Ui\MadToastPosition::configured();
+
         $component = sprintf(
-            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s"%s%s>%s</div>',
+            '<div mad-component="%s" mad-id="%s" mad-state="%s" mad-endpoint="%s"%s%s%s>%s</div>',
             htmlspecialchars($class,    ENT_QUOTES),
             htmlspecialchars($id,       ENT_QUOTES),
             htmlspecialchars($state,    ENT_QUOTES),
             htmlspecialchars($endpoint, ENT_QUOTES),
             $who !== '' ? ' data-mad-user="' . htmlspecialchars($who, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"' : '',
+            $toastAt !== '' ? ' data-mad-toast-position="' . $toastAt . '"' : '',
             $leave,
             $html
         );
