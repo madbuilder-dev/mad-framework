@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.337.1] — 2026-11-24
+
+### Correções
+
+- **Chat IA:** quando o provedor de IA falha (sem crédito, fora do ar, pedido recusado), o chat mostra só uma mensagem neutra: IA indisponível no momento ou erro do pedido. O detalhe técnico do provedor não vai mais ao navegador; fica no log do servidor, sem ids nem chaves.
+
 ## [5.337.0] — 2026-11-24
 
 ### Novidades

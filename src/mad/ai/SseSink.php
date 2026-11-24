@@ -143,9 +143,16 @@ final class SseSink
             // `error` aqui fazia o usuário achar que a escrita falhou e pedir
             // de novo — duplicava a venda. Vai para o log; quem chamou decide.
             $this->swallowed[] = $message;
-            \error_log('[mad-ai] erro suprimido (chamada acessoria): ' . ($code !== null ? "[{$code}] " : '') . mb_substr($message, 0, 300));
+            \error_log('[mad-ai] erro suprimido (chamada acessoria): ' . ($code !== null ? "[{$code}] " : '') . ProviderErrorText::mask(mb_substr($message, 0, 300)));
 
             return;
+        }
+        // Texto cru do provedor (402 do OpenRouter com o user_id da conta,
+        // corpo JSON, exceção) nunca vai ao navegador: vira frase neutra e o
+        // detalhe mascarado fica no log do servidor.
+        if (ProviderErrorText::isRaw($message)) {
+            $code ??= ProviderErrorText::codeFor($message);
+            $message = ProviderErrorText::forUser($message, 'mad-ai');
         }
         $this->emit('error', ['message' => $message]
             + ($code !== null && $code !== '' ? ['code' => $code] : [])
