@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.343.4] — 2026-11-24
+
+### Correções
+
+- **Listagem (grid):** a largura definida na coluna era ignorada quando as colunas não cabiam na tela, e a coluna saía estreita e cortada. Agora ela fica com a largura pedida e a listagem rola na horizontal.
+- **Listagem (grid):** ao esconder colunas em **Colunas visíveis**, o telefone podia ocupar quase metade da tabela enquanto o celular saía cortado. Agora telefone e outros valores curtos saem inteiros e a sobra fica com o texto principal.
+
 ## [5.343.3] — 2026-11-24
 
 ### Correções

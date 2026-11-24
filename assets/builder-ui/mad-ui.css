@@ -9526,6 +9526,10 @@ html.mad-dg-cf-lock body { overflow: hidden; }
 /* Valor, número, data e formatos curtos (CPF, telefone…) numa linha só:
    "R$ 6,00" não vira "R$" em cima e "6,00" embaixo quando a grade aperta. */
 .mad-dg-cell-nowrap { white-space: nowrap; }
+/* Valor curto (forma `token`: código, tipo, telefone, "51 anos") numa linha em
+   qualquer tema: "(47) 2391-" em cima e "5618" embaixo quando a grade aperta
+   (fórum #404). Com o texto cortado, a regra do truncate abaixo já fazia isso. */
+td.mad-dg-cell-token { white-space: nowrap; }
 
 /* ── Acabamento da linha (fw#494) ─────────────────────────────────────────
    O servidor não sabe qual tema o navegador escolheu: a marcação é a mesma

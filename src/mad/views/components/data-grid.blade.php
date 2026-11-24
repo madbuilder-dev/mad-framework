@@ -743,7 +743,8 @@
                         // normaliza) podia trazer '140' sem unidade — declaração
                         // inválida, descartada, coluna na largura automática.
                         $_thW     = \Mad\Support\CssUnits::length((string) ($col->width ?? ''));
-                        $thStyle  = $_thW !== '' ? "width:{$_thW};" : '';
+                        // largura fixa também como mínimo: não some na tabela que rola (fórum #405)
+                        $thStyle  = $col->thWidthStyle();
                         $cfKey    = $col->colFilterField ?: $col->field;
                         $isActive = (($col->filterable || $col->hasFilterPopover) && isset($filters[$col->field]) && $filters[$col->field] !== '')
                                  || ($col->colFilterToken && isset($colFilters[$cfKey]) && ($colFilters[$cfKey]['value'] ?? '') !== '');

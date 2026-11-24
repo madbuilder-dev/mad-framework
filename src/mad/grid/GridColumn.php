@@ -233,6 +233,26 @@ class GridColumn
         return $this;
     }
 
+    /**
+     * Estilo de largura da <th> (fórum #405). Numa tabela que não cabe na tela
+     * o navegador trata `width` como preferência e aperta toda coluna até o
+     * mínimo do conteúdo: o Nome com 1800px saía com 80px, em duas linhas e
+     * reticências. Largura fixa (px, em, rem…) vai também como `min-width`:
+     * a coluna fica com o que foi pedido e a grade rola na horizontal.
+     * Porcentagem e palavra-chave (`auto`, `fit-content`) seguem só `width`.
+     */
+    public function thWidthStyle(): string
+    {
+        $w = \Mad\Support\CssUnits::length((string) ($this->width ?? ''));
+        if ($w === '') {
+            return '';
+        }
+
+        return preg_match('/^\d*\.?\d+(px|em|rem|ch|ex|pt|pc|in|cm|mm|q)$/i', $w)
+            ? "width:{$w};min-width:{$w};"
+            : "width:{$w};";
+    }
+
     public function align(string $align): self
     {
         $this->align    = $align;
@@ -1146,10 +1166,12 @@ class GridColumn
      * ganha uma forma, que o CSS lê (só com truncate ligado, ou no ERP).
      *  - grow: fica com a sobra da largura — a marcada com grow() ou, sem
      *    ela, a 1ª coluna de texto longo de várias palavras na página (o
-     *    título); sem isto a tabela repartia a largura e o título saía tão
-     *    estreito quanto as colunas curtas;
-     *  - token: coluna cujos valores na página são uma palavra só, de até 24
-     *    letras (código, tipo): sai inteira, sem reticências;
+     *    título), com várias palavras em pelo menos metade das linhas; sem
+     *    isto a tabela repartia a largura e o título saía tão estreito quanto
+     *    as colunas curtas;
+     *  - token: coluna cujos valores na página têm no máximo uma palavra com
+     *    letra, de até 24 caracteres (código, tipo, telefone): sai inteira,
+     *    sem reticências;
      *  - '': o resto do texto, que cede até 5em quando falta largura.
      * Nas colunas de texto fora do grow, a célula de valor curto (até 5
      * palavras e 32 letras, ou uma de até 24: nome, setor) quebra só entre
@@ -1168,13 +1190,18 @@ class GridColumn
                 || $col->editable || $col->lines !== null || $col->nowrapClass() !== '' || $col->isNumeric()) {
                 continue;
             }
-            $st = ['seen' => false, 'multi' => false, 'len' => 0, 'words' => 0];
+            $st = ['seen' => false, 'multi' => false, 'len' => 0, 'words' => 0, 'multiRows' => 0];
             foreach ($rows as $row) {
                 $v = is_array($row) ? ($row[$col->field] ?? null) : null;
                 if (!is_scalar($v) || ($v = trim((string) $v)) === '') continue;
                 $words = count(preg_split('/\s+/u', $v));
+                // Várias palavras = duas ou mais com letra: "(11) 4000-1234",
+                // "22/09/1975 10:00" e "51 anos" são um valor curto, não texto
+                // (fórum #404: o telefone virava o título e ficava com 40%).
+                $multi = preg_match_all('/\S*\p{L}\S*/u', $v) > 1;
                 $st['seen']  = true;
-                $st['multi'] = $st['multi'] || $words > 1;
+                $st['multi'] = $st['multi'] || $multi;
+                $st['multiRows'] += (int) $multi;
                 $st['len']   = max($st['len'], mb_strlen($v));
                 $st['words'] = max($st['words'], $words);
             }
@@ -1191,9 +1218,13 @@ class GridColumn
         foreach ($columns as $i => $col) {
             if ($col instanceof self && $col->grow && trim((string) $col->width) === '') $growAt[] = $i;
         }
+        // O título tem várias palavras em pelo menos metade das linhas: a coluna
+        // quase vazia (fantasia, 2º telefone) ou de uma palavra com uma exceção
+        // ("Não informado" no sexo) não fica com a sobra (fórum #404).
+        $titleLike = fn (array $st) => $st['multiRows'] * 2 >= count($rows);
         foreach ([fn ($st) => !$short($st), fn ($st) => true] as $pick) {
             if ($growAt !== []) break;
-            foreach ($stats as $i => $st) if ($st['multi'] && $pick($st) && trim((string) $columns[$i]->width) === '') { $growAt = [$i]; break; }
+            foreach ($stats as $i => $st) if ($titleLike($st) && $pick($st) && trim((string) $columns[$i]->width) === '') { $growAt = [$i]; break; }
         }
         foreach ($columns as $i => $col) {
             if (!$col instanceof self) continue;
