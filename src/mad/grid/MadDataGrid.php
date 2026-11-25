@@ -7777,8 +7777,17 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // saía 55,00 em vez de 55,0%. Formato de data (escolhido no painel) e
         // selo continuam vencendo, como antes.
         if ($col->builtinFormat !== '' && ($col->isNumber || $col->isMoney)) {
-            $col->isNumber = false;
-            $col->isMoney  = false;
+            // Fórum #409 (rodada 3): o Transformador "Real (1.234,56)" (token
+            // `money`) é só o número, sem símbolo. Com `money="R$"` (ou a moeda
+            // do app) na coluna, o símbolo fica: os dois pedem moeda e só o
+            // `money` diz qual. Até a 5.356.0 era assim; a 5.356.1 tirava o R$.
+            if ($col->isMoney && $col->builtinFormat === 'money' && trim($col->moneyPrefix) !== '') {
+                $col->builtinFormat = '';
+                $col->isNumber      = false;
+            } else {
+                $col->isNumber = false;
+                $col->isMoney  = false;
+            }
         }
         if (!empty($c['mediaCaption'])) {
             $col->mediaCaption((string) $c['mediaCaption']);

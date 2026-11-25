@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.1] — 2026-11-25
+
+### Correções
+
+- **Listagem (grid):** coluna com moeda (`money="R$"`) e o Transformador "Real (1.234,56)" voltou a mostrar o símbolo ("R$ 309,24"), também na listagem e no total do Detail Form. Desde a 5.356.1 o símbolo sumia. Sem `money`, o Transformador "Real" continua mostrando só o número (fórum #409).
+
 ## [5.357.0] — 2026-11-25
 
 ### Novidades
