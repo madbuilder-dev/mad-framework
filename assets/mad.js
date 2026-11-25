@@ -3929,15 +3929,21 @@ const Mad = {
         // mostra o label normal E o "Gerando..." ao mesmo tempo na 1a renderizacao.
         if (typeof MadWire !== 'undefined' && MadWire.initLoadingElements) MadWire.initLoadingElements(root);
 
-        // Reinicia Lucide icons
-        if (window.lucide) window.lucide.createIcons();
-
         // Reinicia Alpine.js na área atualizada
         if (window.Alpine) window.Alpine.initTree(root);
 
         // Reinicia MAD Select, mascara, force-case e demais campos com init JS
         // (sequencia unica — ver _madEnergizeFields em mad-ui.js)
         if (typeof _madEnergizeFields === 'function') _madEnergizeFields(root);
+
+        // Ícones Lucide DEPOIS do Alpine (fórum #410). O ⋮ da linha da grade
+        // (e cortina, janela, popover) mora num <template x-teleport="body">:
+        // os <i data-lucide> dele só entram no <body> no initTree. Desenhando
+        // antes, o menu abria sem ícone até o próximo redesenho da grade. O
+        // _madLucide só desenha o <i> que ainda não virou <svg>: não dobra o
+        // que já estava na página.
+        if (typeof window._madLucide === 'function') window._madLucide();
+        else if (window.lucide) window.lucide.createIcons();
 
         // Aba que o usuário tinha aberta numa tela embutida redesenhada junto
         // com a de fora: o HTML dela só chega agora (ver restoreUiState).

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.356.2] — 2026-11-25
+
+### Correções
+
+- **Listagem (grid):** ao abrir uma listagem pelo menu lateral, o menu ⋮ da linha (Editar, Excluir…) aparecia só com o texto, sem os ícones, até a grade ser redesenhada (busca, filtro, troca de página ou F5). Agora os ícones aparecem desde a primeira abertura (fórum #410).
+
 ## [5.356.1] — 2026-11-24
 
 ### Correções
