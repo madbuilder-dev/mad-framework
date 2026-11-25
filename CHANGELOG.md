@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.5] — 2026-11-25
+
+### Correções
+
+- **App gerado:** em **Documentos**, o filtro **Recentes** dava erro 500 no MySQL e no PostgreSQL (no SQLite, podia deixar de fora o documento aberto por último). Agora mostra os 20 últimos documentos que o usuário abriu, só da empresa e da unidade atuais (fórum #418).
+
+### Atenção
+
+- **App gerado:** a correção está na tela **Documentos** do app, que o **Atualizar framework** não altera. App já publicado recebe pela Central de Comando › **Código Fonte** ou publicando o projeto de novo.
+
 ## [5.357.4] — 2026-11-25
 
 ### Correções
