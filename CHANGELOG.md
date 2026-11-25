@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.2] — 2026-11-25
+
+### Melhorias
+
+- **Permissões:** com o Licenciamento desligado, o grupo **Administração › SaaS** (Planos, Módulos, Assinaturas, Extras e Cobrança) sai do menu, e abrir essas telas pelo endereço dá acesso negado. Com o Licenciamento ligado, nada muda (fórum #413).
+
 ## [5.357.1] — 2026-11-25
 
 ### Correções
