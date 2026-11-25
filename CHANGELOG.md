@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.4] — 2026-11-25
+
+### Correções
+
+- **Listagem (grid):** duas colunas com a mesma **Fórmula** (uma sem Campo e outra com Campo) dividiam o total do rodapé: a que não somava também mostrava o total. Agora cada coluna tem o próprio valor e o próprio total (fórum #417).
+
 ## [5.357.3] — 2026-11-25
 
 ### Correções

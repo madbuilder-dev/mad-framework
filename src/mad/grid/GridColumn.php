@@ -1009,9 +1009,10 @@ class GridColumn
      * coluna guarda o resultado numa chave só dela, derivada da fórmula: a
      * mesma em todo pedido (ordenar, exportar, total), sem tocar na coluna
      * desse campo. Não vale para o mestre-detalhe, onde o Campo da coluna
-     * calculada é o que vai para o banco.
+     * calculada é o que vai para o banco. A chave sai do Campo, da fórmula e
+     * do rótulo: duas colunas com a mesma fórmula não dividem valor nem total.
      */
-    public static function ownEvaluateKey(string $field, string $evaluate): ?string
+    public static function ownEvaluateKey(string $field, string $evaluate, string $label = ''): ?string
     {
         if (trim($evaluate) === '') {
             return null;
@@ -1020,7 +1021,7 @@ class GridColumn
             return null;
         }
 
-        return self::OWN_EVALUATE_KEY_PREFIX . substr(md5($evaluate), 0, 10);
+        return self::OWN_EVALUATE_KEY_PREFIX . substr(md5($field . "\0" . $evaluate . "\0" . $label), 0, 10);
     }
 
     /** Prefixo da chave própria da coluna calculada ({@see ownEvaluateKey()}). */
@@ -1029,7 +1030,7 @@ class GridColumn
     /** Aplica {@see ownEvaluateKey()} a esta coluna. */
     public function useOwnEvaluateKey(): self
     {
-        $key = self::ownEvaluateKey($this->field, $this->evaluate);
+        $key = self::ownEvaluateKey($this->field, $this->evaluate, $this->label);
         if ($key !== null) {
             $this->field    = $key;
             $this->fieldKey = $key;

@@ -4240,7 +4240,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         foreach ($configs as $c) {
             $cfgField = (string) ($c['field'] ?? '');
             if (is_array($c) && !empty($c['evaluate']) && is_string($c['evaluate'])) {
-                $cfgField = GridColumn::ownEvaluateKey($cfgField, $c['evaluate']) ?? $cfgField;
+                $cfgField = GridColumn::ownEvaluateKey($cfgField, $c['evaluate'], is_string($c['label'] ?? null) ? $c['label'] : '') ?? $cfgField;
             }
             if (is_array($c) && !empty($c['sortable']) && $cfgField === $field) {
                 $col = static::_colFromConfig($c);
