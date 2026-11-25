@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.3] — 2026-11-25
+
+### Correções
+
+- **Listagem (grid):** coluna com **Fórmula** sem **Campo** derrubava a página, e com um campo da tabela no **Campo** mostrava o valor desse campo em vez do resultado. Agora a coluna calculada pode ficar sem Campo e mostra o resultado da fórmula na tela, na exportação, na ordenação e no total, sem mexer na coluna do campo (fórum #417).
+
 ## [5.357.2] — 2026-11-25
 
 ### Melhorias

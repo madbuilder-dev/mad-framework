@@ -4238,7 +4238,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         foreach ($configs as $c) {
-            if (is_array($c) && !empty($c['sortable']) && ($c['field'] ?? '') === $field) {
+            $cfgField = (string) ($c['field'] ?? '');
+            if (is_array($c) && !empty($c['evaluate']) && is_string($c['evaluate'])) {
+                $cfgField = GridColumn::ownEvaluateKey($cfgField, $c['evaluate']) ?? $cfgField;
+            }
+            if (is_array($c) && !empty($c['sortable']) && $cfgField === $field) {
                 $col = static::_colFromConfig($c);
 
                 return $this->_columnHasOrderBy($col) ? $col : null;
@@ -7269,7 +7273,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 fn($c) => static::_colFromConfig($c),
                 $this->_inlineConfig['colConfigs'] ?? []
             )
-            : $this->columns();
+            // Coluna calculada montada em PHP sem field: mesma chave própria
+            // do Blade (fórum #417). Idempotente para quem veio do config.
+            : array_map(
+                fn($c) => $c instanceof GridColumn ? $c->useOwnEvaluateKey() : $c,
+                $this->columns()
+            );
 
         return $this->_lockSwitchColumns(
             static::assignColKeys($this->_normalizeFilterTokens($this->_normalizeSortable($cols)))
@@ -7623,7 +7632,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         ));
     }
 
-    public static function _colFromConfig(array $c): GridColumn
+    public static function _colFromConfig(array $c, bool $ownEvaluateKey = true): GridColumn
     {
         $col = GridColumn::make($c['field'] ?? '', $c['label'] ?? '');
 
@@ -7801,6 +7810,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // Evaluate: expressão computada '{valor} * {quantidade}'
         if (!empty($c['evaluate'])) {
             $col->evaluate($c['evaluate']);
+            // Sem nome próprio (vazio, `{campo}` ou expressão): o resultado vai
+            // para uma chave só da coluna (fórum #417). O mestre-detalhe passa
+            // false — lá o Campo é a coluna do banco que recebe o valor.
+            if ($ownEvaluateKey) {
+                $col->useOwnEvaluateKey();
+            }
         }
 
         // Display condition: string callable 'Classe::metodo'
@@ -10516,6 +10531,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 : (is_object($item) ? (array)$item : $item);
 
             foreach ($evaluates as $field => $expr) {
+                // Sem chave não há onde guardar (coluna montada em `columns()`
+                // sem field): `$item->{''}` derrubava a página no Eloquent.
+                if ((string) $field === '') {
+                    continue;
+                }
                 $value = static::_computeEvaluate($expr, $item, $row);
                 if (is_object($item)) {
                     $item->$field = $value;

@@ -29,7 +29,9 @@
     // ── Instanciar GridColumn e GridAction a partir dos configs ──────────────
     $columns = [];
     foreach ($colConfigs as $c) {
-        $columns[] = \Mad\Grid\MadDataGrid::_colFromConfig($c);
+        // false: no detalhe o Campo da coluna calculada é a coluna do banco que
+        // recebe o valor (a listagem usa chave própria, fórum #417).
+        $columns[] = \Mad\Grid\MadDataGrid::_colFromConfig($c, false);
     }
     // Coluna que a tela escondeu ("Oculta" ou `display-condition` falso) sai da
     // listagem, como na <mad-grid> — no detalhe as duas eram ignoradas (fórum

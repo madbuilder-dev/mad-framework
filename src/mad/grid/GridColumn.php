@@ -997,6 +997,48 @@ class GridColumn
     }
 
     /**
+     * Chave própria da coluna calculada da LISTAGEM (fórum #417), ou null quando
+     * o `field` já é um nome que serve (`valor_estoque`, `calculo_1`,
+     * `cliente->nome`).
+     *
+     * O resultado da fórmula é gravado na linha sob o `field`. Sem `field`, a
+     * chave vazia derrubava a página (o Eloquent recebia `setAttribute` sem
+     * nome); com `{odometro_fim}` (o Campo escolhido no Studio vira `{campo}`
+     * no deploy), a resolução do `{campo}` da célula sobrescrevia o resultado
+     * com o valor do campo; com uma expressão no Campo, idem. Nesses casos a
+     * coluna guarda o resultado numa chave só dela, derivada da fórmula: a
+     * mesma em todo pedido (ordenar, exportar, total), sem tocar na coluna
+     * desse campo. Não vale para o mestre-detalhe, onde o Campo da coluna
+     * calculada é o que vai para o banco.
+     */
+    public static function ownEvaluateKey(string $field, string $evaluate): ?string
+    {
+        if (trim($evaluate) === '') {
+            return null;
+        }
+        if (preg_match('/^[A-Za-z_]\w*(?:->[A-Za-z_]\w*)*$/', trim($field)) === 1) {
+            return null;
+        }
+
+        return self::OWN_EVALUATE_KEY_PREFIX . substr(md5($evaluate), 0, 10);
+    }
+
+    /** Prefixo da chave própria da coluna calculada ({@see ownEvaluateKey()}). */
+    public const OWN_EVALUATE_KEY_PREFIX = '__calc_';
+
+    /** Aplica {@see ownEvaluateKey()} a esta coluna. */
+    public function useOwnEvaluateKey(): self
+    {
+        $key = self::ownEvaluateKey($this->field, $this->evaluate);
+        if ($key !== null) {
+            $this->field    = $key;
+            $this->fieldKey = $key;
+        }
+
+        return $this;
+    }
+
+    /**
      * Transforma a coluna em SALDO ACUMULADO.
      *
      *   ->running()                              // acumula o próprio campo
