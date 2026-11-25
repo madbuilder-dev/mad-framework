@@ -429,6 +429,29 @@
     $_dfRead = \Mad\Form\ReadMode::mode($__env) !== '';
     $_dfActHidden = fn($act) => $act->permMode() === 'hide' || ($_dfRead && \Mad\Form\ViewOnly::hides((string) $act->method));
     $_dfShowActions = ! $_dfRead || count(array_filter($actions, fn($a) => ! $_dfActHidden($a))) > 0;
+
+    // `hide-below` da coluna (fórum #409): a coluna some — cabeçalho, células e
+    // total — em tela mais estreita que N px, como na <mad-grid> e no
+    // <mad-field-list>. Só a coluna com a opção ganha a classe `mad-df-cN`; sem
+    // nenhuma, o HTML é o de antes. O valor continua indo no POST.
+    $_dfHbCls = [];
+    $_dfHbCss = '';
+    $_dfHbUid = '';
+    foreach ($columns as $_dfCi => $_dfCol) {
+        if ($_dfShowCol[$_dfCi] && (int) $_dfCol->hideBelow > 0) $_dfHbCls[$_dfCi] = (int) $_dfCol->hideBelow;
+    }
+    if ($_dfHbCls) {
+        $_dfHbUid = 'df' . bin2hex(random_bytes(5));
+        $_dfHbBy = [];
+        foreach ($_dfHbCls as $_dfCi => $_dfPx) $_dfHbBy[$_dfPx][] = $_dfCi;
+        krsort($_dfHbBy);
+        foreach ($_dfHbBy as $_dfPx => $_dfIdx) {
+            $_dfSel = implode(',', array_map(fn ($i) => '[data-mad-df-uid="' . $_dfHbUid . '"] .mad-df-c' . (int) $i, $_dfIdx));
+            $_dfHbCss .= '@media (max-width:' . ($_dfPx - 0.02) . 'px){' . $_dfSel . '{display:none !important}}';
+        }
+    }
+    $_dfColCls = fn (int $i): string => isset($_dfHbCls[$i]) ? ' mad-df-c' . $i : '';
+    unset($_dfCi, $_dfCol, $_dfPx, $_dfIdx, $_dfSel, $_dfHbBy);
 @endphp
 
 <div class="mad-df{{ $_dfRead ? ' mad-df-read' : '' }}" data-mad-df-name="{{ $name }}" x-data="madDetailForm({{ $alpineCfg }})">
@@ -528,7 +551,14 @@
          ═══════════════════════════════════════════════════════════════════════ --}}
 
     <div class="mad-df-list" style="margin-top:12px;">
-        <div class="mad-dg-wrap" style="overflow-x:auto;">
+        {{-- data-mobile="table": no celular o detalhe segue tabela, com rolagem
+             lateral. O cartão do celular do tema ERP é da <mad-grid> (o servidor
+             marca o lugar de cada célula); aqui escondia todas as células e
+             sobravam só os botões da linha (fórum #409). --}}
+@if($_dfHbCss !== '')
+        <style>{!! $_dfHbCss !!}</style>
+@endif
+        <div class="mad-dg-wrap" data-mobile="table"@if($_dfHbUid !== '') data-mad-df-uid="{{ $_dfHbUid }}"@endif style="overflow-x:auto;">
             <table class="mad-dg-table">
                 <thead class="mad-dg-head{{ $sticky ? ' mad-dg-sticky' : '' }}">
                     <tr>
@@ -542,7 +572,7 @@
                             // sem unidade e a largura era descartada em silêncio.
                             $_thW = \Mad\Support\CssUnits::length((string) ($col->width ?? ''));
                         @endphp
-                        <th class="mad-dg-th" style="text-align:{{ $col->align }};{{ $_thW !== '' ? 'width:'.$_thW.';' : '' }}">
+                        <th class="mad-dg-th{{ $_dfColCls($loop->index) }}" style="text-align:{{ $col->align }};{{ $_thW !== '' ? 'width:'.$_thW.';' : '' }}">
                             {{ $col->label }}
                         </th>
                         @endforeach
@@ -655,7 +685,7 @@
                                     $_cDateFmt = $_dfDateFmt[\Mad\Grid\GridRenderHelpers::rowDataKey($col->field)] ?? null;
                                 }
                             @endphp
-                            <td class="mad-dg-cell" style="text-align:{{ $col->align }};">
+                            <td class="mad-dg-cell{{ $_dfColCls($loop->index) }}" style="text-align:{{ $col->align }};">
 @if(isset($_dfColWhen[$loop->index]))
                                 <span data-mad-col-when x-show="_colVis(row, {{ $loop->index }})">
 @endif
@@ -805,7 +835,7 @@
                                 $_tot = "madNumFmt({$_agg}, 2)";
                             }
                         @endphp
-                        <td class="mad-dg-cell" style="text-align:{{ $col->align }};font-weight:600;">
+                        <td class="mad-dg-cell{{ $_dfColCls($_dfColIdx) }}" style="text-align:{{ $col->align }};font-weight:600;">
                             @if($_tot !== '')
                             <span x-text="{!! $_tot !!}"></span>
                             @endif

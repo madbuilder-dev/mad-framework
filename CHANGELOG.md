@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.357.0] — 2026-11-25
+
+### Novidades
+
+- **Detalhe:** a coluna do Detail Form aceita `hide-below`, como a da listagem: a coluna some em telas mais estreitas que a largura escolhida (no Studio, "Ocultar em telas menores que"). O valor continua sendo salvo.
+
+### Correções
+
+- **Detalhe:** no celular, com o tema ERP, a listagem do Detail Form mostrava as linhas vazias, só com o lápis e a lixeira. Agora as colunas aparecem, com rolagem lateral, nas linhas carregadas, novas e editadas (fórum #409).
+
 ## [5.356.2] — 2026-11-25
 
 ### Correções
