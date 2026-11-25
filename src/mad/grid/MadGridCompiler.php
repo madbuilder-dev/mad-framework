@@ -2705,10 +2705,14 @@ class MadGridCompiler
             }
         }
 
-        // Align
-        if (static::has($a, 'center'))       $c[] = "'align' => 'center'";
+        // Align — o `align="…"` escolhido no painel do Studio vence os atalhos
+        // `center`/`right` que o gerador põe na coluna (o painel não os mostra).
+        // Antes o `right` de uma coluna decimal passava por cima do "Centro"
+        // escolhido (fórum #409).
+        $alignAttr = isset($a['align']) ? trim(static::str($a, 'align')) : '';
+        if ($alignAttr !== '')               $c[] = static::kv('align', static::qs($alignAttr));
+        elseif (static::has($a, 'center'))   $c[] = "'align' => 'center'";
         elseif (static::has($a, 'right'))    $c[] = "'align' => 'right'";
-        elseif (isset($a['align']))          $c[] = static::kv('align', static::qs(static::str($a, 'align')));
 
         // Flags
         if (static::has($a, 'sort', 'sortable'))  $c[] = "'sortable' => true";

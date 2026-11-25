@@ -7771,6 +7771,15 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!empty($c['transform'])) {
             $col->transform($c['transform']);
         }
+        // Fórum #409: o Transformador escolhido no Studio ('percent', 'integer',
+        // 'money'…) vence o `number`/`money` que o gerador pôs na coluna — o
+        // painel não mostra esses dois e, como vinham antes no render, a coluna
+        // saía 55,00 em vez de 55,0%. Formato de data (escolhido no painel) e
+        // selo continuam vencendo, como antes.
+        if ($col->builtinFormat !== '' && ($col->isNumber || $col->isMoney)) {
+            $col->isNumber = false;
+            $col->isMoney  = false;
+        }
         if (!empty($c['mediaCaption'])) {
             $col->mediaCaption((string) $c['mediaCaption']);
         }

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.356.1] — 2026-11-24
+
+### Correções
+
+- **Listagem (grid):** o Alinhamento e o Transformador escolhidos para a coluna no Studio passam a valer na tela, também na listagem do Detail Form. Antes, numa coluna numérica, "Centro" saía à direita e "Inteiro"/"Percentual" saíam com duas casas (10,00 em vez de 10; 55,00 em vez de 55,0%). Para aplicar, atualize o framework; não precisa salvar a tela de novo.
+
 ## [5.356.0] — 2026-11-24
 
 ### Novidades

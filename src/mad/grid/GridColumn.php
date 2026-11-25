@@ -1490,9 +1490,10 @@ class GridColumn
             }
         }
 
-        // Formatador built-in do formatter-select — FALLBACK de propósito:
-        // os attrs de render-type acima (badge/money/number/date) vencem,
-        // preservando o render de colunas antigas que carregam attr + token.
+        // Formatador built-in do formatter-select — fallback dos attrs de
+        // render-type acima. Badge e data vencem; numa `<mad-col>` com
+        // `number`/`money` + Transformador, o `_colFromConfig` já tirou o
+        // number/money (fórum #409: o painel do Studio só mostra o Transformador).
         if ($this->builtinFormat !== '') {
             return htmlspecialchars(\Mad\Support\ValueFormatter::apply($value, $this->builtinFormat), ENT_QUOTES);
         }
