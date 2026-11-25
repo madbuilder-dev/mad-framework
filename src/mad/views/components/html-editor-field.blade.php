@@ -149,7 +149,24 @@
         'required' => $required,
     ]);
     $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false);
+
+    // Formulário em leitura (Visualizar da listagem, <mad-form read> — fórum
+    // #422): o texto formatado no lugar do editor, sem barra e sem edição. O
+    // HTML sai pela mesma limpeza da entrada (sem script, atributo de evento ou
+    // URL `javascript:`); vazio (só parágrafo em branco) vira "—".
+    $__rm = \Mad\Form\ReadMode::mode($__env);
+    if ($__rm !== '') {
+        $__rmHtml = is_string($initVal) ? $initVal
+            : (is_scalar($initVal) ? \Mad\Util\MadHtmlSanitizer::sanitize((string) $initVal) : '');
+        $__rmEmpty = trim(
+            html_entity_decode(strip_tags($__rmHtml, '<img><hr><table>'), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            " \t\n\r\0\x0B\u{00A0}"
+        ) === '';
+    }
 @endphp
+@if($__rm !== '')
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'html' => '<div class="mad-display-field-html">' . $__rmHtml . '</div>', 'empty' => $__rmEmpty, 'raw' => $__rmHtml, 'class' => 'mad-field-read-html', 'style' => $_dimStyle]) !!}
+@else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
@@ -168,3 +185,4 @@
     </div>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>
+@endif

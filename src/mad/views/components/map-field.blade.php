@@ -47,6 +47,18 @@
         \Mad\Form\MadFormRegistry::register($lngName, 'input', ['label' => strip_tags($label !== '' ? $label : mad_t('mad.map.lng')) . ' (' . mad_t('mad.map.lng') . ')', 'required' => $required]);
     }
 
+    // Formulário em leitura (Visualizar da listagem, <mad-form read> — fórum
+    // #422): o mapa mostra a posição gravada, sem busca, sem mover o pino
+    // (arrastar ou clicar) e sem "Limpar posição". Sem posição, "—" como os
+    // outros campos. A latitude e a longitude continuam no formulário.
+    $__rm = \Mad\Form\ReadMode::mode($__env);
+    if ($__rm !== '') {
+        $disabled    = true;
+        $search      = false;
+        $geocodeFrom = [];
+    }
+    $__rmEmpty = $__rm !== '' && (trim($latValue) === '' || trim($lngValue) === '');
+
     $hasError = $error !== '';
     $reqStar  = $required ? ' <span class="mad-required">*</span>' : '';
     $uid = \Mad\Chart\MadMap::domId('field|' . $name . '|' . $lngName);
@@ -61,8 +73,13 @@
     ];
 @endphp
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
-<div class="mad-field mad-map-field" id="{{ $uid }}" data-mad-map @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
-    @if($label !== '')
+@if($__rmEmpty)
+{!! \Mad\Form\ReadMode::field($__rm, ['name' => $name, 'label' => $label, 'text' => '', 'raw' => $latValue, 'extraHidden' => [$lngName => $lngValue], 'style' => $_dimStyle]) !!}
+@else
+<div class="mad-field mad-map-field{{ $__rm !== '' ? ' mad-field-read mad-map-field-read' : '' }}" id="{{ $uid }}" data-mad-map @if($__rm !== '' && $name !== '') data-mad-field="{{ $name }}" @endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
+    @if($label !== '' && $__rm !== '')
+        <div class="mad-display-field-header"><span class="mad-display-field-label">{!! $label !!}</span></div>
+    @elseif($label !== '')
         <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
     @endif
 
@@ -92,7 +109,9 @@
     <input type="hidden" name="{{ $name }}" id="{{ $name }}" value="{{ $latValue }}" data-map-lat mad:model="{{ $name }}">
     <input type="hidden" name="{{ $lngName }}" id="{{ $lngName }}" value="{{ $lngValue }}" data-map-lng mad:model="{{ $lngName }}">
 
+    @if($__rm === '')
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : ($hint !== '' ? e($hint) : (!$disabled ? e(mad_t('mad.map.hint')) : '')) !!}</p>
+    @endif
 
     <script type="application/json" data-map-config>{!! json_encode($__cfg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR) !!}</script>
     <script>
@@ -110,3 +129,4 @@
     })();
     </script>
 </div>
+@endif

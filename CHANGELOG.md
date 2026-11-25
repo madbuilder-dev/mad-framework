@@ -12,6 +12,18 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.358.1] — 2026-11-25
+
+### Correções
+
+- **Campos:** no modo leitura (Visualizar da listagem, `<mad-form read>`), o mapa deixava buscar endereço, mover o pino e limpar a posição, e o editor HTML abria editável. Agora o mapa só mostra a posição e o editor mostra o texto formatado; vazio aparece como "—".
+- **Campos:** no modo leitura, busca, pesquisa (também a do banco), busca única e múltipla, checklist, scanner, ícone e lista ordenável não respondem mais a clique nem ao Tab; somem os botões de limpar, pesquisar, câmera, arrastar e marcar todos.
+
+## [5.358.0] — 2026-11-25
+
+### Novidades
+
+- **Campos:** nova opção **Esconder o formato quando vazio** nos campos de data e de data e hora (`hide-empty-format`), também no Detail Form. Marcada, o campo vazio fica em branco, sem o `dd/mm/aaaa`; o formato aparece ao clicar e ao digitar. Sem a opção, nada muda (fórum #421).
 ## [5.357.5] — 2026-11-25
 
 ### Correções

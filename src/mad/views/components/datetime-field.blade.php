@@ -17,6 +17,10 @@
     // #293): `short` → "Ter, 24/03/2026", `long` → "Terça-feira, 24/03/2026".
     // Vazio = como sempre. A digitação e o valor gravado não mudam.
     'weekday' => '',
+    // "Esconder o formato quando vazio" (fórum #421): o campo editável e vazio
+    // fica em branco; o formato (dd/mm/aaaa) aparece ao focar e ao digitar.
+    // Sem a opção, o HTML é o de sempre.
+    'hideEmptyFormat' => false,
 ])
 @php
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
@@ -89,6 +93,9 @@
     // campo vazio fica em branco em vez de "dd/mm/aaaa" (fórum #353). O CSS
     // `.mad-date-input` cobre o bloqueio que vem depois (disabled-when).
     $placeholder = ($disabled || $readonly) ? '' : strtr($display_mask, ['ii' => 'mm', 'y' => mad_t('mad.ui.year_letter')]);
+    // `hide-empty-format`: o formato some do campo vazio fora do foco (o CSS
+    // esconde o placeholder; ao focar e ao digitar ele volta).
+    $hideEmptyFormat = filter_var($hideEmptyFormat ?? ($hide_empty_format ?? false), FILTER_VALIDATE_BOOLEAN);
 
     $alpineCfg = json_encode([
         'displayMask'  => $display_mask,
@@ -125,7 +132,7 @@
             id="{{ $id }}"
             name="{{ $name }}"
             type="text"
-            class="mad-input mad-date-input{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
+            class="mad-input mad-date-input{{ $hideEmptyFormat ? ' mad-date-input--hide-empty-format' : '' }}{{ \Mad\Support\CssUnits::alignClass($align ?? '') }}{{ $hasError ? ' mad-input-error' : '' }}"
             @if($weekdayLabels) :class="{ 'mad-date-input--weekday': weekdayText }" @endif
             value="{{ $value }}"
             placeholder="{{ $placeholder }}"

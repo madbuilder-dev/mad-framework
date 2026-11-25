@@ -2927,6 +2927,16 @@ button.mad-form-errors-link:focus-visible { outline: 2px solid currentColor; out
 .mad-form-grid > :has(> .mad-field-read-skip:only-child) { display: none; }
 .mad-form-read .mad-field:not(.mad-field-read) :is(input:not([type="hidden"]), select, textarea, .mad-sel-control) { pointer-events: none; }
 .mad-form-read :is(.mad-fl-add-btn, .mad-fl-add-row, .mad-fl-remove-btn, .mad-fl-handle) { display: none; }
+/* Fórum #422: também os botões de editar desses campos (limpar a busca, abrir a
+   pesquisa, câmera, marcar todos, filtrar), o escolher do ícone, o arrastar da
+   lista ordenável e o clique na linha e no rótulo (checklist: a linha marca e
+   desmarca). A lista continua rolando. O teclado (Tab) fica travado pelo
+   mad-ui.js. */
+.mad-form-read .mad-field:not(.mad-field-read) :is(.mad-iconfield-trigger, .mad-sort-list, label, td, th) { pointer-events: none; }
+.mad-form-read .mad-field:not(.mad-field-read) :is(.mad-search-clear, .mad-seek-btn, .mad-seek-clear-btn, .mad-scanner-btn, .mad-sort-handle, .mad-checklist-filter-btn, .mad-checklist-select-all) { display: none; }
+.mad-form-read .mad-field:not(.mad-field-read) .mad-input:has(+ .mad-seek-btn) { border-top-right-radius: var(--mad-radius); border-bottom-right-radius: var(--mad-radius); }
+/* Mapa em leitura: o rótulo no visual dos outros campos em leitura. */
+.mad-map-field-read > .mad-display-field-header { margin-bottom: 3px; }
 /* Célula de arquivo da lista de campos em leitura: o arquivo para ver, sem
    escolher, trocar ou remover (a janela dos vários arquivos vira galeria). */
 .mad-form-read :is(.mad-fl-file-pick, .mad-fl-file-tag-x, .mad-flm-modal .mad-file-body, .mad-flm-modal .mad-multi-file-card-remove) { display: none; }
@@ -4695,6 +4705,9 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    (disabled-when/readonly-when); campo editável continua com a máscara. */
 .mad-input.mad-date-input:disabled::placeholder,
 .mad-input.mad-date-input:read-only::placeholder { color: transparent; }
+/* `hide-empty-format` (fórum #421): o campo editável e vazio fica em branco;
+   ao focar, o formato volta como guia e a digitação segue a máscara. */
+.mad-input.mad-date-input--hide-empty-format:not(:focus)::placeholder { color: transparent; }
 .mad-datepicker-btn {
   display: inline-flex;
   align-items: center;

@@ -18,11 +18,13 @@ use Mad\Component\MadRenderContext;
  * Cada campo que conhece o modo (input, textarea, select, dbcombo, date,
  * datetime, money, number, switch, checkbox, radio, dbradio e, desde o fórum
  * #394, numeric, cep, cnpj, time, spinner, range, color, password, daterange,
- * checkbox-group, select-check, dbcheckbox-group, dbselect-check) chama field() no
- * lugar do controle: rótulo e valor no visual do <mad-display-field> e o
- * valor num <input type="hidden">, para a ação da tela que lê o formulário
- * continuar recebendo o mesmo dado. Os outros campos ficam travados pelo CSS
- * (.mad-form-read).
+ * checkbox-group, select-check, dbcheckbox-group, dbselect-check e, desde o
+ * fórum #422, html-editor) chama field() no lugar do controle: rótulo e valor
+ * no visual do <mad-display-field> e o valor num <input type="hidden">, para a
+ * ação da tela que lê o formulário continuar recebendo o mesmo dado. O
+ * map-field mostra o mapa sem busca, sem mover o pino e sem limpar. Os outros
+ * campos ficam travados pelo CSS (.mad-form-read: mouse) e pelo mad-ui.js
+ * (teclado).
  */
 final class ReadMode
 {
@@ -72,11 +74,12 @@ final class ReadMode
      * @param array{
      *     name?: string, label?: string, text?: string|null, html?: string|null,
      *     raw?: string|array|null, hidden?: bool, bool?: bool, on?: bool, class?: string, style?: string,
-     *     empty?: bool, noHidden?: bool
+     *     empty?: bool, noHidden?: bool, extraHidden?: array<string, mixed>
      * } $o  `text` (escapado) ou `html` (já seguro); `raw` vai no hidden; `bool`
      *       = campo sim/não, ligado conforme `on` (desligado conta como vazio no
      *       modo 'filled'); `empty` decide o vazio quando o html não tem texto;
-     *       `noHidden` = sem o valor no formulário.
+     *       `noHidden` = sem o valor no formulário; `extraHidden` = outras
+     *       colunas do mesmo campo (`[nome => valor]`, a longitude do mapa).
      */
     public static function field(string $mode, array $o): string
     {
@@ -102,6 +105,12 @@ final class ReadMode
         // um vazio no lugar do arquivo poderia ser lido como "trocar/remover"
         // por uma ação que grave o formulário.
         $hiddenInputs = empty($o['noHidden']) ? self::hiddenInputs($name, $raw) : '';
+        // Campo de duas colunas (mapa: latitude e longitude): a segunda vai junto.
+        if (empty($o['noHidden']) && ! empty($o['extraHidden']) && is_array($o['extraHidden'])) {
+            foreach ($o['extraHidden'] as $extraName => $extraRaw) {
+                $hiddenInputs .= self::hiddenInputs((string) $extraName, $extraRaw);
+            }
+        }
         if ($mode === self::FILLED && $empty) {
             // Fora da tela, mas o valor continua no formulário.
             return '<div class="mad-field-read-skip" hidden'

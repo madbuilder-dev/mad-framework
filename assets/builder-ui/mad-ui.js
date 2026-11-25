@@ -20132,3 +20132,22 @@ document.addEventListener("alpine:init", function () {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
 })();
+
+/* Formulário em leitura (<mad-form read>, Visualizar da listagem — fw#498,
+   fórum #422). O campo que não conhece o modo já não responde ao mouse
+   (mad-ui.css); aqui os controles dele também não recebem o foco do teclado:
+   o Tab não para neles, então não dá para digitar, abrir a pesquisa nem limpar. */
+(function () {
+    if (typeof document === 'undefined') return;
+    var FIELD = '.mad-form-read .mad-field:not(.mad-field-read)';
+    // Controles e tudo o que entra no Tab (o seletor da busca única é um
+    // div com tabindex).
+    var CONTROLS = 'input, select, textarea, button, [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+    document.addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (!t || t.nodeType !== 1 || typeof t.closest !== 'function' || typeof t.matches !== 'function') return;
+        if (!t.matches(CONTROLS) || !t.closest(FIELD) || t.closest('.mad-field-read')) return;
+        if (t.type === 'hidden') return;
+        if (typeof t.blur === 'function') t.blur();
+    }, true);
+})();
