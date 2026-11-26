@@ -12,6 +12,19 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.369.0] — 2026-11-26
+
+### Melhorias
+
+- **Cobrança:** a tela de pagamento ficou mais limpa e curta: Pix, cartão e boleto viram opções com ícone (dá para trocar com as setas do teclado) e o resumo do pedido fica fixo ao lado, com plano, ciclo, vencimento, quem processa o pagamento e um atalho para mudar de plano.
+- **Cobrança:** quando falta o CPF ou CNPJ para gerar o Pix ou o boleto, a tela pede como um passo normal, com máscara no campo, Enter para enviar e o valor no botão ("Gerar Pix de R$ 59,00"). O Pix gerado mostra o QR, o código para copiar e o "aguardando pagamento" com a contagem do prazo.
+- **Cobrança:** revisão, pagamento e confirmação usam a mesma moldura, sem o cartão branco de tela inteira; o "Voltar" do pagamento leva para Minha conta › Assinatura.
+
+### Correções
+
+- **Layout:** a trilha de passos com pontos (`<mad-steps variant="dots">`) agora passa pelo meio das bolinhas e vai do primeiro ao último passo; antes a barra preenchida corria abaixo delas e parecia quebrada.
+- **Cobrança:** no cartão do Mercado Pago, os campos de número, validade e código de segurança tinham altura de caixa grande; agora têm a altura de um campo normal.
+
 ## [5.368.1] — 2026-11-26
 
 ### Novidades

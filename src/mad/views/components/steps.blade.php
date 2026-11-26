@@ -42,6 +42,15 @@
     // Fill percent for dots/progress
     $fillPercent = $totalSteps > 1 ? (($current - 1) / ($totalSteps - 1)) * 100 : 0;
 
+    // Dots: cada passo é um track de 1/N e a bolinha fica no CENTRO dele, então
+    // a trilha vai do centro do primeiro (50/N %) ao centro do último. De borda a
+    // borda ela sobrava antes do 1º e depois do último ponto, e o preenchimento
+    // (medido sobre a largura toda) terminava antes da bolinha do passo atual.
+    $dotsInset   = $totalSteps > 0 ? round(50 / $totalSteps, 4) : 0;
+    $dotsFill    = $totalSteps > 1
+        ? round((max(0, min($current, $totalSteps) - 1) / ($totalSteps - 1)) * (100 - 2 * $dotsInset), 4)
+        : 0;
+
     // Size class
     $sizeClass = '';
     if ($size === 'sm') $sizeClass = ' mad-steps--sm';
@@ -89,8 +98,8 @@
 
 @elseif($variant === 'dots')
 <div class="mad-steps mad-steps--dots{{ $sizeClass }} {{ $class }}">
-    <div class="mad-steps-connector"></div>
-    <div class="mad-steps-connector-fill" style="width:{{ $fillPercent }}%"></div>
+    <div class="mad-steps-connector" style="left:{{ $dotsInset }}%;right:{{ $dotsInset }}%"></div>
+    <div class="mad-steps-connector-fill" style="left:{{ $dotsInset }}%;width:{{ $dotsFill }}%"></div>
     @foreach($steps as $i => $step)
         @php $_stepKey = json_encode((string) $step['key']); @endphp
         <div class="mad-step mad-step--{{ $step['status'] }}"

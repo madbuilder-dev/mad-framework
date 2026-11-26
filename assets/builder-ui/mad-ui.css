@@ -12582,9 +12582,24 @@ textarea.mad-dg-inline-input {
   font-size: 0;
 }
 .mad-steps--dots .mad-step-circle svg { display: none; }
-.mad-steps--dots .mad-steps-connector { top: 5px; }
 .mad-steps--dots.mad-steps--sm .mad-step-circle { width: 10px; height: 10px; }
 .mad-steps--dots.mad-steps--lg .mad-step-circle { width: 16px; height: 16px; }
+/* Trilha e preenchimento passam pelo CENTRO das bolinhas (metade do círculo
+   menos metade do traço de 2px). Antes só a trilha cinza tinha o `top` dos
+   dots; o preenchimento ficava com o `top` do tamanho (12px no `sm`) e a barra
+   escura corria 7px ABAIXO das bolinhas — a trilha do checkout parecia
+   quebrada. As pontas (left/right) vêm do componente: do centro do primeiro
+   passo ao centro do último. */
+.mad-steps--dots .mad-steps-connector,
+.mad-steps--dots .mad-steps-connector-fill { top: 5px; }
+.mad-steps--dots.mad-steps--sm .mad-steps-connector,
+.mad-steps--dots.mad-steps--sm .mad-steps-connector-fill { top: 4px; }
+.mad-steps--dots.mad-steps--lg .mad-steps-connector,
+.mad-steps--dots.mad-steps--lg .mad-steps-connector-fill { top: 7px; }
+/* Passo atual: halo na cor do tema (o rgba fixo do círculo genérico some no escuro). */
+.mad-steps--dots .mad-step--active .mad-step-circle {
+  box-shadow: 0 0 0 4px var(--mad-accent-ring, rgba(24,24,27,.12));
+}
 
 /* ── Numbers variant ── */
 .mad-steps--numbers .mad-step-circle {
