@@ -1433,6 +1433,16 @@ class MadGridCompiler
         // form-title e add-label suportam expressões PHP (:form-title="__('key')")
         $formTitleExpr = isset($attrs['form-title']) ? static::emit($attrs['form-title']) : "''";
         $addLabelExpr  = isset($attrs['add-label'])  ? static::emit($attrs['add-label'])  : "mad_t('mad.ui.add')";
+        // Título e cor de fundo da barra do Adicionar (modal/cortina, fórum #439).
+        // Título literal ou `:toolbar-title="__('chave')"` (traduzível, como o
+        // form-title); nu ou vazio = sem título. Só vão ao array quando escritos:
+        // sem eles a tela compila como antes.
+        $toolbarTitleExpr = (isset($attrs['toolbar-title']) && $attrs['toolbar-title']['type'] !== 'bool'
+            && ($attrs['toolbar-title']['type'] === 'php' || trim((string) $attrs['toolbar-title']['value']) !== ''))
+            ? static::emit($attrs['toolbar-title']) : '';
+        // Cor validada já aqui (hex, rgb/hsl, var(--…) ou nome): o que não for cor
+        // não chega ao PHP compilado nem ao HTML.
+        $toolbarBg = \Mad\Support\CssUnits::color(static::str($attrs, 'toolbar-bg', ''));
         $beforeAdd     = static::str($attrs, 'before-add', '');
         $beforeDelete  = static::str($attrs, 'before-delete', '');
         $model         = static::str($attrs, 'model', '');
@@ -1562,6 +1572,8 @@ class MadGridCompiler
              . "'formTitle' => {$formTitleExpr}, "
              . "'formCols' => " . (int)$formCols . ", "
              . "'addLabel' => {$addLabelExpr}, "
+             . ($toolbarTitleExpr !== '' ? "'toolbarTitle' => {$toolbarTitleExpr}, " : '')
+             . ($toolbarBg !== '' ? "'toolbarBg' => " . static::qs($toolbarBg) . ", " : '')
              . "'beforeAdd' => " . static::qs($beforeAdd) . ", "
              . "'beforeDelete' => " . static::qs($beforeDelete) . ", "
              . "'model' => " . static::qs($model) . ", "

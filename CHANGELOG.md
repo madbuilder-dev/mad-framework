@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.373.0] — 2026-11-26
+
+### Novidades
+
+- **Detalhe:** a barra do botão Adicionar do `<mad-detail-form>` (modos janela e cortina) aceita título e cor de fundo: `toolbar-title="Extras do plano"` (ou `:toolbar-title="__('chave')"`, traduzível) e `toolbar-bg="#b3e0f2"`. O texto fica escuro ou claro conforme a cor, legível nos dois temas. Sem os atributos, nada muda.
+
 ## [5.372.0] — 2026-11-26
 
 ### Melhorias

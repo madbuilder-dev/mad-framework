@@ -11147,6 +11147,30 @@ textarea.mad-dg-inline-input {
   justify-content: flex-end;
   margin-bottom: 12px;
 }
+/* Título e cor de fundo da barra do Adicionar (<mad-detail-form toolbar-title
+   toolbar-bg>, fórum #439): título à esquerda com a tipografia do título de
+   seção, botão à direita. Com cor, a faixa ganha fundo e a tinta vem do
+   contraste calculado no servidor (--mad-df-bar-ink), legível nos dois temas. */
+.mad-df-toolbar--titled {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mad-df-toolbar--filled {
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 4px 4px 14px;
+  border-radius: var(--mad-radius, 8px);
+  background: var(--mad-df-bar-bg);
+  color: var(--mad-df-bar-ink, inherit);
+}
+.mad-df-toolbar-title {
+  min-width: 0;
+  font-size: var(--mad-section-title-size, .875rem);
+  font-weight: var(--mad-section-title-weight, 600);
+  color: var(--mad-df-bar-ink, var(--mad-section-title-color, var(--mad-text)));
+  overflow-wrap: anywhere;
+}
 
 .mad-df-form-inline {
   padding: 16px;

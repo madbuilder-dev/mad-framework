@@ -5,6 +5,17 @@
     $formTitle  = $formTitle  ?? '';
     $formCols   = (int)($formCols ?? 2);
     $addLabel   = $addLabel   ?? mad_t('mad.ui.add');
+    // Barra do Adicionar com título e cor de fundo (modal/cortina, fórum #439).
+    // Título escapado na saída; cor validada (CssUnits::color) e a tinta do texto
+    // escolhida pelo contraste com o fundo (vale no tema escuro). Sem os dois, a
+    // barra sai como sempre, byte a byte.
+    $_dfBarTitle = trim((string) ($toolbarTitle ?? ''));
+    $_dfBarBg    = \Mad\Support\CssUnits::color($toolbarBg ?? '');
+    $_dfBarInk   = $_dfBarBg !== '' ? \Mad\Support\CssUnits::contrastInk($_dfBarBg) : '';
+    $_dfBarCls   = ($_dfBarTitle !== '' ? ' mad-df-toolbar--titled' : '') . ($_dfBarBg !== '' ? ' mad-df-toolbar--filled' : '');
+    $_dfBarStyle = $_dfBarBg !== ''
+        ? ' style="--mad-df-bar-bg:' . e($_dfBarBg) . ($_dfBarInk !== '' ? ';--mad-df-bar-ink:' . $_dfBarInk : '') . '"'
+        : '';
     $beforeAdd    = $beforeAdd    ?? '';         // método PHP para validação server-side ao adicionar
     $beforeDelete = $beforeDelete ?? '';         // método PHP para validação server-side ao deletar
     $model        = $model        ?? '';         // classe do model Eloquent (ex: 'DocReceitaItem')
@@ -548,10 +559,19 @@
 
     @if($_dfRead)
     {{-- Em leitura: sem Adicionar e sem o formulário do item. --}}
+@if($_dfBarTitle !== '' && $mode !== 'inline')
+    {{-- O título da barra continua, sem o botão (fórum #439). --}}
+    <div class="mad-df-toolbar{{ $_dfBarCls }}"{!! $_dfBarStyle !!}>
+        <div class="mad-df-toolbar-title">{{ $_dfBarTitle }}</div>
+    </div>
+@endif
     @elseif($mode === 'modal')
 
     {{-- Botão Adicionar --}}
-    <div class="mad-df-toolbar">
+    <div class="mad-df-toolbar{{ $_dfBarCls }}"{!! $_dfBarStyle !!}>
+@if($_dfBarTitle !== '')
+        <div class="mad-df-toolbar-title">{{ $_dfBarTitle }}</div>
+@endif
         <button type="button" class="mad-btn mad-btn-primary" @click="openNew()">
             <i data-lucide="plus" style="width:14px;height:14px;"></i>
             {!! $addLabel !!}
@@ -575,7 +595,10 @@
     @elseif($mode === 'drawer')
 
     {{-- Botão Adicionar --}}
-    <div class="mad-df-toolbar">
+    <div class="mad-df-toolbar{{ $_dfBarCls }}"{!! $_dfBarStyle !!}>
+@if($_dfBarTitle !== '')
+        <div class="mad-df-toolbar-title">{{ $_dfBarTitle }}</div>
+@endif
         <button type="button" class="mad-btn mad-btn-primary" @click="openNew()">
             <i data-lucide="plus" style="width:14px;height:14px;"></i>
             {!! $addLabel !!}
