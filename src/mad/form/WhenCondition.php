@@ -34,6 +34,32 @@ final class WhenCondition
     }
 
     /**
+     * Os campos que a condição lê (`{campo}` e `$v('campo')`), sem repetir;
+     * null quando a expressão não é do pedaço que o servidor entende.
+     *
+     * @return list<string>|null
+     */
+    public static function fieldRefs(string $expr): ?array
+    {
+        $expr = trim($expr);
+        if ($expr === '' || strlen($expr) > 2000) {
+            return null;
+        }
+        $tokens = self::tokens($expr);
+        if ($tokens === null) {
+            return null;
+        }
+        $out = [];
+        foreach ($tokens as $t) {
+            if ($t[0] === 'field') {
+                $out[(string) $t[1]] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /**
      * true/false pela condição; null quando não dá para saber.
      *
      * @param array<string, mixed> $values valores enviados pelo formulário
@@ -195,6 +221,16 @@ final class WhenCondition
             $c = $s[$i];
             if (ctype_space($c)) {
                 $i++;
+                continue;
+            }
+            // `$v('campo')`: a forma que o navegador também aceita (é o que o
+            // `{campo}` vira lá). Só com o nome literal entre aspas.
+            if ($c === '$') {
+                if (!preg_match('/\G\$v\(\s*([\'"])([A-Za-z_]\w*)\1\s*\)/', $s, $m, 0, $i)) {
+                    return null;
+                }
+                $out[] = ['field', $m[2]];
+                $i += strlen($m[0]);
                 continue;
             }
             if ($c === '{') {

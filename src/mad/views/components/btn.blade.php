@@ -1,4 +1,4 @@
-@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'confirmVariant' => '', 'confirmFocus' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => '', 'denyCondition' => '', 'validate' => false])
+@props(['name' => '', 'variant' => 'secondary', 'size' => '', 'icon' => '', 'iconEnd' => '', 'href' => '', 'target' => '', 'type' => 'button', 'disabled' => false, 'loading' => false, 'block' => false, 'attrs' => '', 'class' => '', 'label' => '', 'confirm' => '', 'confirmVariant' => '', 'confirmFocus' => '', 'color' => '', 'title' => '', 'ariaLabel' => '', 'id' => '', 'ariaPressed' => '', 'ariaExpanded' => '', 'ariaControls' => '', 'ariaHaspopup' => '', 'ariaDescribedby' => '', 'permAction' => '', 'permClass' => '', 'position' => '', 'disabledHint' => '', 'denyCondition' => '', 'validate' => false, 'whenServer' => false])
 @php
     $disabled = !empty($disabled);
     $loading  = !empty($loading);
@@ -182,6 +182,23 @@
             $title      = '';
         }
     }
+    // `visible-when` decidido no SERVIDOR (decisão do dono, 26/11/2026): o
+    // compilador marca `whenServer` quando a condição não lê campo editável
+    // deste arquivo. Falsa com o registro aberto: o botão sai entre marcas e a
+    // tela decide no fim do desenho, com o HTML inteiro — só some se nenhum
+    // campo da condição for editável em lugar nenhum da tela, e aí a ação dele
+    // é reavaliada na chamada. Verdadeira ou "não sei": sai como sempre.
+    $_vwToken = '';
+    if ($whenServer && ! $_isHidden && $_permMode !== 'hide') {
+        $_vwExpr = \Mad\Form\WhenCondition::fromAttrs((string) $attrs, 'visible');
+        $_vwComp = \Mad\Component\MadRenderContext::getComponent();
+        if ($_vwExpr !== '' && $_vwComp instanceof \Mad\Component\MadComponent) {
+            $_vwMeth = preg_match('/\bdata-mad-click\s*=\s*"\s*([A-Za-z_][A-Za-z0-9_]*)/', (string) $attrs, $_vm) ? $_vm[1] : '';
+            if ($_vwComp->_buttonWhenVerdict($_vwExpr, $_vwMeth, ($_denyText ?? '') !== '') === false) {
+                $_vwToken = $_vwComp->_deferWhenHide($_vwExpr, $_vwMeth);
+            }
+        }
+    }
     // `disabled-hint`: botão desabilitado que diz POR QUÊ ("Limite do plano:
     // 2 unidades…"). Mesmo modo da ação sem permissão, acima: focável, clique
     // barrado pelo mad-ui.js e a dica aparece no hover, no foco e no toque.
@@ -276,6 +293,7 @@
     }
 @endphp
 {{-- Modo "ocultos": o botão da ação sem permissão simplesmente não vai pra tela. --}}
+@if($_vwToken !== '')<!--mad-vw:{{ $_vwToken }}-->@endif
 @if($_permMode !== 'hide')
 @if($href)
 <a href="{{ $href }}"
@@ -308,3 +326,4 @@
 </button>
 @endif
 @endif
+@if($_vwToken !== '')<!--/mad-vw:{{ $_vwToken }}-->@endif

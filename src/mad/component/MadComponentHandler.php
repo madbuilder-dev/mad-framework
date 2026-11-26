@@ -774,7 +774,7 @@ class MadComponentHandler
         // contadores). O snapshot do state deve ser DEPOIS do render para capturar
         // essas mudanças no diff do auto-bind.
         MadVarRegistry::reset();
-        $html = $component->render();
+        $html = $component->_applyWhenHides($component->render());
 
         // O formulário anota o que ESTE render declara (é o que ele aceita do
         // navegador na próxima requisição) e, se algo foi recusado agora e a

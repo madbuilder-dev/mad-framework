@@ -2471,6 +2471,38 @@ class MadForm
         $this->_known[self::DECLARED]['bd'][$method] = $reason;
     }
 
+    /**
+     * Condição `visible-when` do botão que chama `$method`, quando o servidor
+     * a decidiu falsa com CERTEZA (nenhum campo dela é editável na tela). A
+     * chamada do método é reavaliada com os valores da tela na hora
+     * (MadComponent::_buttonDenyRefusal). '' tira a anotação.
+     *
+     * @internal chamado pelo MadComponent ao fechar o desenho
+     */
+    public function declareButtonWhen(string $method, string $expr): void
+    {
+        if ($method === '' || $this->_openedBefore) {
+            return;
+        }
+        if ($expr === '') {
+            if (isset($this->_known[self::DECLARED]['bw'][$method])) {
+                unset($this->_known[self::DECLARED]['bw'][$method]);
+            }
+
+            return;
+        }
+        $this->_openDeclared();
+        $this->_known[self::DECLARED]['bw'][$method] = $expr;
+    }
+
+    /** A condição anotada por declareButtonWhen() para `$method`, ou ''. */
+    public function buttonWhenFor(string $method): string
+    {
+        $expr = $this->_known[self::DECLARED]['bw'][$method] ?? '';
+
+        return is_string($expr) ? $expr : '';
+    }
+
     /** O motivo da recusa do botão que chama `$method` (declareButtonDeny), ou ''. */
     public function buttonDenyFor(string $method): string
     {

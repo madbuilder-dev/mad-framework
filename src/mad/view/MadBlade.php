@@ -65,8 +65,18 @@ class MadBladeCompiler extends BladeCompiler
         }
     }
 
+    /**
+     * Nomes que a tela em compilação usa como campo EDITÁVEL (qualquer `<mad-*>`
+     * com `name` que não seja o campo de exibição, `<input|select|textarea
+     * name>` e `mad:model`). null fora de uma compilação. Ver whenServerFor().
+     *
+     * @var array<string, true>|null
+     */
+    private ?array $_whenEditable = null;
+
     public function compileString($value)
     {
+        $this->_whenEditable = self::editableNames((string) $value);
         // 0. Marcadores de origem do Modo Vibe (MAD_SOURCE_MARKERS=1, só no
         //    Teste Online): <!--mad:s{n}@{view}--> em volta de cada <mad-*> da
         //    view do app, ANTES de qualquer precompiler mexer no texto — o
@@ -744,6 +754,65 @@ class MadBladeCompiler extends BladeCompiler
      * @param string $tag Nome da tag sendo compilada ('btn', 'card'…), quando
      *                    o chamador sabe. Vazio = compilação avulsa.
      */
+    /**
+     * Os campos editáveis da tela (ver $_whenEditable). Na dúvida o nome entra:
+     * nome a mais só deixa a condição para o navegador, como sempre foi.
+     *
+     * @return array<string, true>
+     */
+    private static function editableNames(string $src): array
+    {
+        $out = [];
+        if (preg_match_all('/<mad-([a-z0-9-]+)\b([^>]*)>/i', $src, $tags, PREG_SET_ORDER)) {
+            foreach ($tags as $t) {
+                if (strtolower($t[1]) === 'display-field') {
+                    continue;
+                }
+                if (preg_match_all('/(?:^|\s)(?:name|mad:model(?:\.[a-z]+)*)\s*=\s*["\']([A-Za-z_][A-Za-z0-9_]*)["\']/i', $t[2], $n)) {
+                    foreach ($n[1] as $name) {
+                        $out[$name] = true;
+                    }
+                }
+            }
+        }
+        if (preg_match_all('/<(?:input|select|textarea)\b[^>]*\bname\s*=\s*["\']([A-Za-z_][A-Za-z0-9_]*)["\']/i', $src, $n)) {
+            foreach ($n[1] as $name) {
+                $out[$name] = true;
+            }
+        }
+        if (preg_match_all('/\bmad:model(?:\.[a-z]+)*\s*=\s*["\']([A-Za-z_][A-Za-z0-9_]*)["\']/i', $src, $n)) {
+            foreach ($n[1] as $name) {
+                $out[$name] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * O `visible-when` do botão pode ser decidido no SERVIDOR com os dados do
+     * registro: a condição é do pedaço que o servidor entende e não lê nenhum
+     * campo editável da tela (esses o navegador decide, na hora em que a
+     * pessoa preenche). Ver MadComponent::_buttonWhenVerdict().
+     */
+    private function whenServerFor(string $expr): bool
+    {
+        if ($this->_whenEditable === null) {
+            return false;
+        }
+        $refs = \Mad\Form\WhenCondition::fieldRefs(html_entity_decode($expr, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($refs === null) {
+            return false;
+        }
+        foreach ($refs as $name) {
+            if (isset($this->_whenEditable[$name])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     protected function parseParams($params, string $tag = ''): string
     {
         $compiled     = [];
@@ -822,6 +891,13 @@ class MadBladeCompiler extends BladeCompiler
                     if (trim($val) !== '') {
                         $extraAttrs[] = 'x-mad-when:' . $wm[1] . '="'
                             . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
+                        // Botão cuja condição só lê dados do registro (campo de
+                        // exibição, coluna fora da tela): o servidor decide e,
+                        // falsa, o botão nem vai para o HTML e a ação recusa
+                        // (decisão do dono, 26/11/2026).
+                        if ($wm[1] === 'visible' && $tag === 'btn' && $this->whenServerFor($val)) {
+                            $compiled[] = '"whenServer"=>true';
+                        }
                         // O campo que a condição lê é usado pela TELA: quando
                         // não é coluna, é campo só de tela (não é valor perdido).
                         if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_wt)) {

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.372.0] — 2026-11-26
+
+### Melhorias
+
+- **Formulário:** botão com "Visível quando" que só lê dados do registro (campo de exibição ou coluna fora da tela) passa a ser decidido também no servidor: com a condição falsa, o botão não vai para a tela e a ação dele é recusada. Com campo editável na condição, o navegador continua decidindo na hora.
+
 ## [5.371.1] — 2026-11-26
 
 ### Correções

@@ -1374,6 +1374,7 @@ abstract class MadComponent
      */
     public function _wrapRenderedHtml(string $html): string
     {
+        $html = $this->_applyWhenHides($html);
         $this->dehydrate();
 
         // Este HTML vai para o navegador (quem embrulha é quem entrega: a
@@ -3040,6 +3041,162 @@ abstract class MadComponent
         return $reason;
     }
 
+    /**
+     * `visible-when` do botão decidido no SERVIDOR com os dados do registro
+     * aberto (decisão do dono, 26/11/2026). O compilador só pede isto quando a
+     * condição não lê campo editável da tela (MadBlade::whenServerFor).
+     *
+     * Os valores são os do registro como o campo de exibição os mostra ao
+     * navegador (`data-mad-display-value`): booleano vira "1"/"0", lista vira
+     * texto separado por vírgula, nulo vira "". Campo que o registro não tem
+     * ou expressão fora do que o servidor entende dá null ("não sei"): o botão
+     * sai como sempre e o navegador decide.
+     *
+     * Falsa: anota a recusa da ação do botão (`$method`) para a chamada forjada
+     * — o mesmo caminho da deny-condition (fw#636). Verdadeira ou "não sei":
+     * tira a anotação deixada por um desenho anterior, a não ser que a
+     * deny-condition deste desenho tenha recusado (`$keepDeny`).
+     *
+     * @internal chamado pela view do framework (btn)
+     */
+    public function _buttonWhenVerdict(string $expr, string $method, bool $keepDeny = false): ?bool
+    {
+        $verdict = $this->_whenVerdictWith($expr, $this->_primaryForm());
+        if ($verdict !== false && $method !== '') {
+            // Verdadeira ou "não sei" agora: a anotação de um desenho anterior sai.
+            $this->_primaryForm()?->declareButtonWhen($method, '');
+        }
+
+        return $verdict;
+    }
+
+    /**
+     * A condição com os valores que o formulário tem agora: os do registro e,
+     * numa chamada, os que a tela enviou para os campos que ela aceita. Campo
+     * que não está em nenhum dos dois ou expressão fora do que o servidor
+     * entende: null ("não sei").
+     */
+    private function _whenVerdictWith(string $expr, ?\Mad\Form\MadForm $form): ?bool
+    {
+        $refs = \Mad\Form\WhenCondition::fieldRefs($expr);
+        if ($refs === null) {
+            return null;
+        }
+        $data = $form !== null ? (array) $form->fields : [];
+        if ($data === []) {
+            $data = \Mad\Component\MadRenderContext::current();
+        }
+        $values = [];
+        foreach ($refs as $name) {
+            if (array_key_exists($name, $data)) {
+                $values[$name] = self::_whenText($data[$name]);
+            }
+        }
+
+        return \Mad\Form\WhenCondition::evaluate($expr, $values);
+    }
+
+    /** Botões que o desenho deu como falsos e esperam o fim do render (ver _applyWhenHides). @var array<string, array{0:string,1:string,2:list<string>}> */
+    private array $_whenPending = [];
+
+    /**
+     * O botão saiu falso com o registro: o desenho o marca e a decisão fica
+     * para quando a tela INTEIRA estiver pronta (inclusive o que veio de outro
+     * arquivo, include ou parte desenhada em PHP) — só então dá para ter
+     * certeza de que nenhum campo da condição é editável.
+     *
+     * @internal chamado pela view do framework (btn)
+     * @return string a marca que envolve o botão no HTML
+     */
+    public function _deferWhenHide(string $expr, string $method): string
+    {
+        $token = 'v' . bin2hex(random_bytes(6));
+        $this->_whenPending[$token] = [$expr, $method, \Mad\Form\WhenCondition::fieldRefs($expr) ?? []];
+
+        return $token;
+    }
+
+    /**
+     * Fecha a decisão dos botões marcados por _deferWhenHide() com o HTML final
+     * da tela: algum campo da condição é editável (input/select/textarea com o
+     * nome, `data-mad-model`) → o botão fica e o navegador decide; nenhum → o
+     * botão sai do HTML e a ação dele fica anotada para a reavaliação na
+     * chamada. Na dúvida (marca que não fecha) o botão fica.
+     *
+     * @internal chamado por quem entrega o HTML (abertura, redesenho)
+     */
+    public function _applyWhenHides(string $html): string
+    {
+        if ($this->_whenPending === []) {
+            return $html;
+        }
+        $pending = $this->_whenPending;
+        $this->_whenPending = [];
+        $editable = self::_editableNamesIn($html);
+        $form = $this->_primaryForm();
+        foreach ($pending as $token => [$expr, $method, $refs]) {
+            $open  = '<!--mad-vw:' . $token . '-->';
+            $close = '<!--/mad-vw:' . $token . '-->';
+            $a = strpos($html, $open);
+            $b = $a === false ? false : strpos($html, $close, $a);
+            if ($a === false || $b === false) {
+                $html = str_replace([$open, $close], '', $html);
+                continue;
+            }
+            $certain = $refs !== [];
+            foreach ($refs as $name) {
+                if (isset($editable[$name])) {
+                    $certain = false;
+                    break;
+                }
+            }
+            if ($certain) {
+                $html = substr($html, 0, $a) . substr($html, $b + strlen($close));
+                $form?->declareButtonWhen($method, $expr);
+            } else {
+                $inner = substr($html, $a + strlen($open), $b - $a - strlen($open));
+                $html  = substr($html, 0, $a) . $inner . substr($html, $b + strlen($close));
+                $form?->declareButtonWhen($method, '');
+            }
+        }
+
+        return $html;
+    }
+
+    /** Nomes que o HTML entrega como campo editável. @return array<string, true> */
+    private static function _editableNamesIn(string $html): array
+    {
+        $out = [];
+        if (preg_match_all('/<(?:input|select|textarea)\b[^>]*?\bname\s*=\s*["\']([^"\']+)["\']/i', $html, $m)) {
+            foreach ($m[1] as $name) {
+                $out[(string) preg_replace('/\[.*$/', '', $name)] = true;
+            }
+        }
+        if (preg_match_all('/\b(?:data-mad-model(?:-live)?|mad:model(?:\.[a-z]+)*|x-model(?:\.[a-z]+)*)\s*=\s*["\']([A-Za-z_][A-Za-z0-9_]*)/i', $html, $m)) {
+            foreach ($m[1] as $name) {
+                $out[$name] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /** O valor como o campo de exibição o entrega ao navegador (display-field, `_whenValue`). */
+    private static function _whenText(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+        if (is_array($value)) {
+            return implode(',', array_map(static fn ($v) => is_scalar($v) ? (string) $v : '', array_filter($value, 'is_scalar')));
+        }
+        if (is_scalar($value) || $value instanceof \Stringable) {
+            return (string) $value;
+        }
+
+        return '';
+    }
+
     /** Recusa a chamada de `$method` quando o botão dele saiu recusado pela deny-condition (fw#636). */
     protected function _buttonDenyRefusal(string $method): mixed
     {
@@ -3050,6 +3207,14 @@ abstract class MadComponent
             $reason = $form->buttonDenyFor($method);
             if ($reason !== '') {
                 return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => $reason]));
+            }
+            // `visible-when` que o servidor decidiu falso (decisão do dono,
+            // 26/11/2026): reavalia com os valores da tela AGORA — os do
+            // registro e os enviados para campos que a tela aceita. Só recusa
+            // se continuar falsa; "não sei" deixa passar.
+            $when = $form->buttonWhenFor($method);
+            if ($when !== '' && $this->_whenVerdictWith($when, $form) === false) {
+                return \Mad\Ui\MadToast::warning(mad_t('mad.error.action_denied', ['reason' => mad_t('mad.error.when_false')]));
             }
         }
 

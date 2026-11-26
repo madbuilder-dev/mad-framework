@@ -338,6 +338,7 @@ return [
             'action_gone'    => 'The action was not run: the record is no longer in the list.',
             'action_refused' => 'The action was not run: it does not apply to this record.',
             'action_denied'  => 'The action was not run: :reason',
+            'when_false'     => 'the button condition does not hold for this record.',
             'cell_not_saved' => 'The change was not saved.',
             'stale_write'    => 'The change was not saved: the same field was changed later in another tab or window. Reload the screen to see the current value.',
             'cell_invalid'   => 'Invalid value.',

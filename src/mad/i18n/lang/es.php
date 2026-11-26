@@ -331,6 +331,7 @@ return [
             'action_gone'    => 'La acción no se ejecutó: el registro ya no está en el listado.',
             'action_refused' => 'La acción no se ejecutó: no aplica a este registro.',
             'action_denied'  => 'La acción no se ejecutó: :reason',
+            'when_false'     => 'la condición del botón no se cumple para este registro.',
             'cell_not_saved' => 'El cambio no fue guardado.',
             'stale_write'    => 'El cambio no fue guardado: el mismo campo fue modificado después en otra pestaña o ventana. Recargue la pantalla para ver el valor actual.',
             'cell_invalid'   => 'Valor inválido.',
