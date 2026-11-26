@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'description' => '', 'hint' => '', 'error' => '', 'name' => '', 'value' => '', 'checked' => false, 'required' => false,'disabled' => false, 'readonly' => false, 'attrs' => '', 'style' => '', 'valueOn' => '1', 'valueOff' => '0', 'variant' => '', 'size' => '', 'labelPosition' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'description' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'name' => '', 'value' => '', 'checked' => false, 'required' => false,'disabled' => false, 'readonly' => false, 'attrs' => '', 'style' => '', 'valueOn' => '1', 'valueOff' => '0', 'variant' => '', 'size' => '', 'labelPosition' => ''])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -66,7 +69,7 @@
     <div class="{{ $rowClass }}">
         <div class="mad-switch-text">
             @if($label)
-                <div class="mad-label" style="margin-bottom:0;">{!! $label !!}{!! $reqStar !!}</div>
+                <div class="mad-label" style="margin-bottom:0;">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</div>
             @endif
             @if($description)
                 <div class="mad-switch-desc">{!! $description !!}</div>

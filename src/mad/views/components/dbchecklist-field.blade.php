@@ -166,6 +166,7 @@
     'height'      => $height,
     'placeholder' => $placeholder,
     'hint'        => $hint,
+    'hintIcon'    => $hintIcon ?? false,   // ⓘ no rótulo (fórum #430)
     'error'       => $error,
     'required'    => $required,
     'disabled'    => $disabled,

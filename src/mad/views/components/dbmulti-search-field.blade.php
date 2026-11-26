@@ -93,6 +93,8 @@
     $foreignKey    = $foreignKey    ?? '';
     $itemKey       = $itemKey       ?? '';
     $hint          = $hint          ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error         = $error         ?? '';
     $required      = !empty($required);
     $disabled      = !empty($disabled);
@@ -300,7 +302,7 @@
 @php $_dimStyle = \Mad\Support\CssUnits::dim($width ?? '', $maxWidth ?? '', $labelGap ?? '') . \Mad\Support\CssUnits::labelStyle($labelColor ?? '', $labelSize ?? '', $labelWeight ?? '', $labelItalic ?? false) . \Mad\Support\CssUnits::inputStyle($inputBg ?? '', $inputColor ?? '', $inputWeight ?? '', $inputItalic ?? false, $inputBorderColor ?? '', $inputBorderWidth ?? '', $inputBorderSides ?? ''); @endphp
 <div class="mad-field" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <select
         id="{{ $id }}"

@@ -131,6 +131,7 @@ class MadSeek
             'disabled'    => $config['disabled']    ?? false,
             'placeholder' => $config['placeholder'] ?? '',
             'hint'        => $config['hint']        ?? '',
+            'hintIcon'    => $config['hintIcon']    ?? false,
             'modalTitle'  => $config['modalTitle']  ?? ($config['label'] ?? mad_t('mad.btn.search')),
             'modalSize'   => $config['modalSize']   ?? 'xl',
             'auxiliaries' => $config['auxiliaries']  ?? [],

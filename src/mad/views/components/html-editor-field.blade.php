@@ -5,7 +5,7 @@
     'value'       => '',
     'height'      => 300,
     'placeholder' => '',
-    'hint'        => '',
+    'hint'        => '', 'hintIcon' => false,
     'error'       => '',
     'required'    => false,
     'disabled'    => false,
@@ -23,6 +23,9 @@
     'paste'        => '',     // 'clean' = colar de fora traz só os destaques (sem fonte, cor e estilo)
     'options'      => [],     // opções extras do TinyMCE (array), mescladas por último
 ])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
     // converte `-` -> camel). A leitura aceita as duas formas; sem isto o valor
@@ -169,7 +172,7 @@
 @else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <div class="mad-html-editor-wrap{{ $hasError ? ' mad-html-editor-error' : '' }}"
          x-data="madHtmlEditor({{ $edCfg }})"

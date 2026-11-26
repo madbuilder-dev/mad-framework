@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.370.0] — 2026-11-26
+
+### Correções
+
+- **Campos:** `hint-icon` passa a valer em todos os campos com rótulo: numérico, CEP, CNPJ, senha, hora, período, rádio, switch, listas, buscas, arquivo, imagem, assinatura, editor HTML, mapa e os campos ligados ao banco. Antes a dica continuava embaixo do campo e o ⓘ não aparecia.
+- **Campos:** a dica longa do ⓘ mantém as quebras de linha do texto, fica mais larga quando precisa e abre do lado da tela que tem espaço. Antes ela virava um bloco só e, perto do topo, cobria o rótulo e o próprio campo.
+
 ## [5.369.0] — 2026-11-26
 
 ### Melhorias

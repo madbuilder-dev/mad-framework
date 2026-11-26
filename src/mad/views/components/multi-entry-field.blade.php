@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => null, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'options' => [], 'items' => [], 'value' => [], 'max' => 0, 'placeholder' => null, 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => ''])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $placeholder = $placeholder ?? mad_t('mad.ui.type_enter');
     // alias: o editor visual grava :items — aceitar os dois nomes
@@ -38,7 +41,7 @@
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <select
         id="{{ $id }}"

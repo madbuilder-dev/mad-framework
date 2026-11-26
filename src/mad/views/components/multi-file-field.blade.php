@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '*', 'camera' => '', 'max-files' => 0, 'max-size' => 0, 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'mode' => 'comma', 'model' => '', 'foreign-key' => '', 'path-column' => '', 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'original-name-column' => '', 'size-column' => '', 'mime-column' => '', 'disk-column' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $required   = !empty($required);
     $disabled   = !empty($disabled);
@@ -163,7 +166,7 @@
 @else
 <div class="mad-field"@if($_camMode !== '') data-camera="{{ $_camMode }}"@endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <span class="mad-label">{!! $label !!}{!! $reqStar !!}</span>
+        <span class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</span>
     @endif
     <div
         class="mad-multi-file-wrap"

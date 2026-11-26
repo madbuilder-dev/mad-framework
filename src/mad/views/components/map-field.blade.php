@@ -25,6 +25,8 @@
     }
     $label    = (string) ($label ?? '');
     $hint     = (string) ($hint ?? '');
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error    = (string) ($error ?? '');
     $required = $__b($required ?? null, false);
     $disabled = $__b($disabled ?? null, false);
@@ -80,7 +82,7 @@
     @if($label !== '' && $__rm !== '')
         <div class="mad-display-field-header"><span class="mad-display-field-label">{!! $label !!}</span></div>
     @elseif($label !== '')
-        <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
+        <div class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</div>
     @endif
 
     @if($search && !$disabled)

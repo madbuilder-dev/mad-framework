@@ -1374,6 +1374,8 @@ class MadGridCompiler
         if (isset($a['text']))        $c[] = static::kv('text',        static::emit($a['text']));
         if (isset($a['placeholder'])) $c[] = static::kv('placeholder', static::emit($a['placeholder']));
         if (isset($a['hint']))        $c[] = static::kv('hint',        static::emit($a['hint']));
+        // Dica num ⓘ ao lado do rótulo, como nos outros campos (fórum #430).
+        if (isset($a['hint-icon']))   $c[] = static::kv('hintIcon',    static::emit($a['hint-icon']));
         if (isset($a['modal-title'])) $c[] = static::kv('modalTitle',  static::emit($a['modal-title']));
         if (isset($a['modal-size']))  $c[] = static::kv('modalSize',   static::emit($a['modal-size']));
         if (isset($a['database']))    $c[] = static::kv('database',    static::emit($a['database']));

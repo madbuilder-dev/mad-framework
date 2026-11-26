@@ -7,7 +7,7 @@
     'min' => '',
     'max' => '',
     'max_span' => 0,
-    'hint' => '',
+    'hint' => '', 'hintIcon' => false,
     'error' => '',
     'required' => false,
     'disabled' => false,
@@ -23,6 +23,9 @@
     'display_mask' => '',
     'database_mask' => 'yyyy-mm-dd',
 ])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $placeholder = $placeholder ?? mad_t('mad.ui.select_period');
     // Atributo em kebab-case chega ao template em camelCase (o compiler MAD
@@ -122,7 +125,7 @@
 @else
 <div class="mad-field" style="position:relative;{{ $_dimStyle }}" x-data="madDateRangePicker({{ $alpineCfg }})">
     @if($label)
-        <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
+        <div class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</div>
     @endif
 
     {{-- Trigger (visual input) --}}

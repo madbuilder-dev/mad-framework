@@ -64,6 +64,8 @@
     $acceptCpf   = !empty($acceptCpf);
     $placeholder = $placeholder ?? ($acceptCpf ? '000.000.000-00 / 00.000.000/0000-00' : '00.000.000/0000-00');
     $hint        = $hint        ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error       = $error       ?? '';
     $required    = !empty($required);
     $disabled    = !empty($disabled);
@@ -170,7 +172,7 @@
 @else
 <div class="mad-field mad-cnpj-field" x-data="madCnpjField({{ $xDataCfg }})" @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <div class="mad-input-group" style="display:flex;gap:0;align-items:stretch;">
         <input

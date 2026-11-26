@@ -19306,17 +19306,55 @@ document.addEventListener("alpine:init", function () {
         return (side && VALID_SIDES[side]) ? side : 'top';
     }
 
+    // Dica do campo (ⓘ do rótulo, `hint-icon`): o texto pode ser longo e ter
+    // várias linhas (fórum #430). Mantém as quebras, ganha largura e, sem espaço
+    // do lado pedido, abre do outro lado em vez de cobrir o próprio ⓘ e o campo.
+    function isFieldHint(el) {
+        return !!(el && el.classList && el.classList.contains('mad-label-hint'));
+    }
+
+    function fieldHintText(text) {
+        // Linhas em branco seguidas viram uma só; espaço no fim da linha sai.
+        return String(text).replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
     function positionTip(el, side) {
         var rect = el.getBoundingClientRect();
         var tip = tipEl;
+        var m = 4;
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
+        var extra = isFieldHint(el) ? ' mad-tooltip-hint' : '';
         // Aplica classes antes de medir (os estilos definem padding etc).
-        tip.className = 'mad-tooltip mad-tooltip-floating mad-tooltip-' + side;
         // Mede visivel-mas-oculto para pegar largura/altura corretas.
-        tip.style.visibility = 'hidden';
-        tip.style.display = 'block';
-        tip.style.top = '0px';
-        tip.style.left = '0px';
-        var tipRect = tip.getBoundingClientRect();
+        function measure() {
+            tip.className = 'mad-tooltip mad-tooltip-floating mad-tooltip-' + side + extra;
+            tip.style.visibility = 'hidden';
+            tip.style.display = 'block';
+            tip.style.top = '0px';
+            tip.style.left = '0px';
+            return tip.getBoundingClientRect();
+        }
+        var tipRect = measure();
+
+        // Não cabe em cima (ou embaixo): abre do outro lado se lá couber ou
+        // sobrar mais espaço. Antes a dica era empurrada para a borda e cobria
+        // o elemento que a abriu.
+        if (side === 'top' || side === 'bottom') {
+            var above = rect.top - 6 - m;
+            var below = vh - rect.bottom - 6 - m;
+            if (extra && tipRect.height > Math.max(above, below)) {
+                // Dica longa que não cabe em nenhum lado: mais larga, mais baixa.
+                extra += ' mad-tooltip-hint--wide';
+                tipRect = measure();
+            }
+            var room  = side === 'top' ? above : below;
+            var other = side === 'top' ? below : above;
+            if (tipRect.height > room && (tipRect.height <= other || other > room)) {
+                side = side === 'top' ? 'bottom' : 'top';
+                tipRect = measure();
+            }
+        }
 
         var top, left;
         switch (side) {
@@ -19337,14 +19375,23 @@ document.addEventListener("alpine:init", function () {
                 left = rect.left + (rect.width - tipRect.width) / 2;
         }
 
-        // Clamp na viewport (margem 4px).
-        var m = 4;
-        var vw = window.innerWidth;
-        var vh = window.innerHeight;
-        if (left < m) left = m;
+        // Clamp na viewport (margem 4px). Maior que a tela: o começo do texto
+        // fica visível (a borda de cima/esquerda vence).
         if (left + tipRect.width > vw - m) left = vw - tipRect.width - m;
-        if (top < m) top = m;
+        if (left < m) left = m;
         if (top + tipRect.height > vh - m) top = vh - tipRect.height - m;
+        if (top < m) top = m;
+
+        // Dica empurrada para dentro da tela: a seta continua apontando para o
+        // elemento, não para o meio da caixa.
+        if (tip.style.setProperty) {
+            if (side === 'top' || side === 'bottom') {
+                var ax = rect.left + rect.width / 2 - left;
+                tip.style.setProperty('--mad-tip-arrow-x', Math.max(10, Math.min(tipRect.width - 10, ax)) + 'px');
+            } else {
+                tip.style.removeProperty('--mad-tip-arrow-x');
+            }
+        }
 
         tip.style.top = top + 'px';
         tip.style.left = left + 'px';
@@ -19358,7 +19405,7 @@ document.addEventListener("alpine:init", function () {
         if (!text) return;
         ensureTipEl();
         // html:true compat (o front-end legado permitia tags no title).
-        tipEl.innerHTML = text;
+        tipEl.innerHTML = isFieldHint(el) ? fieldHintText(text) : text;
         positionTip(el, placementFor(el));
         currentTarget = el;
     }

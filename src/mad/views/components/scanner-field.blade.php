@@ -5,6 +5,8 @@
     $type        = $type ?? 'both';
     $placeholder = $placeholder ?? 'Escaneie ou digite...';
     $hint        = $hint ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error       = $error ?? '';
     $required    = !empty($required ?? false);
     $disabled    = !empty($disabled ?? false);
@@ -51,7 +53,7 @@
      x-on:keydown.escape="close()"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
 
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
 
     <div class="mad-scanner-input-group">

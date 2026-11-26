@@ -57,6 +57,8 @@
     $breakItems  = (int) ($breakItems ?? 0);
     $separator   = $separator   ?? ',';
     $hint        = $hint        ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error       = $error       ?? '';
     $required    = !empty($required);
     $disabled    = !empty($disabled);
@@ -211,7 +213,7 @@
 @else
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <span class="mad-label">{!! $label !!}{!! $reqStar !!}</span>
+        <span class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</span>
     @endif
     <div class="{{ $wrapClass }}" data-mad-model="{{ $name }}"@if($breakOn) data-mad-break="{{ $breakOn }}"@endif>
         @foreach($options as $optKey => $optLabel)

@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'items' => [], 'selected' => [], 'orientation' => 'vertical', 'limit' => -1, 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'items' => [], 'selected' => [], 'orientation' => 'vertical', 'limit' => -1, 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     // Lista posta pelo código (`$this->form->setItems()`) vence a do Blade: é a
     // que o reload_sort_list mostrou (fw#228).
@@ -44,7 +47,7 @@
 @endphp
 <div class="mad-field"@if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <span class="mad-label">{!! $label !!}{!! $reqStar !!}</span>
+        <span class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</span>
     @endif
     <div
         class="mad-sort-list{{ $horizontal ? ' mad-sort-list-h' : '' }}"

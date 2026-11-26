@@ -57,6 +57,8 @@
     $selected      = \Mad\Support\MadFieldValue::withDefault((string) $name, $selected, $default ?? null);
     $inline        = !empty($inline);
     $hint          = $hint          ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error         = $error         ?? '';
     $required      = !empty($required);
     $disabled      = !empty($disabled);
@@ -188,7 +190,7 @@
     @endif
 >
     @if($label)
-        <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
+        <div class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</div>
     @endif
     <div style="{{ $wrapStyle }}"
         @if($__groupModel) data-mad-radio-group="{{ $name }}" data-mad-model="{{ $name }}" @endif>

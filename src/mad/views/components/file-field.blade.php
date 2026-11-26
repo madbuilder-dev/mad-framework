@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'auto-fill-name' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'accept' => '', 'camera' => '', 'multiple' => false, 'maxSize' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'storage' => '', 'folder' => 'uploads', 'public' => false, 'name-column' => '', 'image-max-dimension' => '', 'image-quality' => '', 'file-name' => 'prefix', 'auto-fill-name' => '', 'compress' => false, 'max-dimension' => '', 'quality' => ''])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $multiple   = !empty($multiple);
     $required   = !empty($required);
@@ -135,7 +138,7 @@
 @else
 <div class="mad-field" x-data="madFileField({{ $fileCfg }})" data-mad-upload="{{ $name }}"@if($_camMode !== '') data-camera="{{ $_camMode }}"@endif @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <div class="mad-file-wrap"
         :class="{ 'mad-file-over': dragOver, 'mad-file-error': {{ $hasError ? 'true' : 'false' }} }"

@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'name' => '', 'options' => [], 'selected' => null, 'value' => '','inline' => false, 'breakItems' => 0, 'as' => '', 'boolean' => false, 'size' => '', 'hint' => '', 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'style' => ''])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '', 'label' => '', 'name' => '', 'options' => [], 'selected' => null, 'value' => '','inline' => false, 'breakItems' => 0, 'as' => '', 'boolean' => false, 'size' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'attrs' => '', 'style' => ''])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     /**
      * mad-radio-field — Grupo de radio buttons.
@@ -109,7 +112,7 @@
     @if($name) data-mad-field="{{ $name }}" @endif
     @if($style || $_dimStyle) style="{{ $style }}{{ $_dimStyle }}" @endif>
     @if($label)
-        <div class="mad-label">{!! $label !!}{!! $reqStar !!}</div>
+        <div class="mad-label">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</div>
     @endif
     <div class="{{ $wrapClass }}"
         @if($wrapStyle) style="{{ $wrapStyle }}" @endif

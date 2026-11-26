@@ -11,6 +11,8 @@
     $disabled    = !empty($disabled ?? false);
     $placeholder = $placeholder ?? '';
     $hint        = $hint ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $modalTitle  = $modalTitle ?? ($label ?: mad_t('mad.ui.search'));
     $modalSize   = $modalSize ?? 'xl';
     $auxiliaries = $auxiliaries ?? [];
@@ -43,7 +45,7 @@
 <div class="mad-field mad-dbseek-field{{ $create ? ' mad-dbseek-has-create' : '' }}"
      x-data="madDbSeek({ name: '{{ $name }}', value: '{{ $safeValue }}', text: '{{ $safeText }}', auxiliaries: {!! $auxJson !!}, create: {!! $createJson !!} })" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}_display">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}_display">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     <div class="mad-input-group">
         <input

@@ -93,6 +93,8 @@
     $selected      = $selected      ?? '';
     $placeholder   = $placeholder   ?? mad_t('mad.ui.type_to_search');
     $hint          = $hint          ?? '';
+    // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint, $label ?? '');
     $error         = $error         ?? '';
     $required      = !empty($required);
     $disabled      = !empty($disabled);
@@ -327,7 +329,7 @@
 @else
 <div class="mad-field{{ $_isReadonly ? ' mad-readonly' : '' }}" @if($_dimStyle) style="{{ $_dimStyle }}" @endif>
     @if($label)
-        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}</label>
+        <label class="mad-label" for="{{ $id }}">{!! $label !!}{!! $reqStar !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
     @endif
     @if($_createBtn !== '')<div class="mad-combo-create-row" style="display:flex;gap:6px;align-items:flex-start;min-width:0"><div style="flex:1;min-width:0">@endif
     <select

@@ -1,4 +1,7 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'min' => 0,'max' => 100, 'step' => 1, 'suffix' => '', 'hint' => '', 'error' => '', 'disabled' => false, 'attrs' => '', 'emptyAs' => 'null'])
+@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'min' => 0,'max' => 100, 'step' => 1, 'suffix' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'disabled' => false, 'attrs' => '', 'emptyAs' => 'null'])
+@php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
+    [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
+@endphp
 @php
     $disabled = !empty($disabled);
     // Registro > prop `value` (default do dev) — regra em \Mad\Support\MadFieldValue.
@@ -28,7 +31,7 @@
 <div class="mad-field" x-data="{ {{ $alpineId }}: {{ $value }} }" @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
     @if($label)
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
-            <label class="mad-label" for="{{ $id }}" style="margin:0;">{!! $label !!}</label>
+            <label class="mad-label" for="{{ $id }}" style="margin:0;">{!! $label !!}{!! \Mad\Support\FieldHint::icon($__hintTip) !!}</label>
             <span style="font-size:13px;font-weight:700;color:var(--mad-text);"
                   x-text="{{ $alpineId }} + '{{ $suffix }}'"></span>
         </div>

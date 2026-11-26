@@ -4038,6 +4038,23 @@ html.mad-modal-dragging, html.mad-modal-dragging * { user-select: none !importan
   /* Acima de drawer/modal/toast (max int32 - 1 para ficar sempre no topo). */
   z-index: 2147483646;
 }
+/* Dica do campo (ⓘ do rótulo, `hint-icon`): mantém as quebras de linha do
+   texto e ganha largura quando é longa — fórum #430. */
+.mad-tooltip-floating.mad-tooltip-hint {
+  white-space: pre-line;
+  max-width: min(420px, calc(100vw - 16px));
+  text-align: left;
+  line-height: 1.45;
+}
+.mad-tooltip-floating.mad-tooltip-hint--wide {
+  max-width: min(720px, calc(100vw - 16px));
+}
+/* Seta da dica flutuante: aponta para o elemento mesmo com a caixa empurrada
+   para dentro da tela (a posição vem do mad-ui.js). */
+.mad-tooltip-floating.mad-tooltip-top::after,
+.mad-tooltip-floating.mad-tooltip-bottom::after {
+  left: var(--mad-tip-arrow-x, 50%);
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════
