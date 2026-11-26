@@ -120,7 +120,7 @@
 {{-- Formulário em leitura / modo Visualizar (fórum #351, #382): a assinatura, sem desenhar, digitar, enviar nem limpar. --}}
 {!! \Mad\Form\ReadMode::fileField($__rm, ['name' => $name, 'label' => $label, 'image' => (string) $value, 'style' => $_dimStyle ?? '']) !!}
 @else
-<div class="mad-field{{ $hasError ? ' mad-field-error' : '' }}"
+<div class="mad-field mad-signature-field{{ $hasError ? ' mad-field-error' : '' }}"
      x-data="madSignatureField({{ $_jsonConfig }})"
      @if($_dimStyle) style="{{ $_dimStyle }}"@endif>
 

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.358.3] — 2026-11-26
+
+### Correções
+
+- **Campos:** em telas com a área de conteúdo rolando por dentro (como o layout ERP), clicar num botão de opção ou numa caixa de seleção rolava a página inteira até o fim, e era preciso rolar de volta. Agora a página fica onde está. Vale também para o "marcar todos" do checklist e para os campos de imagem e assinatura.
+
 ## [5.358.2] — 2026-11-26
 
 ### Correções

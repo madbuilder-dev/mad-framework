@@ -4446,6 +4446,10 @@ button.mad-toast-item:focus-visible {
    ═══════════════════════════════════════════════════════════════════ */
 
 .mad-checkbox-wrap {
+  /* Âncora do input escondido (position:absolute). Sem ela, num layout com
+     rolagem interna o input vai parar no body: a janela ganha rolagem e o
+     clique na opção rola a página até o fim (fw#667). */
+  position: relative;
   display: inline-flex;
   align-items: flex-start;
   gap: 8px;
@@ -4524,6 +4528,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    ═══════════════════════════════════════════════════════════════════ */
 
 .mad-radio-wrap {
+  position: relative; /* âncora do .mad-radio escondido — ver .mad-checkbox-wrap */
   display: inline-flex;
   align-items: flex-start;
   gap: 8px;
@@ -5723,6 +5728,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
    ═══════════════════════════════════════════════════════════════════ */
 
 .mad-color-wrap {
+  position: relative; /* âncora do .mad-color-input escondido */
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -7290,6 +7296,7 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
   border-color: var(--mad-primary) !important;
 }
 .mad-checklist-select-all {
+  position: relative; /* âncora do .mad-checkbox escondido — ver .mad-checkbox-wrap */
   display: flex; align-items: center; gap: 4px;
   font-size: 0.8rem; white-space: nowrap; cursor: pointer; margin: 0;
 }
@@ -13082,6 +13089,11 @@ textarea.mad-dg-inline-input {
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Âncora do input de arquivo e do canvas escondidos (.mad-sr-only) — ver
+   .mad-checkbox-wrap. */
+.mad-image-field,
+.mad-signature-field { position: relative; }
 
 /* ── Preview ── */
 .mad-image-preview {
