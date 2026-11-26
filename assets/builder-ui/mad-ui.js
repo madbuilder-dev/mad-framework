@@ -15167,6 +15167,46 @@ document.addEventListener('alpine:init', () => {
                 const d = (row && cfg.actDeny) ? (cfg.actDeny[row.__id] || {})[i] : '';
                 return typeof d === 'string' ? d : '';
             },
+
+            // Destaques da linha/célula (`<mad-row-highlights>`, fórum #428):
+            // as regras da listagem, vale a PRIMEIRA que casar. `when-*` lê a
+            // linha como está (a carregada, a adicionada e a editada ali); o
+            // campo calculado do model (accessor) vem em `__hlv:<campo>` na
+            // linha carregada. `display-condition` é PHP: vem calculado por
+            // linha carregada (`__hl`). Classes e cor vêm prontas do servidor
+            // (cor já saneada); aqui só se escolhe a regra.
+            _hl(row) {
+                const rules = cfg.hl || [];
+                for (let i = 0; i < rules.length; i++) {
+                    const r = rules[i];
+                    let ok;
+                    if (r.f) {
+                        ok = !!(row && Array.isArray(row.__hl) && row.__hl.includes(i));
+                    } else {
+                        const f = r.w && r.w.field;
+                        const v = (row && f && row[f] !== undefined) ? row[f] : (row && f ? row['__hlv:' + f] : undefined);
+                        ok = _dfActCond(f ? { [f]: v } : row, r.w);
+                    }
+                    if (ok) return r;
+                }
+                return null;
+            },
+            _hlRow(row) {
+                const h = this._hl(row);
+                return (h && !h.cols) ? (h.cls || '') : '';
+            },
+            _hlRowStyle(row) {
+                const h = this._hl(row);
+                return (h && !h.cols && h.color) ? { '--mad-dg-hl-color': h.color } : {};
+            },
+            _hlCell(row, ci) {
+                const h = this._hl(row);
+                return (h && h.cols && h.cols.includes(ci)) ? (h.cls || '') : '';
+            },
+            _hlCellStyle(row, ci) {
+                const h = this._hl(row);
+                return (h && h.cols && h.cols.includes(ci) && h.color) ? { '--mad-dg-hl-color': h.color } : {};
+            },
         };
     });
 });

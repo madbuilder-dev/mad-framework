@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.359.0] — 2026-11-26
+
+### Novidades
+
+- **Detalhe:** a grade do `<mad-detail-form>` ganha os **Destaques** da listagem: `<mad-row-highlights>` pinta a linha ou só uma célula conforme o valor do item, com as mesmas regras (`when-*`, `display-condition`, tom ou cor). A cor muda na hora ao adicionar ou editar o item, e a condição aceita os campos calculados do model.
+
 ## [5.358.3] — 2026-11-26
 
 ### Correções

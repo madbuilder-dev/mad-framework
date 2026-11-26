@@ -21,6 +21,7 @@
     $fieldSlot  = $fieldSlot  ?? '';
     $colConfigs = $colConfigs ?? [];
     $actConfigs = $actConfigs ?? [];
+    $rowHighlights = $rowHighlights ?? [];    // <mad-row-highlights> (fórum #428)
     $rows       = $rows       ?? [];
 
     // Detail é sempre escopado por FK (builder-native); sem filtro extra.
@@ -63,10 +64,30 @@
         }
     }
 
+    // ── Destaques da linha/célula (<mad-row-highlights>, fórum #428) ──────────
+    // As MESMAS regras da listagem (HighlightRules: condição, tom, cor saneada,
+    // `cell`). `when-*` o navegador avalia na linha como ela está (também a
+    // adicionada ou editada ali); `display-condition` é PHP da tela e vem
+    // calculado por linha carregada (`__hl`), como as ações da linha (fw#363).
+    $_dfHl = $rowHighlights
+        ? \Mad\Grid\MadDataGrid::_normalizeRowHighlights((array) $rowHighlights, array_values(array_filter([$_dfPermOwner])))
+        : [];
+
     // ── Colunas com caminho de relacionamento (`{cidade->estado->pais->nome}`) ──
     // Não existem no toArray() da linha: só resolvem percorrendo as relações do
     // registro filho. Mesmo mecanismo do <mad-grid>/<mad-data-table>.
     $_dfRenderFields = \Mad\Grid\GridRenderHelpers::detectRenderFields($columns);
+    // Campo calculado do model (accessor) na condição de um destaque: não vem no
+    // toArray() da linha. Vai numa chave `__hlv:<campo>` — o `__` não é gravado
+    // no Salvar — e só fica na linha que não tem o campo de verdade.
+    $_dfHlFields = [];
+    foreach ($_dfHl as $_dfR) {
+        if (is_array($_dfR['when']) && ($_dfF = trim((string) ($_dfR['when']['field'] ?? ''))) !== '' && !str_contains($_dfF, '{')) {
+            $_dfHlFields[$_dfF] = true;
+            $_dfRenderFields['__hlv:' . $_dfF] = '{' . $_dfF . '}';
+        }
+    }
+    unset($_dfR, $_dfF);
 
     // ── Auto-load: se model+fk declarados e rows vazias, carrega do banco ─
     $_dfGivenRows = !empty($rows);
@@ -151,6 +172,53 @@
             }
             $normalizedRows[$_dfI]['__fmt'] = $_dfFmt;
         }
+    }
+
+    // ── Destaques (fórum #428): o que só o servidor sabe, por linha carregada ──
+    //  • `__hlv:<campo>`: valor do campo calculado (accessor) — sai da linha que
+    //    tem o campo de verdade (ela usa o valor vivo, inclusive o editado);
+    //  • `__hl`: índices das regras `display-condition` que casam nesta linha.
+    // A linha adicionada/editada no navegador não tem nenhum dos dois: nela
+    // valem só as regras `when-*` sobre os campos da própria linha.
+    $_dfHlCfg  = [];
+    $_dfHlCols = [];   // índice da coluna => true, se alguma regra pinta a célula dela
+    if ($_dfHl) {
+        foreach ($normalizedRows as $_dfI => $_dfRow) {
+            foreach (array_keys($_dfHlFields) as $_dfF) {
+                if (array_key_exists($_dfF, $_dfRow)) unset($normalizedRows[$_dfI]['__hlv:' . $_dfF]);
+            }
+        }
+        foreach ($_dfHl as $_dfRi => $_dfR) {
+            $_dfCell = ($_dfR['cell'] ?? '') !== '';
+            $_dfCols = [];
+            $_dfCls  = trim(\Mad\Grid\MadDataGrid::rowHighlightClass($_dfR));
+            if ($_dfCell) {
+                foreach ($columns as $_dfCi => $_dfCol) {
+                    if (!$_dfShowCol[$_dfCi]) continue;
+                    $_dfCc = trim(\Mad\Grid\MadDataGrid::cellHighlightClass($_dfR, $_dfCol));
+                    if ($_dfCc === '') continue;
+                    $_dfCols[] = $_dfCi;
+                    $_dfCls = $_dfCc;
+                    $_dfHlCols[$_dfCi] = true;
+                }
+            }
+            $_dfIsFn = !is_array($_dfR['when']);
+            if ($_dfIsFn) {
+                foreach ($normalizedRows as $_dfI => $_dfRow) {
+                    if (\Mad\Support\HighlightRules::callableMatches($_dfR['when'], null, $_dfRow, '[mad-detail-form] destaque de linha')) {
+                        $normalizedRows[$_dfI]['__hl'][] = $_dfRi;
+                    }
+                }
+            }
+            $_dfHlCfg[] = array_filter([
+                'w'     => $_dfIsFn ? null : $_dfR['when'],
+                'f'     => $_dfIsFn ? 1 : null,
+                'cls'   => $_dfCls,
+                'color' => ($_dfR['color'] ?? '') !== '' ? $_dfR['color'] : null,
+                'cols'  => $_dfCell ? $_dfCols : null,
+            ], fn ($v) => $v !== null);
+        }
+        unset($_dfRi, $_dfR, $_dfCell, $_dfCols, $_dfCls, $_dfCi, $_dfCol, $_dfCc, $_dfIsFn, $_dfI, $_dfRow, $_dfF);
     }
 
     // ── Config JSON para Alpine ─────────────────────────────────────────────
@@ -338,6 +406,7 @@
     \Mad\Component\MadRenderContext::getForm()?->declareDetailActions($name, $_dfByMeth ?? [], (string) $model, (string) $foreignKey);
     unset($_dfByMeth);
     if ($_dfColWhen) $alpineCfg['colWhen'] = $_dfColWhen;
+    if ($_dfHlCfg) $alpineCfg['hl'] = $_dfHlCfg;
     $alpineCfg = json_encode($alpineCfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $_dfFileCols = [];
@@ -625,7 +694,12 @@
                             </td>
 @php $_dfActionsCell = ob_get_clean(); @endphp
                     <template x-for="(row, idx) in (perPage > 0 ? pagedRows : rows)" :key="row.__id">
+@if($_dfHlCfg)
+                        {{-- Texto, não array: o :class do Alpine junta array com join(' ') e um objeto dentro vira "[object Object]". --}}
+                        <tr class="mad-dg-row" :class="((typeof editIndex!=='undefined' && editIndex === idx) ? 'mad-df-row-editing ' : '') + _hlRow(row)" :style="_hlRowStyle(row)"
+@else
                         <tr class="mad-dg-row" :class="{ 'mad-df-row-editing': (typeof editIndex!=='undefined' && editIndex === idx) }"
+@endif
                             x-init="$nextTick(() => { if (typeof _madLucide === 'function') _madLucide([$el]); })">
 @if($actionSide === 'left' && $_dfShowActions)
 @php echo $_dfActionsCell; @endphp
@@ -687,7 +761,11 @@
                                     $_cDateFmt = $_dfDateFmt[\Mad\Grid\GridRenderHelpers::rowDataKey($col->field)] ?? null;
                                 }
                             @endphp
+@if(isset($_dfHlCols[$loop->index]))
+                            <td class="mad-dg-cell{{ $_dfColCls($loop->index) }}" style="text-align:{{ $col->align }};" :class="_hlCell(row, {{ $loop->index }})" :style="_hlCellStyle(row, {{ $loop->index }})">
+@else
                             <td class="mad-dg-cell{{ $_dfColCls($loop->index) }}" style="text-align:{{ $col->align }};">
+@endif
 @if(isset($_dfColWhen[$loop->index]))
                                 <span data-mad-col-when x-show="_colVis(row, {{ $loop->index }})">
 @endif

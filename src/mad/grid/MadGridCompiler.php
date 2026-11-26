@@ -379,7 +379,8 @@ use Mad\View\MadBlade;
  * │  Condição: as when-* do <mad-act> (when-op também gt/gte/lt/lte) ou         │
  * │  display-condition="Cls::metodo". tone: danger|warning|success|info;        │
  * │  color="#hex" livre. cell="campo" pinta só a célula. Vale a primeira        │
- * │  regra que casar; a exportação não leva cor.                                │
+ * │  regra que casar; a exportação não leva cor. Vale também dentro do          │
+ * │  <mad-detail-form> (fórum #428): pinta a grade do detalhe.                  │
  * │                                                                              │
  * │  Diferença mad-nav vs mad-act:                                              │
  * │  ┌────────────┬──────────────────────┬──────────────────────┐               │
@@ -1437,6 +1438,39 @@ class MadGridCompiler
             $fieldSlot = '<mad-form-grid :cols="' . (int)$formCols . '">' . $fieldSlot . '</mad-form-grid>';
         }
 
+        // ── Destaques (<mad-row-highlights>, fórum #428) ────────────────
+        // Mesmas regras e mesmo leitor da listagem (when-*, display-condition,
+        // tone/color, cell), direto no <mad-detail-form> ou no <mad-grid> de
+        // dentro dele. Os avisos de authoring saem aqui, não na próxima grade.
+        $hlConfigs = [];
+        $hlDiag    = '';
+        if (str_contains($body, '<mad-row-highlight')) {
+            $savedNotes = static::$_actionNotes;
+            static::$_actionNotes = [];
+            $body = preg_replace_callback(
+                '/<mad-row-highlights(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-row-highlights') . '/s',
+                function (array $m) use (&$hlConfigs): string {
+                    foreach (static::buildRowHighlightConfigs((string) ($m[2] ?? '')) as $cfg) {
+                        $hlConfigs[] = $cfg;
+                    }
+                    return '';
+                },
+                $body
+            );
+            $body = preg_replace_callback(
+                '/<mad-row-highlight(?![\w-])' . self::ATTR_RUN_SC . static::pairOrSelfClose('mad-row-highlight', '[\s\S]*?') . '/s',
+                function (): string {
+                    static::$_actionNotes[] = '<mad-row-highlight> fora de <mad-row-highlights> — ignorado.';
+                    return '';
+                },
+                $body
+            );
+            foreach (array_unique(static::$_actionNotes) as $note) {
+                $hlDiag .= static::warn('<mad-detail-form name="' . $name . '">: ' . $note);
+            }
+            static::$_actionNotes = $savedNotes;
+        }
+
         // ── Extrair <mad-grid> wrapper (se existir) ─────────────────────
         // Permite: <mad-grid sticky per-page="10"> <mad-col .../> </mad-grid>
         if (preg_match('/<mad-grid(' . self::ATTR_RUN . ')>([\s\S]*?)<\/mad-grid>/s', $body, $gm)) {
@@ -1490,7 +1524,7 @@ class MadGridCompiler
         // slot sumia (as variáveis dele não existiam no render dos campos).
         $fieldSlotB64 = base64_encode(static::unmask($fieldSlot));
 
-        return "<?php \$_df_{$name}_fs = base64_decode('{$fieldSlotB64}'); "
+        return $hlDiag . "<?php \$_df_{$name}_fs = base64_decode('{$fieldSlotB64}'); "
              . "\$__env->startComponent('components.detail-form', ["
              . "'name' => " . static::qs($name) . ", "
              . "'mode' => " . static::qs($mode) . ", "
@@ -1510,6 +1544,8 @@ class MadGridCompiler
              . "'fieldSlot' => \$_df_{$name}_fs, "
              . "'colConfigs' => {$colsStr}, "
              . "'actConfigs' => {$actsStr}, "
+             // Só com regras: sem destaque, a tela compila como antes.
+             . ($hlConfigs ? "'rowHighlights' => [\n        " . implode(",\n        ", $hlConfigs) . "\n    ], " : '')
              . "'rows' => {$rowsExpr}"
              . "]); ?>"
              . "<?php echo \$__env->renderComponent(); ?>";
