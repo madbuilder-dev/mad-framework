@@ -3340,9 +3340,24 @@ var _madWhen = (function () {
     // sub-form/linha de `from`; não havendo lá, os de fora de qualquer
     // sub-form (o formulário principal). O de OUTRO sub-form, nunca. Sem
     // `from`, todos.
+    // <mad-display-field> não tem controle com `name` (não vai no Salvar): o
+    // servidor põe o valor gravado no contêiner, em data-mad-display-value.
+    // Sem isso a condição lia '' — "está vazio" valia sempre (fórum #434).
+    var DISPLAY_NAME = 'data-mad-display-name';
+    var DISPLAY_VALUE = 'data-mad-display-value';
+
+    // Valor de um contêiner de campo de exibição, ou null se `el` não é um.
+    function displayValue(el) {
+        if (!el || typeof el.hasAttribute !== 'function' || !el.hasAttribute(DISPLAY_VALUE)) return null;
+        var v = el.getAttribute(DISPLAY_VALUE);
+        return v == null ? '' : v;
+    }
+
     function named(scope, name, from) {
         var n = _q(name);
         var els = scope.querySelectorAll('[name="' + n + '"],[name="' + n + '[]"]');
+        // Nenhum controle com o nome: o campo de exibição de mesmo nome.
+        if (!els.length) els = scope.querySelectorAll('[' + DISPLAY_NAME + '="' + n + '"]');
         if (!from || !els.length) return els;
         var mine = rowOf(from), same = [], outer = [];
         for (var i = 0; i < els.length; i++) {
@@ -3359,6 +3374,8 @@ var _madWhen = (function () {
     function readValue(scope, name, from) {
         var els = named(scope, name, from);
         if (!els.length) return '';
+        var shown = displayValue(els[0]);
+        if (shown !== null) return shown;
         var hidden = null, checkable = false;
         for (var i = 0; i < els.length; i++) {
             var t = String(els[i].type || '').toLowerCase();
@@ -3887,6 +3904,7 @@ var _madWhen = (function () {
     api.KINDS = KINDS;
     api.compile = compile;
     api.readValue = readValue;
+    api.displayValue = displayValue;
     api.named = named;
     api.controls = controls;
     api.mount = mount;
@@ -4199,6 +4217,9 @@ var _madCompute = (function () {
         for (var i = 0; i < els.length; i++) {
             if (!(els[i].closest && els[i].closest(MESTRE_ROW))) outer.push(els[i]);
         }
+        // Campo de exibição do mestre (fórum #434): o valor gravado do contêiner.
+        var shown = outer.length ? window._madWhen.displayValue(outer[0]) : null;
+        if (shown !== null) return shown;
         var hidden = null, checkable = false;
         for (var j = 0; j < outer.length; j++) {
             var t = String(outer[j].type || '').toLowerCase();
@@ -4315,6 +4336,10 @@ var _madCompute = (function () {
         var f = displayFmt(el);
         var blank = value === '';
         var text = blank ? (typeof f.empty === 'string' ? f.empty : '—') : displayText(value, f);
+        // O valor que uma condição da tela lê (fórum #434) acompanha a conta.
+        if (el.hasAttribute && el.hasAttribute('data-mad-display-value')) {
+            el.setAttribute('data-mad-display-value', blank ? '' : String(value));
+        }
         var wasBlank = !!box.querySelector('.mad-display-field-empty');
         if (wasBlank === blank && String(box.textContent || '').trim() === text.trim()) return false;
         if (blank) {

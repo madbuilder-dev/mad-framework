@@ -5597,7 +5597,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $target  = null;    // o registro que se tentou excluir: a recusa "em uso" diz quem o usa
         $ask     = null;    // o que vai junto, ainda sem a confirmação
         try {
-            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($id, $confirmedAlong, &$found, &$deleted, &$blocked, &$denied, &$target, &$ask) {
+            $this->_writeConnection()->transaction(function () use ($id, $confirmedAlong, &$found, &$deleted, &$blocked, &$denied, &$target, &$ask) {
                 $record = $this->_visibleRecord($id);
                 if (!$record) {
                     return;
@@ -5824,7 +5824,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 if ($col->editType === 'switch') {
                     $value = $col->switchStoredValue(strtolower(trim((string) $value)) === strtolower($col->editOn));
                 }
-                $saved = \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(
+                // Transação na conexão DO REGISTRO — a mesma do save() (fórum #433).
+                $saved = $record->getConnection()->transaction(
                     function () use ($record, $column, $value) {
                         $record->$column = ($value === '' || $value === null) ? null : $value;
 
@@ -5984,7 +5985,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         try {
-            \Illuminate\Support\Facades\DB::connection($this->_db())->transaction(function () use ($records, $values, $col) {
+            $this->_writeConnection()->transaction(function () use ($records, $values, $col) {
                 foreach ($records as $i => $record) {
                     if ((string) $record->getAttribute($col) === (string) $values[$i]) {
                         continue;
@@ -12218,6 +12219,27 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     {
         if (!empty($this->database)) return $this->database;
         return defined('MAIN_DATABASE') ? MAIN_DATABASE : 'business';
+    }
+
+    /**
+     * Conexão em que a listagem GRAVA (edição na célula, arrastar linhas,
+     * excluir): a do Model, que é onde os registros são lidos
+     * (`$this->model::query()`) e onde o `save()`/`delete()` roda.
+     *
+     * Fórum #433: a transação era aberta em `_db()` — o `$database` da tela ou
+     * a conexão principal. A listagem gerada não declara `$database` quando o
+     * Model tem `protected $connection`, então as duas divergiam: no SQLite as
+     * duas conexões abrem o mesmo arquivo e a gravação travava ("database is
+     * locked", a chave voltava); no MySQL/Postgres gravava fora da transação.
+     */
+    protected function _writeConnection(): \Illuminate\Database\ConnectionInterface
+    {
+        $model = $this->_recordModel();
+        if ($model !== '' && is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
+            return (new $model())->getConnection();
+        }
+
+        return \Illuminate\Support\Facades\DB::connection($this->_db());
     }
 
     // ── ManageRow — renderiza uma <tr> individual para update/insert ──

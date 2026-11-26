@@ -18,6 +18,19 @@
             }
         }
     }
+    // Valor que as condições da tela leem (`visible-when` de botão/campo,
+    // `compute`): o GRAVADO, antes de virar rótulo ou formato — o mesmo que
+    // um campo editável daria. Vai em data-mad-display-value no contêiner, sem
+    // `name`: não entra no Salvar. Sem ele a condição lia '' e "está vazio"
+    // valia sempre (fórum #434). Chave de outra tabela vai como a chave do
+    // registro; HTML vai como o texto que a tela mostra.
+    $_whenValue = is_bool($value) ? ($value ? '1' : '0')
+        : (is_array($value)
+            ? implode(',', array_map(fn ($v) => is_scalar($v) ? (string) $v : '', array_filter($value, 'is_scalar')))
+            : ((is_scalar($value) || $value instanceof \Stringable) ? (string) $value : ''));
+    if ($html && $_whenValue !== '') {
+        $_whenValue = trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags(\Mad\Util\MadHtmlSanitizer::sanitize($_whenValue)), ENT_QUOTES, 'UTF-8')));
+    }
     // Chave de outra tabela (`model` + `display`, como no combo): mostra o
     // rótulo do registro, não o código — um valor ou vários (seleção múltipla:
     // lista, JSON ou vírgula), numa consulta só. Registro que não existe mais
@@ -217,7 +230,7 @@
 @if($hideEmpty && $isEmpty)
 <div class="mad-field-read-skip" hidden></div>
 @else
-<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif {!! $attrs !!}{!! $_computeFmt !!}>
+<div class="mad-display-field {{ $class }}"@if($_dimStyle) style="{{ $_dimStyle }}"@endif @if($name !== '' && $name !== null) data-mad-display-name="{{ $name }}" data-mad-display-value="{{ $_whenValue }}"@endif {!! $attrs !!}{!! $_computeFmt !!}>
     @if($label)
     <div class="mad-display-field-header">
         @if($icon)

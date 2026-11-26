@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.370.3] — 2026-11-26
+
+### Correções
+
+- **Listagem (grid):** numa listagem cujo modelo grava em outra conexão de banco, ligar um Switch ou editar a célula, arrastar linhas e excluir podiam falhar com "database is locked" (a chave voltava) ou, em caso de erro, deixar a gravação pela metade. Agora tudo grava numa transação da conexão do próprio modelo.
+- **Formulário:** botão ou campo com condição (Visível quando, Desabilitado quando, cálculo) que olha um campo de exibição lia sempre vazio, e o botão com "está vazio" nunca sumia. Agora a condição lê o valor do registro mostrado no campo.
+
 ## [5.370.2] — 2026-11-26
 
 ### Correções
