@@ -426,6 +426,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * preenchido pelo _footerTotals() — a tela avisa nessas células.
      */
     protected array $_totalsPageOnly = [];
+    /**
+     * Colunas cujo total vem do que as células mostram (transformador do app
+     * que calcula a partir da linha, fórum #426): campo => true. O total do
+     * banco não vale para elas. Preenchido pelo _computeTotals().
+     */
+    protected array $_totalsFromCells = [];
 
     // ── Relatório (perPage <= 0) e memória ───────────────────────────────
 
@@ -9571,7 +9577,25 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _computeTotals(array $columns): array
     {
-        return GridRenderHelpers::computeTotals($this->_rows, $columns);
+        return GridRenderHelpers::computeTotals($this->_rows, $columns, $this->_totalsFromCells);
+    }
+
+    /**
+     * O total desta coluna vem do que as células mostram (fórum #426)? Decide
+     * pelas linhas carregadas e guarda a resposta — o total do grupo, feito
+     * antes ou depois do rodapé, pergunta a mesma coisa.
+     */
+    protected function _totalFromCells(GridColumn $col): bool
+    {
+        if (!GridCellTotals::candidate($col)) {
+            return false;
+        }
+        if (!array_key_exists($col->field, $this->_totalsFromCells)) {
+            $raw = GridRenderHelpers::computeRawTotals($this->_rows, [$col]);
+            $this->_totalsFromCells[$col->field] = GridCellTotals::fromRows($col, $this->_rows, $raw[0] ?? 0) !== null;
+        }
+
+        return $this->_totalsFromCells[$col->field];
     }
 
     /**
@@ -9627,7 +9651,9 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if (!($col instanceof GridColumn) || empty($col->totalFunc) || !isset($totals[$col->field])) {
                 continue;
             }
-            if (array_key_exists($i, $grand)) {
+            // Total que vem das células (fórum #426): o banco soma o valor cru,
+            // que o transformador não vê. Fica a conta das linhas carregadas.
+            if (array_key_exists($i, $grand) && empty($this->_totalsFromCells[$col->field])) {
                 $totals[$col->field] = GridRenderHelpers::renderTotal($col, $grand[$i]);
             } elseif ($partial) {
                 $this->_totalsPageOnly[$col->field] = true;
@@ -9984,6 +10010,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $totals = $items[$i]['totals'] ?? [];
             foreach ($raw as $c => $value) {
                 $col = $columns[$c] ?? null;
+                // Total que vem das células (fórum #426): o do banco não vale.
+                if ($col instanceof GridColumn && $this->_totalFromCells($col)) {
+                    continue;
+                }
                 if ($col instanceof GridColumn && isset($totals[$col->field])) {
                     $totals[$col->field] = GridRenderHelpers::renderTotal($col, $value);
                 }

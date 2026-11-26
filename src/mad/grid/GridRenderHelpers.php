@@ -1386,14 +1386,29 @@ class GridRenderHelpers
     /**
      * Calcula totalizadores por coluna. Retorna [field => htmlFormatado].
      *
+     * Coluna com transformador do app que CALCULA o valor a partir da linha
+     * (fórum #426) totaliza o que as células mostram, não o transformador
+     * aplicado à soma crua — ver GridCellTotals. Essas colunas entram em
+     * `$fromCells` (field => true): o total do banco não vale para elas.
+     *
      * @param array<int, array> $rows
      * @param GridColumn[] $columns
+     * @param array<string, bool>|null $fromCells
      * @return array<string, string>
      */
-    public static function computeTotals(array $rows, array $columns): array
+    public static function computeTotals(array $rows, array $columns, ?array &$fromCells = null): array
     {
+        $fromCells = [];
         $totals = [];
         foreach (self::computeRawTotals($rows, $columns) as $i => $result) {
+            $cell = GridCellTotals::fromRows($columns[$i], $rows, $result);
+            if ($cell !== null) {
+                $totals[$columns[$i]->field] = empty($columns[$i]->totalMask)
+                    ? $cell['text']
+                    : str_replace('{value}', $cell['text'], $columns[$i]->totalMask);
+                $fromCells[$columns[$i]->field] = true;
+                continue;
+            }
             $totals[$columns[$i]->field] = self::renderTotal($columns[$i], $result);
         }
         return $totals;

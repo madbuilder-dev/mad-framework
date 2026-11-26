@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.358.2] — 2026-11-26
+
+### Correções
+
+- **Listagem (grid):** o total de uma coluna com transformador que calcula o valor a partir da linha (por exemplo, `field="id"` que conta os produtos devolvidos) mostrava 0 com as linhas mostrando 3 e 0. Agora o rodapé soma o que as células mostram: a página, com o aviso "nesta página" quando há mais páginas; tudo, quando a tela ou a exportação têm todas as linhas. Moeda, número e formatadores seguem como antes.
+
 ## [5.358.1] — 2026-11-25
 
 ### Correções
