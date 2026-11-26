@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.371.1] — 2026-11-26
+
+### Correções
+
+- **App gerado:** na Central de Comando, Operações › Database Manager confirmava o registro mesmo com o Driver REST desligado, e toda consulta no Studio voltava "HTTP 404". Agora não registra e mostra como ligar: `MAD_REST_DRIVER_ENABLED=true` no `.env` e `php artisan config:clear`. Para receber, aplique o Código Fonte pela Central.
+
 ## [5.371.0] — 2026-11-26
 
 ### Novidades
