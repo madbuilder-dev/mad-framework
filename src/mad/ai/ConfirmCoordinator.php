@@ -17,6 +17,12 @@ namespace Mad\Ai;
  * chave em `values` e ignorada (o cliente nao injeta argumento novo nem troca o
  * registro alvo).
  *
+ * O spec da ferramenta no manifest pode declarar `editable: [arg, ...]` (ou
+ * "arg1, arg2"; `[]`/false = nada editavel): so esses argumentos podem virar
+ * campo do cartao — no self-gate da escrita e no confirm_action do modelo.
+ * Sem a chave vale a regra automatica (nome + tipo). Identificador (`id`,
+ * `key`, `*_id`) continua so leitura mesmo listado (fw#650).
+ *
  * Holder em memoria — a persistencia entre requests e feita pelo controller
  * (seed na carga, all() no save).
  */
@@ -32,6 +38,62 @@ final class ConfirmCoordinator
      * @var array<string, array{tool: string, args: array<string, mixed>, editable: array<string, array{input: string, options?: list<string>, cast?: string}>}>
      */
     private array $pending = [];
+
+    /**
+     * @param (\Closure(string): ?array<string, mixed>)|null $specOf spec da tool
+     *        no manifest pelo nome (para o `editable` declarado); null = sem manifest.
+     */
+    public function __construct(private ?\Closure $specOf = null)
+    {
+    }
+
+    /**
+     * Argumentos que o spec declara editaveis no cartao, ou null quando o spec
+     * nao declara (vale a regra automatica). Lista, texto "a, b" ou false/[]
+     * (= nenhum).
+     *
+     * @param  array<string, mixed> $spec
+     * @return list<string>|null
+     */
+    public static function declaredEditable(array $spec): ?array
+    {
+        if (! array_key_exists('editable', $spec)) {
+            return null;
+        }
+        $raw = $spec['editable'];
+        if ($raw === false) {
+            return [];
+        }
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        return array_values(array_filter(
+            array_map(static fn ($n) => is_scalar($n) ? trim((string) $n) : '', $raw),
+            static fn (string $n) => $n !== ''
+        ));
+    }
+
+    /**
+     * Corta da allowlist do cartao o que o spec da tool nao declara em
+     * `editable`. Sem spec ou sem a chave, devolve a allowlist como veio.
+     *
+     * @param  array<string, array<string, mixed>> $editable
+     * @return array<string, array<string, mixed>>
+     */
+    public function limitToDeclared(string $tool, array $editable): array
+    {
+        $spec     = $this->specOf !== null ? ($this->specOf)($tool) : null;
+        $declared = is_array($spec) ? self::declaredEditable($spec) : null;
+        if ($declared === null) {
+            return $editable;
+        }
+
+        return array_intersect_key($editable, array_flip($declared));
+    }
 
     /** Semeia a partir do estado persistido. */
     public function seed(array $pending): void

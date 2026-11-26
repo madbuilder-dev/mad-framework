@@ -108,13 +108,6 @@ final class CodingPlanAgentRunner
         '/^(?:vou|irei) (?:verificar|checar|conferir|olhar|voltar|retomar|tentar)(?: \S+){0,4} (?:mais tarde|depois|em breve|later)\b/iu',
     ];
 
-    /**
-     * Dialeto XML de tool-call que o MiniMax às vezes VAZA como texto em vez
-     * do bloco nativo (visto em produção no mad-agent, 30/jul/2026). Tudo a
-     * partir do primeiro marcador é scaffolding — nunca prosa.
-     */
-    private const LEAK_MARKERS = ['<tool_call>', '<invoke name=', '<invoke  name=', ']<]minimax[>', '<function_calls>'];
-
     // Os nudges NUNCA mandam "emitir show_* com o que você tem": em modelo
     // fraco isso virava bloco com dado INVENTADO (OS, clientes e técnicos que
     // não existem) ao lado do resultado real. O caminho é sempre consultar.
@@ -134,7 +127,13 @@ final class CodingPlanAgentRunner
         'Você está repetindo a MESMA tool com os MESMOS argumentos. Pare de chamar tools e responda ao usuário com o que já tem; se o dado veio vazio, diga isso claramente.';
 
     private const NUDGE_LEAK =
-        'Sua última resposta continha a sintaxe XML interna de tool call como TEXTO — isso não executa nada. Emita a tool call NATIVAMENTE (bloco tool_use), nunca como texto.';
+        'Sua última resposta continha uma chamada de ferramenta escrita como TEXTO (sintaxe XML interna ou os argumentos crus) — isso não executa nada. Emita a tool call NATIVAMENTE (bloco tool_use), nunca como texto.';
+
+    /**
+     * Visível quando o turno acaba numa rodada cuja chamada veio como texto
+     * (cortada da tela) e o modelo não a refez: a resposta ficou pela metade.
+     */
+    private const LEAK_GAVE_UP = 'Não consegui terminar a resposta. Pergunte de novo.';
 
     /**
      * Rodada "fantasma": o provedor cobrou saída que não chegou em bloco
@@ -176,6 +175,9 @@ final class CodingPlanAgentRunner
 
     /** Modelo pela plataforma (POST /api/app/ai/chat) em vez do Coding Plan. */
     private bool $proxy = false;
+
+    /** Filtro de troca de alfabeto do turno (null = o usuário trouxe chinês/japonês/coreano). */
+    private ?ScriptDrift $drift = null;
 
     /**
      * @param (\Closure(string $endpoint, string $token, string $body, \Closure(string): bool $feed): array{0: bool, 1: int, 2: string})|null $stream
@@ -234,6 +236,16 @@ final class CodingPlanAgentRunner
         }
 
         $messages = self::buildMessages($system, $history, $userMessage, $context);
+
+        // Chinês/japonês/coreano no meio de uma resposta que o usuário não pediu
+        // nesse idioma sai do texto (tela, transcript e histórico).
+        $userText = $userMessage;
+        foreach ($history as $m) {
+            if (! $m instanceof \Laravel\Ai\Messages\AssistantMessage) {
+                $userText .= "\n" . (string) ($m->content ?? '');
+            }
+        }
+        $this->drift = ScriptDrift::userBroughtCjk($userText) ? null : new ScriptDrift();
 
         $finalText = '';
         // Soma das rodadas; vira TextUsage (readonly no laravel/ai 1.0) no fim.
@@ -325,6 +337,12 @@ final class CodingPlanAgentRunner
                     // anúncio "agora listo…" sem saber que parou).
                     \error_log('[coding-plan] rodada sem entrega, tentativas esgotadas r' . $round . " ({$dropped} tokens)");
                     $this->sink->error(self::DROPPED_GAVE_UP);
+                } elseif ($leaked) {
+                    // A chamada escrita como texto saiu da tela e o modelo não
+                    // a refez: a frase ficou cortada. Diz isso em vez de deixar
+                    // a frase pela metade como se fosse a resposta.
+                    \error_log('[coding-plan] chamada de tool em texto, sem nova tentativa r' . $round);
+                    $this->sink->error(self::LEAK_GAVE_UP);
                 }
                 break; // fim legítimo (ou nudges esgotados)
             }
@@ -372,6 +390,10 @@ final class CodingPlanAgentRunner
             if ($askedUser) {
                 break; // pergunta + chips no ar; a resposta chega como turno novo
             }
+        }
+
+        if ($this->drift !== null && $this->drift->removed() > 0) {
+            \error_log('[coding-plan] troca de alfabeto: ' . $this->drift->removed() . ' trecho(s) CJK removido(s) da resposta (ex.: ' . $this->drift->sample() . ')');
         }
 
         $hasUsage = $usage['in'] > 0 || $usage['out'] > 0;
@@ -492,7 +514,12 @@ final class CodingPlanAgentRunner
         $raw     = ''; // começo da resposta crua: corpo JSON de uma recusa (4xx)
         $sink    = $this->sink;
 
-        $muted = false;
+        // Chamada de tool escrita como texto (XML do MiniMax, nome + argumentos
+        // ou argumentos crus `…|Próximos passos]]}`): do primeiro sinal em
+        // diante nada vai à tela nem ao histórico; a cauda que pode ser começo
+        // de marcador fica retida até o próximo delta (marcador partido).
+        $scrub = new ToolCallLeakScrubber(array_column($defs, 'name'));
+        $drift = $this->drift;
 
         // Contabilidade da rodada: saída cobrada × saída que chegou em bloco
         // (texto limpo, JSON de tool, raciocínio). Raciocínio cifrado não tem
@@ -501,33 +528,23 @@ final class CodingPlanAgentRunner
         $deliveredChars = 0;
         $unmeasurable   = false;
 
-        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, &$failedData, &$usage, $sink, &$aborted, &$leaked, &$muted, &$roundOut, &$deliveredChars, &$unmeasurable): void {
+        $onFrame = function (array $ev) use (&$text, &$pending, &$order, &$failed, &$failedData, &$usage, $sink, &$aborted, &$leaked, $scrub, $drift, &$roundOut, &$deliveredChars, &$unmeasurable): void {
             $type = (string) ($ev['type'] ?? '');
             $d    = (array) ($ev['data'] ?? []);
             if ($type === 'text_delta') {
-                $delta = (string) ($d['text'] ?? '');
-                if (! $muted) {
-                    // Scrub do dialeto XML de tool call vazado como texto
-                    // (MiniMax): do primeiro marcador em diante é scaffolding,
-                    // não prosa — corta o visível e sinaliza pro guard.
-                    $cut = null;
-                    foreach (self::LEAK_MARKERS as $marker) {
-                        $pos = strpos($delta, $marker);
-                        if ($pos !== false && ($cut === null || $pos < $cut)) {
-                            $cut = $pos;
-                        }
-                    }
-                    if ($cut !== null) {
-                        $muted  = true;
-                        $leaked = true;
-                        $delta  = substr($delta, 0, $cut);
-                        \error_log('[coding-plan] tool-call XML vazado como texto — stream mutado');
-                    }
-                    if ($delta !== '') {
-                        $text .= $delta; // histórico fica com o texto LIMPO (pós-scrub)
-                        $deliveredChars += mb_strlen($delta);
-                        $sink->textDelta($delta);
-                    }
+                $raw             = (string) ($d['text'] ?? '');
+                $deliveredChars += mb_strlen($raw); // o vazado também chegou: não é saída perdida
+                $delta           = $scrub->push($raw);
+                if ($scrub->leaked() && ! $leaked) {
+                    $leaked = true;
+                    \error_log('[coding-plan] tool call escrita como texto — stream cortado');
+                }
+                if ($drift !== null) {
+                    $delta = $drift->push($delta);
+                }
+                if ($delta !== '') {
+                    $text .= $delta; // histórico fica com o texto LIMPO (pós-scrub)
+                    $sink->textDelta($delta);
                 }
             } elseif ($type === 'tool_use_start') {
                 $id           = (string) ($d['id'] ?? '');
@@ -614,6 +631,21 @@ final class CodingPlanAgentRunner
                 : ('Stream do Mad Coding Plan falhou' . ($err !== '' ? " ({$err})" : " (HTTP {$status})") . '.'), $refusalBody);
 
             return null;
+        }
+
+        // Fim da rodada: a cauda retida sai, a não ser que seja a chamada
+        // escrita como texto (`…os|Próximos passos]]}`).
+        $tail = $scrub->flush();
+        if ($scrub->leaked() && ! $leaked) {
+            $leaked = true;
+            \error_log('[coding-plan] tool call escrita como texto no fim da rodada — cortada');
+        }
+        if ($drift !== null) {
+            $tail = $drift->push($tail);
+        }
+        if ($tail !== '') {
+            $text .= $tail;
+            $sink->textDelta($tail);
         }
 
         $uses = [];

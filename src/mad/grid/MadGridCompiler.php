@@ -26,6 +26,12 @@ use Mad\View\MadBlade;
  * │  :search-columns="[...]"  Campos para busca (notação ponto: 'rel.campo')   │
  * │  sticky                   Thead fixo ao rolar                               │
  * │  auto-refresh="15"        Relê os dados a cada N s (mín. 5; 0 = desligado)  │
+ * │                           Pula o ciclo com aba oculta, pedido em voo, cursor│
+ * │                           num campo de texto ou aviso/cortina aberta (relê  │
+ * │                           ao fechar). Linha marcada pausa: a barra mostra   │
+ * │                           "Atualização pausada · Atualizar agora";          │
+ * │                           desmarcou, relê. A tela pula com preventDefault() │
+ * │                           no evento mad-grid-refresh.                       │
  * │  no-export                Desabilita botões de exportação                   │
  * │  no-auto-load             Abre vazio; consulta só após Buscar/filtro/sort   │
  * │  require-filter           Abre vazio e só consulta com ao menos 1 filtro    │
@@ -43,6 +49,8 @@ use Mad\View\MadBlade;
  * │                           usuário escolher (liga o card-view)              │
  * │  card-cols="3"            Colunas do grid de cards (default: 3)             │
  * │  selectable               Coluna de seleção (checkbox) + ações em lote      │
+ * │  keep-selection           Marcação atravessa busca, filtro, ordenação e     │
+ * │                           reabertura (padrão com <mad-bulk-action>: zera)   │
  * │  row-click                Clique na linha executa a 1ª ação dela (o "clique │
  * │                           padrão" do 4.0); ações de exclusão ficam de fora  │
  * │  view-action              Ação Visualizar (olho) logo depois do Editar: a   │
@@ -58,8 +66,13 @@ use Mad\View\MadBlade;
  * │  ──────────────────────────────────────────────────────────────────────────  │
  * │  Botão na barra de seleção do grid (contador "N selecionados" + Limpar).     │
  * │  Marca-se a linha no checkbox (o do cabeçalho marca a página inteira); a    │
- * │  seleção sobrevive a paginação, ordenação, busca, filtro e à reabertura da   │
- * │  tela (espelhada na sessão por classe do grid).                              │
+ * │  seleção atravessa a troca de página. Com ação em lote declarada, busca,     │
+ * │  filtro, ordenação, linhas por página e reabertura da tela ZERAM a marcação  │
+ * │  (`keep-selection` no <mad-grid> mantém, espelhada na sessão por classe).    │
+ * │  Marcada fora da página: a barra diz "N fora desta página" e o aviso também  │
+ * │  (sem confirm=, a ação pergunta antes). O servidor só entrega ao método, ao  │
+ * │  target e ao preset os ids que a consulta da listagem ainda mostra (com     │
+ * │  keep-selection, sem os filtros do usuário); os outros saem com um aviso.   │
  * │                                                                              │
  * │  method="onQuitarLote"    Chama o método do GRID: onQuitarLote(array $ids)  │
  * │  target="QuitarLoteForm"  Abre a tela (drawer/modal/página, como mad-nav)   │
@@ -68,8 +81,19 @@ use Mad\View\MadBlade;
  * │  label="Quitar em lote"   Texto (ou o corpo da tag)                         │
  * │  icon="check"             Ícone Lucide                                      │
  * │  variant="primary"        primary (default) | danger | ghost | secondary    │
- * │  confirm="Quitar?"        Confirmação antes (":count" = nº selecionados)    │
+ * │  confirm="Quitar?"        Confirmação antes (":count" = nº selecionados;   │
+ * │                           ":items" = rótulos das linhas, até 10 + "e mais") │
+ * │  confirm-label="{nome}"   Rótulo de cada linha no :items (máscara {campo});  │
+ * │                           sem ele, a 1ª coluna visível que não é a chave    │
  * │  min="1"                  Mínimo de linhas marcadas (default 1; 0 = sempre) │
+ * │                                                                              │
+ * │  Quem vê o botão: o PERFIL (o método na tela do grid; com target, a tela de  │
+ * │  destino) e a preferência "Ações sem permissão": Ocultos some, Desabilitados │
+ * │  fica cinza com a dica. @canAccess(…) / @if / @elseif / @else / @unless em   │
+ * │  volta da tag tiram a ação da barra quando falsos (aninhados valem; o índice │
+ * │  das outras não muda). Outra diretiva em volta (@isset, @can, @foreach…) não │
+ * │  é aplicada: aviso no log. A condição esconde o botão; quem recusa o método  │
+ * │  chamado direto é o perfil.                                                  │
  * │                                                                              │
  * │  Ações PRONTAS (preset) — rodam no framework, zero PHP na tela:              │
  * │  preset="delete"          Exclui os marcados UM POR UM pelo Model (eventos, │
@@ -849,14 +873,19 @@ class MadGridCompiler
 
         // Ações em lote (<mad-grid selectable>): extraídas ANTES do resto — o
         // passe de @if/@endif das ações de linha removeria a tag junto com o
-        // bloco, e o match genérico de filhos não a reconhece.
+        // bloco, e o match genérico de filhos não a reconhece. A condição Blade
+        // em volta (@if/@elseif/@else/@unless/@canAccess, fw#659) vai junto,
+        // como `when`: o render tira da barra a ação com condição falsa.
         $bulkConfigs = [];
+        $bulkConds   = static::bulkActionConditions($inner);
+        $bulkIdx     = 0;
         $inner = preg_replace_callback(
             '/<mad-bulk-action(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-bulk-action') . '/s',
-            function (array $m) use (&$bulkConfigs): string {
-                $cfg = static::buildBulkConfig(static::parseAttrs($m[1]), (string) ($m[2] ?? ''));
+            function (array $m) use (&$bulkConfigs, $bulkConds, &$bulkIdx): string {
+                $cond = $bulkConds[$bulkIdx++] ?? null;
+                $cfg  = static::buildBulkConfig(static::parseAttrs($m[1]), (string) ($m[2] ?? ''));
                 if ($cfg !== null) {
-                    $bulkConfigs[] = $cfg;
+                    $bulkConfigs[] = $cond === null ? $cfg : substr($cfg, 0, -1) . ", 'when' => (bool) ({$cond})]";
                 }
                 return '';
             },
@@ -2137,6 +2166,11 @@ class MadGridCompiler
         if (static::has($a, 'selectable') && strtolower(static::str($a, 'selectable')) !== 'false') {
             $c[] = "'selectable' => true";
         }
+        // keep-selection (fw#658): flag nua liga, `="false"` desliga; ausente,
+        // o padrão do runtime (com ação em lote, a marcação zera).
+        if (static::has($a, 'keep-selection')) {
+            $c[] = "'keepSelection' => " . (strtolower(static::str($a, 'keep-selection')) === 'false' ? 'false' : 'true');
+        }
 
         // Lembrar filtros (fórum #215): flag nua liga, `="false"` desliga e,
         // ausente, vale o que a classe declarar ($rememberFilters, desligado).
@@ -2190,6 +2224,93 @@ class MadGridCompiler
      *
      * @return string|null  literal PHP do array; null = descartada
      */
+    /**
+     * Condição Blade em volta de cada `<mad-bulk-action>` do corpo do grid
+     * (fw#659), na ordem em que as tags aparecem: `null` = sem condição; senão
+     * a expressão PHP que vale naquele ponto — `@if`/`@elseif`/`@else`,
+     * `@unless` e `@canAccess(...)` (o `mad_can_access(...)` da diretiva),
+     * aninhadas com `&&`. Outra diretiva de bloco em volta (`@isset`, `@can`,
+     * `@foreach`…) não é aplicada: vira aviso de authoring.
+     *
+     * @return list<string|null>
+     */
+    protected static function bulkActionConditions(string $inner): array
+    {
+        $bulkRe = '/<mad-bulk-action(?![\w-])(' . self::ATTR_RUN_SC . ')' . static::pairOrSelfClose('mad-bulk-action') . '/s';
+        if (!preg_match_all($bulkRe, $inner, $bm, PREG_OFFSET_CAPTURE) || !str_contains($inner, '@')) {
+            return [];
+        }
+        $paren  = '(\((?:[^()\'"]++|\'(?:[^\'\\\\]|\\\\.)*+\'|"(?:[^"\\\\]|\\\\.)*+"|(?-1))*+\))';
+        $other  = 'isset|empty|auth|guest|can|cannot|canany|env|production|foreach|forelse|for|while|switch|session|error';
+        preg_match_all(
+            '/(?<!@)@(?:(if|elseif|unless|canAccess)\s*' . $paren . '|(else|endif|endunless|endcanAccess)(?![\w])'
+            . '|(' . $other . ')(?![\w])(\s*\()?|end(' . $other . ')(?![\w]))/i',
+            $inner, $dm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+        );
+
+        $events = [];
+        foreach ($dm as $d) {
+            $events[] = [$d[0][1], 'dir', $d];
+        }
+        foreach ($bm[0] as $i => $tag) {
+            $events[] = [$tag[1], 'bulk', $i];
+        }
+        usort($events, fn ($x, $y) => $x[0] <=> $y[0]);
+
+        $stack = [];   // ['raw' => [conds anteriores], 'cur' => cond do ramo, 'other' => nome]
+        $out   = array_fill(0, count($bm[0]), null);
+        foreach ($events as [$off, $kind, $d]) {
+            if ($kind === 'bulk') {
+                $conds = [];
+                foreach ($stack as $f) {
+                    if ($f['other'] !== '') {
+                        static::$_actionNotes[] = '<mad-bulk-action> dentro de @' . $f['other']
+                            . ': a condição não é aplicada à ação em lote (use @if, @unless ou @canAccess).';
+                        continue;
+                    }
+                    $conds[] = $f['cur'];
+                }
+                $out[$d] = $conds === [] ? null : '(' . implode(') && (', $conds) . ')';
+                continue;
+            }
+            $open  = strtolower((string) ($d[1][0] ?? ''));
+            $inner2 = isset($d[2][0]) && $d[2][0] !== '' ? trim(substr(trim($d[2][0]), 1, -1)) : '';
+            $close = strtolower((string) ($d[3][0] ?? ''));
+            $oth   = strtolower((string) ($d[4][0] ?? ''));
+            $othEnd = strtolower((string) ($d[6][0] ?? ''));
+            if ($oth === 'empty' && (string) ($d[5][0] ?? '') === '') {
+                $oth = '';   // o @empty sem parênteses é o "senão" do @forelse
+            }
+            if ($open === 'if' || $open === 'unless' || $open === 'canaccess') {
+                $cond = match ($open) {
+                    'unless'    => '!(' . $inner2 . ')',
+                    'canaccess' => 'mad_can_access(' . $inner2 . ')',
+                    default     => $inner2,
+                };
+                $stack[] = ['raw' => [$cond], 'cur' => $cond, 'other' => ''];
+            } elseif ($open === 'elseif' && $stack !== []) {
+                $top = array_pop($stack);
+                $top['cur'] = '!(' . implode(') && !(', $top['raw']) . ') && (' . $inner2 . ')';
+                $top['raw'][] = $inner2;
+                $stack[] = $top;
+            } elseif ($close === 'else' && $stack !== []) {
+                $top = array_pop($stack);
+                if ($top['other'] === '') {
+                    $top['cur'] = '!(' . implode(') && !(', $top['raw']) . ')';
+                }
+                $stack[] = $top;
+            } elseif ($close !== '' && $stack !== []) {
+                array_pop($stack);
+            } elseif ($oth !== '') {
+                $stack[] = ['raw' => [], 'cur' => '', 'other' => $oth];
+            } elseif ($othEnd !== '' && $stack !== []) {
+                array_pop($stack);
+            }
+        }
+
+        return $out;
+    }
+
     protected static function buildBulkConfig(array $a, string $body = ''): ?string
     {
         $c = [];
@@ -2263,6 +2384,10 @@ class MadGridCompiler
         // obrigatória): o runtime preenche quando chega vazio.
         if (isset($a['confirm']) && $a['confirm']['type'] !== 'bool') {
             $c[] = static::kv('confirm', static::strExpr($a, 'confirm'));
+        }
+        // `:items` do confirm (fw#658): rótulo de cada linha, máscara `{campo}`.
+        if (static::str($a, 'confirm-label') !== '') {
+            $c[] = static::kv('confirmLabel', static::qs(static::str($a, 'confirm-label')));
         }
 
         $variant = match (true) {

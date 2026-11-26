@@ -66,8 +66,9 @@
                     $attrClear = 'data-mad-click="clearFilter(\'' . $safeName . '\')"';
                 @endphp
 
-                <div class="mad-dashf-anchor" x-data="{ open: false }">
-                    <button type="button" class="{{ $cls }}" x-ref="trigger" @click="open = !open"
+                {{-- madDashPop (fw#658): Cancelar, ×, Esc e clique fora devolvem o valor da abertura. --}}
+                <div class="mad-dashf-anchor" x-data="madDashPop()">
+                    <button type="button" class="{{ $cls }}" x-ref="trigger" @click="toggle()"
                             aria-haspopup="true" :aria-expanded="open ? 'true' : 'false'">
                         <span class="mad-dashf-mini-lbl">{{ $label }}:</span>
                         <span>{{ $valLbl }}</span>
@@ -78,10 +79,10 @@
                          escolhidos quando a lista fecha, e o popover alargando
                          movia o botão Aplicar para fora do clique. --}}
                     <div class="mad-dashf-pop" x-show="open" x-cloak @if ($isMulti) style="width:340px;max-width:calc(100vw - 32px)" @endif
-                         @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="if (open) { open = false; $refs.trigger.focus() }">
+                         @click.outside.capture="if (!$event.target.closest('.mad-sel-dropdown') && !$refs.trigger.contains($event.target)) cancel()" @keydown.escape.window="if (open) cancel(true)">
                         <div class="mad-dashf-pop-head">
                             <span>{{ mad_t('mad.dashf.filter_by', ['label' => mb_strtolower($label)]) }}</span>
-                            <button type="button" class="mad-dashf-pop-close" @click="open = false" aria-label="{{ mad_t('mad.btn.close') }}">×</button>
+                            <button type="button" class="mad-dashf-pop-close" @click="cancel()" aria-label="{{ mad_t('mad.btn.close') }}">×</button>
                         </div>
                         {{-- Seleção múltipla: a lista do select abre PARA BAIXO por cima do
                              popover (teleportada) e cobriria os botões — ações vão pro topo. --}}
@@ -92,7 +93,7 @@
                             @if ($active)
                                 <mad-btn variant="ghost" size="sm" icon="x-circle" :attrs="$attrClear">{{ mad_t('mad.btn.clear') }}</mad-btn>
                             @endif
-                            <mad-btn variant="ghost" size="sm" :attrs="'@click.prevent=\'open = false\''">{{ mad_t('mad.btn.cancel') }}</mad-btn>
+                            <mad-btn variant="ghost" size="sm" :attrs="'@click.prevent=\'cancel()\''">{{ mad_t('mad.btn.cancel') }}</mad-btn>
                             <mad-btn type="submit" variant="primary" size="sm" icon="check">{{ $chrome['apply'] }}</mad-btn>
                         </div>
                         @if ($isMulti)

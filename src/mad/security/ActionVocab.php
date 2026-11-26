@@ -252,6 +252,45 @@ final class ActionVocab
     public static function flushOwnPermission(): void
     {
         self::$ownPermission = [];
+        self::$inherited     = [];
+    }
+
+    /** @var array<string, string|null> `Classe::metodo` => chave herdada */
+    private static array $inherited = [];
+
+    /**
+     * A chave que a ação própria segue quando não consta da lista do perfil —
+     * `'view'` para a marcada `#[MadPermission(inherit: 'view')]` (builder#698),
+     * null para as demais.
+     *
+     * Só responde para ação própria ({@see isOwnPermission()}): o que não é
+     * permissão não herda nada. Nunca estoura.
+     */
+    public static function inheritedKey(string $class, string $method): ?string
+    {
+        if (!self::isOwnPermission($class, $method)) {
+            return null;
+        }
+
+        $memo = ltrim(trim($class), '\\') . '::' . trim($method);
+        if (array_key_exists($memo, self::$inherited)) {
+            return self::$inherited[$memo];
+        }
+
+        $chave = null;
+        try {
+            $fqcn = self::resolveClass($class);
+            if ($fqcn !== null) {
+                foreach ((new \ReflectionMethod($fqcn, trim($method)))->getAttributes(MadPermission::class) as $atributo) {
+                    $chave = $atributo->newInstance()->inherit;
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            $chave = null;
+        }
+
+        return self::$inherited[$memo] = $chave;
     }
 
     private static function inspectOwn(string $fqcn, string $method): bool

@@ -150,6 +150,8 @@
     $selAll       = $selectable && !empty($selAll);
     $selAllCapped = !empty($selAllCapped);
     $selAllCount  = (int) ($selAllCount ?? 0);
+    // Marcadas fora desta página (fw#658): a barra avisa.
+    $selOff       = $selectable ? count(array_diff($selected, $selPageIds)) : 0;
     $_selNum      = static fn (int $n): string => number_format($n, 0, '', str_starts_with((string) app()->getLocale(), 'en') ? ',' : '.');
     // <mad-row-expand> (fórum #127): coluna estreita do chevron, logo depois da
     // seleção. Entra no colCount — o visibleColCount() do Alpine (estado vazio,
@@ -249,7 +251,7 @@
         : '';
 @endphp
 <div class="mad-dg-wrap" data-grid-key="{{ $storageKey }}"@if($selectable) x-on:mad-grid-bulk="onBulkEvent($event.detail)"@endif{{ $rowClick ? ' data-row-click' : '' }}{!! $_autoRefreshAttrs !!}{!! $_lookAttrs !!}@if(isset($focusRowId) && $focusRowId !== null && $focusRowId !== '') data-mad-focus-row="{{ $_rowPrefix }}{{ $focusRowId }}"@endif
-     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if(!empty($gridViews)), gvText: {{ json_encode(['nameInvalid' => mad_t('mad.gridview.name_invalid')]) }}@if(is_array($gridViews['client'] ?? null)), viewClient: {{ json_encode($gridViews['client']) }}@endif @endif @if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)] + (($b['preset'] ?? '') === 'export' ? ['x' => 1] : []), $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many')]) }}, selTotal: {{ $selTotal }}, selAll: {{ $selAll ? 'true' : 'false' }}, bulkText: {{ json_encode(['stop' => __('grid.bulk_stop'), 'stopping' => __('grid.bulk_stopping'), 'failed' => __('grid.bulk_job_failed')]) }}@endif })"
+     x-data="madDataGrid({ sticky: {{ $sticky ?? false ? 'true' : 'false' }}, storageKey: '{{ $storageKey }}', cols: {{ $colsConfigJson }}, colCount: {{ $colCount }}, search: '{{ addslashes($searchValue ?? '') }}'{{ $cardView ? ', cardView: true' : '' }}{{ $cardDefault ? ', cardDefault: true' : '' }}{{ $cardBelow > 0 ? ', cardBelow: ' . $cardBelow : '' }}{{ $rowClick ? ', rowClick: true' : '' }}{{ $_editTextJson !== '' ? ', editText: ' . $_editTextJson : '' }}@if(!empty($gridViews)), gvText: {{ json_encode(['nameInvalid' => mad_t('mad.gridview.name_invalid')]) }}@if(is_array($gridViews['client'] ?? null)), viewClient: {{ json_encode($gridViews['client']) }}@endif @endif @if($reorderActive ?? false), reorder: true, rowPrefix: {{ json_encode($_rowPrefix) }}, reorderText: {{ json_encode(['drag' => mad_t('mad.grid.drag_row'), 'failed' => mad_t('mad.grid.reorder_failed')]) }}@endif @if($selectable), selectable: true, selected: {{ json_encode($selected) }}, pageIds: {{ json_encode($selPageIds) }}, bulk: {{ json_encode(array_map(fn($b) => (!empty($b['hidden']) || !empty($b['deny'])) ? null : ['m' => (string) ($b['method'] ?? ''), 'c' => (string) ($b['confirm'] ?? ''), 'min' => (int) ($b['min'] ?? 1)] + (($b['preset'] ?? '') === 'export' ? ['x' => 1] : []) + (!empty($b['labels']) ? ['l' => (object) $b['labels']] : []), $bulkActions)) }}, selText: {{ json_encode(['none' => __('grid.selected_none'), 'one' => __('grid.selected_one'), 'many' => __('grid.selected_many'), 'off' => __('grid.selected_off_page'), 'offAsk' => __('grid.bulk_off_page_ask'), 'more' => __('grid.bulk_more')]) }}, selTotal: {{ $selTotal }}, selAll: {{ $selAll ? 'true' : 'false' }}, bulkText: {{ json_encode(['stop' => __('grid.bulk_stop'), 'stopping' => __('grid.bulk_stopping'), 'failed' => __('grid.bulk_job_failed')]) }}@endif })"
      x-init="init($el)"
      @mad-dg-page="handlePage($event)"
      @mad-dg-call="handleCall($event)"
@@ -424,13 +426,26 @@
          e o MadDataGrid a guarda no state e na sessão (MadGridSelection). --}}
     @if($selectable)
     <input type="hidden" name="{{ $selectionField }}" value="{{ json_encode($selected) }}" :value="JSON.stringify(selected)">
+    @if(($viewField ?? '') !== '' && ($viewToken ?? '') !== '')
+    {{-- Filtros que este desenho usou (cifrado): a ação em lote confere as marcadas com eles, não com o texto do balão sem Aplicar. --}}
+    <input type="hidden" name="{{ $viewField }}" value="{{ $viewToken }}">
+    @endif
     <div class="mad-dg-selbar" :class="{ 'mad-dg-selbar-active': selected.length > 0 }">
         <div class="mad-dg-selbar-info">
             <i data-lucide="list-checks" style="width:14px;height:14px;"></i>
             <span class="mad-dg-selbar-count" x-text="selCountLabel()">{{ count($selected) === 0 ? __('grid.selected_none') : (count($selected) === 1 ? __('grid.selected_one') : str_replace(':count', (string) count($selected), __('grid.selected_many'))) }}</span>
+            <span class="mad-dg-selbar-out" x-show="selOffCount() > 0" x-text="selOffLabel()"@if($selOff === 0) style="display:none;"@endif>{{ $selOff > 0 ? str_replace(':count', (string) $selOff, __('grid.selected_off_page')) : '' }}</span>
             <button type="button" class="mad-btn mad-btn-ghost mad-btn-sm mad-dg-selbar-clear" x-show="selected.length > 0"@if(empty($selected)) style="display:none;"@endif @click="clearSelection()">
                 {{ __('grid.clear_selection') }}
             </button>
+@if($_autoRefresh > 0)
+            {{-- auto-refresh com linha marcada: o ciclo espera (fw#660). --}}
+            <span class="mad-dg-selbar-paused" x-show="refreshHeld()" title="{{ __('grid.refresh_paused_hint') }}"@if(empty($selected)) style="display:none;"@endif>
+                <i data-lucide="pause" style="width:12px;height:12px;"></i>
+                <span>{{ __('grid.refresh_paused') }}</span>
+                <button type="button" class="mad-dg-selbar-refresh" @click="refreshNow()">{{ __('grid.refresh_now') }}</button>
+            </span>
+@endif
         </div>
         {{-- Ação que o perfil não tem, com "Ações sem permissão = Ocultos": não é
              desenhada (`hidden`, ver MadDataGrid::_selectionViewData). O índice das

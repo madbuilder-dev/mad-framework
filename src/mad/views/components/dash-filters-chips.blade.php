@@ -66,15 +66,16 @@
                 $safeType  = fn ($n) => preg_replace('/[^\w\-]/', '', (string) $n);
                 $firstType = $safeType($regularFields[0]['attrs']['name'] ?? '');
             @endphp
-            <div class="mad-dashf-anchor" x-data="{ open: false, tipo: '{{ $firstType }}' }" style="position:relative;">
-                <button type="button" class="mad-dashf-chip-add" x-ref="trigger" @click="open = !open"
+            {{-- madDashPop (fw#658): Cancelar, ×, Esc e clique fora devolvem o valor da abertura. --}}
+            <div class="mad-dashf-anchor" x-data="madDashPop({ tipo: '{{ $firstType }}' })" style="position:relative;">
+                <button type="button" class="mad-dashf-chip-add" x-ref="trigger" @click="toggle()"
                         aria-haspopup="true" :aria-expanded="open ? 'true' : 'false'">+ {{ mad_t('mad.dashf.add_filter') }}</button>
 
                 <div class="mad-dashf-pop" x-show="open" x-cloak
-                     @click.outside="if (!$event.target.closest('.mad-sel-dropdown')) open = false" @keydown.escape.window="if (open) { open = false; $refs.trigger.focus() }">
+                     @click.outside.capture="if (!$event.target.closest('.mad-sel-dropdown') && !$refs.trigger.contains($event.target)) cancel()" @keydown.escape.window="if (open) cancel(true)">
                     <div class="mad-dashf-pop-head">
                         <span>{{ mad_t('mad.dashf.add_filter') }}</span>
-                        <button type="button" class="mad-dashf-pop-close" @click="open = false" aria-label="{{ mad_t('mad.btn.close') }}">×</button>
+                        <button type="button" class="mad-dashf-pop-close" @click="cancel()" aria-label="{{ mad_t('mad.btn.close') }}">×</button>
                     </div>
 
                     <div class="mad-dashf-pop-types">
@@ -94,7 +95,7 @@
                     @endforeach
 
                     <div class="mad-dashf-pop-actions">
-                        <mad-btn variant="ghost" size="sm" :attrs="'@click.prevent=\'open = false\''">{{ mad_t('mad.btn.cancel') }}</mad-btn>
+                        <mad-btn variant="ghost" size="sm" :attrs="'@click.prevent=\'cancel()\''">{{ mad_t('mad.btn.cancel') }}</mad-btn>
                         <mad-btn type="submit" variant="primary" size="sm" icon="check">{{ $chrome['apply'] }}</mad-btn>
                     </div>
                 </div>

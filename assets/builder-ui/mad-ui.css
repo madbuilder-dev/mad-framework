@@ -7880,9 +7880,46 @@ input[type="checkbox"].mad-checkbox::before { display: none; content: none; }
 .mad-dg-selbar-info {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;   /* celular: a faixa de pausa desce de linha em vez de vazar do cartão (fw#660) */
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 .mad-dg-selbar-active .mad-dg-selbar-count { font-weight: 600; color: var(--mad-primary-ink, var(--mad-primary)); }
+/* Marcadas fora desta página (fw#658): a ação também as processa. */
+.mad-dg-selbar-out {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--mad-warning-subtle, color-mix(in srgb, var(--mad-warning) 14%, var(--mad-bg)));
+  color: var(--mad-warning-text, var(--mad-warning));
+  font-weight: 600;
+}
+/* auto-refresh pausado pela marcação (fw#660) */
+.mad-dg-selbar-paused {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
+  background: var(--mad-info-subtle);
+  color: var(--mad-info);
+  font-weight: 600;
+}
+.mad-dg-selbar-refresh {
+  border: 0;
+  background: transparent;
+  color: var(--mad-primary-ink, var(--mad-primary));
+  font: inherit;
+  font-weight: 600;
+  padding: 0 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.mad-dg-selbar-refresh:hover { text-decoration: none; }
 .mad-dg-selbar-actions {
   display: inline-flex;
   align-items: center;
@@ -11164,24 +11201,26 @@ textarea.mad-dg-inline-input {
 .mad-dg-cards-wrap {
   padding: 12px 16px 16px;
 }
+/* minmax(0, 1fr): a coluna não cresce até a largura do conteúdo — palavra
+   longa sem espaço no título estourava o cartão para fora da tela (fw#664). */
 .mad-dg-cards {
   display: grid;
-  grid-template-columns: repeat(var(--mad-dg-card-cols, 3), 1fr);
+  grid-template-columns: repeat(var(--mad-dg-card-cols, 3), minmax(0, 1fr));
   gap: 14px;
 }
 @media (max-width: 1200px) {
   .mad-dg-cards {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 768px) {
   .mad-dg-cards {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (min-width: 1600px) {
   .mad-dg-cards:not([style*="--mad-dg-card-cols"]) {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -11189,6 +11228,7 @@ textarea.mad-dg-inline-input {
 .mad-dg-card {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   background: var(--mad-bg);
   border: 1px solid var(--mad-border);
   border-radius: var(--mad-radius-lg);
@@ -11229,8 +11269,11 @@ textarea.mad-dg-inline-input {
 }
 
 /* ── Card header (title + badge) ───────────────────────────────── */
+/* Selos descem de linha quando não cabem; o título guarda 8rem ao lado deles
+   (no computador título de 2 linhas + selo seguem lado a lado). */
 .mad-dg-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
@@ -11238,6 +11281,7 @@ textarea.mad-dg-inline-input {
 .mad-dg-card-titles {
   display: flex;
   flex-direction: column;
+  flex: 1 1 8rem;
   gap: 2px;
   min-width: 0;
 }
@@ -11251,11 +11295,22 @@ textarea.mad-dg-inline-input {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 .mad-dg-card-subtitle {
   font-size: var(--mad-text-xs);
   color: var(--mad-text-muted);
   letter-spacing: .01em;
+  overflow-wrap: anywhere;
+}
+/* Selo mais largo que o cartão (texto longo): fica na largura do cabeçalho e
+   quebra dentro do próprio selo, em vez de sair do cartão. O que cabe segue
+   numa linha, como antes (fw#664). */
+.mad-dg-card-header .mad-badge {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ── Card highlight (money / prominent value) ──────────────────── */

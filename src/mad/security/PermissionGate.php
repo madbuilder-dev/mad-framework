@@ -807,6 +807,9 @@ class PermissionGate
      * Para liberar: rodar "Permissões de acesso" (refaz o catálogo) e marcar a
      * ação no perfil.
      *
+     * Ação de leitura marcada `#[MadPermission(inherit: 'view')]` segue o
+     * "Visualizar" do perfil em vez de nascer negada (builder#698).
+     *
      * @param  array<string, mixed>  $acoes  mapa da tela na sessão
      */
     private static function deniedByOmission(array $acoes, string $class, string $key): bool
@@ -822,11 +825,13 @@ class PermissionGate
                 break;
             }
         }
-        if (!$restrito) {
+        if (!$restrito || !ActionVocab::isOwnPermission($class, $key)) {
             return false;
         }
 
-        return ActionVocab::isOwnPermission($class, $key);
+        $herdada = ActionVocab::inheritedKey($class, $key);
+
+        return $herdada === null || self::deniedIn($acoes, $herdada);
     }
 
     /**

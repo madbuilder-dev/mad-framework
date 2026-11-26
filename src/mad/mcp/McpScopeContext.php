@@ -24,6 +24,7 @@ final class McpScopeContext
     /**
      * Filtros e carimbo da camada de tenancy do APP para uma tabela do agente:
      *   - Multi-unidade ligado + tabela com `unit_id`   => unit_id = unidade ativa
+     *     (ou todas as do usuário com mad.mcp.unit_scope = 'all' — readUnitIds())
      *   - tenant em pool ligado + tabela com `tenant_id` => tenant_id = tenant ativo
      * Unidade/tenant vem do contexto do TOKEN (o middleware restaura a sessao da
      * emissao) — nunca dos args do LLM. Sem unidade/tenant corrente => id
@@ -49,13 +50,38 @@ final class McpScopeContext
                 continue;
             }
             $ok        = $id !== null && $id > 0;
-            $filters[] = [$col, 'in', [$ok ? $id : -1]];
+            $filters[] = [$col, 'in', $col === 'unit_id' ? self::readUnitIds($id) : [$ok ? $id : -1]];
             if ($ok) {
                 $stamp[$col] = $id;
             }
         }
 
         return [$filters, $stamp];
+    }
+
+    /**
+     * Unidades que a LEITURA do agente enxerga (fw#649). `mad.mcp.unit_scope`
+     * (env MAD_MCP_UNIT_SCOPE): 'active' (padrão) = só a unidade ativa do
+     * token; 'all' = todas as unidades do usuário — session('userunitids'),
+     * que o app pode ampliar, mais a ativa ({@see \Mad\Database\UnitContext::allowedIds()};
+     * contexto fixado por código segue estrito). O carimbo do insert continua
+     * na ativa. Sem unidade nenhuma: [-1] (fail-closed).
+     *
+     * @return list<int>
+     */
+    private static function readUnitIds(?int $active): array
+    {
+        $ids = ($active !== null && $active > 0) ? [$active] : [];
+        if ((string) config('mad.mcp.unit_scope', 'active') === 'all') {
+            foreach (\Mad\Database\UnitContext::allowedIds() ?? [] as $id) {
+                if ($id > 0 && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+            sort($ids);
+        }
+
+        return $ids === [] ? [-1] : $ids;
     }
 
     /** Colunas reais da tabela (1 introspecção por tabela/request). Falha => assume que tem (filtra). */

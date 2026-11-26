@@ -543,6 +543,11 @@ class MadComponentHandler
         if ($modelValues) {
             $component->_applyModelValues($modelValues);
         }
+        // Campo HTML do <mad-form> com name e sem mad:model: o navegador não o
+        // mandou e diz quais são (só o nome), para o aviso no log (fw#665).
+        if (isset($data['mad_unbound'])) {
+            $component->_warnUnboundFields($data['mad_unbound']);
+        }
 
         // ── 4b. Aplicar dados de field-lists (rows Alpine) ─────────────────────
         if (!empty($data['mad_field_lists'])) {
@@ -783,8 +788,10 @@ class MadComponentHandler
         $precisaRender = $component->_needsFullRender()
             || self::_refreshesItself($explicitOps, $component, $target ?? null);
 
+        $stateOnly = $component->_stateOnlyProps();
         foreach ($stateDepois as $prop => $valor) {
             if ($prop === '_forwardParams' || $prop === '_rowAttach' || $prop === '_comboOrigin') continue; // interno, não é prop renderizável
+            if (in_array($prop, $stateOnly, true)) continue; // só viaja no estado: a tela não a desenha (fw#661)
             if ($valor === ($stateAntes[$prop] ?? null)) {
                 continue; // não mudou
             }

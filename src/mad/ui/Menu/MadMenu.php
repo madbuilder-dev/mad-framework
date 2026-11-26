@@ -19,6 +19,15 @@ namespace Mad\Ui\Menu;
  *       visible: fn (MenuItem $i) => ! $i->inModule('Administração') || Perfil::admin(),
  *   );
  *
+ * Contador do MÓDULO (ladrilho do rail e do menu superior): o que o provedor
+ * der ao próprio módulo (`$i->group`, ex. `$i->group && $i->text() ===
+ * 'Laudos' ? Laudo::pendentes()->count() : null`); sem isso, a soma dos
+ * contadores numéricos das telas dele. Tela que é parte de outra ("Urgentes"
+ * dentro de "Pendentes") sai da soma pelo `sums` — o número continua no item:
+ *
+ *   MadMenu::using(badge: …, sums: fn (MenuItem $i) => ! $i->is('UrgenteList'));
+ *   // ou, na classe do provedor: public function sums(MenuItem $i): bool
+ *
  * Com vários provedores: o item aparece só se TODOS deixarem; o contador é o
  * do primeiro que devolver um valor. Sem provedor nenhum o menu não muda (nem
  * um atributo a mais no HTML).
@@ -50,19 +59,26 @@ final class MadMenu
         self::resetRequestState();
     }
 
-    /** Provedor a partir de funções: `badge(MenuItem): int|string|null`, `visible(MenuItem): bool`. */
-    public static function using(?callable $badge = null, ?callable $visible = null): void
+    /**
+     * Provedor a partir de funções: `badge(MenuItem): int|string|null`,
+     * `visible(MenuItem): bool` e `sums(MenuItem): bool` (false = o contador
+     * do item não entra na soma do módulo).
+     */
+    public static function using(?callable $badge = null, ?callable $visible = null, ?callable $sums = null): void
     {
-        self::provider(new class ($badge, $visible) implements MenuItemProvider {
+        self::provider(new class ($badge, $visible, $sums) implements MenuItemProvider {
             /** @var callable|null */
             private $badgeFn;
             /** @var callable|null */
             private $visibleFn;
+            /** @var callable|null */
+            private $sumsFn;
 
-            public function __construct(?callable $badge, ?callable $visible)
+            public function __construct(?callable $badge, ?callable $visible, ?callable $sums)
             {
                 $this->badgeFn = $badge;
                 $this->visibleFn = $visible;
+                $this->sumsFn = $sums;
             }
 
             public function badge(MenuItem $item): int|string|null
@@ -73,6 +89,11 @@ final class MadMenu
             public function visible(MenuItem $item): bool
             {
                 return $this->visibleFn ? (bool) ($this->visibleFn)($item) : true;
+            }
+
+            public function sums(MenuItem $item): bool
+            {
+                return $this->sumsFn ? (bool) ($this->sumsFn)($item) : true;
             }
         });
     }
@@ -99,6 +120,37 @@ final class MadMenu
                     }
                 } catch (\Throwable $e) {
                     self::report($p, 'visible', $item, $e);
+                }
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * O contador do item entra na soma do ladrilho do módulo? (true sem
+     * provedor.) Pergunta o método opcional `sums(MenuItem): bool` de cada
+     * provedor que o tiver; basta um responder false para o item ficar fora
+     * da soma — o número continua no próprio item. Erro conta como true.
+     */
+    public static function sums(MenuItem $item): bool
+    {
+        $providers = self::instances();
+        if ($providers === []) {
+            return true;
+        }
+
+        return self::remember('sums', $item, static function () use ($providers, $item): bool {
+            foreach ($providers as $p) {
+                if (!method_exists($p, 'sums')) {
+                    continue;
+                }
+                try {
+                    if (!$p->sums($item)) {
+                        return false;
+                    }
+                } catch (\Throwable $e) {
+                    self::report($p, 'sums', $item, $e);
                 }
             }
 

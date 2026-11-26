@@ -2447,6 +2447,43 @@ abstract class MadComponent
         $this->_refusedNow = [];
     }
 
+    /**
+     * O navegador avisou de campos HTML do `<mad-form>` enviado que têm `name`
+     * e não têm `mad:model` (`mad_unbound[]`, fw#665): ele não os manda, e o
+     * valor não chega ao getData() — antes sumia sem pista. Só o NOME vem,
+     * nunca o valor; no máximo 20 por requisição.
+     *
+     * @internal chamado pelo MadComponentHandler
+     */
+    public function _warnUnboundFields(mixed $names): void
+    {
+        if (!is_array($names)) {
+            return;
+        }
+        $tela  = (string) preg_replace('/@anonymous.*$/s', '@anonymous', static::class);
+        $count = 0;
+        foreach ($names as $name) {
+            if (!is_string($name) || $name === '' || strlen($name) > 120) {
+                continue;
+            }
+            if (++$count > 20) {
+                break;
+            }
+            self::_log(sprintf(
+                '[MadForm] campo "%s" em %s (usuário %s): o <mad-form> tem um campo HTML com name="%s" sem mad:model —'
+                . ' o navegador não o envia, e o valor não chega ao getData(). Ligue o campo:'
+                . ' <input type="hidden" name="%s" mad:model="%s"> (no HTML puro, data-mad-model="%s"), ou use uma tag <mad-*-field>.',
+                $name,
+                $tela,
+                self::_logUser(),
+                $name,
+                $name,
+                $name,
+                $name,
+            ));
+        }
+    }
+
     /** Usuário da sessão para os avisos de segurança ("-" sem sessão: tela pública, CLI). */
     private static function _logUser(): string
     {
@@ -2892,6 +2929,18 @@ abstract class MadComponent
         }
 
         return $this->$method(...$args);
+    }
+
+    /**
+     * Props públicas que só viajam no estado: o render as refaz e nenhuma parte
+     * da tela as desenha. Mudança nelas, sozinha, não pede o redesenho da tela
+     * (fw#661).
+     *
+     * @return list<string>
+     */
+    public function _stateOnlyProps(): array
+    {
+        return [];
     }
 
     /** @var array<string, array<string, bool>> classe → prop → lida numa diretiva de controle */

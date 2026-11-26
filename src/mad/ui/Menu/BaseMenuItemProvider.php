@@ -19,4 +19,10 @@ abstract class BaseMenuItemProvider implements MenuItemProvider
     {
         return true;
     }
+
+    /** O contador do item entra na soma do módulo (opcional; veja MenuItemProvider). */
+    public function sums(MenuItem $item): bool
+    {
+        return true;
+    }
 }

@@ -12,8 +12,10 @@ namespace Mad\Grid;
  * │     ação de linha, botão do cabeçalho, ação em lote) a seleção viaja   │
  * │     no campo oculto `__mad_grid_sel` (JSON). O MadDataGrid a guarda no │
  * │     estado criptografado e a espelha aqui — na sessão, por classe do   │
- * │     grid. É por isso que ela sobrevive à troca de página e à reabertura │
- * │     da tela, e que OUTRA tela consegue lê-la.                          │
+ * │     grid. É por isso que ela sobrevive à troca de página e que OUTRA   │
+ * │     tela consegue lê-la. Com ação em lote declarada, busca, filtro,    │
+ * │     ordenação e reabertura da tela a zeram, salvo `keep-selection`     │
+ * │     (fw#658).                                                          │
  * │                                                                        │
  * └────────────────────────────────────────────────────────────────────────┘
  *

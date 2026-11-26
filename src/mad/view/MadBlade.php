@@ -1676,6 +1676,34 @@ HTML;
              . "</span>";
     }
 
+    /**
+     * JS de um arquivo do projeto inline num `<script>` (builder#699): o gêmeo
+     * do `@css` para o `code_create kind=js`, que mora em `resources/js/` e não
+     * tem URL no app.
+     *
+     *   _jsfile('resources/js/alarme.js')
+     *
+     * Roda em página inteira, cortina lateral e modal (o framework reexecuta o
+     * `<script>` do HTML que injeta) e de novo a cada vez que a tela entra. O
+     * corpo vai num bloco `{ … }`: `const`/`let`/`class` do topo ficam no bloco
+     * e a segunda abertura não estoura "Identifier has already been declared";
+     * para expor algo, `window.nome = …`. `</script` dentro do arquivo vira
+     * `<\/script` (não fecha o elemento). Arquivo ilegível vira comentário HTML
+     * (sem fatal), como no `@css`.
+     */
+    public static function _jsfile(string $path): string
+    {
+        $resolved = self::_resolveCssPath($path);
+        if (!$resolved) {
+            return "<!-- @jsfile not found: " . htmlspecialchars($path) . " -->";
+        }
+
+        $js   = (string) preg_replace('~</(script)~i', '<\\/$1', (string) file_get_contents($resolved));
+        $hash = substr(md5_file($resolved), 0, 8);
+
+        return "<script data-js-src=\"" . htmlspecialchars(basename($path)) . "\" data-hash=\"{$hash}\">{\n" . rtrim($js) . "\n}</script>";
+    }
+
     /** Separa a lista de seletores nas vírgulas de fora de parênteses. */
     private static function _splitSelectors(string $selectors): array
     {
@@ -1936,6 +1964,14 @@ HTML;
         // content in <span data-css-{hash} style="display:contents;">.
         $blade->directive('css', function (string $exp): string {
             return "<?php echo \\Mad\\View\\MadBlade::_css({$exp}); ?>";
+        });
+
+        // @jsfile('resources/js/x.js')           → o arquivo inline num <script>
+        //
+        // Gêmeo do @css para JS do projeto (builder#699): lido na renderização,
+        // roda também em cortina lateral e modal. Ver _jsfile().
+        $blade->directive('jsfile', function (string $exp): string {
+            return "<?php echo \\Mad\\View\\MadBlade::_jsfile({$exp}); ?>";
         });
 
         // @madAction('Class')  →  onclick com navegação completa (Mad.go + friendly URL)

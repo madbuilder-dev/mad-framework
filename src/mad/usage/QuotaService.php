@@ -15,6 +15,13 @@ use Illuminate\Support\Facades\DB;
  * contexto-específico (ex.: 'embed_chat') vence contexto-nulo no mesmo escopo.
  * Bloqueia se QUALQUER regra `block` de QUALQUER período já estourou.
  *
+ * COTA AGREGADA (`global_total`, fw#654): teto da SOMA do consumo de TODOS os
+ * usuários na janela — não é teto por chamador e não entra na precedência
+ * acima: vale AO LADO dela (sai em `totals`, com o mesmo formato de
+ * `periods`). O contexto que filtra a soma é o da REGRA (vazio = todos os
+ * contextos: chat, Central de Comando e o que mais gravar consumo gastam do
+ * mesmo teto); por período, a de contexto específico vence a de contexto vazio.
+ *
  * SEMÂNTICA PRE-CALL: o custo da chamada atual é desconhecido → bloqueia
  * somente quando o consumo JÁ está no/acima do teto (used >= max). A chamada
  * que cruza a linha roda e é gravada; a próxima é barrada.
@@ -33,6 +40,9 @@ final class QuotaService
     private const RANK = ['global' => 0, 'unit' => 1, 'group' => 2, 'user' => 3, 'token' => 4];
 
     private const PERIODS = ['day', 'month', 'total'];
+
+    /** Escopo da cota agregada (soma de todos os usuários). */
+    public const SCOPE_TOTAL = 'global_total';
 
     /**
      * Regra efetiva por período, considerando precedência de escopo e contexto.
@@ -91,16 +101,54 @@ final class QuotaService
     }
 
     /**
-     * Estado de cota do chamador.
+     * Regra agregada (`global_total`) efetiva por período para o contexto da
+     * chamada: contexto-específico vence contexto-nulo.
+     *
+     * @return array<string, array{max:int,action:string,resetDay:?int,scope:string,context:?string}|null>
+     */
+    public function resolveTotalRules(?string $context): array
+    {
+        $best    = ['day' => null, 'month' => null, 'total' => null];
+        $bestCtx = ['day' => -1, 'month' => -1, 'total' => -1];
+
+        foreach (\App\Models\Ai\TokenQuota::query()->where('scope_type', self::SCOPE_TOTAL)->get() as $r) {
+            $period = (string) $r->period;
+            if (! self::isActive($r->active) || ! in_array($period, self::PERIODS, true)) {
+                continue;
+            }
+            $rc          = ($r->context !== null && $r->context !== '') ? (string) $r->context : null;
+            $ctxSpecific = $rc !== null ? 1 : 0;
+            if ($rc !== null && $rc !== (string) $context) {
+                continue;
+            }
+            if ($ctxSpecific > $bestCtx[$period]) {
+                $best[$period] = [
+                    'max'      => (int) $r->max_tokens,
+                    'action'   => ((string) $r->action) === 'warn' ? 'warn' : 'block',
+                    'resetDay' => ($r->reset_day !== null && $r->reset_day !== '') ? (int) $r->reset_day : null,
+                    'scope'    => self::SCOPE_TOTAL,
+                    'context'  => $rc,
+                ];
+                $bestCtx[$period] = $ctxSpecific;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Estado de cota do chamador. `periods` = tetos por chamador; `totals` =
+     * tetos agregados (`global_total`, soma de todos). Qualquer um `block`
+     * estourado bloqueia.
      *
      * @param int[] $groupIds
-     * @return array{blocked:bool, warn:bool, periods: array<string, array{used:int,max:int,remaining:int,over:bool,action:string,scope:string,resetDay:?int}>}
+     * @return array{blocked:bool, warn:bool, periods: array<string, array{used:int,max:int,remaining:int,over:bool,action:string,scope:string,resetDay:?int}>, totals: array<string, array{used:int,max:int,remaining:int,over:bool,action:string,scope:string,resetDay:?int}>}
      */
     public function check(?int $userId, array $groupIds, ?int $unitId, ?int $tokenId, ?string $context): array
     {
         $rules = $this->resolveEffectiveRules($userId, $groupIds, $unitId, $tokenId, $context);
 
-        $out = ['blocked' => false, 'warn' => false, 'periods' => []];
+        $out = ['blocked' => false, 'warn' => false, 'periods' => [], 'totals' => []];
 
         foreach ($rules as $period => $rule) {
             if ($rule === null || $rule['max'] <= 0) {
@@ -122,6 +170,33 @@ final class QuotaService
                 'action'    => $rule['action'],
                 'scope'     => $rule['scope'],
                 'resetDay'  => $rule['resetDay'], // quando a janela zera (Period::nextReset)
+            ];
+
+            if ($over && $rule['action'] === 'block') {
+                $out['blocked'] = true;
+            }
+            if ($over && $rule['action'] === 'warn') {
+                $out['warn'] = true;
+            }
+        }
+
+        foreach ($this->resolveTotalRules($context) as $period => $rule) {
+            if ($rule === null || $rule['max'] <= 0) {
+                continue;
+            }
+
+            // sem filtro de chamador: o consumo de todos, no contexto da regra
+            $used = $this->sumUsage(null, null, $period, $rule['resetDay'], $rule['context']);
+            $over = $used >= $rule['max'];
+
+            $out['totals'][$period] = [
+                'used'      => $used,
+                'max'       => $rule['max'],
+                'remaining' => max(0, $rule['max'] - $used),
+                'over'      => $over,
+                'action'    => $rule['action'],
+                'scope'     => self::SCOPE_TOTAL,
+                'resetDay'  => $rule['resetDay'],
             ];
 
             if ($over && $rule['action'] === 'block') {
@@ -160,18 +235,26 @@ final class QuotaService
     /**
      * SUM(total_tokens) em mad_ai_token_usage (conexão `log`) filtrando por
      * $column = $value na janela do período. $column é literal interno
-     * ('user_id' | 'token_id') — nunca input de usuário.
+     * ('user_id' | 'token_id' | null = todos, cota agregada) — nunca input de
+     * usuário.
+     *
+     * Token lido do cache de prompt (`cache_read_tokens`, já dentro do
+     * total) pesa `mad.ai.quota_cache_read_weight` (MAD_AI_QUOTA_CACHE_READ_WEIGHT,
+     * 0 a 1): 1 = conta cheio (padrão); 0.1 = pelo preço do cache, ~10% da
+     * entrada. Da 2ª rodada de um pedido em diante quase toda a entrada é
+     * cache (fw#657).
      */
-    private function sumUsage(string $column, $value, string $period, ?int $resetDay, ?string $context): int
+    private function sumUsage(?string $column, $value, string $period, ?int $resetDay, ?string $context): int
     {
-        if ($value === null) {
+        if ($column !== null && $value === null) {
             return 0;
         }
 
         $start = Period::windowStart($period, $resetDay);
 
-        $sql    = "SELECT COALESCE(SUM(total_tokens), 0) FROM mad_ai_token_usage WHERE {$column} = ?";
-        $params = [$value];
+        $sql    = 'SELECT COALESCE(SUM(total_tokens), 0), COALESCE(SUM(cache_read_tokens), 0) FROM mad_ai_token_usage WHERE '
+            . ($column !== null ? "{$column} = ?" : '1 = 1');
+        $params = $column !== null ? [$value] : [];
 
         if ($start !== null) {
             $sql     .= ' AND created_at >= ?';
@@ -184,8 +267,17 @@ final class QuotaService
 
         $st = DB::connection('log')->getPdo()->prepare($sql);
         $st->execute($params);
+        $row = $st->fetch(\PDO::FETCH_NUM) ?: [0, 0];
 
-        return (int) $st->fetchColumn();
+        return (int) round((float) $row[0] - (1 - self::cacheReadWeight()) * (float) $row[1]);
+    }
+
+    /** Peso do token em cache na cota: 0 a 1 (fora da faixa vale o limite mais próximo; inválido vale 1). */
+    private static function cacheReadWeight(): float
+    {
+        $w = config('mad.ai.quota_cache_read_weight', 1);
+
+        return is_numeric($w) ? max(0.0, min(1.0, (float) $w)) : 1.0;
     }
 
     /** @param int[] $groupIds */

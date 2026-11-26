@@ -34,6 +34,8 @@ namespace Mad\Calendar;
  * │  value-field="valor_total"          Campo p/ somar totais por coluna       │
  * │  cards-per-load="20"                Page size do scroll infinito            │
  * │  auto-refresh="15"                  Atualiza sozinho a cada N s (mín. 5; 0 = off) │
+ * │                                     Espera com aviso, cortina ou janela aberta por│
+ * │                                     cima e relê ao fechar.                        │
  * │  drag-autoscroll="false"            Não rola o quadro ao arrastar perto da borda  │
  * │  cards-draggable                    Habilita drag-drop (default true)      │
  * │  click-target="ClasseForm::onShow({id})"  Form que abre ao clicar no card  │

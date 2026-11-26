@@ -80,6 +80,43 @@ final class McpToolCaller
         return $this->tools;
     }
 
+    /**
+     * Tools que vão ao MODELO no Chat IA (fw#656). Com o SQL livre no chat
+     * ($sql = query_db e widgets ligados), as list_/read_ das tabelas em
+     * `mad.ai.hide_read_tools` ('*' = todas) ficam de fora: a concessão delas
+     * continua abrindo a tabela no SQL ({@see McpAccess}) e o esquema de cada
+     * uma deixa de ir em toda rodada. Tabela que o SQL não lê (protegida, fora
+     * do manifest, `mad.ai.sql_excluded_tables`) mantém a tool. Por nome a
+     * tool segue executável (has/invoke: favoritos, widget com fonte de tool).
+     * Sem a chave: o mesmo que allowedTools().
+     *
+     * @return array<string, McpManifestTool>
+     */
+    public function modelTools(bool $sql): array
+    {
+        $hide = config('mad.ai.hide_read_tools', []);
+        if (! $sql || $hide === [] || $hide === '' || $hide === null) {
+            return $this->tools;
+        }
+
+        $access = \Mad\Mcp\McpAccess::for($this->manifest);
+        $out    = [];
+        foreach ($this->tools as $name => $tool) {
+            $spec   = $this->specs[$name] ?? [];
+            $entity = trim((string) ($spec['entity'] ?? ''));
+            if ($entity !== ''
+                && strtolower((string) ($spec['kind'] ?? 'crud')) === 'crud'
+                && in_array(strtolower((string) ($spec['verb'] ?? '')), ['list', 'read'], true)
+                && \Mad\Mcp\McpAccess::listed('mad.ai.hide_read_tools', $entity)
+                && $access->canRead($entity)) {
+                continue;
+            }
+            $out[$name] = $tool;
+        }
+
+        return $out;
+    }
+
     public function has(string $name): bool
     {
         return isset($this->tools[$this->key($name)]);

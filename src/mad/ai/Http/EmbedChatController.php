@@ -126,7 +126,7 @@ final class EmbedChatController
                 $caller = $manifest !== null ? new McpToolCaller($manifest) : null;
 
                 $store    = new ConversationStore($chatDb);
-                $confirms = new ConfirmCoordinator();
+                $confirms = new ConfirmCoordinator($caller !== null ? static fn (string $tool): ?array => $caller->spec($tool) : null);
                 $userId   = $usageUserId !== null ? (int) $usageUserId : 0;
 
                 $state      = $store->load($conversationId, $userId);
@@ -161,7 +161,7 @@ final class EmbedChatController
 
                         $system = SystemPromptAssembler::assemble(
                             $manifest,
-                            $caller?->allowedTools() ?? [],
+                            $caller?->modelTools((bool) config('mad.ai.widgets_enabled', true)) ?? [],
                             (bool) config('mad.ai.widgets_enabled', true),
                             array_keys($manifest?->forms() ?? []),
                             self::helpAvailable(),
@@ -278,7 +278,7 @@ final class EmbedChatController
                 $tools    = self::buildTools($caller, $sink, $confirms, $manifest, $db, $trace, $linkable, $chatDb);
                 $system   = SystemPromptAssembler::assemble(
                     $manifest,
-                    $caller?->allowedTools() ?? [],
+                    $caller?->modelTools((bool) config('mad.ai.widgets_enabled', true)) ?? [],
                     (bool) config('mad.ai.widgets_enabled', true),
                     $linkable,
                     self::helpAvailable(),
@@ -403,7 +403,7 @@ final class EmbedChatController
         $tools = [];
 
         if ($caller !== null) {
-            foreach ($caller->allowedTools() as $name => $mcpTool) {
+            foreach ($caller->modelTools((bool) config('mad.ai.widgets_enabled', true)) as $name => $mcpTool) {
                 $tools[] = new McpDataTool(
                     $mcpTool,
                     $name,
@@ -727,6 +727,17 @@ final class EmbedChatController
             }
         }
 
+        // Teto agregado (global_total, fw#654): sem números — o consumo de
+        // todos não é da conta de cada usuário.
+        foreach ($q->result()['totals'] ?? [] as $period => $info) {
+            if (($info['action'] ?? '') === 'block' && ! empty($info['over'])) {
+                return sprintf(
+                    'Limite %s de uso de IA do sistema atingido. Tente novamente mais tarde.',
+                    $labels[$period] ?? $period
+                );
+            }
+        }
+
         return 'Limite de uso de IA atingido. Tente novamente mais tarde.';
     }
 
@@ -737,15 +748,18 @@ final class EmbedChatController
     private static function quotaResetAt(\Mad\Usage\QuotaExceededException $q): ?string
     {
         $latest = null;
-        foreach ($q->result()['periods'] ?? [] as $period => $info) {
-            if (($info['action'] ?? '') !== 'block' || empty($info['over'])) {
-                continue;
+        // por chamador e agregado (global_total, fw#654): vale a última a zerar
+        foreach (['periods', 'totals'] as $group) {
+            foreach ($q->result()[$group] ?? [] as $period => $info) {
+                if (($info['action'] ?? '') !== 'block' || empty($info['over'])) {
+                    continue;
+                }
+                $at = \Mad\Usage\Period::nextReset((string) $period, $info['resetDay'] ?? null);
+                if ($at === null) {
+                    return null;
+                }
+                $latest = max($latest ?? 0, $at);
             }
-            $at = \Mad\Usage\Period::nextReset((string) $period, $info['resetDay'] ?? null);
-            if ($at === null) {
-                return null;
-            }
-            $latest = max($latest ?? 0, $at);
         }
 
         return $latest !== null ? date('c', $latest) : null;

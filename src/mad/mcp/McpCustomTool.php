@@ -14,7 +14,14 @@ use Illuminate\Support\Facades\DB;
  * servico do app, cujo nome REAL vem do manifest (class+method) — o configurador
  * e a fonte confiavel. Roda em Transaction; respeita confirm.
  *
- * spec = { class, method, params[], confirm?, read_only?, reviewed?, entity? }
+ * spec = { class, method, params[], confirm?, read_only?, reviewed?, entity?, transaction? }
+ *
+ * `transaction: false` (opt-in; padrao true): o metodo e chamado SEM a transacao
+ * do MCP em volta — para o metodo que abre a PROPRIA transacao e dispara
+ * trabalho no `afterCommit` (workflow, fila, e-mail). Com a transacao de fora,
+ * o commit do metodo vira savepoint e o afterCommit so roda quando o MCP fecha
+ * a dele (fw#651). Sem ela, desfazer em caso de erro e responsabilidade do
+ * metodo. Confirmacao, allowlist e admin-only valem igual.
  *
  * params[] aceita dois formatos (podem se misturar):
  *   - objeto {name, type, required?=true, description?} — o que o configurador
@@ -78,6 +85,21 @@ final class McpCustomTool extends McpManifestTool
     public static function specReadOnly(array $spec): bool
     {
         return ! empty($spec['read_only']) || ! empty($spec['readonly']);
+    }
+
+    /**
+     * O metodo roda dentro da transacao do MCP? Sim, salvo `transaction: false`
+     * no spec (bool ou texto "false"/"0"/"no"/"off" do JSON). Valor que nao e
+     * falso mantem a transacao (fail-safe).
+     */
+    public static function specTransaction(array $spec): bool
+    {
+        $v = $spec['transaction'] ?? null;
+        if ($v === null || $v === '') {
+            return true;
+        }
+
+        return filter_var($v, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) !== false;
     }
 
     /**
@@ -215,12 +237,15 @@ final class McpCustomTool extends McpManifestTool
             $args[] = $value;
         }
 
+        $invoke = fn () => $ref->isStatic()
+            ? $ref->invokeArgs(null, $args)
+            : $ref->invokeArgs(new $class(), $args);
+        $inTransaction = self::specTransaction($this->spec);
+
         try {
-            $result = DB::connection($this->db())->transaction(function () use ($ref, $class, $args) {
-                return $ref->isStatic()
-                    ? $ref->invokeArgs(null, $args)
-                    : $ref->invokeArgs(new $class(), $args);
-            });
+            $result = $inTransaction
+                ? DB::connection($this->db())->transaction($invoke)
+                : $invoke(); // transaction:false — o metodo cuida da propria (fw#651)
         } catch (\DomainException $e) {
             // Regra de negocio recusada pelo proprio metodo: a mensagem e para o
             // usuario final (o agente a repassa). Transacao ja desfeita.
@@ -230,7 +255,10 @@ final class McpCustomTool extends McpManifestTool
         } catch (\Throwable $e) {
             \error_log("[mcp:custom] {$class}::{$method}: " . $e->getMessage());
 
-            return Response::error('Não foi possível concluir a operação. Nada foi gravado.');
+            // Sem a transacao do MCP nao da para garantir que nada ficou gravado.
+            return Response::error($inTransaction
+                ? 'Não foi possível concluir a operação. Nada foi gravado.'
+                : 'Não foi possível concluir a operação.');
         }
 
         McpChangeAudit::record($this->entity() ?: $class, '-', $method, 'custom', [], ['args' => json_encode($args)]);

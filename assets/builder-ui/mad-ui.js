@@ -9627,6 +9627,87 @@ function _inlineUntouched(el) {
 }
 
 document.addEventListener('alpine:init', () => {
+    // fw#658 — balão de um filtro do <mad-dash-filters> (barra e "+ filtro").
+    // O texto digitado sem Aplicar não fica no campo: Cancelar, ×, Esc e
+    // clique fora devolvem o que ele tinha ao abrir. Antes ficava, viajava em
+    // toda requisição da tela e a listagem passava a filtrar por ele sozinha.
+    // Aplicar (submit do formulário, inclusive Enter num campo) mantém.
+    Alpine.data('madDashPop', (extra = {}) => ({
+        open: false,
+        _popSnap: null,
+        _popForm: null,
+        _onPopSubmit: null,
+        ...extra,
+        // `$root` (o x-data), nunca `$el`: chamado pelo @click do botão, o
+        // `$el` é o botão — a foto não achava campo nenhum.
+        _popHost() { return this.$root || this.$el; },
+        init() {
+            const host = this._popHost();
+            // Quem fecha por fora — o Esc de toda superfície flutuante
+            // (madFloatEsc) e o clique num iframe põem `open = false` direto,
+            // antes do @keydown daqui — também devolve o valor da abertura.
+            if (typeof this.$watch === 'function') {
+                this.$watch('open', (v) => {
+                    if (v) { if (!this._popSnap) this._popSnap = this._popTake(this._popPanel()); return; }
+                    if (this._popSnap) { this._popPut(this._popSnap); this._popSnap = null; }
+                });
+            }
+            const form = host && host.closest ? host.closest('form') : null;
+            if (!form) return;
+            this._popForm = form;
+            this._onPopSubmit = () => { if (this.open) this._popSnap = null; };
+            form.addEventListener('submit', this._onPopSubmit, true);
+        },
+        _popPanel() { const host = this._popHost(); return host.querySelector('.mad-dashf-pop') || host; },
+        destroy() {
+            if (this._popForm && this._onPopSubmit) this._popForm.removeEventListener('submit', this._onPopSubmit, true);
+        },
+        toggle() { if (this.open) this.cancel(); else this.show(); },
+        show() {
+            this._popSnap = this._popTake(this._popPanel());
+            this.open = true;
+        },
+        /** Fecha sem aplicar: os campos voltam ao valor da abertura. `focus` devolve o foco ao botão do filtro. */
+        cancel(focus) {
+            if (!this.open) return;
+            if (this._popSnap) this._popPut(this._popSnap);
+            this._popSnap = null;
+            this.open = false;
+            if (focus && this.$refs && this.$refs.trigger) this.$refs.trigger.focus();
+        },
+        _popTake(root) {
+            const out = [];
+            root.querySelectorAll('input, select, textarea').forEach((el) => {
+                const type = String(el.type || '').toLowerCase();
+                if (/^(button|submit|reset|image|file)$/.test(type)) return;
+                if (type === 'checkbox' || type === 'radio') out.push({ el, kind: 'check', v: !!el.checked });
+                else if (el.tagName === 'SELECT') out.push({ el, kind: 'select', v: Array.from(el.options).filter((o) => o.selected).map((o) => o.value) });
+                else out.push({ el, kind: 'value', v: String(el.value == null ? '' : el.value) });
+            });
+            return out;
+        },
+        _popPut(list) {
+            list.forEach(({ el, kind, v }) => {
+                if (el.isConnected === false) return;
+                if (kind === 'check') {
+                    if (!!el.checked === v) return;
+                    el.checked = v;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (kind === 'select') {
+                    const now = Array.from(el.options).filter((o) => o.selected).map((o) => o.value);
+                    if (now.join('\u0001') === v.join('\u0001')) return;
+                    if (el._madSelect) { el._madSelect.setValue(el.multiple ? v : (v.length ? v[0] : ''), true); return; }
+                    Array.from(el.options).forEach((o) => { o.selected = v.indexOf(o.value) !== -1; });
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    if (String(el.value == null ? '' : el.value) === v) return;
+                    el.value = v;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        },
+    })); // fim madDashPop
+
     Alpine.data('madDataGrid', (cfg = {}) => {
         // ── Inicializa colVisibility ANTES de retornar os dados ───────
         // Necessário: Alpine processa x-model antes do init() rodar.
@@ -9719,6 +9800,9 @@ document.addEventListener('alpine:init', () => {
         // auto-refresh="N": chave declarada — fora do objeto ela cairia no
         // escopo da página, dividido entre a grade que sai e a que entra.
         _refreshTimer:  null,
+        // Ciclo pausado por linha marcada ou camada aberta (fw#660/#615): o
+        // vigia de 1 s que relê assim que a pausa acaba.
+        _refreshWait:   null,
         // Relatório por janelas: uma janela pedida e ainda não chegou.
         winLoading:     false,
 
@@ -9856,26 +9940,138 @@ document.addEventListener('alpine:init', () => {
         _stopAutoRefresh() {
             if (this._refreshTimer) clearInterval(this._refreshTimer);
             this._refreshTimer = null;
+            this._stopRefreshWait();
+        },
+
+        _stopRefreshWait() {
+            if (this._refreshWait) clearInterval(this._refreshWait);
+            this._refreshWait = null;
+        },
+
+        /** A grade relê sozinha (auto-refresh="N" de 5 s ou mais)? */
+        _refreshOn() {
+            return !!(_root && typeof _root.getAttribute === 'function'
+                && (parseInt(_root.getAttribute('data-mad-dg-refresh'), 10) || 0) >= 5);
+        },
+
+        /**
+         * Linha marcada segura a atualização automática (fw#660): a releitura
+         * podia tirar ou mexer na linha que a pessoa marcou. A barra de
+         * seleção mostra "Atualização pausada" + "Atualizar agora".
+         */
+        refreshHeld() {
+            return !!(this.selectable && this._refreshOn() && Array.isArray(this.selected) && this.selected.length > 0);
+        },
+
+        /** "Atualizar agora" da faixa de pausa: relê a página na hora. */
+        refreshNow() {
+            const w = this._wrapper;
+            if (!w || !w.isConnected || w.hasAttribute('data-mad-busy')) return;
+            this._autoRefreshRun();
+        },
+
+        /**
+         * Por que o ciclo não roda agora ('' = roda):
+         *  busy      aba em segundo plano, pedido em voo, célula em edição;
+         *  typing    cursor num campo de texto da grade (caixinha de marcar e
+         *            rádio não são digitação — fw#660);
+         *  layer     aviso de confirmação, cortina, janela ou diálogo aberto por
+         *            cima: o redesenho por baixo soltava o Confirmar (fw#615);
+         *  selection linha marcada (fw#660);
+         *  screen    a tela pulou pelo evento `mad-grid-refresh` (preventDefault).
+         * Com `layer`/`selection` a grade relê assim que a pausa acaba.
+         *
+         * `inFlight`: a releitura já saiu e a resposta chegou — o pedido em voo
+         * é ela mesma (não conta), a seleção é conferida à parte (ver
+         * `_refreshDrop`) e o evento da tela não sai de novo.
+         */
+        _refreshPause(inFlight = false) {
+            const w = this._wrapper;
+            if (!inFlight && (document.hidden || w.hasAttribute('data-mad-busy'))) return 'busy';
+            if (this.editingCell !== null || Object.keys(_held).length) return 'busy';
+            const ae = document.activeElement;
+            if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')
+                && !['checkbox', 'radio', 'button', 'submit', 'reset', 'image'].includes(String(ae.type || '').toLowerCase())) return 'typing';
+            if (typeof document.querySelectorAll === 'function') {
+                // Filtro de coluna aberto: o balão dele mora no <body>, fora da
+                // grade — conta como digitando (o redesenho o fechava).
+                for (const p of Array.from(document.querySelectorAll('.mad-dg-filter-popover'))) {
+                    if (p && p._madOrigParent && p._madGridWrap && p._madGridWrap === _root) return 'typing';
+                }
+            }
+            if (typeof document.querySelectorAll === 'function') {
+                const layers = document.querySelectorAll('[data-mad-overlay], .mad-confirm-overlay, .mad-confirm-popover, .mad-dialog-overlay, .mad-quick-popover');
+                for (const l of Array.from(layers)) {
+                    // A grade dentro da própria cortina segue atualizando.
+                    if (l && typeof l.getClientRects === 'function' && l.getClientRects().length && !(l.contains && l.contains(w))) return 'layer';
+                }
+            }
+            if (inFlight) return '';
+            if (this.refreshHeld()) return 'selection';
+            if (typeof CustomEvent === 'function' && typeof w.dispatchEvent === 'function') {
+                const ev = new CustomEvent('mad-grid-refresh', { bubbles: true, cancelable: true, detail: {
+                    component: w.getAttribute('mad-id') || '',
+                    grid: _root.getAttribute('data-grid-key') || '',
+                    page: parseInt(_root.getAttribute('data-mad-dg-page'), 10) || 1,
+                } });
+                if (w.dispatchEvent(ev) === false || ev.defaultPrevented) return 'screen';
+            }
+            return '';
         },
 
         _autoRefreshTick() {
             const w = this._wrapper;
             if (!w || !w.isConnected || !_root || !_root.getAttribute('data-mad-dg-refresh')) { this._stopAutoRefresh(); return; }
-            // Aba em segundo plano, pedido em voo, célula em edição ou alguém
-            // digitando num campo da tela: pula este ciclo.
-            if (document.hidden || w.hasAttribute('data-mad-busy')) return;
-            if (this.editingCell !== null || Object.keys(_held).length) return;
-            const ae = document.activeElement;
-            if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')) return;
-            if (typeof MadWire === 'undefined') return;
+            const why = this._refreshPause();
+            if (why === 'layer' || why === 'selection') {
+                // Relê assim que a pausa acabar (desmarcou tudo, fechou o aviso).
+                this._armRefreshWait();
+                return;
+            }
+            if (why !== '') return;
+            this._autoRefreshRun();
+        },
+
+        /** Vigia de 1 s: relê assim que nada mais segura a atualização. */
+        _armRefreshWait() {
+            if (this._refreshWait) return;
+            this._refreshWait = setInterval(() => {
+                const live = this._wrapper;
+                if (!live || !live.isConnected) { this._stopRefreshWait(); return; }
+                const now = this._refreshPause();
+                if (now === 'layer' || now === 'selection' || now === 'busy' || now === 'typing') return;
+                this._stopRefreshWait();
+                if (now === '') this._autoRefreshRun();
+            }, 1000);
+        },
+
+        /**
+         * A releitura já tinha saído e a resposta chegou (fw#660/#615): ainda
+         * dá para redesenhar? Verdadeiro = joga a resposta fora — a pessoa
+         * marcou ou desmarcou linha durante o voo (`sentSel`: a seleção que o
+         * pedido levou), abriu aviso/cortina, pôs o cursor num campo, abriu o
+         * filtro de uma coluna ou está editando uma célula.
+         */
+        _refreshDrop(sentSel) {
+            if (JSON.stringify((this.selected || []).map(String)) !== sentSel) return true;
+            return this._refreshPause(true) !== '';
+        },
+
+        _autoRefreshRun() {
+            const w = this._wrapper;
+            if (!w || !_root || typeof MadWire === 'undefined') return;
 
             const page   = parseInt(_root.getAttribute('data-mad-dg-page'), 10) || 1;
             const prefix = _root.getAttribute('data-mad-dg-row-prefix') || '';
             const key    = _root.getAttribute('data-grid-key') || '';
             const id     = w.getAttribute('mad-id') || '';
             const before = MadNewItems.snapshot(_root, 'tr[data-row-id]', 'data-row-id', prefix);
-            MadWire.call(w, 'onPage', [page], {}, { background: true }).then((r) => {
+            const sentSel = JSON.stringify((this.selected || []).map(String));
+            MadWire.call(w, 'onPage', [page], {}, { background: true, discardIf: () => this._refreshDrop(sentSel) }).then((r) => {
                 if (!r || r.reason === 'unload') return;
+                // Descartada: relê quando a pausa acabar (a releitura leva a
+                // seleção de agora e o servidor a guarda de novo).
+                if (r.reason === 'discarded') { this._armRefreshWait(); return; }
                 if (!r.ok) { this._autoRefreshLost(r.reason); return; }
                 const live = id ? document.querySelector('[mad-id="' + _cssId(id) + '"]') : null;
                 const grid = live && typeof live.querySelector === 'function'
@@ -11121,6 +11317,34 @@ document.addEventListener('alpine:init', () => {
             return String(t.many || ':count').replace(':count', n);
         },
 
+        // Marcadas que não estão nesta página (fw#658): a ação também as
+        // processa — a barra e o aviso dizem quantas.
+        selOffCount() {
+            const page = this._pageIds;
+            return this.selected.filter(id => page.indexOf(id) === -1).length;
+        },
+
+        selOffLabel() {
+            const n = this.selOffCount();
+            return n > 0 ? String((this._cfg.selText || {}).off || ':count').replace(':count', n) : '';
+        },
+
+        // `:items` do confirm: os rótulos das marcadas (o servidor manda os
+        // da página e os das marcadas fora dela), até 10 + "e mais N".
+        _selItems(b) {
+            const t = this._cfg.selText || {};
+            const labels = (b && b.l) || {};
+            const names = [];
+            let rest = 0;
+            this.selected.forEach(id => {
+                const l = labels[id];
+                if (l !== undefined && l !== null && String(l) !== '' && names.length < 10) names.push(String(l));
+                else rest++;
+            });
+            if (!names.length) return String(t.many || ':count').replace(':count', rest);
+            return names.join(', ') + (rest > 0 ? ' ' + String(t.more || '+:count').replace(':count', rest) : '');
+        },
+
         // `[id => id]` (objeto) — o mesmo formato de $this->selectedIds().
         _selMap() {
             const out = {};
@@ -11148,8 +11372,17 @@ document.addEventListener('alpine:init', () => {
                 }
                 return MadWire.call(w, 'onBulkOpen', [index]);
             };
-            if (b.c) {
-                this.confirmAction(String(b.c).replace(/:count/g, this.selected.length), go, event, null);
+            // Marcada fora desta página (fw#658): o aviso diz; sem confirm=, pergunta.
+            const off = this.selOffCount();
+            const t = this._cfg.selText || {};
+            let msg = b.c ? String(b.c).replace(/:count/g, this.selected.length).split(':items').join(this._selItems(b)) : '';
+            if (off > 0) {
+                msg = msg
+                    ? msg + ' (' + String(t.off || ':count').replace(':count', off) + ')'
+                    : String(t.offAsk || ':count / :off').replace(':count', this.selected.length).replace(':off', off);
+            }
+            if (msg) {
+                this.confirmAction(msg, go, event, null);
             } else {
                 go();
             }
@@ -15739,6 +15972,8 @@ document.addEventListener('alpine:init', () => {
             // que sai e o que entra num redesenho — o destroy() do antigo
             // apagava o timer do novo.
             _refreshTimer: null,
+            // Ciclo pausado por aviso/cortina aberta (fw#615): relê ao fechar.
+            _refreshWait: null,
 
             init() {
                 _board   = this.$el;
@@ -15809,23 +16044,53 @@ document.addEventListener('alpine:init', () => {
             _stopAutoRefresh() {
                 if (this._refreshTimer) clearInterval(this._refreshTimer);
                 this._refreshTimer = null;
+                if (this._refreshWait) clearInterval(this._refreshWait);
+                this._refreshWait = null;
+            },
+
+            /**
+             * Por que o ciclo não roda agora ('' = roda) — a regra da grade.
+             * `inFlight`: a releitura já saiu e a resposta chegou (o pedido em
+             * voo é ela mesma).
+             */
+            _refreshPause(inFlight = false) {
+                const w = _wrapper;
+                // Aba em segundo plano, pedido em voo, arrasto em curso.
+                if (!inFlight && (document.hidden || w.hasAttribute('data-mad-busy'))) return 'busy';
+                if (this.dragging || this.draggingStage) return 'busy';
+                // Alguém digitando num filtro do quadro (caixinha/rádio não).
+                const ae = document.activeElement;
+                if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')
+                    && !['checkbox', 'radio', 'button', 'submit', 'reset', 'image'].includes(String(ae.type || '').toLowerCase())) return 'typing';
+                // Aviso, cortina ou janela aberta por cima (fw#615).
+                if (typeof document.querySelectorAll === 'function') {
+                    const layers = document.querySelectorAll('[data-mad-overlay], .mad-confirm-overlay, .mad-confirm-popover, .mad-dialog-overlay, .mad-quick-popover');
+                    for (const l of Array.from(layers)) {
+                        if (l && typeof l.getClientRects === 'function' && l.getClientRects().length && !(l.contains && l.contains(w))) return 'layer';
+                    }
+                }
+                return '';
             },
 
             _autoRefreshTick() {
                 const w = _wrapper;
                 if (!w || !w.isConnected) { this._stopAutoRefresh(); return; }
-                // Aba em segundo plano, pedido em voo, arrasto em curso ou
-                // alguém digitando num filtro do quadro: pula este ciclo.
-                if (document.hidden || w.hasAttribute('data-mad-busy')) return;
-                if (this.dragging || this.draggingStage) return;
-                const ae = document.activeElement;
-                if (ae && w.contains(ae) && ae.matches && ae.matches('input, select, textarea')) return;
+                const why = this._refreshPause();
+                if (why === 'layer') {
+                    this._armRefreshWait();
+                    return;
+                }
+                if (why !== '') return;
                 if (typeof MadWire === 'undefined') return;
 
                 // Cartões que chegarem nesta volta viram o evento mad-new-items.
                 const news   = typeof window !== 'undefined' ? window.MadNewItems : null;
                 const before = news ? news.snapshot(w, '[data-card-id]', 'data-card-id') : null;
-                MadWire.call(w, 'onReload', [], {}, { background: true }).then((r) => {
+                // Arrastou, abriu um aviso ou foi digitar enquanto a releitura
+                // voava: a resposta não redesenha (fw#660/#615) e o quadro relê
+                // quando a pausa acabar.
+                MadWire.call(w, 'onReload', [], {}, { background: true, discardIf: () => this._refreshPause(true) !== '' }).then((r) => {
+                    if (r && r.reason === 'discarded') { this._armRefreshWait(); return; }
                     if (r && r.ok && news) {
                         const id   = w.getAttribute('mad-id') || '';
                         const live = id ? document.querySelector('[mad-id="' + _kbCss(id) + '"]') : null;
@@ -15834,6 +16099,18 @@ document.addEventListener('alpine:init', () => {
                     if (!r || r.ok || r.reason === 'unload') return;
                     this._autoRefreshLost(r.reason);
                 });
+            },
+
+            /** Vigia de 1 s: relê assim que nada mais segura a atualização. */
+            _armRefreshWait() {
+                if (this._refreshWait) return;
+                this._refreshWait = setInterval(() => {
+                    if (!_wrapper || !_wrapper.isConnected) { clearInterval(this._refreshWait); this._refreshWait = null; return; }
+                    if (this._refreshPause() !== '') return;
+                    clearInterval(this._refreshWait);
+                    this._refreshWait = null;
+                    this._autoRefreshTick();
+                }, 1000);
             },
 
             // Sem resposta: para o timer e entrega ao wire, que mantém a faixa

@@ -76,6 +76,7 @@ class MadGrid extends MadDataGrid
         if (!empty($cfg['bulkActions']) && is_array($cfg['bulkActions'])) {
             $this->bulkActions = static::_normalizeBulkActions($cfg['bulkActions']);
         }
+        if (array_key_exists('keepSelection', $cfg)) $this->keepSelection = (bool) $cfg['keepSelection'];
         // order-by/:filters declarativos do Blade (props públicas do MadDataGrid;
         // mapeados ANTES do parent::mount() → o loadData() já roda com eles).
         if (!empty($cfg['orderBy'])) $this->baseOrder = (string) $cfg['orderBy'];

@@ -371,6 +371,10 @@ final class RenderTool implements Tool
         // sao argumento de topo da escrita. O resto vira so leitura ANTES de
         // renderizar: o cartao nunca oferece editar o que a escrita nao le.
         $editable        = ConfirmCoordinator::editableFromFields($block['fields'], $args);
+        if ($this->confirms !== null) {
+            // `editable` declarado no spec da tool vence o que o modelo marcou (fw#650)
+            $editable = $this->confirms->limitToDeclared((string) $block['tool'], $editable);
+        }
         $block['fields'] = ConfirmCoordinator::stripNonEditable($block['fields'], $editable);
 
         if ($this->confirms !== null) {

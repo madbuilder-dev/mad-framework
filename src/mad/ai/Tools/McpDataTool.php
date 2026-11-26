@@ -94,6 +94,8 @@ final class McpDataTool implements Tool
 
         $fields   = [];
         $editable = [];
+        // `editable` declarado no spec: so esses argumentos viram campo (fw#650)
+        $declared = ConfirmCoordinator::declaredEditable($this->caller->spec($this->toolName) ?? []);
         foreach ($args as $k => $v) {
             if ($k === 'confirm') {
                 continue;
@@ -104,7 +106,9 @@ final class McpDataTool implements Tool
                 'v' => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE),
             ];
             // exclusão não tem o que corrigir: só confirma ou cancela
-            $spec = $this->isDestructive ? null : self::editableSpec($k, $v);
+            $spec = $this->isDestructive || ($declared !== null && ! in_array($k, $declared, true))
+                ? null
+                : self::editableSpec($k, $v);
             if ($spec !== null) {
                 $field['name']  = $k;
                 $field['input'] = $spec['input'];
@@ -137,7 +141,8 @@ final class McpDataTool implements Tool
      * Quais argumentos da escrita o usuário pode corrigir no cartão, e como.
      * Fica de fora o que identifica o registro (`id`, `*_id`, `key`) — trocar
      * ali mudaria QUAL registro é escrito —, valor nulo (não dá para saber o
-     * tipo), data com hora e estruturas (array/objeto).
+     * tipo), data com hora e estruturas (array/objeto). Com `editable` no spec
+     * da tool, só os argumentos listados chegam aqui (gateWrite).
      *
      * @return array{input: string, options?: list<string>, cast?: string}|null
      */

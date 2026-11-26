@@ -1532,6 +1532,46 @@ const MadWire = (() => {
         return run;
     }
 
+    // Campo HTML escrito à mão no <mad-form> enviado, com `name` e sem
+    // `mad:model` (fw#665): o navegador só manda o que está ligado, e o valor
+    // não chegava ao getData() — sem aviso nenhum ("Nada mudou."). Avisa no
+    // console (uma vez por campo) e devolve os NOMES, que vão em
+    // `mad_unbound[]` para o servidor avisar no log. O valor continua fora.
+    //
+    // Fora da conta: os controles das tags <mad-*> (dentro de um nó ligado, ou
+    // com o nome de um campo que já vai — o oculto do numérico), linhas de
+    // Lista de itens / Detail Form, checklist, formulário ou componente
+    // aninhado, nomes `_…` (`_token`, `__mad_form`), arquivo, botão e
+    // desabilitado.
+    const _unboundWarned = new Set();
+    function _unboundFields(wrapper, sourceForm, models) {
+        if (!sourceForm || !sourceForm.matches || !sourceForm.matches('form[data-mad-submit]')) return [];
+        const sent = new Set();
+        Object.keys(models || {}).forEach(k => {
+            sent.add(k);
+            if (k.indexOf('.') !== -1) sent.add(k.slice(k.indexOf('.') + 1));
+        });
+        const out = [];
+        sourceForm.querySelectorAll('input[name], select[name], textarea[name]').forEach(c => {
+            const name = (c.getAttribute('name') || '').replace(/\[\]$/, '');
+            if (!name || name.charAt(0) === '_' || sent.has(name) || out.indexOf(name) !== -1) return;
+            if (c.disabled || /^(file|button|submit|reset|image)$/i.test(c.type || '')) return;
+            if (c.closest('[data-mad-model], [data-mad-model-live], [data-mad-df-name], [data-mad-fl-name], [data-df-fields], .mad-checklist')) return;
+            if (_closestAcross(c, '[mad-component]') !== wrapper) return;
+            if (_closestAcross(c, 'form[data-mad-submit], [data-mad-block-form]') !== sourceForm) return;
+            out.push(name);
+        });
+        out.forEach(name => {
+            const key = (wrapper.getAttribute('mad-component') || '') + '|' + name;
+            if (_unboundWarned.has(key)) return;
+            _unboundWarned.add(key);
+            console.warn('[MadWire] campo "' + name + '" do <mad-form> não foi enviado: tem name, mas não tem mad:model,'
+                + ' e o valor não chega ao getData(). Ligue o campo: <input type="hidden" name="' + name
+                + '" data-mad-model="' + name + '"> (no Blade, mad:model="' + name + '").');
+        });
+        return out;
+    }
+
     async function _requestNow(wrapper, action = '', params = [], extraModels = {}, sourceForm = null, opts = {}) {
         const state    = wrapper.getAttribute('mad-state');
         const id       = wrapper.getAttribute('mad-id');
@@ -1566,6 +1606,11 @@ const MadWire = (() => {
         for (const [n, vals] of Object.entries(clExtras)) {
             vals.forEach(v => body.append(`${n}[]`, v));
         }
+        // Só o nome do campo solto (fw#665), nunca o valor: o aviso não pode
+        // atrapalhar o envio.
+        let unbound = [];
+        try { unbound = _unboundFields(wrapper, sourceForm, models); } catch (e) { unbound = []; }
+        unbound.forEach(n => body.append('mad_unbound[]', n));
 
         // Inclui o token do schema de formulário se presente no componente
         // (necessário para MadForm.getData() transformar datas, checkboxes, etc.)
@@ -1766,6 +1811,18 @@ const MadWire = (() => {
             // Envia dados de debug para o console (se ativo)
             if (data._debug && typeof System !== 'undefined' && System.addDebug) {
                 data._debug.forEach(d => System.addDebug(d));
+            }
+
+            // Pedido sem efeito que a tela deixou de querer enquanto voava (a
+            // pessoa marcou uma linha, abriu um aviso): a resposta não se
+            // aplica — nem op, nem estado, nem HTML (fw#660/#615).
+            if (typeof opts.discardIf === 'function' && !data.error) {
+                let drop = false;
+                try { drop = !!opts.discardIf(); } catch (_) { drop = false; }
+                if (drop) {
+                    _setLoading(wrapper, false, sourceForm);
+                    return { ok: false, reason: 'discarded' };
+                }
             }
 
             // Token do formulário velho (a sessão foi trocada por outra aba ou
@@ -2732,6 +2789,14 @@ const MadWire = (() => {
          * por conta própria — devolve o desfecho na hora, e quem chamou decide
          * (ver `reconnect`).
          *
+         * `options.discardIf: () => bool` — SÓ para pedido sem efeito (leitura,
+         * como a releitura do auto-refresh): conferido quando a resposta chega,
+         * antes de aplicar qualquer coisa. Verdadeiro → a resposta é jogada
+         * fora (nem op, nem `mad-state`, nem HTML) e resolve `{ ok: false,
+         * reason: 'discarded' }`; quem chamou relê depois. O servidor já rodou
+         * a ação: chamada que grava NUNCA usa isto — a tela ficaria com o
+         * estado de antes da gravação (fw#660/#615).
+         *
          * `options.key` marca o que a chamada grava (ex.: `'peso:' + id`): se
          * o app responder 503 e, durante a repetição automática, sair outra
          * chamada do componente com a mesma chave, esta desiste e resolve
@@ -2759,6 +2824,7 @@ const MadWire = (() => {
             const extra = models && typeof models === 'object' && !Array.isArray(models) ? models : {};
             const opts  = options && options.quietNetwork ? { quietNetwork: true } : {};
             if (options && options.background) opts.background = true;
+            if (options && typeof options.discardIf === 'function') opts.discardIf = options.discardIf;
             if (options && options.key != null && options.key !== '') opts.key = String(options.key);
             if (options && options.seq) opts.seq = true;
             if (options && options.quietStale) opts.quietStale = true;

@@ -130,8 +130,24 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     public array $bulkActions = [];
 
+    /**
+     * `<mad-grid keep-selection>` (fw#658). null = o padrão: com ação em lote
+     * declarada, a marcação ZERA quando a vista muda (busca, filtro,
+     * ordenação, por página) e ao reabrir a tela — a ação não pode processar
+     * linha que ninguém está vendo; sem ação em lote, ela segue como sempre
+     * foi. true = a marcação atravessa busca, filtro e reabertura (a barra e o
+     * aviso dizem quantas estão fora da página). Só o Blade escreve.
+     */
+    public ?bool $keepSelection = null;
+
+    /** Retrato da vista do último render (ver _selectionViewSig): mudou → a marcação zera. */
+    public string $selectionView = '';
+
     /** A seleção desta requisição já foi lida (campo oculto ou sessão)? */
     private bool $_selectionSynced = false;
+
+    /** O servidor escreveu a seleção nesta requisição (Marcar todas, lote)? Ela já é da vista atual. */
+    private bool $_selectionSetHere = false;
 
     // ── Inline config (definida via <mad-grid self> no Blade) ─────────────
 
@@ -479,9 +495,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
     public function _needsFullRender(): bool {
         // Carga adiada conta como carregada: a ação que antes redesenhava a
-        // tela (o hydrate() já tinha carregado) continua redesenhando.
+        // tela (o hydrate() já tinha carregado) continua redesenhando — menos a
+        // ação do app que não mudou nada do que a grade mostra (fw#661).
         return $this->_forceFullRender
-            || (($this->_dataLoaded || $this->_loadDeferred) && !$this->_skipFullRender);
+            || (($this->_dataLoaded || $this->_loadDeferred) && !$this->_skipFullRender && !$this->_quietAction);
     }
 
     /**
@@ -489,6 +506,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * redesenhar a grid. Sem isto o re-render completo substitui o DOM alvo
      * das ops (ex.: `<div id="…">` dentro de um `<mad-drawer>`) DEPOIS de
      * `->html()` ter aplicado — o drawer abre vazio.
+     *
+     * Desde a fw#661 a ação escrita na tela que devolve um `MadResponse` com
+     * ops e não grava no banco, não muda prop/campo da tela, não mexe na
+     * sessão nem recarrega as linhas já sai sem redesenhar (o balão de filtro
+     * aberto continua aberto). Chame isto quando a ação grava ou muda estado
+     * e mesmo assim não deve redesenhar a grade; `forceFullRender()` faz o
+     * contrário.
      */
     protected function skipFullRender(): void
     {
@@ -849,6 +873,16 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      * Escopos de empresa, unidade e lixeira entram quando a consulta parte dos
      * Models (`Produto::query()`), não de `DB::table()`.
      *
+     * O `onSearch` (e o `searchQuery` que ele monta) filtra por cima da
+     * consulta, que se chama `mad_src`: use o nome que ela devolve
+     * (`$q->where('status', …)`). Filtro com o nome da tabela
+     * (`pedido.status`) vale quando o select da consulta mostra de onde a
+     * coluna vem (`pedido.status`, `pedido.status as situacao`, `pedido.*`):
+     * vira `mad_src.status`. Coluna que a consulta não devolve, ou que não dá
+     * para saber de que tabela veio, é recusada — a listagem abre sem linhas
+     * com o aviso de filtro e o log diz as colunas que existem. Filtro por
+     * coluna que a consulta não devolve vai DENTRO de `sourceQuery()`.
+     *
      * @return \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder|null
      */
     protected function sourceQuery(): mixed
@@ -893,9 +927,13 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             $this->_sourceModel = $this->model;
         }
         $this->model = '';
+        $this->_sourceInner = $source;
 
         return $source->getConnection()->query()->fromSub($source, 'mad_src');
     }
+
+    /** A consulta de `sourceQuery()` (a de dentro do `mad_src`), para ler o select dela. */
+    private ?\Illuminate\Database\Query\Builder $_sourceInner = null;
 
     /** Model da tela antes do `sourceQuery()` tirá-lo da consulta. */
     private string $_sourceModel = '';
@@ -1002,13 +1040,218 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (!$fn instanceof \Closure || $fn === $this->_searchQueryForSource) {
             return;
         }
-        $param = (new \ReflectionFunction($fn))->getParameters()[0] ?? null;
-        if ($param === null || !static::_hookWantsEloquent($param->getType())) {
+        $param    = (new \ReflectionFunction($fn))->getParameters()[0] ?? null;
+        $eloquent = $param !== null && static::_hookWantsEloquent($param->getType());
+        // fw#666: o que o closure filtra citando a tabela da fonte passa a valer
+        // sobre o `mad_src` (ou é recusado), em qualquer consulta da tela.
+        $this->searchQuery = $this->_searchQueryForSource = function ($q) use ($fn, $eloquent) {
+            $mark = $this->_hookMark($q);
+            $out  = $fn($eloquent && $q instanceof \Illuminate\Database\Query\Builder ? static::_eloquentOver($q) : $q);
+            $this->_scopeHookToSource($q, $mark);
+
+            return $out;
+        };
+    }
+
+    /** Onde a consulta estava antes do gancho da tela (filtros, valores, ordem). */
+    private function _hookMark($q): array
+    {
+        $b = $this->_queryBuilder($q);
+
+        return [$b->wheres, $b->bindings['where'], $b->orders, $b->bindings['order']];
+    }
+
+    /**
+     * fw#666 — com `sourceQuery()` a listagem lê de `(…) as mad_src`, e o filtro
+     * do `onSearch` que citava a tabela da fonte (`pedido.status`) caía fora da
+     * subconsulta: erro de banco (PostgreSQL 42P01, MySQL "Unknown column",
+     * SQLite "no such column"). O que o gancho acrescentou desde `$mark` passa
+     * a citar `mad_src.<coluna>` quando o select da fonte mostra de onde a
+     * coluna vem; senão o gancho inteiro é desfeito e a consulta sai fechada,
+     * com o aviso de filtro e as colunas que existem no log (fw#628).
+     */
+    private function _scopeHookToSource($q, array $mark): void
+    {
+        $b = $this->_queryBuilder($q);
+        if ($this->_sourceInner === null || !$b instanceof \Illuminate\Database\Query\Builder
+            || !$b->from instanceof \Illuminate\Contracts\Database\Query\Expression
+            || !str_contains((string) $b->from->getValue($b->getGrammar()), 'mad_src')) {
             return;
         }
-        $this->searchQuery = $this->_searchQueryForSource = static function ($q) use ($fn) {
-            return $fn($q instanceof \Illuminate\Database\Query\Builder ? static::_eloquentOver($q) : $q);
-        };
+        $nWheres = count($mark[0]);
+        $nOrders = count($mark[2] ?? []);
+        try {
+            $b->wheres = array_merge(array_slice($b->wheres, 0, $nWheres), $this->_sourceWheres(array_slice($b->wheres, $nWheres)));
+            foreach (array_slice($b->orders ?? [], $nOrders, null, true) as $i => $o) {
+                if (is_string($o['column'] ?? null)) {
+                    $b->orders[$i]['column'] = $this->_sourceColumnRef($o['column']);
+                }
+            }
+        } catch (\LogicException $e) {
+            [$b->wheres, $b->bindings['where'], $b->orders, $b->bindings['order']] = $mark;
+            $this->_failClosedOnSearch($q, $e);
+        }
+    }
+
+    /** @param array<int, array<string, mixed>> $wheres */
+    private function _sourceWheres(array $wheres): array
+    {
+        foreach ($wheres as $i => $w) {
+            foreach (['column', 'first', 'second'] as $k) {
+                if (is_string($w[$k] ?? null)) {
+                    $wheres[$i][$k] = $this->_sourceColumnRef($w[$k]);
+                }
+            }
+            foreach (is_array($w['columns'] ?? null) ? $w['columns'] : [] as $j => $c) {
+                if (is_string($c)) {
+                    $wheres[$i]['columns'][$j] = $this->_sourceColumnRef($c);
+                }
+            }
+            // `where(function ($w) { … })`; subconsulta (exists, in) tem escopo próprio.
+            if (($w['type'] ?? '') === 'Nested' && ($w['query'] ?? null) instanceof \Illuminate\Database\Query\Builder) {
+                $w['query']->wheres = $this->_sourceWheres($w['query']->wheres);
+            }
+        }
+
+        return $wheres;
+    }
+
+    /** `tabela.coluna` → `mad_src.<nome na fonte>`; o resto (sem tabela, `mad_src.x`, JSON, expressão) fica igual. */
+    private function _sourceColumnRef(string $col): string
+    {
+        if (!preg_match('/^((?:[A-Za-z_][A-Za-z0-9_]*\.)*([A-Za-z_][A-Za-z0-9_]*))\.([A-Za-z_][A-Za-z0-9_]*)$/', $col, $m)
+            || strcasecmp($m[1], 'mad_src') === 0) {
+            return $col;
+        }
+        $name = $this->_sourceNameOf(strtolower($m[2]), $m[3]);
+        if ($name === null) {
+            $cols = $this->_sourceColumnsOfInner();
+            throw new \LogicException(
+                'onSearch de grade com sourceQuery() vê só as colunas que a consulta devolve (mad_src): '
+                . ($cols !== [] ? implode(', ', $cols) : '(não foi possível ler as colunas)')
+                . ". O filtro por `{$col}` não corresponde a nenhuma delas com certeza: filtre pelo nome que a consulta devolve, "
+                . 'sem a tabela, ou ponha esse filtro dentro de sourceQuery().'
+            );
+        }
+        $ref = 'mad_src.' . $name;
+        if (!isset($this->_sourceRefsLogged[$col])) {
+            $this->_sourceRefsLogged[$col] = true;
+            \Illuminate\Support\Facades\Log::info('[MadDataGrid] ' . static::class . "::onSearch sobre sourceQuery(): {$col} → {$ref}");
+        }
+
+        return $ref;
+    }
+
+    /** @var array<string, true> reescritas já anotadas no log nesta requisição */
+    private array $_sourceRefsLogged = [];
+
+    /**
+     * O nome que a fonte devolve para `$table.$col`, pelo select dela:
+     * `t.c` / `t.c as a` dizem; `t.*` (ou `*` sem join) vale quando é a única
+     * estrela e nenhum outro item devolve o mesmo nome. Dúvida = null.
+     */
+    private function _sourceNameOf(string $table, string $col): ?string
+    {
+        $inner   = $this->_sourceInner;
+        $grammar = $inner->getGrammar();
+        $tables  = [];
+        foreach (array_merge([$inner->from], array_map(fn ($j) => $j->table, $inner->joins ?? [])) as $t) {
+            if (is_string($t)) {
+                $parts    = preg_split('/\s+as\s+/i', trim($t));
+                $tables[] = strtolower(preg_replace('/^.*\./', '', (string) end($parts)));
+            }
+        }
+        $items = [];
+        foreach ($inner->columns ?? ['*'] as $c) {
+            $sql = $c instanceof \Illuminate\Contracts\Database\Query\Expression ? (string) $c->getValue($grammar) : $c;
+            if (is_string($sql)) {
+                array_push($items, ...static::_splitSelectList($sql));
+            }
+        }
+        $found = null;
+        $stars = [];
+        $names = [];   // nome devolvido => quantos itens o devolvem
+        $col   = strtolower($col);
+        foreach ($items as $item) {
+            $item = trim(str_replace(['"', '`', '[', ']'], '', $item));
+            if ($item === '*') {
+                array_push($stars, ...$tables);
+            } elseif (preg_match('/^(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\.\*$/', $item, $m)) {
+                $stars[] = strtolower($m[1]);
+            } elseif (preg_match('/^(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\.([A-Za-z_]\w*)(?:\s+as\s+([A-Za-z_]\w*))?$/i', $item, $m)) {
+                $out = $m[3] ?? '' ?: $m[2];
+                $names[strtolower($out)] = ($names[strtolower($out)] ?? 0) + 1;
+                if (strtolower($m[1]) === $table && strtolower($m[2]) === $col) {
+                    $found = $out;
+                }
+            } elseif (preg_match('/(?:^|\s)(?:as\s+)?([A-Za-z_]\w*)$/i', $item, $m)) {
+                $names[strtolower($m[1])] = ($names[strtolower($m[1])] ?? 0) + 1;
+            }
+        }
+        if ($found !== null) {
+            return ($names[strtolower($found)] ?? 0) === 1 ? $this->_sourceSpelling($found) : null;
+        }
+        $stars = array_unique($stars);
+        if ($stars === [$table] && !isset($names[$col])) {
+            foreach ($this->_sourceColumnsOfInner() as $name) {
+                if (strtolower($name) === $col) {
+                    return $name;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /** O nome como o banco devolve (o PostgreSQL passa o alias sem aspas para minúsculas). */
+    private function _sourceSpelling(string $name): string
+    {
+        if ($name === strtolower($name)) {
+            return $name;
+        }
+        foreach ($this->_sourceColumnsOfInner() as $real) {
+            if (strcasecmp($real, $name) === 0) {
+                return $real;
+            }
+        }
+
+        return $name;
+    }
+
+    /** @return list<string> as colunas que a fonte devolve (lidas do banco com `limit 0`) */
+    private function _sourceColumnsOfInner(): array
+    {
+        $inner = $this->_sourceInner;
+
+        return $inner === null ? [] : $this->_sourceColumns($inner->getConnection()->query()->fromSub($inner, 'mad_src'));
+    }
+
+    /** Itens de um select (`a.x, b.y as z, coalesce(a, b) as w`) — vírgula fora de parênteses e aspas. */
+    private static function _splitSelectList(string $sql): array
+    {
+        $items = [];
+        $depth = 0;
+        $quote = '';
+        $cur   = '';
+        foreach (str_split($sql) as $ch) {
+            if ($quote !== '') {
+                $quote = $ch === $quote ? '' : $quote;
+            } elseif ($ch === "'" || $ch === '"' || $ch === '`') {
+                $quote = $ch;
+            } elseif ($ch === '(') {
+                $depth++;
+            } elseif ($ch === ')') {
+                $depth--;
+            } elseif ($ch === ',' && $depth === 0) {
+                $items[] = $cur;
+                $cur     = '';
+                continue;
+            }
+            $cur .= $ch;
+        }
+        $items[] = $cur;
+
+        return array_values(array_filter(array_map('trim', $items), fn ($i) => $i !== ''));
     }
 
     /**
@@ -1209,6 +1452,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
     public function setSelectedIds(mixed $ids): void
     {
         $this->_selectionSynced = true;
+        $this->_selectionSetHere = true;
         $norm = MadGridSelection::normalize($ids);
         $this->selection = array_values($norm);
         MadGridSelection::put($this->_selectionKey(), $norm);
@@ -2471,19 +2715,41 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _userFilterSignature(): string
     {
-        $props = array_unique(array_merge(
-            ['mes', 'ano', 'dtIni', 'dtFim', 'preset', 'search', 'filters', 'filterOps', 'colFilters', 'customFilterState'],
-            $this->discoverFilterProps()
-        ));
+        return md5((string) json_encode($this->_userFilterValues(), JSON_PARTIAL_OUTPUT_ON_ERROR));
+    }
+
+    /** Filtros do usuário que o próprio grid guarda: período, busca, filtros de coluna e filtro avançado. */
+    private const USER_FILTER_BASE = ['mes', 'ano', 'dtIni', 'dtFim', 'preset', 'search', 'filters', 'filterOps', 'colFilters', 'customFilterState'];
+
+    /** Props que guardam filtro do USUÁRIO: as do grid e as props de filtro da tela. */
+    private function _userFilterProps(): array
+    {
+        return array_values(array_unique(array_merge(self::USER_FILTER_BASE, $this->discoverFilterProps())));
+    }
+
+    /** Prop de filtro da tela que o navegador não muda (contexto travado): fica fora do retrato e da troca. */
+    private function _lockedFilterProp(string $name): bool
+    {
+        return !in_array($name, self::USER_FILTER_BASE, true) && !$this->_isModelAssignable($name);
+    }
+
+    /**
+     * Valores dos filtros do usuário agora — as props de {@see _userFilterProps()}
+     * e, em `__form`, os campos do bloco de filtros.
+     *
+     * @return array<string, mixed>
+     */
+    protected function _userFilterValues(): array
+    {
         $vals = [];
-        foreach ($props as $name) {
+        foreach ($this->_userFilterProps() as $name) {
             $vals[$name] = $this->$name ?? null;
         }
         if (isset($this->form) && $this->form instanceof \Mad\Form\MadForm) {
             $vals['__form'] = $this->form->fields;
         }
 
-        return md5((string) json_encode($vals, JSON_PARTIAL_OUTPUT_ON_ERROR));
+        return $vals;
     }
 
     /** @param list<string> $ids */
@@ -3097,16 +3363,273 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
         $this->_selectionSynced = true;
 
+        // Abertura da tela com ação em lote (fw#658): começa sem marcação — a
+        // da visita anterior seria processada sem ninguém ver. `keep-selection`
+        // (ou grade sem ação em lote) restaura, como antes.
+        if (!$this->_gridHydrated && !isset($_POST['mad_state']) && !$this->_keepsSelection()) {
+            $this->selection = [];
+            MadGridSelection::put($this->_selectionKey(), []);
+            return;
+        }
+
         // Sem o campo (primeira abertura): a sessão manda — inclusive quando
         // outra tela esvaziou a seleção (MadGridSelection::clear) depois de
         // processar o lote.
         $this->selection = array_values(MadGridSelection::get($this->_selectionKey()));
     }
 
+    /**
+     * A marcação atravessa busca, filtro, ordenação e reabertura? `keep-selection`
+     * decide; sem ele, só a grade SEM ação em lote mantém (fw#658).
+     */
+    protected function _keepsSelection(): bool
+    {
+        return $this->keepSelection ?? ($this->bulkActions === []);
+    }
+
+    /** O que a listagem mostra: filtros do usuário, busca, ordenação e linhas por página. */
+    protected function _selectionViewSig(): string
+    {
+        return md5($this->_userFilterSignature() . '|' . $this->sortBy . '|' . $this->sortDir . '|' . $this->perPage);
+    }
+
+    /**
+     * Render: a vista mudou desde o último (busca, filtro, ordenação, por
+     * página) e a grade não mantém a marcação → ela zera, no estado e na
+     * sessão. Trocar de página não conta: é a mesma lista (fw#658).
+     */
+    private function _selectionFollowView(): void
+    {
+        // Ação que não muda nada do que a grade mostra (fw#661): a tela não
+        // redesenha, então a marcação e a vista ficam como o navegador as tem
+        // — o texto que viajou no balão do filtro, sem Aplicar, não conta.
+        if ($this->_quietAction) {
+            return;
+        }
+        $view = $this->_selectionViewSig();
+        if ($this->selection !== [] && $this->selectionView !== '' && $this->selectionView !== $view
+            && !$this->_selectionSetHere && !$this->_keepsSelection()) {
+            $this->selection = [];
+            MadGridSelection::put($this->_selectionKey(), []);
+        }
+        $this->selectionView = $view;
+    }
+
+    /**
+     * Os ids que a listagem ainda mostra (fw#658), na ordem recebida: a
+     * consulta dela com os filtros do usuário — ou, com `keep-selection`, só o
+     * recorte fixo (model, unidade/tenant, `:filters`, `onSearch()`), como as
+     * ações prontas. Id de registro apagado, de outra unidade ou forjado sai
+     * nos dois casos. Tela com `query()` próprio: o Model com os escopos dele.
+     * Sem Model para conferir, devolve o que recebeu.
+     *
+     * @param  array<int|string, string> $ids
+     * @return array<int|string, string>
+     */
+    protected function _bulkInView(array $ids, ?bool $userFilters = null): array
+    {
+        $model = $this->_recordModel();
+        if ($ids === [] || $model === '' || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)) {
+            return $ids;
+        }
+        $list  = array_values(array_map('strval', $ids));
+        $found = [];
+        if ((new \ReflectionMethod($this, 'query'))->getDeclaringClass()->getName() !== self::class) {
+            foreach (array_chunk($list, 500) as $chunk) {
+                foreach ($model::query()->whereKey($chunk)->pluck((new $model())->getKeyName()) as $id) {
+                    $found[(string) $id] = true;
+                }
+            }
+        } else {
+            $collect = function () use ($list, $model, &$found): bool {
+                foreach (array_chunk($list, 500) as $chunk) {
+                    $q = $this->_buildQuery();
+                    if ($this->searchQuery) {
+                        ($this->searchQuery)($q);
+                    }
+                    if ($q instanceof \Illuminate\Database\Eloquent\Builder) {
+                        $col = $q->getModel()->getQualifiedKeyName();
+                    } elseif ($this->_usesSource()) {
+                        $col = 'mad_src.' . (new $model())->getKeyName();
+                    } else {
+                        return false;
+                    }
+                    foreach ($q->whereIn($col, $chunk)->pluck($col) as $id) {
+                        $found[(string) $id] = true;
+                    }
+                }
+
+                return true;
+            };
+            // Com os filtros do usuário, valem os que a listagem NA TELA usou (o
+            // retrato do último desenho), não o texto que viajou no balão sem
+            // Aplicar. Sem retrato válido: os valores de agora, como antes.
+            $applied = ($userFilters ?? !$this->_keepsSelection()) ? $this->_appliedFilterValues() : null;
+            $ok = !($userFilters ?? !$this->_keepsSelection())
+                ? $this->_withoutUserFilters($collect)
+                : ($applied !== null ? $this->_withUserFilterValues($applied, $collect) : $collect());
+            if (!$ok) {
+                return $ids;
+            }
+        }
+
+        return array_filter($ids, fn ($id) => isset($found[(string) $id]));
+    }
+
+    /**
+     * Ação em lote chamada (método do app, `onBulkOpen`, `onBulkRun`): a
+     * seleção — e o mapa que o método recebe — passam pela consulta da
+     * listagem ANTES da chamada (fw#658). Devolve os argumentos da chamada, a
+     * quantidade que ficou de fora e, quando não sobrou o mínimo da ação, a
+     * resposta que a substitui.
+     *
+     * @return array{0: array, 1: int, 2: ?\Mad\Http\MadResponse}
+     */
+    private function _bulkScopeCall(string $method, array $data): array
+    {
+        $cfg = null;
+        if (in_array($method, ['onBulkOpen', 'onBulkRun'], true)) {
+            $index = $data[0] ?? null;
+            $cfg   = is_numeric($index) ? ($this->bulkActions[(int) $index] ?? null) : null;
+        } else {
+            foreach ($this->bulkActions as $b) {
+                if (is_array($b) && ($b['preset'] ?? '') === '' && (string) ($b['method'] ?? '') === $method
+                    && ($b['when'] ?? true) !== false) {
+                    $cfg = $b;
+                    break;
+                }
+            }
+        }
+        // Ação que o perfil não tem: quem recusa é ela, sem consultar nada aqui.
+        if (!is_array($cfg) || !$this->selectable || $this->_bulkDecision($cfg)['mode'] !== 'allow') {
+            return [$data, 0, null];
+        }
+
+        $sel    = $this->selectedIds();
+        $posted = !in_array($method, ['onBulkOpen', 'onBulkRun'], true) && is_array($data[0] ?? null)
+            ? MadGridSelection::normalize($data[0]) : [];
+        $all    = $sel + $posted;
+        $kept   = $this->_bulkInView($all);
+        if (($cfg['preset'] ?? '') !== '') {
+            // Ação pronta: id que nem o recorte fixo alcança (outra unidade,
+            // apagado) fica para ela — "não encontrado" e continua marcado.
+            $base  = $this->_keepsSelection() ? $kept : $this->_bulkInView($all, false);
+            $kept += array_diff_key($all, $base);
+        }
+        if (count($kept) === count($all)) {
+            return [$data, 0, null];
+        }
+
+        $this->setSelectedIds(array_intersect_key($sel, $kept));
+        $gone = count($posted !== [] ? array_diff_key($posted, $kept) : array_diff_key($sel, $kept));
+        if ($posted !== []) {
+            $left    = array_intersect_key($posted, $kept);
+            $data[0] = array_is_list($data[0]) ? array_values($left) : $left;
+        } else {
+            $left = array_intersect_key($sel, $kept);
+        }
+        \Illuminate\Support\Facades\Log::info(
+            'MadDataGrid: ' . static::class . '::' . static::_logSafe($method) . ' — ' . (count($all) - count($kept))
+            . ' id(s) marcados fora da listagem ficaram de fora (fw#658, usuario ' . static::_logUser() . ').'
+        );
+
+        $min = (int) ($cfg['min'] ?? 1);
+        if (($cfg['preset'] ?? '') !== '') {
+            $min = max(1, $min);
+        }
+        if ($gone > 0 && count($left) < $min) {
+            return [$data, $gone, (new \Mad\Http\MadResponse())->toast(__('grid.bulk_dropped_all'), 'warning')];
+        }
+
+        return [$data, $gone, null];
+    }
+
+    /**
+     * Rótulos das linhas para o `:items` do `confirm` (fw#658): as da página e
+     * as marcadas fora dela, pelo `confirm-label="{campo}"` da ação ou pela
+     * coluna-título (a 1ª coluna visível que não é a chave). Até 50 marcadas
+     * de fora da página — o aviso mostra as primeiras e "e mais N".
+     *
+     * @return array<string, string>
+     */
+    private function _bulkItemLabels(array $b): array
+    {
+        $mask  = (string) ($b['confirmLabel'] ?? '');
+        $idKey = $this->rowIdField();
+        $field = '';
+        if ($mask === '') {
+            foreach ($this->_effectiveColumns() as $c) {
+                if ($c instanceof GridColumn && !$c->hidden && $c->field !== '' && $c->field !== $idKey && $c->field !== 'id') {
+                    $field = $c->field;
+                    break;
+                }
+            }
+            if ($field === '') {
+                return [];
+            }
+        }
+        $label = function (array $row) use ($mask, $field): string {
+            $text = $mask !== '' ? static::_renderMask($mask, $row) : GridRenderHelpers::rowValue($row, $field);
+
+            return is_scalar($text) ? trim(strip_tags((string) $text)) : '';
+        };
+
+        $out = [];
+        foreach ($this->_rows as $i => $row) {
+            if (!is_array($row)) continue;
+            $id = (string) ($row[$idKey] ?? $row['id'] ?? $i);
+            $out[$id] = $label($row);
+        }
+        $off = array_slice(array_values(array_diff(array_map('strval', $this->selection), array_keys($out))), 0, 50);
+        if ($off !== []) {
+            try {
+                foreach ($this->_bulkRecords(MadGridSelection::normalize($off)) as $id => $record) {
+                    $out[(string) $id] = $label($this->_actionRowData($record));
+                }
+            } catch (\Throwable $e) {
+                // sem rótulo: o aviso conta as que não têm ("e mais N")
+            }
+        }
+
+        return array_filter($out, fn ($v) => $v !== '');
+    }
+
     /** Nome do campo oculto no DOM (sem barra invertida, igual ao storageKey da view). */
     protected function _selectionStorageKey(): string
     {
         return str_replace('\\', '_', static::class);
+    }
+
+    /** Campo oculto com o retrato cifrado dos filtros que a listagem na tela usou (fw#658). */
+    public const VIEW_FIELD = '__mad_grid_view';
+
+    /** Finalidade do token do retrato ({@see \Mad\Http\MadStateCrypt::encryptFor()}). */
+    private const VIEW_PURPOSE = 'grid-view';
+
+    /**
+     * Filtros do usuário que a listagem NA TELA usou: o retrato cifrado que o
+     * último desenho da grade pôs no HTML (fw#658). Null sem retrato, ou com
+     * um que não abre, de outra tela ou de outro usuário — aí valem os de agora.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function _appliedFilterValues(): ?array
+    {
+        $field = $_POST[self::VIEW_FIELD] ?? null;
+        $token = is_array($field) ? ($field[$this->_selectionStorageKey()] ?? null) : null;
+        if (!is_string($token) || $token === '') {
+            return null;
+        }
+        try {
+            $data = \Mad\Http\MadStateCrypt::decryptFor(self::VIEW_PURPOSE, $token);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (!is_array($data) || ($data['grid'] ?? null) !== static::class || !is_array($data['v'] ?? null)) {
+            return null;
+        }
+
+        return $data['v'];
     }
 
     /** Config de seleção para a view (data-grid.blade.php / data-grid-row). */
@@ -3116,6 +3639,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return ['selectable' => false, 'selected' => [], 'bulkActions' => [], 'selectionField' => ''];
         }
         $this->_syncSelection();
+        $this->_selectionFollowView();
 
         // Ação em lote barrada pelo perfil — mesma regra das ações de linha e
         // dos <mad-btn>, pela preferência "Ações sem permissão": some da barra
@@ -3125,6 +3649,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // dela é o que o navegador manda de volta (onBulkOpen(índice)).
         $bulk  = array_values($this->bulkActions);
         $model = null;
+        $labels = [];
         foreach ($bulk as &$b) {
             $perm        = $this->_bulkDecision($b);
             $b['hidden'] = $perm['mode'] === 'hide';
@@ -3132,6 +3657,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             if (($b['preset'] ?? '') !== '') {
                 $b['label']   = $this->_bulkLabel($b);
                 $b['confirm'] = $this->_bulkConfirm($b);
+            }
+            // `:items` no aviso (fw#658): os rótulos das linhas vão junto.
+            if (str_contains((string) ($b['confirm'] ?? ''), ':items') && !$b['hidden'] && $b['deny'] === '') {
+                $b['labels'] = $labels[(string) ($b['confirmLabel'] ?? '')] ??= $this->_bulkItemLabels($b);
             }
             // Rotina que não serve para esta listagem (não existe, sem botão,
             // sem origem ou origem de outro model): o botão fica apagado com o
@@ -3152,8 +3681,23 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $selAll   = $this->_selectAllState();
         $selTotal = $this->_canSelectAll() ? max(0, (int) $this->_total) : 0;
 
+        // Retrato dos filtros que ESTE desenho usou (fw#658): a ação em lote
+        // confere as marcadas com eles. Só grade com ação em lote.
+        $viewField = $viewToken = '';
+        if ($bulk !== []) {
+            try {
+                $applied = array_filter($this->_userFilterValues(), fn ($k) => $k === '__form' || !$this->_lockedFilterProp($k), ARRAY_FILTER_USE_KEY);
+                $viewToken = \Mad\Http\MadStateCrypt::encryptFor(self::VIEW_PURPOSE, ['grid' => static::class, 'v' => $applied]);
+                $viewField = self::VIEW_FIELD . '[' . $this->_selectionStorageKey() . ']';
+            } catch (\Throwable $e) {
+                $viewToken = '';
+            }
+        }
+
         return [
             'selectable'     => true,
+            'viewField'      => $viewField,
+            'viewToken'      => $viewToken,
             'selected'       => array_values(array_map('strval', $this->selection)),
             'bulkActions'    => $bulk,
             'selectionField' => MadGridSelection::REQUEST_FIELD . '[' . $this->_selectionStorageKey() . ']',
@@ -3177,6 +3721,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _bulkDecision(array $b): array
     {
+        // `@if`/`@canAccess` falso em volta da tag (fw#659): a ação não está na
+        // tela, como qualquer bloco Blade com condição falsa — some nos dois
+        // modos, e o índice (onBulkOpen/onBulkRun) recusa o pedido forjado.
+        if (($b['when'] ?? true) === false) {
+            return ['mode' => 'hide', 'title' => ''];
+        }
         $livre  = ['mode' => 'allow', 'title' => ''];
         $method = (string) ($b['method'] ?? '');
         $target = (string) ($b['target'] ?? '');
@@ -3231,9 +3781,11 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         $out = [];
         foreach ($raw as $b) {
             if (!is_array($b)) continue;
+            // Condição Blade em volta da tag (fw#659): só a falsa fica marcada.
+            $off    = array_key_exists('when', $b) && !$b['when'] ? ['when' => false] : [];
             $preset = static::_normalizeBulkPreset($b);
             if ($preset !== null) {
-                $out[] = $preset;
+                $out[] = $preset + $off;
                 continue;
             }
             if (isset($b['preset'])) continue;   // preset inválido: fora, como a ação sem destino
@@ -3249,7 +3801,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
                 'method'       => $method,
                 'target'       => $method === '' ? $target : '',
                 'targetMethod' => $method === '' ? (string) ($b['targetMethod'] ?? 'show') : '',
-            ];
+                'confirmLabel' => (string) ($b['confirmLabel'] ?? ''),
+            ] + $off;
         }
         return $out;
     }
@@ -3300,6 +3853,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             'icon'         => (string) ($b['icon'] ?? $icon),
             'variant'      => (string) ($b['variant'] ?? ($preset === 'delete' ? 'danger' : 'primary')),
             'confirm'      => (string) ($b['confirm'] ?? ''),
+            'confirmLabel' => (string) ($b['confirmLabel'] ?? ''),
             'min'          => max(0, (int) ($b['min'] ?? 1)),
             'method'       => '',
             'target'       => '',
@@ -3359,7 +3913,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     protected function _isModelAssignable(string $prop): bool
     {
-        if (in_array(strtolower($prop), ['selectable', 'selection', 'bulkactions'], true)) {
+        if (in_array(strtolower($prop), ['selectable', 'selection', 'bulkactions', 'keepselection', 'selectionview'], true)) {
             return false;
         }
         // Idem a trava de carga: `require-filter` e `no-auto-load` vêm do Blade
@@ -3895,6 +4449,12 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             return $refused;
         }
 
+        // Ação em lote (fw#658): só os marcados que a listagem ainda mostra.
+        [$data, $bulkGone, $bulkRefused] = $this->_bulkScopeCall($method, $data);
+        if ($bulkRefused !== null) {
+            return $bulkRefused;
+        }
+
         // Ação escrita no app: as linhas carregadas antes dela, como o
         // hydrate() sempre fez — ela pode ler o que a grade mostra. Só não
         // carrega quando a tela nem desenha a grade (o último render não a
@@ -3908,7 +4468,19 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             }
         }
 
-        $result = parent::_resolveAndCall($method, $data);
+        $quiet = $this->_quietActionProbe($method);
+        try {
+            $result = parent::_resolveAndCall($method, $data);
+        } finally {
+            if ($quiet !== null) {
+                $this->_quietAction = $this->_quietActionHeld($quiet, $result ?? null);
+            }
+        }
+
+        if ($bulkGone > 0 && ($result === null || $result instanceof \Mad\Http\MadResponse)) {
+            $result = ($result ?? new \Mad\Http\MadResponse())
+                ->toast(trans_choice('grid.bulk_dropped', $bulkGone, ['count' => $bulkGone]), 'warning');
+        }
 
         // O mount() da tela acabou e o render ainda não começou: o período
         // padrão entra AQUI para o bloco de filtros já desenhar o chip e os
@@ -3922,6 +4494,82 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         }
 
         return $result;
+    }
+
+    /**
+     * fw#661 — a ação do app desta requisição não mudou nada do que a grade
+     * mostra: a tela sai só com as ops da resposta, sem redesenhar (a barra
+     * de filtros com o balão aberto e o foco ficam como estão).
+     */
+    private bool $_quietAction = false;
+
+    /** Cargas de linhas (loadData) nesta requisição. */
+    private int $_loadCount = 0;
+
+    /**
+     * Retrato antes de uma ação escrita no app — estado da tela, sessão,
+     * cargas e gravações no banco — ou null quando a regra não se aplica:
+     * método que o framework declara (a tela o sobrescreve e quem o chama
+     * conta com o redesenho). A marca "gravou" de cada conexão é zerada para
+     * a ação e devolvida depois; conexão com réplica de leitura que já tinha
+     * gravado fica como está (a leitura dela seguiria para o servidor de
+     * escrita) e a regra não se aplica.
+     */
+    private function _quietActionProbe(string $method): ?array
+    {
+        if ($method === 'mount' || !$this->_isAppMethod($method) || method_exists(self::class, $method)) {
+            return null;
+        }
+        try {
+            $wrote = [];
+            foreach (\Illuminate\Support\Facades\DB::getConnections() as $name => $conn) {
+                if ($conn->hasModifiedRecords()) {
+                    if ($conn->getRawReadPdo() !== null) {
+                        return null;
+                    }
+                    $wrote[] = $name;
+                }
+            }
+            $probe = [serialize($this->_getState()), serialize(session()->all()), $this->_loadCount, $wrote];
+            foreach ($wrote as $name) {
+                \Illuminate\Support\Facades\DB::connection($name)->setRecordModificationState(false);
+            }
+
+            return $probe;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** A ação devolveu ops e nada do retrato mudou (nem gravou no banco)? */
+    private function _quietActionHeld(array $probe, mixed $result): bool
+    {
+        $wrote = false;
+        foreach (\Illuminate\Support\Facades\DB::getConnections() as $name => $conn) {
+            $wrote = $wrote || $conn->hasModifiedRecords();
+            if (in_array($name, $probe[3], true)) {
+                $conn->recordsHaveBeenModified();
+            }
+        }
+        if ($wrote || !$result instanceof \Mad\Http\MadResponse || $result->getOps() === [] || $this->_loadCount !== $probe[2]) {
+            return false;
+        }
+        try {
+            return serialize($this->_getState()) === $probe[0] && serialize(session()->all()) === $probe[1];
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * `exportMeta` só serve à exportação e nenhuma parte da tela o desenha; o
+     * render o refaz a cada requisição — com o texto digitado no balão do
+     * filtro ainda sem Aplicar, inclusive. Mudança nele não redesenha a tela
+     * (fw#661).
+     */
+    public function _stateOnlyProps(): array
+    {
+        return ['exportMeta'];
     }
 
     /** O método foi escrito no app (não no framework)? `__call` do MadGrid conta como framework. */
@@ -4509,22 +5157,47 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
      */
     private function _withoutUserFilters(callable $fn): mixed
     {
-        $props = array_merge(
-            ['mes', 'ano', 'dtIni', 'dtFim', 'preset', 'search', 'filters', 'filterOps', 'colFilters', 'customFilterState'],
-            $this->discoverFilterProps()
-        );
+        return $this->_withUserFilterValues(null, $fn);
+    }
+
+    /**
+     * Roda `$fn` com os filtros do USUÁRIO trocados por `$values` (o retrato
+     * de {@see _userFilterValues()}; null = em branco) e devolve tudo como
+     * estava. Só as props de filtro do usuário e os campos do bloco de filtros
+     * mudam — chave fora delas é ignorada, e prop da tela que o mad:model não
+     * pode mudar (contexto travado, ex. a unidade) fica como está nos dois
+     * casos: em branco ela alargaria a consulta. O recorte que a tela fixa (`:filters`,
+     * `onSearch()`, unidade, `sourceQuery()`, permissão) não passa por aqui:
+     * o `_buildQuery()` refaz tudo dele a cada chamada. Valor que a prop não
+     * aceita (tela mudou de tipo depois do retrato): roda com os de agora.
+     */
+    private function _withUserFilterValues(?array $values, callable $fn): mixed
+    {
         $saved = [];
-        foreach ($props as $name) {
-            $saved[$name] = $this->$name;
-            $this->$name  = is_array($this->$name) ? [] : '';
+        try {
+            foreach ($this->_userFilterProps() as $name) {
+                if (($values !== null && !array_key_exists($name, $values)) || $this->_lockedFilterProp($name)) {
+                    continue;
+                }
+                $saved[$name] = $this->$name;
+                $this->$name  = $values === null ? (is_array($this->$name) ? [] : '') : $values[$name];
+            }
+        } catch (\Throwable $e) {
+            foreach ($saved as $name => $value) {
+                $this->$name = $value;
+            }
+
+            return $fn();
         }
         $form   = (isset($this->form) && $this->form instanceof \Mad\Form\MadForm) ? $this->form : null;
         $fields = $form?->fields;
-        if ($form !== null) {
-            // As chaves ficam (o onSearch lê `$data->campo`); só os valores saem.
+        if ($form !== null && is_array($fields)) {
+            // As chaves ficam (o onSearch lê `$data->campo`); só os valores mudam.
             // O fill([]) não muda campo nenhum: só descarta o getData() em cache,
             // que ainda traria os valores da primeira passada.
-            $form->fields = array_map(fn ($v) => is_array($v) ? [] : '', $fields);
+            $form->fields = $values === null
+                ? array_map(fn ($v) => is_array($v) ? [] : '', $fields)
+                : array_replace($fields, array_intersect_key(is_array($values['__form'] ?? null) ? $values['__form'] : [], $fields));
             $form->fill([]);
         }
 
@@ -4534,7 +5207,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
             foreach ($saved as $name => $value) {
                 $this->$name = $value;
             }
-            if ($form !== null) {
+            if ($form !== null && is_array($fields)) {
                 $form->fields = $fields;
                 $form->fill([]);
             }
@@ -7115,6 +7788,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         if (isset($config['bulkActions']) && is_array($config['bulkActions'])) {
             $this->bulkActions = static::_normalizeBulkActions($config['bulkActions']);
         }
+        if (array_key_exists('keepSelection', $config)) $this->keepSelection = (bool) $config['keepSelection'];
 
         // Filtro avançado (<mad-custom-filters>): as defs são a allowlist do que
         // o usuário final filtra, e só nascem aqui (config compilado = confiável).
@@ -8235,6 +8909,7 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         $this->_dataLoaded   = true;
         $this->_loadDeferred = false;
+        $this->_loadCount++;
         $this->_tooManyRows  = 0;
         $this->_rowsBatched  = false;
         // Os call sites automáticos (mount/hydrate/_renderInlineGrid) são
@@ -8661,8 +9336,10 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
 
         // (B) onSearch custom — builder-native: onSearch() monta a closure
         // searchQuery, aplicada no builder por _applyOnSearch.
+        $mark = $source !== null ? $this->_hookMark($q) : null;
         $this->_applyOnSearch($q, $model);
         if ($source !== null) {
+            $this->_scopeHookToSource($q, $mark);   // fw#666
             $this->_adaptSearchQueryToSource();
         }
 

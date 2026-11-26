@@ -30,6 +30,7 @@ final class SystemPromptAssembler
         $parts = [
             $manifest !== null ? self::manifestPrompt($manifest) : '',
             self::fallbackPrompt($manifest),
+            self::languagePrompt($manifest),
             self::dataPrompt($widgets, $mcpTools !== []),
             self::accessPrompt($manifest, $widgets, $mcpTools !== []),
             self::renderPrompt(),
@@ -196,6 +197,11 @@ PROMPT;
         $list = $tables !== []
             ? 'Tabelas que ele pode consultar: ' . implode(', ', $tables) . ". Qualquer outra tabela não existe\npara ele — nem para consultar, nem para cruzar.\n"
             : '';
+        // fw#648: tabela que o app tirou do SQL livre, lida pela list_/read_ dela
+        $toolOnly = $widgets ? array_values(McpAccess::for($manifest)->toolOnlyTables()) : [];
+        if ($toolOnly !== []) {
+            $list .= 'Tabelas que ele lê só pelas tools de dados (list_/read_), nunca por SQL: ' . implode(', ', $toolOnly) . ".\n";
+        }
 
         return "# Acesso deste usuário\n\n" . $list
             . "Colunas marcadas (pii) chegam mascaradas (***): nunca tente revelá-las.\n" . $rule;
@@ -355,16 +361,26 @@ para os dados. Texto curto + blocos > texto longo.
 PROMPT;
     }
 
-    /** Inventário compacto das tools do perfil (nome público + descrição + marca de escrita). */
+    /**
+     * Inventário compacto das tools do perfil (nome público + descrição + marca de escrita).
+     *
+     * A definição de cada tool, que vai em toda rodada, já traz a descrição
+     * inteira. `mad.ai.tool_inventory` (MAD_AI_TOOL_INVENTORY): `full` (padrão)
+     * repete a descrição aqui; `names` lista só o nome e a marca de escrita;
+     * `off` tira a seção. Perfil com muitas tools economiza milhares de tokens
+     * por rodada (fw#655).
+     */
     private static function toolInventory(array $mcpTools, ?McpManifest $manifest = null): string
     {
-        if ($mcpTools === []) {
+        $mode = strtolower(trim((string) config('mad.ai.tool_inventory', 'full')));
+        if ($mcpTools === [] || $mode === 'off') {
             return '';
         }
+        $namesOnly = $mode === 'names';
 
         $lines = ['## Tools de dados (MCP) disponiveis neste perfil'];
         foreach ($mcpTools as $name => $tool) {
-            $desc = trim((string) $tool->description());
+            $desc = $namesOnly ? '' : trim((string) $tool->description());
 
             // Marca de escrita pelo spec do manifest (nome público ns__x ↔ canônico ns.x)
             $spec = $manifest?->tool(str_replace('__', '.', (string) $name)) ?? $manifest?->tool((string) $name);
@@ -372,7 +388,7 @@ PROMPT;
                 $desc .= ' [ESCRITA — exige confirmacao do usuario]';
             }
 
-            $lines[] = "- {$name}: {$desc}";
+            $lines[] = $namesOnly ? rtrim("- {$name}{$desc}") : "- {$name}: {$desc}";
         }
 
         return implode("\n", $lines);
@@ -452,6 +468,27 @@ RULES;
             : ' Tabelas do negócio que este usuário acessa: ' . implode(', ', $tables) . ' (colunas via db_schema).';
 
         return (string) preg_replace('/\s*Tabelas do negócio:[^()]*\(colunas via db_schema\)\.?/u', $repl, $description, 1);
+    }
+
+    /**
+     * Regra de idioma — sempre, não só no fallback. O `Idioma: pt-BR` do
+     * manifesto era só um rótulo, e o "Responda em portugues" do fallback some
+     * quando o projeto tem descrição: o MiniMax emendava palavra em chinês no
+     * meio da resposta ("…para 换取 o resultado…", NavLab 1931, 26/11/2026).
+     * Espelho da regra do agente do MadBuilder.
+     */
+    private static function languagePrompt(?McpManifest $manifest): string
+    {
+        $lang = trim((string) ($manifest?->system()['lang'] ?? ''));
+        $who  = $lang !== ''
+            ? "Responda no idioma do usuário — {$lang} por padrão —"
+            : 'Responda no idioma em que o usuário escreve,';
+
+        return "## Idioma\n"
+            . "{$who} no texto, nos títulos dos blocos e nas opções.\n"
+            . "Resultado de ferramenta em outro idioma não muda o idioma da conversa.\n"
+            . "Nunca troque de idioma nem de alfabeto no meio do texto:\n"
+            . 'chinês, japonês ou coreano só entram quando o usuário escreveu nesse idioma ou pediu conteúdo nele.';
     }
 
     /** Identidade mínima quando não há manifest (ou complementa o dele). */

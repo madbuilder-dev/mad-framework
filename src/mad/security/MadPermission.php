@@ -28,12 +28,24 @@ use Attribute;
  *
  * #[MadPermission(permission: false)]
  * public function onControllerChange(string $valor): void { ... }
+ *
+ * #[MadPermission('Prévia', inherit: 'view')]
+ * public function onPrevia(int $id): MadResponse { ... }
  * ```
+ *
+ * `inherit: 'view'` é para ação de LEITURA (prévia, ver, contagens): quem pode
+ * ver a tela pode usá-la, sem ela constar da lista do perfil. Sem ele, a ação
+ * própria nova num perfil que marca ações nasce negada — o certo para
+ * "Assinar laudo", o errado para "Prévia". Ela continua sendo uma caixinha em
+ * Perfis: o perfil que a desmarca nega. O app e o MadBuilder a marcam sozinhos,
+ * quando ela aparece, em quem já tem "Visualizar" naquela tela; o que o dono
+ * desmarcar depois fica desmarcado. Só "view" é aceito — outro valor é
+ * ignorado (a ação segue a regra comum, nunca fica mais aberta).
  *
  * O MadBuilder lê o MESMO atributo do fonte da tela (por texto, sem executar
  * nada) para mostrar a mesma palavra no editor. Por isso os nomes dos
  * argumentos — `label` e `permission` — fazem parte do contrato: renomeá-los
- * aqui faria o editor e o app discordarem.
+ * aqui faria o editor e o app discordarem. O mesmo vale para `inherit`.
  */
 #[Attribute(Attribute::TARGET_METHOD)]
 final class MadPermission
@@ -45,10 +57,22 @@ final class MadPermission
      *                                método pareça de navegação.
      * @param bool        $permission `false` tira o método da lista: ele não é
      *                                uma permissão, é reação de tela.
+     * @param string|null $inherit    `'view'`: a ação segue o Visualizar do
+     *                                perfil (quem vê a tela usa). Outro valor =
+     *                                null (sem herança).
      */
     public function __construct(
         public ?string $label = null,
         public bool $permission = true,
+        ?string $inherit = null,
     ) {
+        $inherit       = $inherit === null ? null : strtolower(trim($inherit));
+        $this->inherit = in_array($inherit, self::INHERITABLE, true) ? $inherit : null;
     }
+
+    /** Chaves de quem uma ação pode herdar. */
+    public const INHERITABLE = ['view'];
+
+    /** Chave que a ação segue quando não consta da lista do perfil, ou null. */
+    public ?string $inherit;
 }
