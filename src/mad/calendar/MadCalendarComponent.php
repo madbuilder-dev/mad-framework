@@ -1511,8 +1511,11 @@ abstract class MadCalendarComponent extends MadComponent implements MadFilterabl
         if (is_bool($v)) return $v;
         if (is_int($v) || is_float($v)) return (bool) $v;
         if (!is_string($v)) return (bool) $v;
-        $s = strtolower(trim($v));
-        if (in_array($s, ['', '0', 'false', 'no', 'off', 'null'], true)) return false;
+        $s = mb_strtolower(trim($v));
+        // 'N'/'não' (switch S/N, comum nos sistemas em português): antes só
+        // 'no' contava como falso, e o evento com "Dia inteiro" DESLIGADO
+        // (valor N) virava dia inteiro — fórum #431.
+        if (in_array($s, ['', '0', 'false', 'f', 'no', 'n', 'nao', 'não', 'off', 'null'], true)) return false;
         return true;
     }
 }

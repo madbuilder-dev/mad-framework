@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.370.1] — 2026-11-26
+
+### Correções
+
+- **Calendário:** evento de dia inteiro aparecia no Mês e na Lista, mas não na Semana nem no Dia. Agora essas visões mostram a faixa "Todo o dia" no alto quando há evento de dia inteiro, com "Dia inteiro" ligado ou com início só com data.
+- **Calendário:** com o campo de dia inteiro num switch S/N, o evento com "Dia inteiro" desligado (N) era tratado como dia inteiro. Agora N, n e "não" contam como desligado.
+
 ## [5.370.0] — 2026-11-26
 
 ### Correções

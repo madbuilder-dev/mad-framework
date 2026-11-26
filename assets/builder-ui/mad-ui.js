@@ -15482,7 +15482,11 @@ document.addEventListener('alpine:init', () => {
                     slotMinTime:  cfg.minTime || '00:00:00',
                     slotMaxTime:  cfg.maxTime || '24:00:00',
                     hiddenDays:   cfg.hiddenDays || [],
-                    allDaySlot:   false,
+                    // Faixa "Todo o dia" da Semana/Dia: entra quando chega um
+                    // evento de dia inteiro (eventsSet, abaixo). Sem ela o
+                    // FullCalendar não desenha o evento allDay nessas visões —
+                    // aparecia no Mês e na Lista e sumia (fórum #431).
+                    allDaySlot:   Array.isArray(cfg.events) && cfg.events.some((e) => e && e.allDay),
                     // 'standard', não 'bootstrap': o tema bootstrap desenha
                     // anterior/próximo com ícones Font Awesome (que o app não
                     // carrega — viravam quadrados vazios) e pinta os botões com
@@ -15581,6 +15585,22 @@ document.addEventListener('alpine:init', () => {
                 if (cfg.extraOptions && typeof cfg.extraOptions === 'object') {
                     Object.assign(opts, cfg.extraOptions);
                 }
+
+                // ── Faixa "Todo o dia" (fórum #431) ────────────────
+                // Ligada quando o calendário recebe um evento de dia inteiro
+                // (all-day-field ligado ou início só com data) e fica ligada
+                // nele: voltar para uma semana sem dia inteiro não faz o
+                // layout pular. Calendário sem dia inteiro fica como era.
+                const _ownEventsSet = opts.eventsSet;
+                const _slotFixed = !!(cfg.extraOptions && typeof cfg.extraOptions === 'object' && 'allDaySlot' in cfg.extraOptions);
+                opts.eventsSet = (events) => {
+                    if (!_slotFixed && !opts.allDaySlot && Array.isArray(events) && events.some((e) => e && e.allDay)) {
+                        opts.allDaySlot = true;
+                        // Fora do ciclo de render do próprio FullCalendar.
+                        setTimeout(() => { if (_calendar) _calendar.setOption('allDaySlot', true); }, 0);
+                    }
+                    if (typeof _ownEventsSet === 'function') return _ownEventsSet(events);
+                };
 
                 // ── Dica do bloco (fw#505 / fw#525) ────────────────
                 // O bloco estreito da Semana corta o texto: passar o mouse
