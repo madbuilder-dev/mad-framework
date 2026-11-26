@@ -26,6 +26,10 @@ return [
     'toast_user_name' => [
         'enabled' => filter_var(env('MAD_TOAST_USER_NAME', false), FILTER_VALIDATE_BOOL),
     ],
+    // Ver a doc completa no config/mad.php do template (seção 'autocomplete_off').
+    'autocomplete_off' => [
+        'enabled' => filter_var(env('MAD_AUTOCOMPLETE_OFF', false), FILTER_VALIDATE_BOOL),
+    ],
     // Ver a doc completa no config/mad.php do template (seção 'toast_position').
     'toast_position' => env('MAD_TOAST_POSITION', ''),
     // Ver a doc completa no config/mad.php do template (seção 'migrations').

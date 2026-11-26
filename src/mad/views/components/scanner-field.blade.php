@@ -68,7 +68,7 @@
             @if($required) required @endif
             @if($disabled) disabled @endif
             mad:model="{{ $name }}"
-            {!! $attrs !!}
+            {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs) !!}{!! $attrs !!}
         >
         <button type="button" class="mad-scanner-btn" @click="toggle()" @if($disabled) disabled @endif>
             <i data-lucide="scan"></i>

@@ -42,7 +42,7 @@
     @if($id)     id="{{ $id }}"                       @endif
     @if($class)  class="{{ $class }}"                 @endif
     @if($submit) data-mad-submit="{{ $submit }}"      @endif
-    @if($_read)  data-read="{{ $_read }}"             @endif{!! $_leaveAttrs !!}
+    @if($_read)  data-read="{{ $_read }}"             @endif{!! $_leaveAttrs !!}{!! \Mad\Support\FieldAutocomplete::formAttr((string) $attrs) !!}
     {{-- $_gapStyle DEPOIS de $attrs: atributo duplicado → o HTML fica com o primeiro, então um style cru em attrs continua mandando --}}
     {!! $attrs !!}{!! $_gapStyle !!}
 >

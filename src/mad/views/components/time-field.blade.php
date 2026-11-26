@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => ''])
+@props(['autocomplete' => null,  'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => ''])
 @php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
     [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
 @endphp
@@ -35,7 +35,7 @@
         @if($required) required @endif
         @if($disabled) disabled @endif
         @if($readonly) readonly @endif
-        {!! $attrs !!}
+        {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs) !!}{!! $attrs !!}
     >
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

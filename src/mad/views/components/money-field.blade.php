@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => null,'suffix' => '', 'placeholder' => '', 'decimals' => null, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
+@props(['autocomplete' => null,  'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => null,'suffix' => '', 'placeholder' => '', 'decimals' => null, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'decimalSep' => null, 'thousandSep' => null, 'fillDirection' => 'left', 'allowNegative' => false, 'emptyAs' => 'null', 'align' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -91,7 +91,7 @@
             @if($required) required @endif
             @if($disabled) disabled @endif
             @if($readonly) readonly @endif
-            {!! $attrs !!}
+            {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs) !!}{!! $attrs !!}
         >
         @if($hasSuffix)
             <span class="mad-input-addon mad-input-addon-r">{{ $suffix }}</span>

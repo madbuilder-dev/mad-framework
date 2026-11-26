@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'width' => '', 'maxWidth' => '', 'height' => '', 'label' => '', 'name' => '', 'value' => '', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'rows' => 3, 'style' => '', 'attrs' => ''])
+@props(['autocomplete' => null,  'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'width' => '', 'maxWidth' => '', 'height' => '', 'label' => '', 'name' => '', 'value' => '', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'rows' => 3, 'style' => '', 'attrs' => ''])
 @php
     $required = !empty($required);
     $disabled = !empty($disabled);
@@ -49,7 +49,7 @@
         @if($required) required @endif
         @if($disabled) disabled @endif
         @if($readonly) readonly @endif
-        {!! $attrs !!}
+        {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs) !!}{!! $attrs !!}
     >{!! htmlspecialchars($value, ENT_QUOTES) !!}</textarea>
     <p class="mad-field-hint{{ $hasError ? ' mad-error' : '' }}" data-field-error="{{ $name }}">{!! $hasError ? $error : $hint !!}</p>
 </div>

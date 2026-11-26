@@ -1,4 +1,4 @@
-@props([ 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => null,'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'fillDirection' => '', 'align' => ''])
+@props(['autocomplete' => null,  'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'width' => '', 'maxWidth' => '','label' => '', 'name' => '', 'value' => '', 'prefix' => '', 'suffix' => '', 'placeholder' => null,'decimals' => 2, 'min' => '', 'max' => '', 'hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'attrs' => '', 'emptyAs' => 'null', 'fillDirection' => '', 'align' => ''])
 @php // hint-icon: a ajuda vai para um ⓘ ao lado do rótulo (sai de baixo do campo).
     [$__hintTip, $hint] = \Mad\Support\FieldHint::split($hintIcon ?? false, $hint ?? '', $label ?? '');
 @endphp
@@ -87,7 +87,7 @@
             @if($required) required @endif
             @if($disabled) disabled @endif
             @if($readonly) readonly @endif
-            {!! $attrs !!}
+            {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs) !!}{!! $attrs !!}
         >
         @if($hasSuffix)
             <span class="mad-input-addon mad-input-addon-r">{{ $suffix }}</span>

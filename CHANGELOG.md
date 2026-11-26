@@ -12,6 +12,16 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.371.0] — 2026-11-26
+
+### Novidades
+
+- **Formulário:** nova opção do projeto "Desligar sugestões do navegador nos formulários" (Propriedades do projeto → Layout, no Studio). Ligada, os formulários e os campos de digitação deixam de mostrar o que já foi digitado e o navegador não preenche endereço ou telefone sozinho. Campos de senha ficam como estão.
+
+### Correções
+
+- **Campos:** `autocomplete` escrito no campo era ignorado sem aviso. Agora vale em `<mad-input-field>`, `<mad-textarea-field>`, número, numérico, moeda, hora, spinner, leitor de código e seek, por exemplo `autocomplete="off"` ou `autocomplete="email"`.
+
 ## [5.370.3] — 2026-11-26
 
 ### Correções

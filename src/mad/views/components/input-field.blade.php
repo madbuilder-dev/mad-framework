@@ -1,4 +1,4 @@
-@props(['labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false, 'validateDocument' => false, 'maskBy' => '', 'maskMap' => ''])
+@props(['autocomplete' => null, 'labelGap' => '', 'labelColor' => '', 'labelSize' => '', 'labelWeight' => '', 'labelItalic' => false, 'inputBg' => '', 'inputColor' => '', 'inputWeight' => '', 'inputItalic' => false, 'inputBorderColor' => '', 'inputBorderWidth' => '', 'inputBorderSides' => '', 'align' => '', 'label' => '', 'name' => '', 'value' => '', 'type' => 'text', 'placeholder' => '','hint' => '', 'hintIcon' => false, 'error' => '', 'required' => false, 'disabled' => false, 'readonly' => false, 'maxlength' => '', 'min' => '', 'max' => '', 'attrs' => '', 'mask' => '', 'icon' => '', 'iconColor' => '', 'iconSide' => 'left', 'forceCase' => '', 'stripMask' => null, 'width' => '', 'maxWidth' => '', 'togglePassword' => false, 'validateDocument' => false, 'maskBy' => '', 'maskMap' => ''])
 @php
     $required  = !empty($required);
     $disabled  = !empty($disabled);
@@ -170,6 +170,9 @@
         @if($autocompleteSource)
             data-mad-autocomplete="{{ $autocompleteSource }}"
             autocomplete="off"
+        @elseif($type !== 'hidden')
+            {{-- autocomplete do campo ou opção do projeto (fórum #436); senha fica como está --}}
+            {!! \Mad\Support\FieldAutocomplete::attr($autocomplete ?? null, (string) $attrs, $_effectiveType === 'password') !!}
         @endif
         {!! $_maskAttr !!}
         {!! $_forceCaseAttr !!}
