@@ -18,6 +18,11 @@
     // que abre os filtros empilhados — padrão no tema ERP, opt-in com
     // mobile="button" (mobile="inline" desliga). Fora disso o botão some.
     $_mobile = strtolower(trim((string) ($wrapper['mobile'] ?? '')));
+    // Só filtro de LISTA (select, combo, busca no banco, opções) leva a seta;
+    // data e hora levam o ícone do calendário/relógio; texto, número e caixa
+    // de marcar ficam sem — a seta prometia uma lista que não existia.
+    $_listTypes = ['select', 'dbselect', 'dbcombo', 'dbsearch', 'radio'];
+    $_iconTypes = ['date' => 'calendar', 'daterange' => 'calendar', 'datetime' => 'calendar', 'time' => 'clock'];
 @endphp
 
 <mad-form submit="onShow">
@@ -27,6 +32,9 @@
             <span>{{ $totalActive > 0 ? mad_t('mad.dashf.filters_with_count', ['n' => $totalActive]) : mad_t('mad.dashf.filters') }}</span>
             <span class="mad-dashf-mini-chev" aria-hidden="true">▾</span>
         </button>
+        {{-- Campos num grupo que quebra linha; as ações (contagem, Atualizar,
+             Limpar) num grupo à parte, que nunca desce sozinho para outra linha. --}}
+        <div class="mad-dashf-fields">
         @foreach ($fields as $field)
             @if ($field['type'] === 'period-monthyear')
                 {{-- period-monthyear sem form interno — Apply submete o form pai --}}
@@ -45,8 +53,6 @@
                 @endphp
                 {!! MadBlade::renderString($periodHtml, $__madScope) !!}
 
-                @if (!$loop->last)<div class="mad-dashf-tb-divider"></div>@endif
-
             @else
                 @php
                     $name   = $field['attrs']['name']  ?? '';
@@ -61,6 +67,9 @@
                     $active = $isFilterable && $component->isFilterActive($field);
                     $valLbl = $active ? $component->resolveFilterLabel($field) : ($field['attrs']['placeholder'] ?? mad_t('mad.dashf.all'));
                     $cls    = $active ? 'mad-dashf-mini active' : 'mad-dashf-mini';
+                    $ftype  = (string) ($field['type'] ?? '');
+                    $icon   = $_iconTypes[$ftype] ?? null;
+                    $isList = in_array($ftype, $_listTypes, true);
                     // name vai dentro de JS-em-atributo: restringe a identifier (| = filtro composto).
                     $safeName  = preg_replace('/[^\w\-|]/', '', $name);
                     $attrClear = 'data-mad-click="clearFilter(\'' . $safeName . '\')"';
@@ -68,11 +77,17 @@
 
                 {{-- madDashPop (fw#658): Cancelar, ×, Esc e clique fora devolvem o valor da abertura. --}}
                 <div class="mad-dashf-anchor" x-data="madDashPop()">
-                    <button type="button" class="{{ $cls }}" x-ref="trigger" @click="toggle()"
+                    {{-- Caixa de campo: rótulo como prefixo discreto; sem valor, o
+                         placeholder sai apagado (is-empty), nunca com cara de valor escolhido. --}}
+                    <button type="button" class="{{ $cls }}" x-ref="trigger" @click="toggle()"@if ($active) title="{{ $label }}: {{ $valLbl }}"@endif
                             aria-haspopup="true" :aria-expanded="open ? 'true' : 'false'">
-                        <span class="mad-dashf-mini-lbl">{{ $label }}:</span>
-                        <span>{{ $valLbl }}</span>
-                        <span class="mad-dashf-mini-chev" aria-hidden="true">▾</span>
+                        <span class="mad-dashf-mini-lbl">{{ $label }}</span>
+                        <span class="mad-dashf-mini-val{{ $active ? '' : ' is-empty' }}">{{ $valLbl }}</span>
+                        @if ($isList)
+                            <span class="mad-dashf-mini-chev" aria-hidden="true">▾</span>
+                        @elseif ($icon)
+                            <i data-lucide="{{ $icon }}" class="mad-dashf-mini-ico" aria-hidden="true"></i>
+                        @endif
                     </button>
                     @php $isMulti = !empty($field['attrs']['multiple']); @endphp
                     {{-- multi: largura FIXA — o campo cresce ao mostrar os nomes
@@ -103,16 +118,16 @@
                 </div>
             @endif
         @endforeach
+        </div>
 
-        @if ($totalActive > 0)
-            <span class="mad-dashf-pill">{{ $totalActive === 1 ? mad_t('mad.dashf.filter_one') : mad_t('mad.dashf.filter_many', ['n' => $totalActive]) }}</span>
-        @endif
-
-        <div class="mad-dashf-spacer"></div>
-
-        @if ($chrome['refresh'])
-        <mad-btn variant="ghost" icon="refresh-cw" size="sm" mad:click="onAtualizar">{{ mad_t('mad.btn.refresh') }}</mad-btn>
-        @endif
-        <mad-btn variant="ghost" icon="x-circle" size="sm" mad:click="onLimpar">{{ $chrome['clear'] }}</mad-btn>
+        <div class="mad-dashf-actions">
+            @if ($totalActive > 0)
+                <span class="mad-dashf-pill">{{ $totalActive === 1 ? mad_t('mad.dashf.filter_one') : mad_t('mad.dashf.filter_many', ['n' => $totalActive]) }}</span>
+            @endif
+            @if ($chrome['refresh'])
+            <mad-btn variant="ghost" icon="refresh-cw" size="sm" mad:click="onAtualizar">{{ mad_t('mad.btn.refresh') }}</mad-btn>
+            @endif
+            <mad-btn variant="ghost" icon="x-circle" size="sm" mad:click="onLimpar">{{ $chrome['clear'] }}</mad-btn>
+        </div>
     </div>
 </mad-form>

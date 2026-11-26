@@ -12,6 +12,13 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.370.2] — 2026-11-26
+
+### Correções
+
+- **Listagens:** a barra de filtros no estilo `toolbar` mostrava cada filtro como texto corrido ("Ambiente: Todos ▾"), e o texto de exemplo do campo parecia um valor já escolhido — ninguém percebia que dava para clicar. Agora cada filtro é uma caixa de campo, com o rótulo à esquerda, o texto de exemplo em cinza claro até você escolher algo e o filtro aplicado destacado. A seta só aparece onde há lista para escolher; data mostra o calendário. Vale também para a barra de filtros dos painéis.
+- **Listagens:** com cinco ou mais filtros, a barra quebrava em duas linhas e deixava o "Limpar" sozinho na linha de baixo. Agora só os filtros descem de linha, e "Atualizar" e "Limpar" ficam juntos no fim da primeira. No celular, cada filtro ocupa a largura toda.
+
 ## [5.370.1] — 2026-11-26
 
 ### Correções

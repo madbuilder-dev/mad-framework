@@ -15402,17 +15402,36 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
 }
 
 /* --- Toolbar style --- */
+/* Os campos ficam num grupo que quebra linha (.mad-dashf-fields) e as ações
+   (contagem, Atualizar, Limpar) num grupo que não quebra (.mad-dashf-actions),
+   no fim da primeira linha. Com muitos filtros, só os campos descem de linha:
+   "Limpar" não fica mais sozinho embaixo. */
 .mad-dashf-toolbar {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
+    align-items: flex-start;
+    gap: 8px 12px;
+    padding: 8px;
     background: var(--mad-bg, #fff);
     border: 1px solid var(--mad-border, #e5e7eb);
     border-radius: var(--mad-radius-lg, 12px);
     margin-bottom: 16px;
-    flex-wrap: wrap;
     font-family: inherit;
+}
+.mad-dashf-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.mad-dashf-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    min-height: 36px;
 }
 .mad-dashf-tb-divider {
     width: 1px;
@@ -15420,37 +15439,78 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     background: var(--mad-border, #e5e7eb);
     margin: 0 4px;
 }
+/* Cada filtro é uma caixa de campo (borda e fundo de controle, como o
+   .mad-input): o rótulo é um prefixo discreto e, sem valor, o placeholder sai
+   apagado — antes saía "Rótulo: valor" em texto corrido e ninguém via o campo. */
 .mad-dashf-mini {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 10px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
+    gap: 8px;
+    min-height: 36px;
+    max-width: 320px;
+    padding: 0 10px;
+    background: var(--mad-input-bg, var(--mad-bg, #fff));
+    border: 1px solid var(--mad-border-strong, #d4d4d8);
+    border-radius: var(--mad-radius, 8px);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    font-size: var(--mad-text-sm, 13px);
+    line-height: 1.3;
     color: var(--mad-text, #0f172a);
     cursor: pointer;
     font-weight: 500;
     font-family: inherit;
+    text-align: left;
+    transition: border-color .15s, box-shadow .15s, background-color .15s;
 }
-.mad-dashf-mini:hover { background: var(--mad-bg-muted, #f3f4f6); }
+.mad-dashf-mini:hover { border-color: var(--mad-text-subtle, #a1a1aa); }
+.mad-dashf-mini[aria-expanded="true"] {
+    border-color: var(--mad-primary, #3b82f6);
+    box-shadow: 0 0 0 3px var(--mad-ring, rgba(59, 130, 246, .2));
+}
 /* Texto sobre o fundo do destaque: o azul puro (#3b82f6) dava 3,4:1 no claro e o
    rótulo, com opacity .7, 2,2:1 (fw#310). A tinta escurece no claro e clareia no
    escuro (--mad-dashf-ink), seguindo a cor do destaque: ≥6:1 nos dois. */
 .mad-dashf-mini.active {
     background: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 10%, transparent);
     color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 65%, var(--mad-dashf-ink, #000));
+    border-color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 45%, transparent);
 }
 .mad-dashf-mini-lbl {
+    flex: 0 0 auto;
+    padding-right: 8px;
+    border-right: 1px solid var(--mad-border, #e5e7eb);
     color: var(--mad-text-muted, #6b7280);
-    font-weight: 400;
+    font-size: var(--mad-text-xs, 12px);
+    font-weight: 500;
+    white-space: nowrap;
 }
 .mad-dashf-mini.active .mad-dashf-mini-lbl {
     color: inherit;
 }
+.mad-dashf-mini.active .mad-dashf-mini-lbl { border-right-color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 30%, transparent); }
+.mad-dashf-mini-val {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+/* Sem valor: cor de placeholder, como no .mad-input — não é valor escolhido. */
+.mad-dashf-mini-val.is-empty {
+    color: var(--mad-text-subtle, #a1a1aa);
+    font-weight: 400;
+}
 .mad-dashf-mini-chev {
+    flex: 0 0 auto;
     font-size: 10px;
+    opacity: .6;
+}
+.mad-dashf-mini-ico,
+.mad-dashf-mini > svg.lucide {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
     opacity: .6;
 }
 .mad-dashf-spacer { flex: 1; }
@@ -15461,6 +15521,20 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     color: color-mix(in srgb, var(--mad-dashf-accent, #3b82f6) 65%, var(--mad-dashf-ink, #000));
     border-radius: 99px;
     font-weight: 600;
+    white-space: nowrap;
+}
+.mad-dashf-actions .mad-btn { white-space: nowrap; }
+
+/* Celular, barra em linha (padrão fora do ERP ou mobile="inline"): um campo
+   por linha, na largura toda, e as ações juntas embaixo, no fim. */
+@media (max-width: 639.98px) {
+  .mad-dashf-toolbar { flex-wrap: wrap; }
+  .mad-dashf-fields { flex: 1 1 100%; }
+  .mad-dashf-fields > .mad-dashf-anchor { display: block; flex: 1 1 100%; min-width: 0; }
+  .mad-dashf-fields .mad-dashf-mini { width: 100%; max-width: none; }
+  .mad-dashf-fields .mad-dashf-mini-val { flex: 1 1 auto; }
+  /* rótulos com a mesma largura: os valores alinham numa coluna */
+  .mad-dashf-fields .mad-dashf-mini-lbl { min-width: 96px; }
 }
 
 /* Celular (fw#495): abaixo de 640 px a barra vira um botão "Filtros (n)" que
@@ -15488,9 +15562,10 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) > .mad-dashf-m-toggle .mad-dashf-mini-chev { margin-left: auto; transition: transform .15s; }
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open > .mad-dashf-m-toggle .mad-dashf-mini-chev { transform: rotate(180deg); }
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])):not(.mad-dashf-m-open) > :not(.mad-dashf-m-toggle),
-  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) > :is(.mad-dashf-tb-divider, .mad-dashf-spacer, .mad-dashf-pill) { display: none; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])) :is(.mad-dashf-tb-divider, .mad-dashf-spacer, .mad-dashf-pill) { display: none; }
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open { flex-direction: column; align-items: stretch; }
-  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open > .mad-dashf-anchor { display: block; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-fields { flex-direction: column; align-items: stretch; }
+  :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-anchor { display: block; }
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-mini { width: 100%; }
   :is(.mad-dashf-toolbar[data-mobile="button"], .mad-layout-erp .mad-dashf-toolbar:not([data-mobile="inline"])).mad-dashf-m-open .mad-dashf-mini .mad-dashf-mini-chev { margin-left: auto; }
 }
