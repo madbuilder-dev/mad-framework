@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.376.0] — 2026-11-27
+
+### Novidades
+
+- **Listagem (grid):** na coluna com o transformador Miniatura, Avatar ou Galeria, o PDF abre numa janela na própria tela, com o botão Baixar, em vez de baixar direto. Imagens seguem iguais; outros tipos de arquivo continuam baixando.
+
 ## [5.375.0] — 2026-11-27
 
 ### Novidades

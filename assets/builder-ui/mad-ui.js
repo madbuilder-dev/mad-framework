@@ -20014,11 +20014,22 @@ document.addEventListener("alpine:init", function () {
    Delegação global em [data-mad-lightbox]: funciona em células re-renderizadas
    por AJAX sem re-init. Grupo (data-mad-lightbox-group) vira galeria navegável
    (setas / ← → / swipe-less). Esc e clique no backdrop fecham. Zero deps.
+
+   PDF (fórum #447): item com data-mad-lightbox-type="pdf" abre num <iframe>
+   com a URL inline do próprio app (a rota de download só deixa o PDF ser
+   emoldurado pelo próprio app). URL de outra origem nunca vai para o <iframe>:
+   fica só a legenda e o Baixar.
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
     'use strict';
 
     var state = { items: [], index: 0, overlay: null };
+
+    // Mesma origem da página (URL relativa ou do próprio app)?
+    function sameOrigin(url) {
+        try { return new URL(url, window.location.href).origin === window.location.origin; }
+        catch (e) { return false; }
+    }
 
     function collect(el) {
         var group = el.getAttribute('data-mad-lightbox-group');
@@ -20032,7 +20043,8 @@ document.addEventListener("alpine:init", function () {
             items.push({
                 url:  n.getAttribute('data-mad-lightbox'),
                 name: n.getAttribute('data-mad-lightbox-name') || '',
-                dl:   n.getAttribute('data-mad-lightbox-dl') || ''
+                dl:   n.getAttribute('data-mad-lightbox-dl') || '',
+                type: n.getAttribute('data-mad-lightbox-type') === 'pdf' ? 'pdf' : 'image'
             });
         });
         return { items: items, index: index };
@@ -20042,12 +20054,33 @@ document.addEventListener("alpine:init", function () {
         var it = state.items[state.index];
         if (!it) return;
         var img = state.overlay.querySelector('.mad-lightbox-img');
+        var frame = state.overlay.querySelector('.mad-lightbox-frame');
+        var fig = state.overlay.querySelector('.mad-lightbox-figure');
         var bar = state.overlay.querySelector('.mad-lightbox-bar');
         var cap = state.overlay.querySelector('.mad-lightbox-caption');
         var dl  = state.overlay.querySelector('.mad-lightbox-dl');
         var cnt = state.overlay.querySelector('.mad-lightbox-count');
         var multi = state.items.length > 1;
-        img.src = it.url;
+        if (it.type === 'pdf') {
+            // PDF: <iframe> só com URL do próprio app; a imagem sai de cena.
+            img.style.display = 'none';
+            img.removeAttribute('src');
+            fig.classList.add('mad-lightbox-figure--doc');
+            if (sameOrigin(it.url)) {
+                frame.style.display = '';
+                frame.title = it.name || 'PDF';
+                if (frame.getAttribute('src') !== it.url) frame.setAttribute('src', it.url);
+            } else {
+                frame.style.display = 'none';
+                frame.removeAttribute('src');
+            }
+        } else {
+            fig.classList.remove('mad-lightbox-figure--doc');
+            frame.style.display = 'none';
+            frame.removeAttribute('src');
+            img.style.display = '';
+            img.src = it.url;
+        }
         img.alt = it.name;
         // Imagem sem nome (gravada no banco) e sem `media-caption`: sem legenda.
         cap.textContent = it.name;
@@ -20091,6 +20124,7 @@ document.addEventListener("alpine:init", function () {
             (multi ? '<button type="button" class="mad-lightbox-prev" aria-label="' + _madTE('previous', 'Anterior') + '">&#10094;</button>' : '') +
             '<figure class="mad-lightbox-figure">' +
                 '<img class="mad-lightbox-img" alt="">' +
+                '<iframe class="mad-lightbox-frame" style="display:none" referrerpolicy="same-origin"></iframe>' +
                 '<figcaption class="mad-lightbox-bar">' +
                     '<span class="mad-lightbox-caption"></span>' +
                     '<span class="mad-lightbox-count"></span>' +

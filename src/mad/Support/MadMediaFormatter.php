@@ -28,6 +28,13 @@ namespace Mad\Support;
  * do escape) — todo valor dinâmico aqui é escapado com htmlspecialchars.
  * O clique é resolvido pelo lightbox do runtime (mad-ui.js, delegação em
  * [data-mad-lightbox]); item não-imagem cai em link de download.
+ *
+ * PDF (fórum #447, 5.376.0): o PDF que o PRÓPRIO app serve (upload assinado
+ * por mad_download_url, ou o endereço público do app) abre no lightbox, num
+ * <iframe> com a URL inline — a rota de download já só deixa o PDF inline ser
+ * emoldurado pelo próprio app (`frame-ancestors 'self'`). O Baixar continua.
+ * PDF de URL de outro endereço, embutido no banco ou data URI segue como
+ * antes (baixa). Outros tipos não-imagem também.
  */
 class MadMediaFormatter
 {
@@ -35,6 +42,9 @@ class MadMediaFormatter
 
     /** Extensões renderizáveis inline como <img> (espelha SAFE_INLINE_MIME do download). */
     private const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+    /** Extensão do documento que o lightbox mostra num <iframe> (fórum #447). */
+    private const PDF_EXT = 'pdf';
 
     /** Quantas miniaturas a galeria mostra antes do "+N". */
     private const GALLERY_VISIBLE = 3;
@@ -103,7 +113,7 @@ class MadMediaFormatter
      * link): o nome, ou "imagem"/"arquivo" quando o arquivo não tem nome.
      * Dica, `alt` e legenda NÃO usam isto — lá, sem nome, sem texto.
      *
-     * @param array{url:string, downloadUrl:string, isImage:bool, name:string} $item
+     * @param array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string} $item
      */
     private static function label(array $item): string
     {
@@ -121,7 +131,7 @@ class MadMediaFormatter
      * (blob não-imagem sem endpoint) — vira chip de arquivo sem link.
      * `name` vazio = arquivo gravado no banco, que não guarda nome.
      *
-     * @return array<int, array{url:string, downloadUrl:string, isImage:bool, name:string}>
+     * @return array<int, array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string}>
      */
     public static function items(mixed $value): array
     {
@@ -162,7 +172,7 @@ class MadMediaFormatter
         return $items;
     }
 
-    /** @return array{url:string, downloadUrl:string, isImage:bool, name:string}|null */
+    /** @return array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string}|null */
     private static function resolveItem(string $raw): ?array
     {
         // Já é data URI (ex.: preview recém-salvo, ou coluna db com prefixo)
@@ -171,6 +181,7 @@ class MadMediaFormatter
                 'url'         => $raw,
                 'downloadUrl' => '',
                 'isImage'     => str_starts_with($raw, 'data:image'),
+                'isPdf'       => false,
                 'name'        => '',
             ];
         }
@@ -185,10 +196,11 @@ class MadMediaFormatter
                     'url'         => 'data:' . $mime . ';base64,' . preg_replace('/\s+/', '', $raw),
                     'downloadUrl' => '',
                     'isImage'     => true,
+                    'isPdf'       => false,
                     'name'        => '',
                 ];
             }
-            return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'name' => ''];
+            return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'isPdf' => false, 'name' => ''];
         }
 
         // URL absoluta
@@ -198,6 +210,9 @@ class MadMediaFormatter
                 'url'         => $raw,
                 'downloadUrl' => $raw,
                 'isImage'     => in_array($ext, self::IMAGE_EXT, true),
+                // URL de fora: o app não sabe o que ela serve nem se deixa ser
+                // emoldurada — o PDF dela continua abrindo pelo link.
+                'isPdf'       => false,
                 'name'        => basename(parse_url($raw, PHP_URL_PATH) ?: 'arquivo'),
             ];
         }
@@ -208,16 +223,18 @@ class MadMediaFormatter
         $name    = basename(str_replace('\\', '/', $raw));
         if (function_exists('mad_upload_is_file') && function_exists('mad_download_url') && mad_upload_is_file($raw)) {
             return [
+                // Sem basename: inline (PDF/imagem), só emoldurável pelo próprio app.
                 'url'         => mad_download_url($raw),
                 // basename explícito força attachment na rota de download
                 'downloadUrl' => mad_download_url($raw, $name),
                 'isImage'     => $isImage,
+                'isPdf'       => $ext === self::PDF_EXT,
                 'name'        => $name,
             ];
         }
 
         // Path dangling (arquivo apagado / disco remoto) — chip com nome, sem link.
-        return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'name' => $name];
+        return ['url' => '', 'downloadUrl' => '', 'isImage' => false, 'isPdf' => false, 'name' => $name];
     }
 
     private static function looksLikeBareBase64(string $s): bool
@@ -244,7 +261,7 @@ class MadMediaFormatter
 
     // ── Render ─────────────────────────────────────────────────────────────
 
-    /** @param array{url:string, downloadUrl:string, isImage:bool, name:string} $item */
+    /** @param array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string} $item */
     private static function renderThumb(array $item, string $cls, string $group = ''): string
     {
         $name  = htmlspecialchars($item['name'], ENT_QUOTES);
@@ -262,6 +279,18 @@ class MadMediaFormatter
                 . '</span>';
         }
 
+        // PDF do próprio app (fórum #447): abre no lightbox, num <iframe>.
+        if ($item['isPdf'] && $item['url'] !== '') {
+            $url = htmlspecialchars($item['url'], ENT_QUOTES);
+            $dl  = htmlspecialchars($item['downloadUrl'], ENT_QUOTES);
+            $grp = $group !== '' ? ' data-mad-lightbox-group="' . htmlspecialchars($group, ENT_QUOTES) . '"' : '';
+            return '<span class="mad-cell-media ' . $cls . ' mad-cell-media-file mad-cell-media-pdf" role="button" tabindex="0"'
+                . ' data-mad-lightbox="' . $url . '" data-mad-lightbox-type="pdf" data-mad-lightbox-name="' . $name . '"'
+                . ' data-mad-lightbox-dl="' . $dl . '"' . $grp . $title . '>'
+                . self::fileIconSvg() . '<span class="mad-cell-media-pdf-tag" aria-hidden="true">PDF</span>'
+                . '</span>';
+        }
+
         // Não-imagem: chip com ícone; com downloadUrl vira link, sem fica estático.
         $icon = self::fileIconSvg();
         if ($item['downloadUrl'] !== '') {
@@ -272,7 +301,7 @@ class MadMediaFormatter
         return '<span class="mad-cell-media ' . $cls . ' mad-cell-media-file"' . $title . '>' . $icon . '</span>';
     }
 
-    /** @param array<int, array{url:string, downloadUrl:string, isImage:bool, name:string}> $items */
+    /** @param array<int, array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string}> $items */
     private static function renderLinks(array $items): string
     {
         $out = [];
@@ -291,7 +320,7 @@ class MadMediaFormatter
         return implode(' ', $out);
     }
 
-    /** @param array<int, array{url:string, downloadUrl:string, isImage:bool, name:string}> $items */
+    /** @param array<int, array{url:string, downloadUrl:string, isImage:bool, isPdf:bool, name:string}> $items */
     private static function renderGallery(array $items): string
     {
         // Grupo único por célula: o lightbox navega entre os itens do grupo.
@@ -306,11 +335,12 @@ class MadMediaFormatter
         // Itens além dos visíveis entram no grupo do lightbox como âncoras
         // ocultas — o "+N" abre a galeria completa.
         foreach (array_slice($items, self::GALLERY_VISIBLE) as $item) {
-            if ($item['isImage'] && $item['url'] !== '') {
+            if (($item['isImage'] || $item['isPdf']) && $item['url'] !== '') {
                 $url  = htmlspecialchars($item['url'], ENT_QUOTES);
                 $name = htmlspecialchars($item['name'], ENT_QUOTES);
                 $dl   = htmlspecialchars($item['downloadUrl'], ENT_QUOTES);
-                $html .= '<span class="mad-cell-gallery-hidden" data-mad-lightbox="' . $url . '"'
+                $type = $item['isPdf'] && !$item['isImage'] ? ' data-mad-lightbox-type="pdf"' : '';
+                $html .= '<span class="mad-cell-gallery-hidden" data-mad-lightbox="' . $url . '"' . $type
                     . ' data-mad-lightbox-name="' . $name . '" data-mad-lightbox-dl="' . $dl . '"'
                     . ' data-mad-lightbox-group="' . $group . '"></span>';
             }

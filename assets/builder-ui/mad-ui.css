@@ -16105,6 +16105,33 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     height: 55%;
 }
 
+/* PDF que abre no lightbox (fórum #447): o ícone de arquivo com o selo "PDF". */
+.mad-cell-media-pdf {
+    position: relative;
+    cursor: zoom-in;
+}
+
+.mad-cell-media-pdf svg {
+    width: 50%;
+    height: 50%;
+    margin-top: -6px;
+}
+
+.mad-cell-media-pdf-tag {
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    padding: 0 3px;
+    border-radius: 3px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 11px;
+    letter-spacing: .02em;
+}
+
 .mad-cell-gallery {
     display: inline-flex;
     align-items: center;
@@ -16200,6 +16227,22 @@ html[data-theme="dark"] .mad-dt > tbody > tr:not(.mad-dt-group) > td { color: #d
     border-radius: 8px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
     background: #101423;
+}
+
+.mad-lightbox-figure--doc {
+    width: min(88vw, 1100px);
+    height: 88vh;
+}
+
+/* PDF (fórum #447): o leitor do navegador, numa folha clara. */
+.mad-lightbox-frame {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
 }
 
 .mad-lightbox-bar {
