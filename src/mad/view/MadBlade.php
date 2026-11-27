@@ -834,6 +834,8 @@ class MadBladeCompiler extends BladeCompiler
         $_whenUses    = [];     // campos que as condições *-when da tag usam
         // Preencher valor por condição (fill-when / fill-value / fill-overwrite).
         $_fill        = self::isFillTag($tag) ? ['when' => null, 'value' => null, 'overwrite' => false] : null;
+        // compute / fill-value com função de data (fórum #440) — ver o fim do método.
+        $_dateFormula = null;
         // "Valor padrão" do Studio nos campos que leem `value` — ver DEFAULT_IS_VALUE_TAGS.
         $_defaultTo   = self::defaultTarget($tag, (string) $params);
         $pos        = 0;
@@ -919,6 +921,10 @@ class MadBladeCompiler extends BladeCompiler
                     if (trim($val) !== '') {
                         $extraAttrs[] = 'x-mad-compute="'
                             . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
+                        // Função de data (fórum #440): o Salvar refaz a conta no servidor.
+                        if (\Mad\Form\DateFormula::uses($val)) {
+                            $_dateFormula = ['compute' => $val];
+                        }
                         // Os campos da fórmula são usados pela TELA, como os do *-when.
                         if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_ct)) {
                             foreach ($_ct[1] as $_used) {
@@ -1240,6 +1246,23 @@ class MadBladeCompiler extends BladeCompiler
                 foreach ($_ft[1] as $_used) {
                     $_whenUses[$_used] = true;
                 }
+            }
+            if (\Mad\Form\DateFormula::uses($_fill['value'])) {
+                $_dateFormula = ['fillWhen' => $_fill['when'], 'fillValue' => $_fill['value'], 'fillOverwrite' => $_fill['overwrite']];
+            }
+        }
+        // Função de data (fórum #440): o Salvar refaz a conta no servidor (só
+        // com o nome literal do campo), e a conta de dias úteis leva ao
+        // navegador o calendário do app — os dois lados contam com a mesma lista.
+        // Sem função de data nada disso entra: a tela compila como antes.
+        if ($_dateFormula !== null) {
+            if ($_fieldName !== null) {
+                $compiled[] = '"madFormula"=>\\Mad\\Form\\MadFormRegistry::formula('
+                    . self::phpString($_fieldName) . ',' . var_export($_dateFormula, true) . ')';
+            }
+            $_formulaText = (string) ($_dateFormula['compute'] ?? $_dateFormula['fillValue'] ?? '');
+            if (\Mad\Form\DateFormula::uses($_formulaText, ['diffBusinessDays'])) {
+                $rawPhpAttrs[] = '\\Mad\\Form\\DateFormula::calendarAttr()';
             }
         }
         if ($_whenUses) {

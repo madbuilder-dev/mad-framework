@@ -218,6 +218,36 @@ class MadFormRegistry
         self::$guards            = [];
         self::$editorDepth       = 0;
         self::$editorOnly        = [];
+        self::$pendingFormulas   = [];
+    }
+
+    /**
+     * Fórmulas com função de data dos campos (fórum #440), à espera do
+     * register() do campo — o Blade compilado anuncia a fórmula ao montar os
+     * parâmetros, antes de o campo se desenhar.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private static array $pendingFormulas = [];
+
+    /**
+     * O campo `$name` calcula (`compute`) ou preenche (`fill-when` +
+     * `fill-value`) com uma função de data: a fórmula vai no estado cifrado do
+     * formulário (props `formula`), e o Salvar refaz a conta no servidor
+     * (MadForm::_applyDateFormulas). Só o que o Blade da TELA escreveu — o
+     * navegador nunca manda fórmula.
+     *
+     * @internal chamado pelo Blade compilado (MadBlade::parseParams)
+     *
+     * @param array{compute?: string, fillWhen?: string, fillValue?: string, fillOverwrite?: bool} $meta
+     */
+    public static function formula(string $name, array $meta): bool
+    {
+        if ($name !== '' && $meta !== []) {
+            self::$pendingFormulas[$name] = $meta;
+        }
+
+        return true;
     }
 
     /**
@@ -293,6 +323,12 @@ class MadFormRegistry
 
         // Remove props sem valor para manter o token enxuto
         $props = array_filter($props, fn($v) => $v !== '' && $v !== null && $v !== false);
+
+        // Fórmula com função de data anunciada pelo Blade deste campo (fórum #440).
+        if (isset(self::$pendingFormulas[$name])) {
+            $props['formula'] = self::$pendingFormulas[$name];
+            unset(self::$pendingFormulas[$name]);
+        }
 
         $entry = array_merge(['type' => $type], $props);
         // Fórum #403: campo da LINHA de um detalhe (dentro de

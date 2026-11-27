@@ -700,11 +700,96 @@ class MadForm
         return $this->_data($tokenField);
     }
 
+    /** As fórmulas com função de data já foram refeitas nesta requisição (fórum #440). */
+    private bool $_dateFormulasDone = false;
+
+    /**
+     * Fórum #440 — funções de data no `compute` e no `fill-value`, refeitas no
+     * SERVIDOR ao salvar, com a mesma conta do navegador ({@see DateFormula}).
+     *
+     * A fórmula vem do estado cifrado da tela (o Blade a anunciou; o navegador
+     * nunca manda fórmula) e os valores são os enviados:
+     * - campo calculado (`compute`): o valor é refeito sempre — o que fica
+     *   gravado é a conta, não o que o navegador mandou;
+     * - "Preencher valor quando": com a regra valendo (WhenCondition) e o campo
+     *   enviado VAZIO, o campo recebe o valor. O que veio preenchido não é
+     *   trocado (como no navegador sem `fill-overwrite`, e o usuário pode ter
+     *   corrigido o valor depois).
+     * Expressão que o servidor não sabe avaliar fica com o valor enviado. Campo
+     * que não veio no POST não é tocado. Tela sem função de data: nada muda.
+     */
+    private function _applyDateFormulas(string $tokenField = '__mad_form'): void
+    {
+        if ($this->_dateFormulasDone) {
+            return;
+        }
+        // Leitura só do token (sem o fromRequest, que restaura os registros
+        // dos detalhes de quebra): a validação pode rodar antes do getData().
+        $token = $_REQUEST[$tokenField] ?? '';
+        $schema = is_string($token) && $token !== '' ? MadFormRegistry::decode($token) : [];
+        if ($schema === []) {
+            return;
+        }
+        $this->_dateFormulasDone = true;
+
+        $masks = [];
+        $targets = [];
+        foreach ($schema as $name => $props) {
+            if (!is_array($props)) {
+                continue;
+            }
+            $type = (string) ($props['type'] ?? '');
+            if ($type === 'date' || $type === 'datetime') {
+                $masks[(string) $name] = (string) ($props['display_mask'] ?? '')
+                    ?: ($type === 'datetime' ? \Mad\Support\DateMask::datetime() : \Mad\Support\DateMask::date());
+            }
+            if (is_array($props['formula'] ?? null)) {
+                $targets[(string) $name] = $props;
+            }
+        }
+        if ($targets === []) {
+            return;
+        }
+
+        $values = $this->fields;
+        $changed = false;
+        foreach ($targets as $name => $props) {
+            if (!array_key_exists($name, $this->fields) || !(is_scalar($this->fields[$name]) || $this->fields[$name] === null)) {
+                continue;
+            }
+            $f = $props['formula'];
+            if (isset($f['compute'])) {
+                $r = DateFormula::evaluate((string) $f['compute'], $values, $masks, true);
+                $posted = $r === null ? null : DateFormula::posted($r, $props, false);
+            } elseif (isset($f['fillWhen'], $f['fillValue'])) {
+                if (trim((string) $this->fields[$name]) !== ''
+                    || WhenCondition::evaluate((string) $f['fillWhen'], $values) !== true) {
+                    continue;
+                }
+                $r = DateFormula::evaluate((string) $f['fillValue'], $values, $masks);
+                $posted = $r === null ? null : DateFormula::posted($r, $props, true);
+            } else {
+                continue;
+            }
+            if ($posted === null || $posted === (string) $this->fields[$name]) {
+                continue;
+            }
+            $this->fields[$name] = $posted;
+            $values[$name] = $posted;
+            $changed = true;
+        }
+        if ($changed) {
+            $this->_dataCache = null;
+        }
+    }
+
     /** O {@see getData()} sem contar como leitura da tela — o que o próprio formulário lê para gravar. */
     private function _data(string $tokenField = '__mad_form'): object
     {
         // Escolha do navegador fora da lista do campo não chega ao código (fw#531).
         $this->_verifyBrowserChoices();
+        // Funções de data refeitas no servidor (fórum #440).
+        $this->_applyDateFormulas($tokenField);
 
         if ($this->_dataCache !== null) {
             return $this->_dataCache;
@@ -7942,6 +8027,9 @@ class MadForm
         $attrs = $this->_fieldLabels($attrs);
 
         $this->_fitMasksToRules($parsedRules);
+
+        // A validação confere o que vai ser gravado: a conta de data refeita (fórum #440).
+        $this->_applyDateFormulas();
 
         // A regra `date`/`after:` lê com strtotime: "21/10/2026" é recusada e
         // "05/11/2026" vira 11 de maio. Valida o que o save() grava (fw#463).

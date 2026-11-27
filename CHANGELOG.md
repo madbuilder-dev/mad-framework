@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.374.0] — 2026-11-27
+
+### Novidades
+
+- **Formulário:** contas com datas sem código no "Preencher valor quando" e no campo calculado: `addDays`/`subDays` e `addMonths`/`subMonths` (31/01 + 1 mês = 28/02 ou 29/02), `diffDays` (ex.: dias de atraso) e `diffBusinessDays` (dias úteis, com os feriados do app). O Salvar refaz a conta no servidor, com o mesmo resultado; data vazia não quebra.
+
 ## [5.373.0] — 2026-11-26
 
 ### Novidades

@@ -4167,9 +4167,19 @@ var _madCompute = (function () {
 
     // Funções da fórmula → JS. O 3º argumento do discount é o TIPO (texto,
     // '%' ou 'R$'): não pode virar número.
+    // Funções de data que dão número (fórum #440): diffDays/diffBusinessDays.
+    var DATE_FNS = ['diffDays', 'diffBusinessDays'];
+    var DATE_FN_RE = /\b(?:addDays|subDays|addMonths|subMonths|diffDays|diffBusinessDays|addMinutes)\s*\(/;
+
     function translate(expr) {
         var js = String(expr == null ? '' : expr);
         if (js.trim() === '') return '';
+        // Os argumentos delas são lidos como data ($v.field), não como número;
+        // forma inválida ou função de data que não dá número = fórmula inválida.
+        if (DATE_FN_RE.test(js)) {
+            js = window._madFill ? window._madFill.rewriteDates(js, DATE_FNS) : null;
+            if (js === null) return null;
+        }
         // {@campo}: campo do formulário PRINCIPAL, mesmo dentro do sub-form (fórum #291).
         // `{@produto->estoque}`: campo do mestre ligado por relacionamento (fórum #291 r3).
         js = js.replace(/\{@(\w+(?:->\w+)*)\}/g, function (_, n) { return '$v.master(' + JSON.stringify(n) + ')'; });
@@ -4187,7 +4197,7 @@ var _madCompute = (function () {
 
     function compile(expr) {
         var js = translate(expr);
-        return js === '' ? null : window._madWhen.compile(js);
+        return (js === null || js === '') ? null : window._madWhen.compile(js);
     }
 
     // Campo com máscara que está sendo digitado. O decimal só passa o número
@@ -4245,6 +4255,17 @@ var _madCompute = (function () {
         g.master = function (n) { return toNum(mestreValue(scope, n)); };
         g.round = round;
         g.discount = discount;
+        // Funções de data (fórum #440): o argumento é a DATA do campo (lida na
+        // máscara dele); data vazia ou ilegível = NaN, e a conta fica vazia.
+        var F = window._madFill;
+        if (F) {
+            var dateNum = function (r) { return typeof r === 'number' ? r : NaN; };
+            g.field = function (n) { return new F.FieldRef(read(n), F.maskOf(scope, n, from)); };
+            g.today = function () { return new F.Stamp('date', F.clock()); };
+            g.now = function () { return new F.Stamp('datetime', F.clock()); };
+            g.diffDays = function (a, b) { return dateNum(F.diffDays(a, b)); };
+            g.diffBusinessDays = function (a, b) { return dateNum(F.diffBusinessDays(a, b, F.calendarOf(from))); };
+        }
         return g;
     }
 
@@ -4606,29 +4627,54 @@ var _madFill = (function () {
     // Outra coisa entre os parênteses invalida o valor inteiro (sem efeito,
     // como qualquer valor inválido). O `+` continua sendo o do JavaScript:
     // junta texto.
-    var ADD_FN_RE = /\baddMinutes\s*\(/g;
     var ADD_ARG_FIELD = /^\{([a-zA-Z_]\w*)\}$/;
     var ADD_ARG_NUM = /^[-+]?\d+(?:\.\d+)?$/;
     var ADD_ARG_CLOCK = /^\$v\.(today|now|time)\(\)$/;   // já traduzido
     // Dez anos em minutos: além disso é engano de campo, não conta de agenda.
     var ADD_MAX_MINUTES = 5256000;
 
-    function addArg(a) {
+    // ── Funções de data — fórum #440 ─────────────────────────────────────────
+    // addDays/subDays/addMonths/subMonths(data, n), diffDays/diffBusinessDays(
+    // início, fim). Mesma regra do addMinutes: os argumentos são DADO —
+    // data = {campo}, today() ou now(); n = {campo} ou número inteiro. Nada
+    // aninhado. A conta é a mesma do servidor (Mad\Form\DateFormula), que a
+    // refaz ao salvar.
+    var FN_ARGS = {
+        addMinutes: ['base', 'base'],
+        addDays: ['date', 'int'], subDays: ['date', 'int'],
+        addMonths: ['date', 'int'], subMonths: ['date', 'int'],
+        diffDays: ['date', 'date'], diffBusinessDays: ['date', 'date'],
+    };
+    var FN_RE = /\b(addMinutes|addDays|subDays|addMonths|subMonths|diffDays|diffBusinessDays)\s*\(/g;
+    var ARG_INT = /^[-+]?\d+$/;
+    var ARG_DAY_CLOCK = /^(?:\$v\.)?(today|now)\s*\(\s*\)$/;
+    var MAX_DAYS = 36600;       // cem anos: além disso é engano de campo
+    var MAX_MONTHS = 1200;
+
+    function fnArg(kind, a) {
         a = a.trim();
         var m;
         if ((m = ADD_ARG_FIELD.exec(a))) return '$v.field(' + JSON.stringify(m[1]) + ')';
-        if (ADD_ARG_NUM.test(a)) return '(' + a + ')';
-        if ((m = ADD_ARG_CLOCK.exec(a))) return '$v.' + m[1] + '()';
+        if (kind === 'base') {
+            if (ADD_ARG_NUM.test(a)) return '(' + a + ')';
+            if ((m = ADD_ARG_CLOCK.exec(a))) return '$v.' + m[1] + '()';
+            return null;
+        }
+        if (kind === 'int') return ARG_INT.test(a) ? '(' + a + ')' : null;
+        if ((m = ARG_DAY_CLOCK.exec(a))) return '$v.' + m[1] + '()';   // 'date'
         return null;
     }
 
-    // Cada addMinutes(…) de um trecho fora de aspas → $v.addMinutes(a, b).
-    // null = forma inválida (argumento que não é campo/número/relógio,
-    // parêntese sem fechar, número de argumentos errado).
-    function rewriteAdd(chunk) {
+    // Cada função de data de um trecho fora de aspas → $v.nome(a, b). null =
+    // forma inválida (argumento que não é campo/número/relógio, parêntese sem
+    // fechar, número de argumentos errado) ou função que não vale ali
+    // (`allowed`: o campo calculado só aceita as que dão número).
+    function rewriteFns(chunk, allowed) {
         var out = '', pos = 0, m;
-        ADD_FN_RE.lastIndex = 0;
-        while ((m = ADD_FN_RE.exec(chunk))) {
+        FN_RE.lastIndex = 0;
+        while ((m = FN_RE.exec(chunk))) {
+            var name = m[1];
+            if (allowed && allowed.indexOf(name) === -1) return null;
             var open = m.index + m[0].length, depth = 1, close = -1;
             var cuts = [], j;
             for (j = open; j < chunk.length; j++) {
@@ -4637,24 +4683,25 @@ var _madFill = (function () {
                 else if (c === ')') { depth--; if (depth === 0) { close = j; break; } }
                 else if (c === ',' && depth === 1) cuts.push(j);
             }
-            if (close === -1 || cuts.length !== 1) return null;
-            var a = addArg(chunk.slice(open, cuts[0]));
-            var b = addArg(chunk.slice(cuts[0] + 1, close));
+            var kinds = FN_ARGS[name];
+            if (close === -1 || cuts.length !== kinds.length - 1) return null;
+            var a = fnArg(kinds[0], chunk.slice(open, cuts[0]));
+            var b = fnArg(kinds[1], chunk.slice(cuts[0] + 1, close));
             if (a === null || b === null) return null;
-            out += chunk.slice(pos, m.index) + '$v.addMinutes(' + a + ', ' + b + ')';
+            out += chunk.slice(pos, m.index) + '$v.' + name + '(' + a + ', ' + b + ')';
             pos = close + 1;
-            ADD_FN_RE.lastIndex = pos;
+            FN_RE.lastIndex = pos;
         }
         return out + chunk.slice(pos);
     }
 
-    // today() / now() / time() → $v.today()… e addMinutes(…) → $v.addMinutes(…),
-    // só FORA de aspas: 'now()' entre aspas é texto. null = addMinutes inválido.
-    function translate(expr) {
+    // Percorre a expressão só FORA de aspas ('now()' entre aspas é texto),
+    // passando cada trecho por `fn`. null quando um trecho é inválido.
+    function outsideQuotes(expr, fn) {
         var s = String(expr == null ? '' : expr);
         var out = '', quote = '', chunk = '', bad = false;
         var flush = function () {
-            var js = rewriteAdd(chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()'));
+            var js = fn(chunk);
             if (js === null) bad = true;
             else out += js;
             chunk = '';
@@ -4672,6 +4719,21 @@ var _madFill = (function () {
         }
         flush();
         return bad ? null : out;
+    }
+
+    // today() / now() / time() → $v.today()… e as funções de data →
+    // $v.nome(…). null = função de data inválida.
+    function translate(expr) {
+        return outsideQuotes(expr, function (chunk) {
+            return rewriteFns(chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()'), null);
+        });
+    }
+
+    // Para o campo calculado (compute): só as funções que dão número, com os
+    // argumentos já como leitura de campo/relógio — o `{campo}` de fora delas
+    // continua sendo o número do campo.
+    function rewriteDates(expr, allowed) {
+        return outsideQuotes(expr, function (chunk) { return rewriteFns(chunk, allowed); });
     }
 
     function compileValue(expr) {
@@ -4692,6 +4754,8 @@ var _madFill = (function () {
     // addMinutes. O preenchimento não escreve nada (nem apaga, com
     // fill-overwrite). Somado a texto vale ''.
     var NOTHING = { toString: function () { return ''; } };
+    // fill() sem nada a escrever porque o valor ainda não dá (ver apply()).
+    var PENDING = {};
 
     function escRe(ch) { return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
@@ -4778,6 +4842,138 @@ var _madFill = (function () {
         var d = new Date(b.date.getTime());
         d.setSeconds(d.getSeconds() + Math.round(n * 60));
         return new Stamp(b.kind, d);
+    }
+
+    // ── Contas de data (fórum #440) — as mesmas do DateFormula do servidor ───
+
+    // Dias desde 01/01/0001 (calendário gregoriano), pelo dia juliano: a conta
+    // não passa por fuso nem horário de verão.
+    function dayNumber(y, m, d) {
+        var a = Math.floor((14 - m) / 12), yy = y + 4800 - a, mm = m + 12 * a - 3;
+        return d + Math.floor((153 * mm + 2) / 5) + 365 * yy + Math.floor(yy / 4)
+            - Math.floor(yy / 100) + Math.floor(yy / 400) - 32045 - 1721426;
+    }
+    function fromDayNumber(n) {
+        var a = n + 1721426 + 32044;
+        var b = Math.floor((4 * a + 3) / 146097), c = a - Math.floor(146097 * b / 4);
+        var d = Math.floor((4 * c + 3) / 1461), e = c - Math.floor(1461 * d / 4);
+        var m = Math.floor((5 * e + 2) / 153);
+        return [100 * b + d - 4800 + Math.floor(m / 10), m + 3 - 12 * Math.floor(m / 10), e - Math.floor((153 * m + 2) / 5) + 1];
+    }
+    function dayOf(d) { return dayNumber(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
+    function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+
+    // Data de um argumento: { date, time } (time = tem hora) ou null. A hora
+    // sozinha (time()) não é data.
+    function toDay(x) {
+        if (x instanceof Stamp) {
+            if (x.kind === 'time') return null;
+            var sd = x.date;
+            if (x.kind === 'date') return { date: new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()), time: false };
+            return { date: new Date(sd.getTime()), time: true };
+        }
+        var mask = '';
+        if (x instanceof FieldRef) { mask = x.mask || ''; x = x.value; }
+        if (x === null || x === undefined || typeof x !== 'string') return null;
+        var s = x.trim();
+        if (s === '') return null;
+        var d = mask ? parseMasked(s, mask) : null, used = mask;
+        for (var i = 0; !d && i < FALLBACK_MASKS.length; i++) {
+            d = parseMasked(s.replace('T', ' '), FALLBACK_MASKS[i]);
+            used = FALLBACK_MASKS[i];
+        }
+        return d ? { date: d, time: /hh|HH/.test(used) } : null;
+    }
+
+    // Quantidade de dias/meses: inteiro (corta a fração) ou null.
+    function toCount(x) {
+        if (typeof x === 'number') return isFinite(x) ? Math.trunc(x) : null;
+        if (x instanceof FieldRef) x = x.value;
+        if (x === null || x === undefined || typeof x !== 'string') return null;
+        var s = x.trim();
+        if (s === '') return null;
+        if (s.indexOf(',') !== -1) s = s.replace(/\./g, '').replace(/,/g, '.');
+        return /^[-+]?\d+(?:\.\d+)?$/.test(s) ? Math.trunc(parseFloat(s)) : null;
+    }
+
+    function stampOf(src, y, m, d) {
+        var t = src.date;
+        return new Stamp(src.time ? 'datetime' : 'date',
+            new Date(y, m - 1, d, t.getHours(), t.getMinutes(), t.getSeconds()));
+    }
+
+    function addDays(base, n) {
+        var b = toDay(base), k = toCount(n);
+        if (!b || k === null || Math.abs(k) > MAX_DAYS) return NOTHING;
+        var p = fromDayNumber(dayOf(b.date) + k);
+        return stampOf(b, p[0], p[1], p[2]);
+    }
+    function subDays(base, n) {
+        var k = toCount(n);
+        return k === null ? NOTHING : addDays(base, -k);
+    }
+
+    // Meses: o dia fica no fim do mês quando ele não existe lá
+    // (31/01 + 1 = 28/02, 29/02 em ano bissexto).
+    function addMonths(base, n) {
+        var b = toDay(base), k = toCount(n);
+        if (!b || k === null || Math.abs(k) > MAX_MONTHS) return NOTHING;
+        var d = b.date, total = d.getFullYear() * 12 + d.getMonth() + k;
+        var y = Math.floor(total / 12), m = total - y * 12 + 1;
+        return stampOf(b, y, m, Math.min(d.getDate(), daysInMonth(y, m)));
+    }
+    function subMonths(base, n) {
+        var k = toCount(n);
+        return k === null ? NOTHING : addMonths(base, -k);
+    }
+
+    // fim − início, em dias de calendário (a hora não conta).
+    function diffDays(a, b) {
+        var x = toDay(a), y = toDay(b);
+        if (!x || !y) return NOTHING;
+        var n = dayOf(y.date) - dayOf(x.date);
+        return Math.abs(n) > MAX_DAYS ? NOTHING : n;
+    }
+
+    // Calendário de dias úteis que o servidor pôs no campo (data-mad-bdays):
+    // { wd: [1..5], from, to, h: {'aaaa-mm-dd': 1} }. Sem ele, não há conta.
+    function calendarOf(el) {
+        var box = el && el.closest ? el.closest('[data-mad-bdays]') : null;
+        if (!box) return null;
+        if (box._madBdays !== undefined) return box._madBdays;
+        var cal = null;
+        try {
+            var raw = JSON.parse(box.getAttribute('data-mad-bdays') || 'null');
+            if (raw && Array.isArray(raw.wd)) {
+                var h = {};
+                (raw.h || []).forEach(function (s) { h[String(s)] = 1; });
+                cal = { wd: raw.wd.map(Number), from: +raw.from, to: +raw.to, h: h };
+            }
+        } catch (e) { cal = null; }
+        box._madBdays = cal;
+        return cal;
+    }
+
+    // Dias úteis depois do início até o fim, inclusive; negativo quando o fim
+    // vem antes — a regra do BusinessDays::diffBusinessDays. Data fora da
+    // janela de feriados do calendário = sem resultado (igual no servidor).
+    function diffBusinessDays(a, b, cal) {
+        var x = toDay(a), y = toDay(b);
+        if (!x || !y || !cal) return NOTHING;
+        var ya = x.date.getFullYear(), yb = y.date.getFullYear();
+        if (ya < cal.from || ya > cal.to || yb < cal.from || yb > cal.to) return NOTHING;
+        var from = dayOf(x.date), to = dayOf(y.date);
+        if (from === to) return 0;
+        var sign = to > from ? 1 : -1;
+        if (sign < 0) { var t = from; from = to; to = t; }
+        var count = 0;
+        for (var j = from + 1; j <= to; j++) {
+            var p = fromDayNumber(j);
+            var iso = p[0] + '-' + pad(p[1]) + '-' + pad(p[2]);
+            // 0 = domingo … 6 = sábado (01/01/0001 foi uma segunda).
+            if (cal.wd.indexOf((j + 1) % 7) !== -1 && !cal.h[iso]) count++;
+        }
+        return sign * count;
     }
 
     // Máscara com que o campo de data mostra o valor (madDatePicker).
@@ -4933,6 +5129,12 @@ var _madFill = (function () {
         g.time = function () { return new Stamp('time', api.clock()); };
         g.field = function (n) { return new FieldRef(read(n), maskOf(scope, n, el)); };
         g.addMinutes = addMinutes;
+        g.addDays = addDays;
+        g.subDays = subDays;
+        g.addMonths = addMonths;
+        g.subMonths = subMonths;
+        g.diffDays = diffDays;
+        g.diffBusinessDays = function (a, b) { return diffBusinessDays(a, b, calendarOf(el)); };
 
         var prev = null;        // estado da regra na última olhada (null = ainda sem base)
         var warned = false;
@@ -4959,8 +5161,10 @@ var _madFill = (function () {
             var v;
             try { v = value(g); }
             catch (e) { once('[mad-fill] erro ao calcular fill-value:', valueExpr, e); return false; }
-            // addMinutes com campo vazio (ou que não é hora/número): nada a escrever.
-            if (v === NOTHING) return false;
+            // addMinutes / função de data com campo vazio (ou que não é
+            // data/hora/número): nada a escrever — e a regra fica esperando
+            // (fórum #440: a data ainda está sendo digitada).
+            if (v === NOTHING) return PENDING;
             var text = (v instanceof Stamp) ? stampText(v, t) : plain(v);
             var cur = currentValue(t);
             if (!opts.overwrite && cur.trim() !== '') return false;
@@ -4980,7 +5184,14 @@ var _madFill = (function () {
                 once('[mad-fill] preenchimento encadeado sem fim (um campo preenche o outro?):', whenExpr);
                 return false;
             }
-            return fill(depth);
+            var r = fill(depth);
+            // A regra passou a valer, mas o valor ainda não dá para calcular
+            // (Vencimento pela metade: "3", "31/1"…): a passagem não conta —
+            // a próxima mudança com a regra valendo tenta de novo. Sem isto, o
+            // `{vencimento} != ''` virava verdade no 1º dígito e o
+            // addMonths({vencimento}, 1) nunca preenchia.
+            if (r === PENDING) { prev = false; return false; }
+            return r;
         }
 
         return { id: id, root: root, scope: scope, baseline: baseline, apply: apply, fill: fill };
@@ -5004,6 +5215,15 @@ var _madFill = (function () {
     api.maskDate = maskDate;
     api.parseMasked = parseMasked;
     api.addMinutes = addMinutes;
+    api.addDays = addDays;
+    api.subDays = subDays;
+    api.addMonths = addMonths;
+    api.subMonths = subMonths;
+    api.diffDays = diffDays;
+    api.diffBusinessDays = diffBusinessDays;
+    api.calendarOf = calendarOf;
+    api.rewriteDates = rewriteDates;
+    api.maskOf = maskOf;
     api.NOTHING = NOTHING;
     api.Stamp = Stamp;
     api.FieldRef = FieldRef;
