@@ -1395,6 +1395,48 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         parent::_setState($state);
     }
 
+    /**
+     * Filtros que vêm no LINK da abertura — query string e params de quem abre
+     * a tela (`<mad-transporter :params>`, `Mad.go`, `<mad-nav :params>`) — numa
+     * tela cujo mount() não chama parent::mount(), o formato que a plataforma
+     * gera. O mount() do framework sempre os aplicou; nessas telas só o
+     * remember-filters os aplicava, e só quando havia uma visita guardada: a
+     * listagem embutida que recebe `rota_dia_id` pelo transporter vinha vazia
+     * com o "Lembrar filtros" desligado e na 1ª abertura com ele ligado (#441).
+     *
+     * Só as props públicas que a tela declarou como filtro (discoverFilterProps:
+     * fora `$notFilterProps` e as do framework) e o período; valor vazio não
+     * apaga nada. O onSearch() da tela continua inteiro por cima — o link só
+     * escolhe o valor do filtro, nunca tira a regra de carregamento. Na ação o
+     * estado é o da tela e nada daqui roda.
+     */
+    private function _linkFiltersOnOpen(array $params): void
+    {
+        if ($this->_gridMounted || $this->_gridHydrated || isset($_POST['mad_state'])) {
+            return;   // parent::mount() já aplicou (ou é uma ação)
+        }
+        $link  = array_merge($_GET ?? [], $_POST ?? []);
+        $names = array_merge(['mes', 'ano', 'dtIni', 'dtFim', 'preset'], $this->discoverFilterProps());
+        $hit   = false;
+        foreach ([$link, $params] as $src) {
+            foreach ($names as $n) {
+                $v = $src[$n] ?? null;
+                if ($v !== null && $v !== '' && $v !== []) {
+                    $hit = true;
+                    break 2;
+                }
+            }
+        }
+        if (!$hit) {
+            return;   // sem filtro no link: a abertura sai como antes
+        }
+        $this->_svNoteOpenSource($link, $params);
+        $this->hydrateFiltersFromArray($link);
+        $this->hydrateFiltersFromArray($params);
+        $this->syncFormFields();
+        $this->_dataLoaded = false;
+    }
+
     /** O mount() do framework rodou nesta requisição (a tela chamou parent::mount()). */
     private bool $_gridMounted = false;
 
@@ -4488,6 +4530,8 @@ abstract class MadDataGrid extends MadComponent implements MadFilterable
         // mas chegava depois do bloco de filtros.
         if ($method === 'mount' && !$this->_returnPending) {
             $this->_seedDefaultPeriodOnOpen();
+            // Os filtros do link da abertura, com ou sem remember-filters (#441).
+            $this->_linkFiltersOnOpen(array_is_list($data) ? [] : $data);
             // remember-filters: pelo mesmo motivo, os filtros da última visita
             // entram aqui (o período padrão acima fica por baixo deles).
             $this->_rememberOnOpenFromConfig();

@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.374.1] — 2026-11-27
+
+### Correções
+
+- **Listagem (grid):** a listagem aberta com um parâmetro (de um `<mad-transporter>`, de uma ação ou do link) agora filtra por ele com "Lembrar filtros" desligado. Antes, a regra de carregamento que usava o parâmetro só funcionava com a opção ligada, e a partir da segunda visita.
+
 ## [5.374.0] — 2026-11-27
 
 ### Novidades
