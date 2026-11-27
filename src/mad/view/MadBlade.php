@@ -921,12 +921,13 @@ class MadBladeCompiler extends BladeCompiler
                     if (trim($val) !== '') {
                         $extraAttrs[] = 'x-mad-compute="'
                             . htmlspecialchars($val, ENT_COMPAT | ENT_HTML5, 'UTF-8', false) . '"';
-                        // Função de data (fórum #440): o Salvar refaz a conta no servidor.
-                        if (\Mad\Form\DateFormula::uses($val)) {
+                        // Função de data ou `{combo->campo}` (fórum #440): o Salvar refaz a conta no servidor.
+                        if (\Mad\Form\DateFormula::redoneOnSave($val)) {
                             $_dateFormula = ['compute' => $val];
                         }
-                        // Os campos da fórmula são usados pela TELA, como os do *-when.
-                        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $val, $_ct)) {
+                        // Os campos da fórmula são usados pela TELA, como os do *-when
+                        // (o combo de um `{combo->campo}` também).
+                        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)(?:->[A-Za-z_]\w*)?\}/', $val, $_ct)) {
                             foreach ($_ct[1] as $_used) {
                                 $_whenUses[$_used] = true;
                             }
@@ -1241,12 +1242,16 @@ class MadBladeCompiler extends BladeCompiler
             if ($_fill['overwrite']) {
                 $extraAttrs[] = 'data-mad-fill-overwrite="1"';
             }
-            // Os campos que a regra e o valor leem são usados pela TELA, como os do *-when.
-            if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $_fill['when'] . ' ' . $_fill['value'], $_ft)) {
+            // Os campos que a regra e o valor leem são usados pela TELA, como os do *-when
+            // (o combo de um `{combo->campo}` também).
+            if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)(?:->[A-Za-z_]\w*)?\}/', $_fill['when'] . ' ' . $_fill['value'], $_ft)) {
                 foreach ($_ft[1] as $_used) {
                     $_whenUses[$_used] = true;
                 }
             }
+            // Só com função de data (com ou sem `{combo->campo}` nos argumentos): o
+            // valor que só copia texto (`{campo}`, `{combo->campo}`) o navegador preenche
+            // e o servidor não confere — ele conta número e data, não texto.
             if (\Mad\Form\DateFormula::uses($_fill['value'])) {
                 $_dateFormula = ['fillWhen' => $_fill['when'], 'fillValue' => $_fill['value'], 'fillOverwrite' => $_fill['overwrite']];
             }

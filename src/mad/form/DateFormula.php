@@ -37,6 +37,10 @@ use Mad\Support\DateMask;
  * aspas, `if`, `discount`, `{@campo}`, chamada desconhecida) dá null: "não sei"
  * — quem chama mantém o valor que o navegador mandou. Analisador próprio, sem
  * eval.
+ *
+ * `{combo->campo}` (campo do registro escolhido num combo — 5.375.0) é lido
+ * como `{campo}`: quem chama põe o valor em `$values['combo->campo']`
+ * ({@see ComboFieldRef::valuesFor()}).
  */
 final class DateFormula
 {
@@ -120,6 +124,16 @@ final class DateFormula
         $code = self::outsideQuotes($expr);
 
         return (bool) preg_match('/\b(?:' . implode('|', array_map('preg_quote', $names)) . ')\s*\(/', $code);
+    }
+
+    /**
+     * O Salvar refaz esta fórmula no servidor? Com função de data ou com
+     * `{combo->campo}` (campo do registro escolhido num combo — fórum #440).
+     * Fora disso a tela compila e grava como sempre.
+     */
+    public static function redoneOnSave(string $expr): bool
+    {
+        return self::uses($expr) || ComboFieldRef::uses($expr);
     }
 
     // ── Calendário de dias úteis ─────────────────────────────────────────────
@@ -558,6 +572,14 @@ final class DateFormula
                 continue;
             }
             if (preg_match('/\G\{([A-Za-z_]\w*)\}/', $expr, $m, 0, $i)) {
+                $out[] = ['field', $m[1]];
+                $i += strlen($m[0]);
+                continue;
+            }
+            // `{combo->campo}` (fórum #440): campo do registro escolhido no
+            // combo — quem chama põe o valor em `$values['combo->campo']`
+            // ({@see ComboFieldRef::valuesFor()}); sem ele, vazio.
+            if (preg_match('/\G\{([A-Za-z_]\w*->[A-Za-z_]\w*)\}/', $expr, $m, 0, $i)) {
                 $out[] = ['field', $m[1]];
                 $i += strlen($m[0]);
                 continue;

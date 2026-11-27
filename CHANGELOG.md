@@ -12,6 +12,12 @@ Atenção — e cada item em uma linha: `- **Área:** o que mudou para você.`
 Detalhe técnico fica no commit e no PR; o histórico antigo, técnico, está
 congelado em `docs/changelog-tecnico.md`.
 
+## [5.375.0] — 2026-11-27
+
+### Novidades
+
+- **Formulário:** o "Preencher valor quando" e o campo calculado leem um campo do registro escolhido num combo com `{combo->campo}`, ex. `addMonths({data_vencimento}, {tipo_documento_id->vencimento_meses})`. Trocar o combo recalcula, também na linha do Detail Form, e o Salvar refaz a conta no servidor.
+
 ## [5.374.1] — 2026-11-27
 
 ### Correções

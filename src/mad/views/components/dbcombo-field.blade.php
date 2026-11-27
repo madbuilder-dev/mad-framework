@@ -401,6 +401,37 @@
         }
     }
 
+    // `{combo->campo}` nas expressões da tela (fórum #440): o "Preencher valor" e o
+    // "Calcular" leem um campo do registro escolhido NESTE combo. O combo deixa um
+    // marcador; ao fim do formulário (MadFormRegistry::resolveRelCombos) ele vira o
+    // token cifrado do mesmo serviço do <fill>, com a lista dos campos que as
+    // expressões da tela usam — só se alguma usar. Sem expressão, o HTML sai igual.
+    // Só combo de Model: o Salvar relê o mesmo campo do mesmo registro.
+    $__exprMarker = '';
+    if ($model && preg_match('/^[a-zA-Z_]\w*$/', (string) $name) === 1 && \Mad\Component\MadRenderContext::getForm() !== null) {
+        $__exprMarker = \Mad\Form\MadFormRegistry::pendExprCombo((string) $name, static function () use ($database, $model, $keyField, $filters) {
+            $sql = '';
+            $bindings = [];
+            try {
+                $m  = class_exists($model) ? $model : \Mad\Form\ModelOptionsLoader::resolveModelClass($model);
+                $qb = $m::query();
+                if (!empty($filters)) {
+                    \Mad\Database\QuerySource::applyArrayFilters($qb, $filters);
+                }
+                [$sql, $bindings] = \Mad\Database\QuerySource::compileSql($qb);
+            } catch (\Throwable $e) { $sql = ''; $bindings = []; }
+
+            return [
+                'database'       => $database,
+                'model'          => $model,
+                'key'            => $keyField,
+                'query_sql'      => $sql,
+                'query_bindings' => $bindings,
+                'fills'          => [],
+            ];
+        });
+    }
+
     // No-results: create button + quick register (ver MadNoResultsHelper)
     $noResultsAttrs = \Mad\Form\MadNoResultsHelper::buildAttrs([
         'name'         => $name,
@@ -460,7 +491,7 @@
             data-mad-autofill-token="{{ $autoFillToken }}"
             data-mad-autofill-fields="{{ implode(',', array_column($autoFill, 'field')) }}"
         @endif
-        {!! $noResultsAttrs !!}{!! $__relMarker !!}
+        {!! $noResultsAttrs !!}{!! $__relMarker !!}{!! $__exprMarker !!}
         {!! $attrs !!}
     >
         @if(!$noEmpty)

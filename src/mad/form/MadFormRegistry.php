@@ -219,6 +219,8 @@ class MadFormRegistry
         self::$editorDepth       = 0;
         self::$editorOnly        = [];
         self::$pendingFormulas   = [];
+        self::$pendingExprCombos = [];
+        self::$comboSources      = [];
     }
 
     /**
@@ -320,6 +322,14 @@ class MadFormRegistry
         // formulário `__mad_form`, que o navegador devolve (ver mais abaixo).
         $optionsSource = is_array($props['optionsSource'] ?? null) ? $props['optionsSource'] : [];
         unset($props['optionsSource']);
+        // Combo de Model lido por `{combo->campo}` numa fórmula (fórum #440): o
+        // Model e a chave vão com a FÓRMULA que o lê (token()), não com o campo.
+        if (!empty($optionsSource['model']) && !empty($optionsSource['one'])) {
+            self::$comboSources[$name] = [
+                'model' => (string) $optionsSource['model'],
+                'key'   => (string) ($optionsSource['key'] ?? '') ?: 'id',
+            ];
+        }
 
         // Remove props sem valor para manter o token enxuto
         $props = array_filter($props, fn($v) => $v !== '' && $v !== null && $v !== false);
@@ -652,7 +662,7 @@ class MadFormRegistry
             return '';
         }
 
-        $payload = self::$fields;
+        $payload = self::withFormulaCombos(self::$fields);
 
         // Embute metadata de details no token para uso no save (auto-save)
         if (!empty(self::$fieldLists)) {
@@ -897,12 +907,97 @@ class MadFormRegistry
         return ' data-madrel="' . $uid . '"';
     }
 
+    /** Marcadores de combo lido por `{combo->campo}` (uid => [combo, config]) — fórum #440. */
+    private static array $pendingExprCombos = [];
+
+    /** @var array<string, array{model: string, key: string}> combo de Model da tela (fórum #440) */
+    private static array $comboSources = [];
+
+    /**
+     * Model e chave do combo `$name` desenhado nesta tela (null = não é combo
+     * de Model) — o que o Salvar usa para ler `{combo->campo}`.
+     *
+     * @return array{model: string, key: string}|null
+     */
+    public static function comboSource(string $name): ?array
+    {
+        return self::$comboSources[$name] ?? null;
+    }
+
+    /**
+     * As fórmulas que leem `{combo->campo}` levam o Model e a chave desses
+     * combos (`formula.combos`): no Salvar, o estado da tela diz de onde ler.
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    private static function withFormulaCombos(array $fields): array
+    {
+        if (self::$comboSources === []) {
+            return $fields;
+        }
+        foreach ($fields as $name => $props) {
+            if (!is_array($props) || !is_array($props['formula'] ?? null)) {
+                continue;
+            }
+            $refs = ComboFieldRef::refs((string) ($props['formula']['compute'] ?? $props['formula']['fillValue'] ?? ''));
+            if ($refs !== []) {
+                $fields[$name]['formula']['combos'] = array_intersect_key(self::$comboSources, $refs);
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Um combo de Model dentro de um formulário deixa um marcador; ao fim do
+     * formulário, resolveRelCombos() o troca pelo token das expressões
+     * (`data-mad-rel-token`) só se alguma expressão da tela (`compute`,
+     * `fill-value`) ler `{combo->campo}` deste combo. O token leva só esses
+     * campos: o navegador não escolhe o que ler.
+     *
+     * @param \Closure(): array<string, mixed> $config config do auto-fill (model, key, filtro)
+     */
+    public static function pendExprCombo(string $combo, \Closure $config): string
+    {
+        $uid = bin2hex(random_bytes(6));
+        self::$pendingExprCombos[$uid] = ['combo' => $combo, 'config' => $config];
+
+        return ' data-madrx="' . $uid . '"';
+    }
+
     /**
      * Resolve os marcadores do HTML de um formulário: com campo `rel->campo` nele,
-     * vira os atributos do combo; sem, some (o HTML fica como era).
+     * vira os atributos do combo; sem, some (o HTML fica como era). O mesmo
+     * para o combo lido por `{combo->campo}` numa expressão (fórum #440).
      */
     public static function resolveRelCombos(string $html): string
     {
+        if (self::$pendingExprCombos !== [] && str_contains($html, 'data-madrx="')) {
+            $html = (string) preg_replace_callback(
+                '/ data-madrx="([a-f0-9]{12})"/',
+                static function (array $m) use ($html): string {
+                    $entry = self::$pendingExprCombos[$m[1]] ?? null;
+                    unset(self::$pendingExprCombos[$m[1]]);
+                    if ($entry === null) {
+                        return '';
+                    }
+                    $fields = ComboFieldRef::fieldsInHtml($html, (string) $entry['combo']);
+                    if ($fields === []) {
+                        return '';
+                    }
+                    try {
+                        $config = ($entry['config'])();
+                    } catch (\Throwable) {
+                        return '';
+                    }
+                    $token = \Mad\Http\MadStateCrypt::encryptFor('auto-fill', $config + ['expr' => $fields]);
+
+                    return ' data-mad-rel-token="' . htmlspecialchars($token, ENT_QUOTES | ENT_HTML5, 'UTF-8') . '"';
+                },
+                $html,
+            );
+        }
         if (self::$pendingRelCombos === [] || !str_contains($html, 'data-madrel="')) {
             return $html;
         }
@@ -991,6 +1086,48 @@ class MadFormRegistry
         }
         self::$detailForms[$name]['editor'] = array_values(array_map('strval', $fields));
         self::declareDetail($name);
+    }
+
+    /**
+     * Fórmulas do editor (`<mad-detail-fields>`) que leem `{combo->campo}`
+     * (fórum #440): o Salvar refaz a conta em cada LINHA, como no formulário
+     * principal (MadForm::_rowsWithFormulas). Vai no estado cifrado junto com
+     * o detail-form — a fórmula nunca vem do navegador.
+     *
+     * @param array<string, array<string, mixed>> $targets campo => props (type, display_mask, formula)
+     * @param array<string, array<string, mixed>> $combos  combo do editor => optionsSource
+     * @param array<string, string>               $masks   campo de data do editor => máscara de exibição
+     */
+    public static function registerDetailFormulas(string $name, array $targets, array $combos, array $masks): void
+    {
+        if (!$name || !$targets || !isset(self::$detailForms[$name])) {
+            return;
+        }
+        self::$detailForms[$name]['formulas'] = ['t' => $targets, 'c' => $combos, 'm' => $masks];
+    }
+
+    /**
+     * As fórmulas de linha de um detail-form ({@see registerDetailFormulas()}),
+     * do estado restaurado ou do formulário recebido. Vazio = nada a refazer.
+     *
+     * @return array{t?: array, c?: array, m?: array}
+     */
+    public static function detailFormulas(string $name, string $field = '__mad_form'): array
+    {
+        if (isset(self::$detailForms[$name])) {
+            return (array) (self::$detailForms[$name]['formulas'] ?? []);
+        }
+        $token = $_REQUEST[$field] ?? '';
+        if (!is_string($token) || $token === '') {
+            return [];
+        }
+        if (self::$requestSchemaToken !== $token) {
+            self::$requestSchema      = self::decode($token);
+            self::$requestSchemaToken = $token;
+        }
+        $f = self::$requestSchema['__mad_detail_forms'][$name]['formulas'] ?? [];
+
+        return is_array($f) ? $f : [];
     }
 
     /**

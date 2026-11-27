@@ -4049,6 +4049,119 @@ document.addEventListener('alpine:initialized', function () { _madWhenMountOrpha
 
 
 /* ═══════════════════════════════════════════════════════════════════
+   {combo->campo} — campo do registro escolhido num combo (fórum #440)
+   ═══════════════════════════════════════════════════════════════════
+
+   <mad-date-field name="proximo_vencimento" fill-overwrite
+       fill-when="{data_vencimento} != ''"
+       fill-value="addMonths({data_vencimento}, {tipo_documento_id->vencimento_meses})" />
+
+   No "Preencher valor" (fill-value) e no campo calculado (compute),
+   `{combo->campo}` é o campo `campo` do registro escolhido no combo
+   `name="combo"` do mesmo formulário (na linha do Detail Form, o combo DELA).
+   O servidor põe no combo, ao desenhar a tela, o token cifrado do mesmo
+   serviço do <fill> (`data-mad-rel-token`) com a lista dos campos que as
+   expressões da tela leem — o navegador não escolhe campo. Aqui o valor é
+   buscado pelo registro escolhido, guardado no próprio <select> e, quando
+   chega, o combo avisa (`mad:relvals`): o cálculo e o preenchimento olham
+   de novo. Enquanto não chega, a leitura diz "esperando" (pending).
+   Combo sem escolha, sem o token, ou campo sem valor = vazio, sem erro.
+   Campo da tela com o nome `combo->campo` (o ligado pela relação, #291 r4)
+   vale antes: é o mesmo dado, já na tela.
+*/
+// <madRel:core> — núcleo puro, fatiado por tests/js/mad-rel-expr.test.mjs
+var _madRel = (function () {
+    var api = {};
+    var TOKEN = 'data-mad-rel-token';
+    api.EVENT = 'mad:relvals';
+    // `{combo->campo}`: um elo, nomes simples.
+    api.RE = /\{([a-zA-Z_]\w*)->([a-zA-Z_]\w*)\}/g;
+
+    // Busca os campos do registro `value` com o token do combo. Promise de
+    // { campo: texto }. O teste troca por uma de mentira.
+    api.fetch = function (token, value) {
+        var svc = typeof _madServiceUrl === 'function' ? _madServiceUrl : window._madServiceUrl;
+        var json = typeof _madExtractJson === 'function' ? _madExtractJson : window._madExtractJson;
+        return window.fetch(svc('auto-fill', 'resolve', { token: token, value: value }), { credentials: 'same-origin' })
+            .then(function (r) { return r.text(); })
+            .then(function (text) {
+                var data = (json ? json(text) : JSON.parse(text)) || {};
+                return (data.rel && typeof data.rel === 'object') ? data.rel : {};
+            });
+    };
+
+    function comboOf(scope, combo, from) {
+        var els = window._madWhen.named(scope, combo, from);
+        for (var i = 0; i < els.length; i++) {
+            if (els[i].hasAttribute && els[i].hasAttribute(TOKEN)) return els[i];
+        }
+        return null;
+    }
+
+    function announce(sel) {
+        var Ev = window.CustomEvent || window.Event;
+        var ev = new Ev(api.EVENT, { bubbles: true, detail: { name: sel.name } });
+        ev.madRelOf = sel.name;
+        sel.dispatchEvent(ev);
+    }
+
+    function load(sel, key) {
+        var c = sel._madRel;
+        if (c && c.key === key) return;
+        sel._madRel = { key: key, vals: null };
+        var done = function (vals) {
+            if (!sel._madRel || sel._madRel.key !== key) return;   // a escolha mudou no meio
+            sel._madRel = { key: key, vals: vals || {} };
+            announce(sel);
+        };
+        var p;
+        try { p = api.fetch(sel.getAttribute(TOKEN), key); }
+        catch (e) { p = null; }
+        if (p && typeof p.then === 'function') p.then(done, function () { done({}); });
+        else done({});
+    }
+
+    // Valor de `{combo->campo}` visto de `from`: { value, pending }.
+    api.read = function (scope, combo, field, from) {
+        var path = combo + '->' + field;
+        if (window._madWhen.named(scope, path, from).length) {
+            return { value: window._madWhen.readValue(scope, path, from), pending: false };
+        }
+        var sel = comboOf(scope, combo, from);
+        if (!sel) return { value: '', pending: false };
+        var key = sel.value == null ? '' : String(sel.value);
+        if (key === '') return { value: '', pending: false };
+        var c = sel._madRel;
+        if (c && c.key === key && c.vals) {
+            var v = Object.prototype.hasOwnProperty.call(c.vals, field) ? c.vals[field] : '';
+            return { value: v == null ? '' : String(v), pending: false };
+        }
+        load(sel, key);
+        return { value: '', pending: true };
+    };
+
+    // Combos que a expressão lê por `{combo->campo}` (fora de aspas não é
+    // conferido: o nome entre aspas só sobra como dependência a mais).
+    api.combos = function (expr) {
+        var out = [], m, re = new RegExp(api.RE.source, 'g');
+        while ((m = re.exec(String(expr == null ? '' : expr)))) if (out.indexOf(m[1]) === -1) out.push(m[1]);
+        return out;
+    };
+
+    // `{combo->campo}` → `$v.rel("combo","campo")` (o leitor de quem compila).
+    api.rewrite = function (js) {
+        return String(js).replace(new RegExp(api.RE.source, 'g'), function (_, c, f) {
+            return '$v.rel(' + JSON.stringify(c) + ',' + JSON.stringify(f) + ')';
+        });
+    };
+
+    return api;
+})();
+// </madRel:core>
+window._madRel = _madRel;
+
+
+/* ═══════════════════════════════════════════════════════════════════
    compute — campo calculado no navegador
    ═══════════════════════════════════════════════════════════════════
 
@@ -4183,6 +4296,8 @@ var _madCompute = (function () {
         // {@campo}: campo do formulário PRINCIPAL, mesmo dentro do sub-form (fórum #291).
         // `{@produto->estoque}`: campo do mestre ligado por relacionamento (fórum #291 r3).
         js = js.replace(/\{@(\w+(?:->\w+)*)\}/g, function (_, n) { return '$v.master(' + JSON.stringify(n) + ')'; });
+        // {combo->campo}: campo do registro escolhido no combo (fórum #440).
+        if (window._madRel) js = window._madRel.rewrite(js);
         js = js.replace(/\bdiscount\s*\((.+),\s*\{(\w+)\}\s*,\s*\{(\w+)\}\s*\)/i, function (_, sub, d, t) {
             return '$v.discount(' + sub + ', {' + d + '}, $v.text(' + JSON.stringify(t) + '))';
         });
@@ -4266,6 +4381,17 @@ var _madCompute = (function () {
             g.diffDays = function (a, b) { return dateNum(F.diffDays(a, b)); };
             g.diffBusinessDays = function (a, b) { return dateNum(F.diffBusinessDays(a, b, F.calendarOf(from))); };
         }
+        // {combo->campo} (fórum #440): o número do campo do registro escolhido
+        // no combo; esperando o registro chegar = vazio (0), e o `mad:relvals`
+        // do combo refaz a conta.
+        var relRead = function (c, f) {
+            if (!window._madRel) return '';
+            var r = window._madRel.read(scope, c, f, from);
+            if (r.pending) g.relPending = true;
+            return r.value;
+        };
+        g.rel = function (c, f) { return toNum(relRead(c, f)); };
+        if (F) g.relField = function (c, f) { return new F.FieldRef(relRead(c, f), ''); };
         return g;
     }
 
@@ -4424,11 +4550,15 @@ var _madCompute = (function () {
                 return false;
             }
             var v;
+            g.relPending = false;
             try { v = result(fn, g); }
             catch (e) {
                 if (!warned) { warned = true; warn('[mad-compute] erro ao calcular:', expression, e); }
                 return false;
             }
+            // {combo->campo} ainda chegando (fórum #440): fica como está; o
+            // aviso do combo refaz a conta com o valor certo.
+            if (g.relPending) return false;
             return write(el, root, v, depth);
         }
 
@@ -4479,12 +4609,16 @@ function _madComputeAttach(el, expression, onCleanup) {
     };
     inst.scope.addEventListener('change', schedule);
     inst.scope.addEventListener('input', schedule);
+    // {combo->campo} (fórum #440): o registro do combo chegou — refaz a conta.
+    var relEvt = window._madRel && window._madRel.combos(expression).length ? window._madRel.EVENT : '';
+    if (relEvt) inst.scope.addEventListener(relEvt, schedule);
 
     var teardown = function () {
         if (dead) return;
         dead = true;
         inst.scope.removeEventListener('change', schedule);
         inst.scope.removeEventListener('input', schedule);
+        if (relEvt) inst.scope.removeEventListener(relEvt, schedule);
         if (el._madComputeOff === teardown) delete el._madComputeOff;
     };
     el._madComputeOff = teardown;
@@ -4651,10 +4785,14 @@ var _madFill = (function () {
     var MAX_DAYS = 36600;       // cem anos: além disso é engano de campo
     var MAX_MONTHS = 1200;
 
+    // {combo->campo} como argumento (fórum #440): o campo do registro do combo.
+    var ADD_ARG_REL = /^\{([a-zA-Z_]\w*)->([a-zA-Z_]\w*)\}$/;
+
     function fnArg(kind, a) {
         a = a.trim();
         var m;
         if ((m = ADD_ARG_FIELD.exec(a))) return '$v.field(' + JSON.stringify(m[1]) + ')';
+        if ((m = ADD_ARG_REL.exec(a))) return '$v.relField(' + JSON.stringify(m[1]) + ',' + JSON.stringify(m[2]) + ')';
         if (kind === 'base') {
             if (ADD_ARG_NUM.test(a)) return '(' + a + ')';
             if ((m = ADD_ARG_CLOCK.exec(a))) return '$v.' + m[1] + '()';
@@ -4725,7 +4863,9 @@ var _madFill = (function () {
     // $v.nome(…). null = função de data inválida.
     function translate(expr) {
         return outsideQuotes(expr, function (chunk) {
-            return rewriteFns(chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()'), null);
+            var js = rewriteFns(chunk.replace(/\b(today|now|time)\s*\(\s*\)/g, '$v.$1()'), null);
+            // {combo->campo} fora das funções de data → o valor do campo (fórum #440).
+            return (js !== null && window._madRel) ? window._madRel.rewrite(js) : js;
         });
     }
 
@@ -4789,6 +4929,8 @@ var _madFill = (function () {
     }
 
     var TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+    // Data como o servidor manda a do registro do combo (fórum #440).
+    var ISO_DAY = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/;
     var FALLBACK_MASKS = [
         'yyyy-mm-dd hh:ii:ss', 'yyyy-mm-dd hh:ii', 'yyyy-mm-dd',
         'dd/mm/yyyy hh:ii:ss', 'dd/mm/yyyy hh:ii', 'dd/mm/yyyy',
@@ -5135,6 +5277,29 @@ var _madFill = (function () {
         g.subMonths = subMonths;
         g.diffDays = diffDays;
         g.diffBusinessDays = function (a, b) { return diffBusinessDays(a, b, calendarOf(el)); };
+        // {combo->campo} (fórum #440): o campo do registro escolhido no combo.
+        // Registro ainda chegando = "esperando" (relPending): nada é escrito, e o
+        // `mad:relvals` do combo tenta de novo (retryRel).
+        var rel = window._madRel || null;
+        var relCombos = rel ? rel.combos(valueExpr) : [];
+        g.rel = function (c, f) {
+            var r = rel ? rel.read(scope, c, f, el) : { value: '', pending: false };
+            if (r.pending) g.relPending = true;
+            return r.value;
+        };
+        g.relField = function (c, f) { return new FieldRef(g.rel(c, f), ''); };
+
+        // Com {combo->campo} no valor, o preenchimento ACOMPANHA o que ele lê:
+        // com a regra valendo, mudar o combo ou um campo do valor preenche de
+        // novo (follow) — o "Próximo vencimento" segue o Documento trocado.
+        // Sem {combo->campo}: só na passagem da regra, como sempre.
+        var relMode = relCombos.length > 0;
+        var deps = {};
+        if (relMode) {
+            relCombos.forEach(function (c) { deps[c] = true; });
+            String(valueExpr).replace(/\{([a-zA-Z_]\w*)\}/g, function (_, n) { deps[n] = true; return _; });
+        }
+        var waitingRel = false;
 
         var prev = null;        // estado da regra na última olhada (null = ainda sem base)
         var warned = false;
@@ -5159,12 +5324,23 @@ var _madFill = (function () {
             var t = targetOf(root);
             if (!t) { once('[mad-fill] campo sem controle para preencher:', whenExpr); return false; }
             var v;
+            g.relPending = false;
+            waitingRel = false;
             try { v = value(g); }
             catch (e) { once('[mad-fill] erro ao calcular fill-value:', valueExpr, e); return false; }
+            // O registro de um {combo->campo} ainda está chegando: nada agora,
+            // o aviso do combo tenta de novo.
+            if (g.relPending) { waitingRel = true; return PENDING; }
             // addMinutes / função de data com campo vazio (ou que não é
             // data/hora/número): nada a escrever — e a regra fica esperando
             // (fórum #440: a data ainda está sendo digitada).
             if (v === NOTHING) return PENDING;
+            // Data do registro do combo (aaaa-mm-dd) num campo de data: no
+            // formato do campo, como o today().
+            if (relMode && typeof v === 'string' && ISO_DAY.test(v.trim()) && t.ctl) {
+                var ad0 = fieldData(t.ctl), day = (ad0 && 'selectedDate' in ad0) ? toDay(v) : null;
+                if (day) v = new Stamp(day.time ? 'datetime' : 'date', day.date);
+            }
             var text = (v instanceof Stamp) ? stampText(v, t) : plain(v);
             var cur = currentValue(t);
             if (!opts.overwrite && cur.trim() !== '') return false;
@@ -5194,7 +5370,43 @@ var _madFill = (function () {
             return r;
         }
 
-        return { id: id, root: root, scope: scope, baseline: baseline, apply: apply, fill: fill };
+        // {combo->campo} (fórum #440): a regra CONTINUA valendo e o usuário
+        // mudou algo que o valor lê — preenche de novo (sem fill-overwrite,
+        // só campo vazio, como sempre).
+        function follow(depth) {
+            depth = depth || 0;
+            var on = evaluate();
+            prev = on;
+            if (!on) return false;
+            if (depth >= MAX_DEPTH) {
+                once('[mad-fill] preenchimento encadeado sem fim (um campo preenche o outro?):', whenExpr);
+                return false;
+            }
+            var r = fill(depth);
+            return r === PENDING ? false : r;
+        }
+
+        // O registro que o valor esperava chegou: tenta de novo.
+        function retryRel(depth) {
+            if (!waitingRel) return false;
+            waitingRel = false;
+            return follow(depth);
+        }
+
+        // Alguma das mudanças é de um campo que o valor lê?
+        function touches(names) {
+            if (!relMode || !names) return false;
+            var own = targetOf(root);
+            for (var n in names) {
+                if (Object.prototype.hasOwnProperty.call(names, n) && deps[n] && !(own && own.name === n)) return true;
+            }
+            return false;
+        }
+
+        return {
+            id: id, root: root, scope: scope, baseline: baseline, apply: apply, fill: fill,
+            relMode: relMode, follow: follow, retryRel: retryRel, touches: touches,
+        };
     }
 
     // Um lote de valores foi carregado no escopo por código (a linha do
@@ -5260,23 +5472,42 @@ function _madFillAttach(el, expression, onCleanup) {
     var direct = false;     // algum evento do lote NÃO veio de outro preenchimento?
     var base = true;        // a próxima olhada só registra o estado
     var chain = 0;          // olhadas seguidas causadas só por outros preenchimentos
+    // {combo->campo} (fórum #440): o que mudou na tela neste lote (nomes) e se
+    // chegou o registro de um combo (`mad:relvals`).
+    var REL_EVT = window._madRel ? window._madRel.EVENT : '';
+    var changed = {}, relArrived = false, others = false;
 
     // Adiado um tick, como o *-when: o valor de campo com máscara só é
     // atualizado depois do handler de input que disparou. Vários eventos no
     // mesmo tick = uma olhada só.
     var schedule = function (e) {
         if (dead) return;
-        if (e) {
-            if (!e.madFromServer) live = true;
-            if (!e.madFillDepth) direct = true;
+        if (e && REL_EVT && e.type === REL_EVT) {
+            relArrived = true;
+        } else {
+            others = true;
+            if (e) {
+                if (!e.madFromServer) live = true;
+                if (!e.madFillDepth) direct = true;
+                var tn = (!e.madFromServer && e.target && e.target.name) ? String(e.target.name).replace(/\[\]$/, '') : '';
+                if (tn) changed[tn] = true;
+            }
         }
         if (pending) return;
         pending = true;
         setTimeout(function () {
             pending = false;
             var fromScreen = live, own = direct, onlyBase = base;
+            var names = changed, gotRel = relArrived, any = others;
             live = false; direct = false; base = false;
+            changed = {}; relArrived = false; others = false;
             if (dead) return;
+            // Só chegou o registro de um combo: tenta de novo o preenchimento que
+            // esperava por ele (o usuário já mexeu); sem espera, nada muda.
+            if (gotRel && !any) {
+                if (armed && !onlyBase) inst.retryRel(chain);
+                return;
+            }
             // Antes do primeiro gesto do usuário tudo é a tela terminando de
             // abrir (componentes montando, combos carregando): só a base.
             if (onlyBase || !armed || !fromScreen) { inst.baseline(); return; }
@@ -5285,7 +5516,10 @@ function _madFillAttach(el, expression, onCleanup) {
             // preenche o primeiro…). Vinte campos reagindo à mesma mudança do
             // usuário não são corrente: o lote traz o evento dele.
             chain = own ? 0 : chain + 1;
-            inst.apply(chain);
+            var did = inst.apply(chain);
+            // {combo->campo}: a regra continua valendo e mudou o que o valor lê.
+            if (inst.relMode && did === false && inst.touches(names)) inst.follow(chain);
+            else if (gotRel) inst.retryRel(chain);
         }, 0);
     };
     var arm = function () { armed = true; };
@@ -5294,6 +5528,9 @@ function _madFillAttach(el, expression, onCleanup) {
     inst.scope.addEventListener('change', schedule);
     inst.scope.addEventListener('input', schedule);
     for (var i = 0; i < GESTURES.length; i++) inst.scope.addEventListener(GESTURES[i], arm, true);
+    // Só quem lê {combo->campo} ouve a chegada do registro (fórum #440).
+    var relOn = !!(REL_EVT && inst.relMode);
+    if (relOn) inst.scope.addEventListener(REL_EVT, schedule);
 
     inst.rebase = function () { base = true; schedule(); };
 
@@ -5302,6 +5539,7 @@ function _madFillAttach(el, expression, onCleanup) {
         dead = true;
         inst.scope.removeEventListener('change', schedule);
         inst.scope.removeEventListener('input', schedule);
+        if (relOn) inst.scope.removeEventListener(REL_EVT, schedule);
         for (var j = 0; j < GESTURES.length; j++) inst.scope.removeEventListener(GESTURES[j], arm, true);
         if (el._madFillOff === teardown) delete el._madFillOff;
         if (el._madFillInst === inst) delete el._madFillInst;

@@ -758,15 +758,19 @@ class MadForm
                 continue;
             }
             $f = $props['formula'];
+            // `{combo->campo}`: o campo do registro escolhido no combo da tela (fórum #440).
+            $combos = is_array($f['combos'] ?? null) ? $f['combos'] : [];
             if (isset($f['compute'])) {
-                $r = DateFormula::evaluate((string) $f['compute'], $values, $masks, true);
+                $expr = (string) $f['compute'];
+                $r = DateFormula::evaluate($expr, $values + ComboFieldRef::valuesFor($expr, $values, $combos), $masks, true);
                 $posted = $r === null ? null : DateFormula::posted($r, $props, false);
             } elseif (isset($f['fillWhen'], $f['fillValue'])) {
                 if (trim((string) $this->fields[$name]) !== ''
                     || WhenCondition::evaluate((string) $f['fillWhen'], $values) !== true) {
                     continue;
                 }
-                $r = DateFormula::evaluate((string) $f['fillValue'], $values, $masks);
+                $expr = (string) $f['fillValue'];
+                $r = DateFormula::evaluate($expr, $values + ComboFieldRef::valuesFor($expr, $values, $combos), $masks);
                 $posted = $r === null ? null : DateFormula::posted($r, $props, true);
             } else {
                 continue;
@@ -827,7 +831,7 @@ class MadForm
                 // getFieldList() — senão $data->itens sairia mascarado enquanto
                 // o auto-save grava cru, e as duas leituras discordariam.
                 $result[$name] = is_array($value)
-                    ? MadFormRegistry::transformFieldListRows($name, $value)
+                    ? MadFormRegistry::transformFieldListRows($name, $this->_rowsWithFormulas($name, $value))
                     : $value;
                 // Campo de data que o token postado não descreve (é de outro
                 // formulário da tela): converte pelo que a tela anotou.
@@ -8979,8 +8983,72 @@ class MadForm
         // force-case / strip-mask declarados na coluna. Aplicado AQUI porque
         // este é o ponto por onde passam tanto o _autoSaveDetails() quanto o
         // código do usuário — aplicar só no getData() deixaria o auto-save
-        // gravando o valor mascarado.
-        return MadFormRegistry::transformFieldListRows($name, $rows);
+        // gravando o valor mascarado. As fórmulas da linha com `{combo->campo}`
+        // vêm antes, com os valores ainda como a tela os mostra (fórum #440).
+        return MadFormRegistry::transformFieldListRows($name, $this->_rowsWithFormulas($name, $rows));
+    }
+
+    /**
+     * Fórum #440 — fórmula de campo do editor do `<mad-detail-form>` que lê
+     * `{combo->campo}` (o campo do registro escolhido num combo da linha),
+     * refeita no SERVIDOR em cada linha, como o formulário principal faz
+     * ({@see _applyDateFormulas()}): o calculado (`compute`) é refeito sempre;
+     * o "Preencher valor quando" entra no campo da linha que chegou VAZIO, com
+     * a regra valendo. A fórmula vem do estado cifrado da tela; os valores
+     * são os da linha (e, para o que a linha não tem, os do formulário
+     * principal), lidos como dado. Expressão que o servidor não avalia fica
+     * com o valor enviado. Detalhe sem essas fórmulas: as linhas passam iguais.
+     *
+     * @param array<int|string, mixed> $rows
+     * @return array<int|string, mixed>
+     */
+    private function _rowsWithFormulas(string $name, array $rows): array
+    {
+        $cfg = MadFormRegistry::detailFormulas($name);
+        $targets = is_array($cfg['t'] ?? null) ? $cfg['t'] : [];
+        if ($targets === [] || $rows === []) {
+            return $rows;
+        }
+        $combos = is_array($cfg['c'] ?? null) ? $cfg['c'] : [];
+        $masks = is_array($cfg['m'] ?? null) ? $cfg['m'] : [];
+        $outer = array_filter($this->fields, static fn ($v) => is_scalar($v) || $v === null);
+
+        foreach ($rows as $i => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $values = $row + $outer;
+            foreach ($targets as $field => $props) {
+                $field = (string) $field;
+                if (!is_array($props) || !is_array($props['formula'] ?? null) || !array_key_exists($field, $row)
+                    || !(is_scalar($row[$field]) || $row[$field] === null)) {
+                    continue;
+                }
+                $cur = (string) ($row[$field] ?? '');
+                $f = $props['formula'];
+                if (isset($f['compute'])) {
+                    $expr = (string) $f['compute'];
+                    $r = DateFormula::evaluate($expr, $values + ComboFieldRef::valuesFor($expr, $values, $combos), $masks, true);
+                    $posted = $r === null ? null : DateFormula::posted($r, $props, false);
+                } elseif (isset($f['fillWhen'], $f['fillValue'])) {
+                    if (trim($cur) !== '' || WhenCondition::evaluate((string) $f['fillWhen'], $values) !== true) {
+                        continue;
+                    }
+                    $expr = (string) $f['fillValue'];
+                    $r = DateFormula::evaluate($expr, $values + ComboFieldRef::valuesFor($expr, $values, $combos), $masks);
+                    $posted = $r === null ? null : DateFormula::posted($r, $props, true);
+                } else {
+                    continue;
+                }
+                if ($posted === null || $posted === $cur) {
+                    continue;
+                }
+                $rows[$i][$field] = $posted;
+                $values[$field] = $posted;
+            }
+        }
+
+        return $rows;
     }
 
     // ── Detail auto-save/load hooks ─────────────────────────────────────────

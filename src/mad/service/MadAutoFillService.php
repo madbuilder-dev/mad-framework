@@ -40,6 +40,7 @@ class MadAutoFillService extends MadComponent
         $values    = [];
         $onlyEmpty = [];
         $warnings  = [];
+        $rel       = null;   // campos do registro para as expressões da tela (fórum #440)
 
         if ($token !== '' && $value !== '') {
             $config = MadStateCrypt::decryptFor('auto-fill', $token);
@@ -62,6 +63,18 @@ class MadAutoFillService extends MadComponent
                 }
 
                 $record = self::loadRecord($database, $model, $key, $value, $querySql, $bindings);
+
+                // `{combo->campo}` nas expressões da tela (fórum #440): só os campos
+                // que o servidor pôs no token ao desenhar a tela — o navegador não
+                // escolhe campo. Registro fora do filtro do combo = vazios.
+                $expr = array_values(array_filter((array) ($config['expr'] ?? []),
+                    static fn ($f) => is_string($f) && preg_match('/^[A-Za-z_]\w*$/', $f) === 1));
+                if ($expr !== []) {
+                    $rel = [];
+                    foreach (array_slice($expr, 0, 50) as $f) {
+                        $rel[$f] = $record === null ? '' : \Mad\Form\ComboFieldRef::read((object) $record, $f);
+                    }
+                }
 
                 if ($record !== null) {
                     foreach ($fills as $f) {
@@ -88,7 +101,11 @@ class MadAutoFillService extends MadComponent
         }
 
         header('Content-Type: application/json');
-        echo json_encode(['values' => (object) $values, 'onlyEmpty' => $onlyEmpty, 'warnings' => $warnings], JSON_UNESCAPED_UNICODE);
+        $out = ['values' => (object) $values, 'onlyEmpty' => $onlyEmpty, 'warnings' => $warnings];
+        if ($rel !== null) {
+            $out['rel'] = (object) $rel;
+        }
+        echo json_encode($out, JSON_UNESCAPED_UNICODE);
     }
 
     /**

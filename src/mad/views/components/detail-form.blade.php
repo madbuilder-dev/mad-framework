@@ -424,11 +424,26 @@
     $_dfColMeta  = [];
     $_dfDateFmt  = [];   // campo de data do editor => formato PHP da tela (célula sem formato)
     $_dfEditor   = [];   // campos do editor: colunas da LINHA, não do registro principal
+    // Fórmulas do editor com `{combo->campo}` (fórum #440): o Salvar refaz a conta em cada linha.
+    $_dfFormulas = [];
+    $_dfCombos   = [];
+    $_dfMasks    = [];
     foreach (\Mad\Form\MadFormRegistry::getFields() as $_dfFn => $_dfFp) {
         if (in_array($_dfFn, $_dfFieldsBefore, true)) {
             continue;
         }
         $_dfEditor[] = (string) $_dfFn;
+        if (is_array($_dfFp['formula'] ?? null)
+            && \Mad\Form\ComboFieldRef::uses((string) ($_dfFp['formula']['compute'] ?? $_dfFp['formula']['fillValue'] ?? ''))) {
+            $_dfFormulas[$_dfFn] = array_intersect_key($_dfFp, array_flip(['type', 'display_mask', 'formula']));
+        }
+        if (($__dfSrc = \Mad\Form\MadFormRegistry::comboSource((string) $_dfFn)) !== null) {
+            $_dfCombos[$_dfFn] = $__dfSrc;
+        }
+        if (in_array($_dfFp['type'] ?? '', ['date', 'datetime'], true)) {
+            $_dfMasks[$_dfFn] = (string) ($_dfFp['display_mask'] ?? '')
+                ?: (($_dfFp['type'] ?? '') === 'datetime' ? \Mad\Support\DateMask::datetime() : \Mad\Support\DateMask::date());
+        }
         // strip-mask do campo do editor vale para a coluna da linha: sem isto
         // o auto-save gravava '123.456.789-01' mesmo com strip-mask declarado.
         if (!empty($_dfFp['stripMask']) && !empty($_dfFp['mask'])) {
@@ -490,6 +505,7 @@
         \Mad\Form\MadFormRegistry::registerDetailColMeta($name, $_dfColMeta);
     }
     \Mad\Form\MadFormRegistry::registerDetailEditorFields($name, $_dfEditor);
+    \Mad\Form\MadFormRegistry::registerDetailFormulas($name, $_dfFormulas, $_dfCombos, $_dfMasks);
 
     // Colunas da linha que este detail não mostra: o formulário anota como
     // estavam no banco — o Salvar não regrava a que ninguém mexeu. No detail
